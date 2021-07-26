@@ -23,16 +23,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
+from pymbolic.primitives import Slice, Variable, Subscript, Call
 from loopy.tools import intern_frozenset_of_ids, Optional
-from loopy.symbolic import IdentityMapper, WalkMapper
+from loopy.symbolic import (
+        IdentityMapper, WalkMapper, SubArrayRef)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
-        SubstitutionRule)
+        SubstitutionRule, AddressSpace, ValueArg)
+from loopy.translation_unit import for_each_kernel
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
@@ -530,9 +532,11 @@ def parse_insn(groups, insn_options):
             assignee_names.append(inner_lhs_i.name)
         elif isinstance(inner_lhs_i, (Subscript, LinearSubscript)):
             assignee_names.append(inner_lhs_i.aggregate.name)
+        elif isinstance(inner_lhs_i, SubArrayRef):
+            assignee_names.append(inner_lhs_i.subscript.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
-                    "be variable or subscript" % (lhs_i,))
+                    "be variable, subscript or a SubArrayRef" % (lhs_i,))
 
         new_lhs.append(lhs_i)
 
@@ -1080,6 +1084,9 @@ def parse_domains(domains, defines):
 
         result.append(dom)
 
+    if result == []:
+        result = [isl.BasicSet("{:}")]
+
     return result
 
 # }}}
@@ -1168,8 +1175,7 @@ class ArgumentGuesser:
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
         import loopy as lp
-
-        from loopy.kernel.data import ValueArg, ArrayArg, AddressSpace
+        from loopy.kernel.data import ValueArg, ArrayArg
 
         if arg_name in self.all_params:
             return ValueArg(arg_name)
@@ -1720,7 +1726,7 @@ def _is_wildcard(s):
 
 
 def _resolve_dependencies(what, knl, insn, deps):
-    from loopy import find_instructions
+    from loopy.transform.instruction import find_instructions
     from loopy.match import MatchExpressionBase
 
     new_deps = []
@@ -1814,6 +1820,7 @@ def add_inferred_inames(knl):
 
 # {{{ apply single-writer heuristic
 
+@for_each_kernel
 def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
     logger.debug("%s: default deps" % kernel.name)
 
@@ -1882,9 +1889,219 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 # }}}
 
 
+# {{{ slice to sub array ref
+
+def normalize_slice_params(slice, dimension_length):
+    """
+    Returns the normalized slice parameters ``(start, stop, step)``.
+
+    :arg slice: An instance of :class:`pymbolic.primitives.Slice`.
+    :arg dimension_length: Length of the axis being sliced.
+    """
+    from pymbolic.primitives import Slice
+    from numbers import Integral
+
+    assert isinstance(slice, Slice)
+    start, stop, step = slice.start, slice.stop, slice.step
+
+    # {{{ defaulting parameters
+
+    if step is None:
+        step = 1
+
+    if step == 0:
+        raise LoopyError("Slice cannot have 0 step size.")
+
+    if start is None:
+        if step > 0:
+            start = 0
+        else:
+            start = dimension_length-1
+
+    if stop is None:
+        if step > 0:
+            stop = dimension_length
+        else:
+            stop = -1
+
+    # }}}
+
+    if not isinstance(step, Integral):
+        raise LoopyError("Non-integral step sizes lead to non-affine domains =>"
+                         " not supported")
+
+    return start, stop, step
+
+
+class SliceToInameReplacer(IdentityMapper):
+    """
+    Converts slices to instances of :class:`loopy.symbolic.SubArrayRef`.
+
+    .. attribute:: var_name_gen
+
+        Variable name generator, in order to generate unique inames within the
+        kernel domain.
+
+    .. attribute:: knl
+
+        An instance of :class:`loopy.LoopKernel`
+
+    .. attribute:: subarray_ref_bounds
+
+        A :class:`list` (one entry for each :class:`SubArrayRef` to be created)
+        of :class:`dict` instances to store the slices enountered in the
+        expressions as a mapping from ``iname`` to a tuple of ``(start, stop,
+        step)``, which describes the boxy (i.e. affine) constraints imposed on
+        the ``iname`` by the corresponding slice notation its intended to
+        replace.
+    """
+    def __init__(self, knl):
+        self.subarray_ref_bounds = []
+        self.knl = knl
+        self.var_name_gen = knl.get_var_name_generator()
+
+    def map_subscript(self, expr):
+        subscript_iname_bounds = {}
+
+        new_index = []
+        swept_inames = []
+        for i, index in enumerate(expr.index_tuple):
+            if isinstance(index, Slice):
+                unique_var_name = self.var_name_gen(based_on="i")
+                if expr.aggregate.name in self.knl.arg_dict:
+                    shape = self.knl.arg_dict[expr.aggregate.name].shape
+                else:
+                    assert expr.aggregate.name in self.knl.temporary_variables
+                    shape = self.knl.temporary_variables[
+                            expr.aggregate.name].shape
+                if shape is None or shape[i] is None:
+                    raise LoopyError("Slice notation is only supported for "
+                            "variables whose shapes are known at creation time "
+                            "-- maybe add the shape for '{}'.".format(
+                                expr.aggregate.name))
+
+                domain_length = shape[i]
+                start, stop, step = normalize_slice_params(index, domain_length)
+                subscript_iname_bounds[unique_var_name] = (start, stop, step)
+                new_index.append(start+step*Variable(unique_var_name))
+                swept_inames.append(Variable(unique_var_name))
+            else:
+                new_index.append(index)
+
+        if swept_inames:
+            self.subarray_ref_bounds.append(subscript_iname_bounds)
+            result = SubArrayRef(tuple(swept_inames), Subscript(
+                self.rec(expr.aggregate),
+                self.rec(tuple(new_index))))
+        else:
+            result = super().map_subscript(expr)
+
+        return result
+
+    def map_call(self, expr):
+
+        def _convert_array_to_slices(arg):
+            # FIXME: We do not support something like A[1] should point to the
+            # second row if 'A' is 3 x 3 array.
+            if isinstance(arg, Variable):
+                from loopy.kernel.data import auto
+                if (arg.name in self.knl.temporary_variables):
+                    if self.knl.temporary_variables[arg.name].shape in [
+                            auto, None]:
+                        # do not convert arrays with unknown shapes to slices.
+                        # (If an array of unknown shape was passed in error, will be
+                        # caught and raised during preprocessing).
+                        array_arg_shape = ()
+                    else:
+                        array_arg_shape = (
+                                self.knl.temporary_variables[arg.name].shape)
+                elif arg.name in self.knl.arg_dict:
+                    if isinstance(self.knl.arg_dict[arg.name], ValueArg):
+                        array_arg_shape = ()
+                    else:
+
+                        if self.knl.arg_dict[arg.name].shape in [
+                                auto, None]:
+                            # do not convert arrays with unknown shapes to slices.
+                            # (If an array of unknown shape was passed in error, will
+                            # be caught and raised during preprocessing).
+                            array_arg_shape = ()
+                        else:
+                            array_arg_shape = (
+                                    self.knl.arg_dict[arg.name].shape)
+                else:
+                    # arg could be either an iname or a "mangled symbol"
+                    array_arg_shape = ()
+
+                if array_arg_shape != ():
+                    return Subscript(arg, tuple(Slice(())
+                                                for _ in array_arg_shape))
+            return arg
+
+        return Call(expr.function,
+                    tuple(self.rec(_convert_array_to_slices(par))
+                          for par in expr.parameters))
+
+    def map_call_with_kwargs(self, expr):
+        # See: https://github.com/inducer/loopy/pull/323
+        raise NotImplementedError
+
+    def get_iname_domain_as_isl_set(self):
+        """
+        Returns the extra domain constraints imposed by the slice inames,
+        recorded in :attr:`iname_domains`.
+        """
+        subarray_ref_domains = []
+        for sar_bounds in self.subarray_ref_bounds:
+            ctx = self.knl.isl_context
+            space = isl.Space.create_from_names(ctx,
+                    set=list(sar_bounds.keys()))
+            from loopy.symbolic import get_dependencies
+            args_as_params_for_domains = set()
+            for slice_ in sar_bounds.values():
+                args_as_params_for_domains |= get_dependencies(slice_)
+
+            space = space.add_dims(dim_type.param, len(args_as_params_for_domains))
+            for i, arg in enumerate(args_as_params_for_domains):
+                space = space.set_dim_name(dim_type.param, i, arg)
+
+            iname_set = isl.BasicSet.universe(space)
+
+            from loopy.isl_helpers import make_slab
+            for iname, (start, stop, step) in sar_bounds.items():
+                if step > 0:
+                    iname_set = iname_set & make_slab(space, iname, 0,
+                                                      stop-start, step)
+                else:
+                    iname_set = iname_set & make_slab(space, iname, 0,
+                                                      start-stop, -step)
+
+            subarray_ref_domains.append(iname_set)
+
+        return subarray_ref_domains
+
+
+def realize_slices_array_inputs_as_sub_array_refs(kernel):
+    """
+    Returns a kernel with the instances of :class:`pymbolic.primitives.Slice`
+    encountered in expressions replaced as `loopy.symbolic.SubArrayRef`.
+    """
+    slice_replacer = SliceToInameReplacer(kernel)
+    new_insns = [insn.with_transformed_expressions(slice_replacer)
+                for insn in kernel.instructions]
+
+    return kernel.copy(
+            domains=(
+                kernel.domains
+                + slice_replacer.get_iname_domain_as_isl_set()),
+            instructions=new_insns)
+
+# }}}
+
+
 # {{{ kernel creation top-level
 
-def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
+def make_function(domains, instructions, kernel_data=None, **kwargs):
     """User-facing kernel creation entrypoint.
 
     :arg domains:
@@ -1938,9 +2155,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
         *offset* in :attr:`ArrayArg` for guessed arguments.
         Defaults to 0.
-    :arg function_manglers: list of functions of signature
-        ``(target, name, arg_dtypes)``
-        returning a :class:`loopy.CallMangleInfo`.
     :arg symbol_manglers: list of functions of signature (name) returning
         a tuple (result_dtype, c_name), where c_name is the C-level symbol to
         be evaluated.
@@ -2001,6 +2215,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             logger,
             "%s: instantiate" % kwargs.get("name", "(unnamed)"))
 
+    if kernel_data is None:
+        kernel_data = [...]
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
     default_offset = kwargs.pop("default_offset", 0)
@@ -2010,6 +2226,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
     fixed_parameters = kwargs.pop("fixed_parameters", {})
+    assumptions = kwargs.pop("assumptions", None)
 
     if defines:
         from warnings import warn
@@ -2019,7 +2236,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     if target is None:
         from loopy import _DEFAULT_TARGET
-        target = _DEFAULT_TARGET
+        target = _DEFAULT_TARGET()
 
     if flags is not None:
         if options is not None:
@@ -2047,7 +2264,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
         # This *is* gross. But it seems like the right thing interface-wise.
         import inspect
-        caller_globals = inspect.currentframe().f_back.f_globals
+        if inspect.currentframe().f_back.f_code.co_name == "make_kernel":
+            # if caller is "make_kernel", read globals from make_kernel's caller
+            caller_globals = inspect.currentframe().f_back.f_back.f_globals
+        else:
+            caller_globals = inspect.currentframe().f_back.f_globals
 
         for ver_sym in LANGUAGE_VERSION_SYMBOLS:
             try:
@@ -2064,7 +2285,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             from loopy.version import (
                     MOST_RECENT_LANGUAGE_VERSION,
                     FALLBACK_LANGUAGE_VERSION)
-            warn("'lang_version' was not passed to make_kernel(). "
+            warn("'lang_version' was not passed to make_function(). "
                     "To avoid this warning, pass "
                     "lang_version={ver} in this invocation. "
                     "(Or say 'from loopy.version import "
@@ -2143,6 +2364,36 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     domains = parse_domains(domains, defines)
 
+    # {{{ process assumptions
+
+    from loopy.kernel.tools import get_outer_params
+
+    if assumptions is None:
+        dom0_space = domains[0].get_space()
+        assumptions_space = isl.Space.params_alloc(
+                dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
+        for i in range(dom0_space.dim(dim_type.param)):
+            assumptions_space = assumptions_space.set_dim_name(
+                    dim_type.param, i,
+                    dom0_space.get_dim_name(dim_type.param, i))
+        assumptions = isl.BasicSet.universe(assumptions_space)
+    elif isinstance(assumptions, str):
+        assumptions_set_str = "[%s] -> { : %s}" \
+                % (",".join(s for s in get_outer_params(domains)),
+                    assumptions)
+        assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
+                                                 assumptions_set_str)
+    else:
+        if not isinstance(assumptions, isl.BasicSet):
+            raise LoopyError("assumptions must be either 'str' or BasicSet")
+
+    # }}}
+
+    from loopy.kernel.data import Iname
+    from loopy.kernel import _get_inames_from_domains
+    inames = {name: Iname(name, frozenset())
+              for name in _get_inames_from_domains(domains)}
+
     arg_guesser = ArgumentGuesser(domains, instructions,
             temporary_variables, substitutions,
             default_offset)
@@ -2162,6 +2413,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             options=options,
             target=target,
             tags=tags,
+            inames=inames,
+            assumptions=assumptions,
             **kwargs)
 
     from loopy.transform.instruction import uniquify_instruction_ids
@@ -2184,6 +2437,10 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_nonexistent_iname_deps(knl)
 
     knl = create_temporaries(knl, default_order)
+
+    # convert slices to iname domains
+    knl = realize_slices_array_inputs_as_sub_array_refs(knl)
+
     # -------------------------------------------------------------------------
     # Ordering dependency:
     # -------------------------------------------------------------------------
@@ -2221,15 +2478,22 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
 
-    from loopy.preprocess import prepare_for_caching
-    knl = prepare_for_caching(knl)
+    from loopy.kernel.tools import infer_args_are_input_output
+    knl = infer_args_are_input_output(knl)
 
     creation_plog.done()
 
-    from loopy.kernel.tools import infer_arg_is_output_only
-    knl = infer_arg_is_output_only(knl)
+    from loopy.translation_unit import make_program
+    return make_program(knl)
 
-    return knl
+
+def make_kernel(*args, **kwargs):
+    tunit = make_function(*args, **kwargs)
+    name, = [name for name in tunit.callables_table]
+    return tunit.with_entrypoints(name)
+
+
+make_kernel.__doc__ = make_function.__doc__
 
 # }}}
 

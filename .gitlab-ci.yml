@@ -2,10 +2,9 @@ stages:
   - test
   - deploy
 
-Python 3 POCL:
+Pytest POCL:
   stage: test
   script:
-  - export PY_EXE=python3
   - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
@@ -20,10 +19,27 @@ Python 3 POCL:
     reports:
       junit: test/pytest.xml
 
-Python 3 POCL without arg check:
+Pytest Nvidia Titan V:
   stage: test
   script:
-  - export PY_EXE=python3
+  - export PYOPENCL_TEST=nvi:titan
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - source /opt/enable-intel-cl.sh
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python3
+  - nvidia-titan-v
+  except:
+  - tags
+  artifacts:
+    reports:
+      junit: test/pytest.xml
+
+Pytest POCL without arg check:
+  stage: test
+  script:
   - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
@@ -39,10 +55,9 @@ Python 3 POCL without arg check:
     reports:
       junit: test/pytest.xml
 
-Python 3 Intel:
+Pytest Intel:
   stage: test
   script:
-  - export PY_EXE=python3
   - export PYOPENCL_TEST=intel
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
@@ -60,10 +75,9 @@ Python 3 Intel:
       junit: test/pytest.xml
 
 
-Python 3 POCL Twice With Cache:
+Pytest POCL Twice With Cache:
   stage: test
   script: |
-    export PY_EXE=python3
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako"
     curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
@@ -94,10 +108,9 @@ Python 3 POCL Twice With Cache:
 #   except:
 #   - tags
 
-Python 3 POCL Examples:
+Pytest POCL Examples:
   stage: test
   script: |
-    export PY_EXE=python3
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
 
@@ -126,7 +139,6 @@ Pylint:
   script:
   # Needed to avoid name shadowing issues when running from source directory.
   - PROJECT_INSTALL_FLAGS="--editable"
-  - export PY_EXE=python3
   - EXTRA_INSTALL="pybind11 numpy mako matplotlib ipykernel ply fparser"
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
   - . ./prepare-and-run-pylint.sh "$CI_PROJECT_NAME" test/test_*.py

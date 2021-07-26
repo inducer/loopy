@@ -87,8 +87,6 @@ Registering Library Routines
 
 .. autofunction:: register_symbol_manglers
 
-.. autofunction:: register_function_manglers
-
 Modifying Arguments
 -------------------
 
@@ -144,4 +142,3 @@ TODO: Matching instruction tags
 .. automodule:: loopy.match
 
 .. vim: tw=75:spell
-

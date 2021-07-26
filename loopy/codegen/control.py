@@ -35,7 +35,7 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
     """
     :returns: A list of :class:`loopy.codegen.ImplementedDataInfo`
     """
-    sched_item = kernel.schedule[schedule_index]
+    sched_item = kernel.linearization[schedule_index]
 
     from loopy.codegen import ImplementedDataInfo
     from loopy.kernel.data import InameArg, AddressSpace
@@ -66,13 +66,13 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
 
 def generate_code_for_sched_index(codegen_state, sched_index):
     kernel = codegen_state.kernel
-    sched_item = kernel.schedule[sched_index]
+    sched_item = kernel.linearization[sched_index]
 
     if isinstance(sched_item, CallKernel):
         assert not codegen_state.is_generating_device_code
 
         from loopy.schedule import (gather_schedule_block, get_insn_ids_for_block_at)
-        _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
+        _, past_end_i = gather_schedule_block(kernel.linearization, sched_index)
         assert past_end_i <= codegen_state.schedule_index_end
 
         extra_args = synthesize_idis_for_extra_args(kernel, sched_index)
@@ -88,21 +88,30 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         codegen_result = generate_host_or_device_program(
                 new_codegen_state, sched_index)
 
-        glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+        if codegen_state.is_entrypoint:
+            glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+                    get_insn_ids_for_block_at(kernel.linearization, sched_index),
+                    codegen_state.callables_table)
+            return merge_codegen_results(codegen_state, [
+                codegen_result,
 
-        return merge_codegen_results(codegen_state, [
-            codegen_result,
-
-            codegen_state.ast_builder.get_kernel_call(
-                codegen_state,
-                sched_item.kernel_name,
-                glob_grid, loc_grid,
-                extra_args),
-            ])
+                codegen_state.ast_builder.get_kernel_call(
+                    codegen_state,
+                    sched_item.kernel_name,
+                    glob_grid, loc_grid,
+                    extra_args),
+                ])
+        else:
+            # do not generate host code for non-entrypoint kernels
+            return codegen_result
 
     elif isinstance(sched_item, EnterLoop):
-        tags = kernel.iname_tags(sched_item.iname)
+        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
+                ForceSequentialTag, LoopedIlpTag, VectorizeTag,
+                InameImplementationTag,
+                InOrderSequentialSequentialTag, filter_iname_tags_by_type)
+
+        tags = kernel.iname_tags_of_type(sched_item.iname, InameImplementationTag)
         tags = tuple(tag for tag in tags if tag)
 
         from loopy.codegen.loop import (
@@ -110,9 +119,6 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 generate_vectorize_loop,
                 generate_sequential_loop_dim_code)
 
-        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
-                ForceSequentialTag, LoopedIlpTag, VectorizeTag,
-                InOrderSequentialSequentialTag, filter_iname_tags_by_type)
         if filter_iname_tags_by_type(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
         elif filter_iname_tags_by_type(tags, VectorizeTag):
@@ -176,7 +182,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
 
 def get_required_predicates(kernel, sched_index):
     result = None
-    for _, sched_item in generate_sub_sched_items(kernel.schedule, sched_index):
+    for _, sched_item in generate_sub_sched_items(kernel.linearization, sched_index):
         if isinstance(sched_item, Barrier):
             my_preds = frozenset()
         elif isinstance(sched_item, RunInstruction):
@@ -238,7 +244,7 @@ def build_loop_nest(codegen_state, schedule_index):
 
     i = schedule_index
     while i < codegen_state.schedule_index_end:
-        sched_item = kernel.schedule[i]
+        sched_item = kernel.linearization[i]
 
         if isinstance(sched_item, LeaveLoop):
             break
@@ -246,7 +252,7 @@ def build_loop_nest(codegen_state, schedule_index):
         my_sched_indices.append(i)
 
         if isinstance(sched_item, (EnterLoop, CallKernel)):
-            _, i = gather_schedule_block(kernel.schedule, i)
+            _, i = gather_schedule_block(kernel.linearization, i)
             assert i <= codegen_state.schedule_index_end, \
                     "schedule block extends beyond schedule_index_end"
 
@@ -328,7 +334,7 @@ def build_loop_nest(codegen_state, schedule_index):
                     check_inames, self.impl_domain, self.kernel.cache_manager)
 
     def build_insn_group(sched_index_info_entries, codegen_state,
-            done_group_lengths=set()):
+            done_group_lengths=frozenset()):
         """
         :arg done_group_lengths: A set of group lengths (integers) that grows
             from empty to include the longest found group and downwards with every

@@ -13,7 +13,7 @@ subroutine dgemm(m,n,l,alpha,a,b,c)
 end subroutine
 
 !$loopy begin
-! dgemm, = lp.parse_fortran(SOURCE, FILENAME)
+! dgemm = lp.parse_fortran(SOURCE, FILENAME)
 ! dgemm = lp.split_iname(dgemm, "i", 16,
 !         outer_tag="g.0", inner_tag="l.1")
 ! dgemm = lp.split_iname(dgemm, "j", 8,
@@ -28,5 +28,5 @@ end subroutine
 ! dgemm = lp.precompute(dgemm, "b_acc", "j_inner,k_inner",
 !         precompute_outer_inames="i_outer, j_outer, k_outer",
 !         default_tag="l.auto")
-! RESULT = [dgemm]
+! RESULT = dgemm
 !$loopy end

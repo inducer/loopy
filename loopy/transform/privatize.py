@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 
 from loopy.diagnostic import LoopyError
+from loopy.translation_unit import for_each_kernel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -41,8 +42,9 @@ from loopy.symbolic import IdentityMapper
 
 
 class ExtraInameIndexInserter(IdentityMapper):
-    def __init__(self, var_to_new_inames):
+    def __init__(self, var_to_new_inames, iname_to_lbound):
         self.var_to_new_inames = var_to_new_inames
+        self.iname_to_lbound = iname_to_lbound
         self.seen_priv_axis_inames = set()
 
     def map_subscript(self, expr):
@@ -57,6 +59,10 @@ class ExtraInameIndexInserter(IdentityMapper):
             index = tuple(self.rec(i) for i in index)
 
             self.seen_priv_axis_inames.update(v.name for v in new_idx)
+
+            new_idx = tuple(v - self.iname_to_lbound[v.name]
+                            for v in new_idx)
+
             return expr.aggregate.index(index + new_idx)
 
     def map_variable(self, expr):
@@ -66,9 +72,14 @@ class ExtraInameIndexInserter(IdentityMapper):
             return expr
         else:
             self.seen_priv_axis_inames.update(v.name for v in new_idx)
+
+            new_idx = tuple(v - self.iname_to_lbound[v.name]
+                            for v in new_idx)
+
             return expr.index(new_idx)
 
 
+@for_each_kernel
 def privatize_temporaries_with_inames(
         kernel, privatizing_inames, only_var_names=None):
     """This function provides each loop iteration of the *privatizing_inames*
@@ -155,6 +166,7 @@ def privatize_temporaries_with_inames(
     from loopy.symbolic import pw_aff_to_expr
 
     priv_axis_iname_to_length = {}
+    iname_to_lbound = {}
     for priv_axis_inames in var_to_new_priv_axis_iname.values():
         for iname in priv_axis_inames:
             if iname in priv_axis_iname_to_length:
@@ -163,9 +175,7 @@ def privatize_temporaries_with_inames(
             bounds = kernel.get_iname_bounds(iname, constants_only=False)
             priv_axis_iname_to_length[iname] = pw_aff_to_expr(
                         static_max_of_pw_aff(bounds.size, constants_only=False))
-
-            assert static_max_of_pw_aff(
-                    bounds.lower_bound_pw_aff, constants_only=True).plain_is_zero()
+            iname_to_lbound[iname] = pw_aff_to_expr(bounds.lower_bound_pw_aff)
 
     # }}}
 
@@ -203,7 +213,8 @@ def privatize_temporaries_with_inames(
     new_insns = []
 
     for insn in kernel.instructions:
-        eiii = ExtraInameIndexInserter(var_to_extra_iname)
+        eiii = ExtraInameIndexInserter(var_to_extra_iname,
+                                       iname_to_lbound)
         new_insn = insn.with_transformed_expressions(eiii)
         if not eiii.seen_priv_axis_inames <= insn.within_inames:
             raise LoopyError(

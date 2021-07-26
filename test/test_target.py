@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from loopy.diagnostic import LoopyError
 import sys
 import numpy as np
 import loopy as lp
@@ -70,9 +71,7 @@ def test_ispc_target(occa_mode=False):
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
             default_tag="l.auto")
 
-    codegen_result = lp.generate_code_v2(
-                lp.get_one_scheduled_kernel(
-                    lp.preprocess_kernel(knl)))
+    codegen_result = lp.generate_code_v2(knl)
 
     print(codegen_result.device_code())
     print(codegen_result.host_code())
@@ -96,9 +95,8 @@ def test_cuda_target():
             default_tag="l.auto")
 
     print(
-            lp.generate_code(
-                lp.get_one_scheduled_kernel(
-                    lp.preprocess_kernel(knl)))[0])
+            lp.generate_code_v2(
+                knl).device_code())
 
 
 def test_generate_c_snippet():
@@ -138,10 +136,7 @@ def test_generate_c_snippet():
 
     knl = lp.split_iname(knl, "k", 4, inner_tag="unr", slabs=(0, 1))
     knl = lp.prioritize_loops(knl, "I,k_outer,k_inner")
-
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-    print(lp.generate_body(knl))
+    print(lp.generate_code_v2(knl))
 
 
 @pytest.mark.parametrize("target", [CTarget, OpenCLTarget])
@@ -354,8 +349,7 @@ def test_ispc_streaming_stores():
 
     knl = lp.set_argument_order(knl, vars + ["n"])
 
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
+    lp.generate_code_v2(knl).all_code()
     assert "streaming_store(" in lp.generate_code_v2(knl).all_code()
 
 
@@ -431,6 +425,7 @@ def test_nan_support(ctx_factory):
         [lp.Assignment(parse("a"), np.nan),
          lp.Assignment(parse("b"), parse("isnan(a)")),
          lp.Assignment(parse("c"), parse("isnan(3.14)"))],
+        [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
         seq_dependencies=True)
 
     knl = lp.set_options(knl, "return_dict")
@@ -470,6 +465,167 @@ def test_opencl_emits_ternary_operators_correctly(ctx_factory, target):
     assert out_dict["y1"] == 1729
     assert out_dict["y2"] == 42
     assert out_dict["y3"] == 128
+
+
+def test_scalar_array_take_offset(ctx_factory):
+    import pyopencl.array as cla
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        y = 133*x
+        """,
+        [lp.GlobalArg("x", shape=(), offset=lp.auto),
+         ...])
+
+    x_in_base = cla.arange(cq, 42, dtype=np.int32)
+    x_in = x_in_base[13]
+
+    evt, (out,) = knl(cq, x=x_in)
+    np.testing.assert_allclose(out.get(), 1729)
+
+
+@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_inf_support(ctx_factory, target, dtype):
+    from loopy.symbolic import parse
+    import math
+    # See: https://github.com/inducer/loopy/issues/443 for some laughs
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        [lp.Assignment(parse("out_inf"),
+                       math.inf),
+         lp.Assignment(parse("out_neginf"),
+                       -math.inf)],
+        [lp.GlobalArg("out_inf", shape=lp.auto,
+                      dtype=dtype),
+         lp.GlobalArg("out_neginf", shape=lp.auto,
+                      dtype=dtype)
+         ], target=target())
+
+    knl = lp.set_options(knl, "return_dict")
+
+    if target == lp.PyOpenCLTarget:
+        _, out_dict = knl(queue)
+        out_dict = {k: v.get() for k, v in out_dict.items()}
+    elif target == lp.ExecutableCTarget:
+        _, out_dict = knl()
+    else:
+        raise NotImplementedError("unsupported target")
+
+    assert np.isinf(out_dict["out_inf"])
+    assert np.isneginf(out_dict["out_neginf"])
+
+
+def test_input_args_are_required(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl1 = lp.make_kernel(
+        "{ [i]: 0<=i<2 }",
+        """
+        g[i] = f[i] + 1.5
+        """,
+        [lp.GlobalArg("f, g", dtype="float64"), ...]
+    )
+
+    knl2 = lp.make_kernel(
+        "{ [i]: 0<=i<n }",
+        "g[i] = 3 * f[i] + g[i]",
+    )
+
+    f = np.zeros(2)
+    g = np.zeros(2)
+
+    for knl in [knl1, knl2]:
+        with pytest.raises(LoopyError):
+            _ = knl(queue)
+            _ = knl(queue, g=g)
+
+    _ = knl1(queue, f=f)
+    _ = knl1(queue, f=f, g=g)
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<2 }",
+        """
+        f[i] = 3.
+        g[i] = f[i] + 1.5
+        """,
+        [lp.GlobalArg("f, g", dtype="float64"), ...]
+    )
+
+    # FIXME: this should not raise!
+    # https://github.com/inducer/loopy/issues/450
+    with pytest.raises(LoopyError):
+        _ = knl(queue)
+
+
+def test_pyopencl_execution_accepts_device_scalars(ctx_factory):
+    import pyopencl.array as cla
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel("{:}",
+                         """
+                         y = 2*x
+                         """)
+
+    evt, (out,) = knl(cq, x=cla.to_device(cq, np.asarray(21)))
+
+    np.testing.assert_allclose(out.get(), 42)
+
+
+def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
+    from pyopencl.tools import ImmediateAllocator
+
+    class RecordingAllocator(ImmediateAllocator):
+        def __init__(self, queue):
+            super().__init__(queue)
+            self.allocated_nbytes = 0
+
+        def __call__(self, size):
+            self.allocated_nbytes += size
+            return super().__call__(size)
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i, j]: 0<=i, j<10}",
+        """
+        tmp1[i] = 2*i    {id=w_tmp1}
+        y[i] = tmp1[i] {nosync=w_tmp1}
+        ... gbarrier
+        tmp2[j] = 3*j    {id=w_tmp2}
+        z[j] = tmp2[j] {nosync=w_tmp2}
+        """,
+        [lp.TemporaryVariable("tmp1",
+                            base_storage="base",
+                            address_space=lp.AddressSpace.GLOBAL),
+        lp.TemporaryVariable("tmp2",
+                            base_storage="base",
+                            address_space=lp.AddressSpace.GLOBAL),
+        ...],
+        seq_dependencies=True)
+    knl = lp.tag_inames(knl, {"i": "g.0", "j": "g.0"})
+    knl = lp.set_options(knl, "return_dict")
+
+    my_allocator = RecordingAllocator(cq)
+    _, out = knl(cq, allocator=my_allocator)
+
+    np.testing.assert_allclose(out["y"].get(), 2*np.arange(10))
+    np.testing.assert_allclose(out["z"].get(), 3*np.arange(10))
+    assert my_allocator.allocated_nbytes == (40    # base
+                                             + 40  # y
+                                             + 40  # z
+                                             )
 
 
 if __name__ == "__main__":

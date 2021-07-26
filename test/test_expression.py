@@ -129,7 +129,7 @@ def make_random_fp_expression(prefix, var_values, size, use_complex):
                 make_random_fp_expression(prefix, var_values, size, use_complex),
                 make_random_fp_expression(prefix, var_values, size, use_complex))
     else:
-        assert False
+        raise AssertionError()
 
 
 def make_random_int_value(nonneg):
@@ -207,7 +207,7 @@ def make_nonzero_random_int_expression(prefix, var_values, size, nonneg):
 
             return result
 
-    assert False
+    raise AssertionError()
 
 
 def generate_random_fuzz_examples(expr_type):
@@ -275,7 +275,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
     elif expr_type in ["int", "int_nonneg"]:
         result_type = np.int64
     else:
-        assert False
+        raise AssertionError()
 
     var_names = []
 
@@ -359,7 +359,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
         elif expr_type in ["int", "int_nonneg"]:
             err = abs(ref_value-lp_value)
         else:
-            assert False
+            raise AssertionError()
 
         if abs(err) > 1e-10:
             print(80*"-")
@@ -399,7 +399,9 @@ def test_indexof(ctx_factory):
 
     knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<5 } """,
-         """ out[i,j] = indexof(out[i,j])""")
+         """ out[i,j] = indexof(out[i,j])""",
+         [lp.GlobalArg("out", is_input=False, shape=lp.auto)]
+    )
 
     knl = lp.set_options(knl, write_cl=True)
 
@@ -414,16 +416,14 @@ def test_indexof_vec(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     if (
-            # Accurate as of 2015-10-08
-            ctx.devices[0].platform.name.startswith("Portable")
-            or
             # Accurate as of 2019-11-04
             ctx.devices[0].platform.name.startswith("Intel")):
         pytest.skip("target ICD miscompiles vector code")
 
     knl = lp.make_kernel(
          """ { [i,j,k]: 0<=i,j,k<4 } """,
-         """ out[i,j,k] = indexof_vec(out[i,j,k])""")
+         """ out[i,j,k] = indexof_vec(out[i,j,k])""",
+         [lp.GlobalArg("out", shape=lp.auto, is_input=False)])
 
     knl = lp.tag_inames(knl, {"i": "vec"})
     knl = lp.tag_data_axes(knl, "out", "vec,c,c")
@@ -501,12 +501,20 @@ def test_complex_support(ctx_factory, target):
             euler1_imag[i] = imag(euler1[i])
             real_times_complex[i] = in1[i]*(in2[i]*1j)
             real_plus_complex[i] = in1[i] + (in2[i]*1j)
+            abs_complex[i] = abs(real_plus_complex[i])
             complex_div_complex[i] = (2jf + 7*in1[i])/(32jf + 37*in1[i])
             complex_div_real[i] = (2jf + 7*in1[i])/in1[i]
             real_div_complex[i] = in1[i]/(2jf + 7*in1[i])
-            tmp_sum[0] = sum(i1, 1.0*i1 + i1*1jf)*sum(i2, 1.0*i2 + i2*1jf)
+            out_sum = sum(i1, 1.0*i1 + i1*1jf)*sum(i2, 1.0*i2 + i2*1jf)
+            conj_out_sum = conj(out_sum)
             """,
-            target=target())
+            [
+                lp.GlobalArg("out_sum, euler1, real_plus_complex",
+                            is_input=False, shape=lp.auto),
+                ...
+            ],
+            target=target(),
+            seq_dependencies=True)
     knl = lp.set_options(knl, "return_dict")
 
     n = 10
@@ -531,10 +539,13 @@ def test_complex_support(ctx_factory, target):
     np.testing.assert_allclose(out["euler1_imag"], 0, atol=1e-10)
     np.testing.assert_allclose(out["real_times_complex"], in1*(in2*1j))
     np.testing.assert_allclose(out["real_plus_complex"], in1+(in2*1j))
+    np.testing.assert_allclose(out["abs_complex"], np.abs(out["real_plus_complex"]))
     np.testing.assert_allclose(out["complex_div_complex"], (2j+7*in1)/(32j+37*in1))
     np.testing.assert_allclose(out["complex_div_real"], (2j + 7*in1)/in1)
     np.testing.assert_allclose(out["real_div_complex"], in1/(2j + 7*in1))
-    np.testing.assert_allclose(out["tmp_sum"], (0.5*n*(n-1) + 0.5*n*(n-1)*1j) ** 2)
+    np.testing.assert_allclose(out["out_sum"], (0.5*n*(n-1) + 0.5*n*(n-1)*1j) ** 2)
+    np.testing.assert_allclose(out["conj_out_sum"],
+                               (0.5*n*(n-1) - 0.5*n*(n-1)*1j) ** 2)
 
 
 def test_bool_type_context(ctx_factory):

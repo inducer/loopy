@@ -29,6 +29,11 @@ from loopy.symbolic import (
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 
+from loopy.translation_unit import (TranslationUnit,
+                                    for_each_kernel)
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel
+
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -76,6 +81,7 @@ __doc__ = """
 
 # {{{ set loop priority
 
+@for_each_kernel
 def set_loop_priority(kernel, loop_priority):
     from warnings import warn
     warn("set_loop_priority is deprecated. Use prioritize_loops instead. "
@@ -90,6 +96,7 @@ def set_loop_priority(kernel, loop_priority):
     return kernel.copy(loop_priority=frozenset([loop_priority]))
 
 
+@for_each_kernel
 def prioritize_loops(kernel, loop_priority):
     """Indicates the textual order in which loops should be entered in the
     kernel code. Note that this priority has an advisory role only. If the
@@ -104,6 +111,8 @@ def prioritize_loops(kernel, loop_priority):
     :arg: an iterable of inames, or, for brevity, a comma-separated string of
         inames
     """
+
+    assert isinstance(kernel, LoopKernel)
     if isinstance(loop_priority, str):
         loop_priority = tuple(s.strip()
                               for s in loop_priority.split(",") if s.strip())
@@ -233,7 +242,13 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # }}}
 
-    existing_tags = kernel.iname_tags(iname_to_split)
+    # Split inames do not inherit tags from their 'parent' inames.
+    # FIXME: They *should* receive a tag that indicates that they descend from
+    # an iname tagged in a certain way.
+    from loopy.kernel.data import InameImplementationTag
+    existing_tags = [tag
+            for tag in kernel.iname_tags(iname_to_split)
+            if isinstance(tag, InameImplementationTag)]
     from loopy.kernel.data import ForceSequentialTag, filter_iname_tags_by_type
     if (do_tagged_check and existing_tags
             and not filter_iname_tags_by_type(existing_tags, ForceSequentialTag)):
@@ -411,6 +426,7 @@ def _split_iname_backend(kernel, iname_to_split,
 
 # {{{ split iname
 
+@for_each_kernel
 def split_iname(kernel, split_iname, inner_length,
         *,
         outer_iname=None, inner_iname=None,
@@ -436,7 +452,11 @@ def split_iname(kernel, split_iname, inner_length,
         *inner_iname*.
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_match`.
+
+    Split inames do not inherit tags from their 'parent' inames.
     """
+    assert isinstance(kernel, LoopKernel)
+
     def make_new_loop_index(inner, outer):
         return inner + outer*inner_length
 
@@ -453,6 +473,7 @@ def split_iname(kernel, split_iname, inner_length,
 
 # {{{ chunk iname
 
+@for_each_kernel
 def chunk_iname(kernel, split_iname, num_chunks,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
@@ -465,6 +486,8 @@ def chunk_iname(kernel, split_iname, num_chunks,
 
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
+
+    Split inames do not inherit tags from their 'parent' inames.
 
     .. versionadded:: 2016.2
     """
@@ -587,6 +610,7 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
             return super().map_reduction(expr, expn_state)
 
 
+@for_each_kernel
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     """In a sense, the inverse of :func:`split_iname`. Takes in inames,
     finds their bounds (all but the first have to be bounded), and combines
@@ -668,7 +692,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
             isl.Constraint.equality_from_aff(
                 iname_rel_aff(new_domain.get_space(), new_iname, "==", joint_aff)))
 
-    for i, iname in enumerate(inames):
+    for iname in inames:
         iname_to_dim = new_domain.get_space().get_var_dict()
         iname_dt, iname_idx = iname_to_dim[iname]
 
@@ -687,8 +711,8 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
     new_insns = [
             insn.copy(
-                within_inames=subst_within_inames(insn.within_inames))
-            for insn in kernel.instructions]
+                within_inames=subst_within_inames(insn.within_inames)) if
+            within(kernel, insn) else insn for insn in kernel.instructions]
 
     kernel = (kernel
             .copy(
@@ -713,7 +737,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     if tag is not None:
         kernel = tag_inames(kernel, {new_iname: tag})
 
-    return kernel
+    return remove_unused_inames(kernel, inames)
 
 # }}}
 
@@ -725,7 +749,8 @@ def untag_inames(kernel, iname_to_untag, tag_type):
     Remove tags on *iname_to_untag* which matches *tag_type*.
 
     :arg iname_to_untag: iname as string.
-    :arg tag_type: a subclass of :class:`loopy.kernel.data.IndexTag`.
+    :arg tag_type: a subclass of :class:`pytools.tag.Tag`, for example a
+        subclass of :class:`loopy.kernel.data.InameImplementationTag`.
 
     .. versionadded:: 2018.1
     """
@@ -743,14 +768,17 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
-def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
+@for_each_kernel
+def tag_inames(kernel, iname_to_tag, force=False,
+        ignore_nonexistent=False):
     """Tag an iname
 
     :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
-        as an instance of a subclass of :class:`loopy.kernel.data.IndexTag` or an
-        iterable of which, or as a string as shown in :ref:`iname-tags`. May also
-        be a dictionary for backwards compatibility. *iname* may also be a wildcard
-        using ``*`` and ``?``.
+        as an instance of a subclass of :class:`pytools.tag.Tag`, for example a
+        subclass of :class:`loopy.kernel.data.InameImplementationTag`.
+        May also be iterable of which, or as a string as shown in
+        :ref:`iname-tags`. May also be a dictionary for backwards
+        compatibility. *iname* may also be a wildcard using ``*`` and ``?``.
 
     .. versionchanged:: 2016.3
 
@@ -913,12 +941,15 @@ class _InameDuplicator(RuleAwareIdentityMapper):
         return insn.copy(within_inames=new_fid)
 
 
+@for_each_kernel
 def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
-        tags={}):
+        tags=None):
     """
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     """
+    if tags is None:
+        tags = {}
 
     # {{{ normalize arguments, find unique new_inames
 
@@ -1139,6 +1170,13 @@ def get_iname_duplication_options(kernel, use_boostable_into=None):
     Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
+    if isinstance(kernel, TranslationUnit):
+        if len([clbl for clbl in kernel.callables_table.values() if
+                isinstance(clbl, CallableKernel)]) == 1:
+            kernel = kernel[list(kernel.entrypoints)[0]]
+
+    assert isinstance(kernel, LoopKernel)
+
     if use_boostable_into:
         raise LoopyError("'use_boostable_into=True' is no longer supported.")
 
@@ -1186,6 +1224,10 @@ def has_schedulable_iname_nesting(kernel):
     :returns: a :class:`bool` indicating whether this kernel needs
         an iname duplication in order to be schedulable.
     """
+    if isinstance(kernel, TranslationUnit):
+        if len([clbl for clbl in kernel.callables_table.values() if
+                isinstance(clbl, CallableKernel)]) == 1:
+            kernel = kernel[list(kernel.entrypoints)[0]]
     return not bool(next(get_iname_duplication_options(kernel), False))
 
 # }}}
@@ -1193,6 +1235,7 @@ def has_schedulable_iname_nesting(kernel):
 
 # {{{ rename_inames
 
+@for_each_kernel
 def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
     """
     :arg within: a stack match as understood by
@@ -1331,7 +1374,8 @@ def get_used_inames(kernel):
     for insn in exp_kernel.instructions:
         used_inames.update(
                 insn.within_inames
-                | insn.reduction_inames())
+                | insn.reduction_inames()
+                | insn.sub_array_ref_inames())
 
     return used_inames
 
@@ -1349,6 +1393,7 @@ def remove_vars_from_set(s, remove_vars):
     return new_s
 
 
+@for_each_kernel
 def remove_unused_inames(kernel, inames=None):
     """Delete those among *inames* that are unused, i.e. project them
     out of the domain. If these inames pose implicit restrictions on
@@ -1470,7 +1515,7 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
                             expr.allow_simultaneous),
                         expr.allow_simultaneous)
             else:
-                assert False
+                raise AssertionError()
         else:
             return super().map_reduction(expr, expn_state)
 
@@ -1497,6 +1542,7 @@ def _split_reduction(kernel, inames, direction, within=None):
             rsplit.map_kernel(kernel))
 
 
+@for_each_kernel
 def split_reduction_inward(kernel, inames, within=None):
     """Takes a reduction of the form::
 
@@ -1516,6 +1562,7 @@ def split_reduction_inward(kernel, inames, within=None):
     return _split_reduction(kernel, inames, "in", within)
 
 
+@for_each_kernel
 def split_reduction_outward(kernel, inames, within=None):
     """Takes a reduction of the form::
 
@@ -1539,6 +1586,7 @@ def split_reduction_outward(kernel, inames, within=None):
 
 # {{{ affine map inames
 
+@for_each_kernel
 def affine_map_inames(kernel, old_inames, new_inames, equations):
     """Return a new *kernel* where the affine transform
     specified by *equations* has been applied to the inames.
@@ -1756,17 +1804,17 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
         :func:`loopy.match.parse_match`.
     :arg kind: may be "l" or "g", or the corresponding tag class name
 
-    :returns: an :class:`loopy.kernel.data.GroupIndexTag` or
-        :class:`loopy.kernel.data.LocalIndexTag` that is not being used within
+    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
+        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
         the instructions matched by *insn_match*.
     """
     used_axes = set()
 
-    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
 
     if isinstance(kind, str):
         found = False
-        for cls in [GroupIndexTag, LocalIndexTag]:
+        for cls in [GroupInameTag, LocalInameTag]:
             if kind == cls.print_name:
                 kind = cls
                 found = True
@@ -1870,6 +1918,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
                     expr, expn_state)
 
 
+@for_each_kernel
 def make_reduction_inames_unique(kernel, inames=None, within=None):
     """
     :arg inames: if not *None*, only apply to these inames
@@ -1916,6 +1965,7 @@ def make_reduction_inames_unique(kernel, inames=None, within=None):
 
 # {{{ add_inames_to_insn
 
+@for_each_kernel
 def add_inames_to_insn(kernel, inames, insn_match):
     """
     :arg inames: a frozenset of inames that will be added to the
@@ -1924,8 +1974,8 @@ def add_inames_to_insn(kernel, inames, insn_match):
     :arg insn_match: An instruction match as understood by
         :func:`loopy.match.parse_match`.
 
-    :returns: an :class:`loopy.kernel.data.GroupIndexTag` or
-        :class:`loopy.kernel.data.LocalIndexTag` that is not being used within
+    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
+        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
         the instructions matched by *insn_match*.
 
     .. versionadded:: 2016.3
@@ -2098,7 +2148,8 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     return augmented_mapping, proxy_name_pairs
 
 
-def map_domain(kernel, isl_map, within=None, rename_after={}):
+@for_each_kernel
+def map_domain(kernel, isl_map, within=None):
     # FIXME: Express _split_iname_backend in terms of this
     #   Missing/deleted for now:
     #     - slab processing
@@ -2407,24 +2458,6 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
     kernel = ins.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
-    # {{{ Rename inames according to rename_after dict
-
-    # This renaming option exists because various isl operations fail when map
-    # dim names are not unique, so even if someone wants their transformation
-    # map to keep one of the inames unchanged, they must give it a new name
-    # in their map, e.g., "[x, t] -> [x_, t_outer, t_inner] : x_ = x ..." (see
-    # test_map_domain_vs_split_iname()). Currently, they can't
-    # simply exclude that iname from the transformation map because, as stated
-    # in the error above, all domains must either involve all or none of the
-    # transform map domain inames. This renaming option lets them, e.g. switch
-    # an iname back to its original name.
-
-    # TODO come up with better solution for this
-    for old_iname, new_iname in rename_after.items():
-        kernel = rename_iname(kernel, old_iname, new_iname, within=within)
-
-    # }}}
-
     return kernel
 
 # }}}
@@ -2432,12 +2465,13 @@ def map_domain(kernel, isl_map, within=None, rename_after={}):
 
 # {{{ add_inames_for_unused_hw_axes
 
+@for_each_kernel
 def add_inames_for_unused_hw_axes(kernel, within=None):
     """
     Returns a kernel with inames added to each instruction
     corresponding to any hardware-parallel iname tags
-    (:class:`loopy.kernel.data.GroupIndexTag`,
-    :class:`loopy.kernel.data.LocalIndexTag`) unused
+    (:class:`loopy.kernel.data.GroupInameTag`,
+    :class:`loopy.kernel.data.LocalInameTag`) unused
     in the instruction but used elsewhere in the kernel.
 
     Current limitations:
@@ -2449,22 +2483,22 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     :arg within: An instruction match as understood by
         :func:`loopy.match.parse_match`.
     """
-    from loopy.kernel.data import (LocalIndexTag, GroupIndexTag,
-            AutoFitLocalIndexTag)
+    from loopy.kernel.data import (LocalInameTag, GroupInameTag,
+            AutoFitLocalInameTag)
 
     n_local_axes = max([tag.axis
         for iname in kernel.inames.values()
         for tag in iname.tags
-        if isinstance(tag, LocalIndexTag)],
+        if isinstance(tag, LocalInameTag)],
         default=-1) + 1
 
     n_group_axes = max([tag.axis
         for iname in kernel.inames.values()
         for tag in iname.tags
-        if isinstance(tag, GroupIndexTag)],
+        if isinstance(tag, GroupInameTag)],
         default=-1) + 1
 
-    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalIndexTag)
+    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalInameTag)
         for iname in kernel.inames.values()
         for tag in iname.tags])
 
@@ -2482,7 +2516,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     group_axes_to_inames = []
 
     for i in range(n_local_axes):
-        ith_local_axes_tag = LocalIndexTag(i)
+        ith_local_axes_tag = LocalInameTag(i)
         inames = [name
                 for name, iname in kernel.inames.items()
                 if ith_local_axes_tag in iname.tags]
@@ -2492,7 +2526,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
         local_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
 
     for i in range(n_group_axes):
-        ith_group_axes_tag = GroupIndexTag(i)
+        ith_group_axes_tag = GroupInameTag(i)
         inames = [name
                 for name, iname in kernel.inames.items()
                 if ith_group_axes_tag in iname.tags]
@@ -2513,9 +2547,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
             within_tags = frozenset().union(*(kernel.inames[iname].tags
                 for iname in insn.within_inames))
             missing_local_axes = [i for i in range(n_local_axes)
-                    if LocalIndexTag(i) not in within_tags]
+                    if LocalInameTag(i) not in within_tags]
             missing_group_axes = [i for i in range(n_group_axes)
-                    if GroupIndexTag(i) not in within_tags]
+                    if GroupInameTag(i) not in within_tags]
 
             for axis in missing_local_axes:
                 iname = local_axes_to_inames[axis]
