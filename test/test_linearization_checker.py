@@ -2893,7 +2893,8 @@ def test_filtering_deps_by_same():
     from loopy.schedule.checker.dependency import (
         filter_deps_by_intersection_with_SAME,
     )
-    filtered_depends_on_dict = filter_deps_by_intersection_with_SAME(knl)
+    filtered_depends_on_dict = filter_deps_by_intersection_with_SAME(
+        knl["loopy_kernel"])
 
     # Make sure filtered edges are correct
 
@@ -2973,7 +2974,8 @@ def test_linearization_using_simplified_dep_graph():
     from loopy.schedule.checker.dependency import (
         filter_deps_by_intersection_with_SAME,
     )
-    filtered_depends_on_dict = filter_deps_by_intersection_with_SAME(knl)
+    filtered_depends_on_dict = filter_deps_by_intersection_with_SAME(
+        knl["loopy_kernel"])
 
     # Make sure filtered edges are correct
 
