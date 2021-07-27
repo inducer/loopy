@@ -806,34 +806,157 @@ def get_graph_sources(graph):
 
 # {{{ replace_inames_in_nest_constraints
 
+# {{{ (helper) _coalesce_duplicate_inames_in_one_nesting
+
+def _coalesce_duplicate_inames_in_one_nesting(nesting, coalesce_candidates):
+    r"""Coalesce inames that are duplicated in adjacent loop tiers.
+
+    :arg nesting: A tuple containing at least two
+        :class:`UnexpandedInameSet`\ s, neither of which may have
+        ``complement`` attribute set to ``True``.
+
+    :arg coalesce_candidates: A set of inames to be coalesced.
+
+    :returns: A tuple containing :class:`UnexpandedInameSet`\ s with iname
+        candidates that were duplicated in adjacent loop tiers coalesced.
+        For example, if ``nesting=({ij, k}, {ij, h})`` and ``ij`` is in
+        ``coalesce_candidates``, return ``({k}, {ij}, {h})``.
+    """
+
+    # For now, assume all UnexpandedInameSets have
+    # complement=False, which works if we're only using this for
+    # must_nest constraints since they cannot have complements
+    for iname_set in nesting:
+        assert not iname_set.complement
+
+    # Copy and convert nesting to list so we can modify
+    import copy
+    coalesced_nesting = list(copy.deepcopy(nesting))
+
+    # Repeat coalescing step until we don't find any adjacent pairs
+    # containing duplicates (among coalesce_candidates)
+
+    found_duplicates = True
+    while found_duplicates:
+
+        # Loop through each adjacent pair of iname_sets (adjacent
+        # tiers) in nesting and coalesce in place (assume nesting has
+        # at least 2 items)
+        found_duplicates = False
+        i = 0
+        while i < len(coalesced_nesting)-1:
+
+            # Get pair of adjacent nesting tiers (iname sets)
+            iname_set_before = coalesced_nesting[i]
+            iname_set_after = coalesced_nesting[i+1]
+
+            # {{{ For each iname candidate, coalesce if necessary
+
+            for iname in coalesce_candidates:
+
+                # Four possible cases depending on where iname is found
+                # and whether other inames exist in the tiers:
+
+                if (iname_set_before.inames == set([iname, ]) and
+                        iname_set_after.inames == set([iname, ])):
+                    # Before/after both contain a lone iname to be coalesced,
+                    # -> remove iname_set_after
+                    del coalesced_nesting[i+1]
+                    found_duplicates = True
+                elif (iname_set_before.inames == set([iname, ]) and
+                        iname in iname_set_after.inames):
+                    # Before contains a lone iname to be coalesced,
+                    # after contains iname along with others,
+                    # -> remove iname from iname_set_after.inames
+                    coalesced_nesting[i+1] = UnexpandedInameSet(
+                        inames=iname_set_after.inames - set([iname, ]),
+                        complement=iname_set_after.complement,
+                        )
+                    found_duplicates = True
+                elif (iname in iname_set_before.inames and
+                        iname_set_after.inames == set([iname, ])):
+                    # After contains a lone iname to be coalesced,
+                    # before contains iname along with others,
+                    # -> remove iname from iname_set_before.inames
+                    coalesced_nesting[i] = UnexpandedInameSet(
+                        inames=iname_set_before.inames - set([iname, ]),
+                        complement=iname_set_before.complement,
+                        )
+                    found_duplicates = True
+                elif (iname in iname_set_before.inames and
+                        iname in iname_set_after.inames):
+                    # Before and after both contain iname along with others,
+                    # -> remove iname from iname_set_{before,after}.inames
+                    # and insert it in a new tier between them
+                    coalesced_nesting[i] = UnexpandedInameSet(
+                        inames=iname_set_before.inames - set([iname, ]),
+                        complement=iname_set_before.complement,
+                        )
+                    coalesced_nesting[i+1] = UnexpandedInameSet(
+                        inames=iname_set_after.inames - set([iname, ]),
+                        complement=iname_set_after.complement,
+                        )
+                    coalesced_nesting.insert(i+1, UnexpandedInameSet(
+                        inames=set([iname, ]),
+                        complement=False,
+                        ))
+                    found_duplicates = True
+
+                # Else, iname was not found in both sets, so do nothing
+
+            # }}}
+
+            # Increment i to move to next pair of tiers
+            i = i + 1
+
+    return tuple(coalesced_nesting)
+
+# }}}
+
+
 def replace_inames_in_nest_constraints(
         inames_to_replace, replacement_inames, old_constraints,
         coalesce_new_iname_duplicates=False,
         ):
-    """
+    """Replace each iname in inames_to_replace with *all* inames in
+    replacement_inames
+
     :arg inames_to_replace: A set of inames that may exist in
-        `old_constraints`, each of which is to be replaced with all inames
+        ``old_constraints``, each of which is to be replaced with all inames
         in `replacement_inames`.
-    :arg replacement_inames: A set of inames, all of which will repalce each
-        iname in `inames_to_replace` in `old_constraints`.
+
+    :arg replacement_inames: A set of inames, all of which will replace each
+        iname in ``inames_to_replace`` in ``old_constraints``.
+
     :arg old_constraints: An iterable of tuples containing one or more
         :class:`UnexpandedInameSet` objects.
+
+    :arg coalesce_new_iname_duplicates: A :class:`bool` determining whether to
+        coalesce replaced inames that are duplicated in adjacent loop tiers as
+        a result of the replacement. For example, if must-nest constraint
+        ``({i, k}, {j, h})`` exists, and then a transformation joins ``i`` and
+        ``j`` into ``ij``  replacing ``i`` and ``j`` with ``ij`` would yield
+        constraint ``({ij, k}, {ij, h})``, which contains a cycle. If
+        coalescing is enabled, this new constraint will be
+        changed to to ``({k}, {ij}, {h})``, which removes the cycle.
+
     """
 
-    # replace each iname in inames_to_replace
-    # with *all* inames in replacement_inames
+    # {{{ Replace each iname in inames_to_replace w/ all inames in replacement_inames
 
-    # loop through old_constraints and handle each nesting independently
     new_constraints = set()
+
     for old_nesting in old_constraints:
-        # loop through each iname_set in this nesting and perform replacement
+
+        # {{{ Perform replacement on each iname_set in this nesting
+
         new_nesting = []
         for iname_set in old_nesting:
 
-            # find inames to be replaced
+            # Find inames to be replaced
             inames_found = inames_to_replace & iname_set.inames
 
-            # create the new set of inames with the replacements
+            # Create the new set of inames with the replacements
             if inames_found:
                 new_inames = iname_set.inames - inames_found
                 new_inames.update(replacement_inames)
@@ -843,102 +966,40 @@ def replace_inames_in_nest_constraints(
             new_nesting.append(
                 UnexpandedInameSet(new_inames, iname_set.complement))
 
-        # if we've removed things, new_nesting might only contain 1 item,
-        # in which case it's meaningless and we should just remove it
+        # If we've removed things, new_nesting might only contain 1 item,
+        # in which case it's meaningless and we should just exclude it
         if len(new_nesting) > 1:
             new_constraints.add(tuple(new_nesting))
 
-    # When joining inames, we may need to coalesce:
-    # e.g., if we join `i` and `j` into `ij`, and old_nesting was
-    # [{i, k}, {j, h}], at this point we have [{ij, k}, {ij, h}]
-    # which contains a cycle. If coalescing is enabled, change this
-    # to [{k}, ij, {h}] to remove the cycle.
+        # }}}
+
+    # }}}
+
+    # {{{  Coalesce new iname duplicates
+
+    # If coalesce_new_iname_duplicates=True,
+    # coalesce replaced inames that are duplicated in adjacent loop tiers as
+    # a result of the replacement. For example, if must-nest constraint
+    # ``({i, k}, {j, h})`` exists, and then a transformation joins ``i`` and
+    # ``j`` into ``ij``  replacing ``i`` and ``j`` with ``ij`` would yield
+    # constraint ``({ij, k}, {ij, h})``, which contains a cycle. If
+    # coalescing is enabled, this new constraint will be
+    # changed to to ``({k}, {ij}, {h})``, which removes the cycle.
+
     if coalesce_new_iname_duplicates:
-
-        def coalesce_duplicate_inames_in_nesting(nesting, coalesce_candidates):
-            # TODO would like this to be fully generic, but for now, assumes
-            # all UnexpandedInameSets have complement=False, which works if
-            # we're only using this for must_nest constraints since they cannot
-            # have complements
-            for iname_set in nesting:
-                assert not iname_set.complement
-
-            import copy
-            # copy and convert nesting to list so we can modify
-            coalesced_nesting = list(copy.deepcopy(nesting))
-
-            # repeat coalescing step until we don't find any adjacent pairs
-            # containing duplicates (among coalesce_candidates)
-            found_duplicates = True
-            while found_duplicates:
-                found_duplicates = False
-                # loop through each iname_set in nesting and coalesce
-                # (assume new_nesting has at least 2 items)
-                i = 0
-                while i < len(coalesced_nesting)-1:
-                    iname_set_before = coalesced_nesting[i]
-                    iname_set_after = coalesced_nesting[i+1]
-                    # coalesce for each iname candidate
-                    for iname in coalesce_candidates:
-                        if (iname_set_before.inames == set([iname, ]) and
-                                iname_set_after.inames == set([iname, ])):
-                            # before/after contain single iname to be coalesced,
-                            # -> remove iname_set_after
-                            del coalesced_nesting[i+1]
-                            found_duplicates = True
-                        elif (iname_set_before.inames == set([iname, ]) and
-                                iname in iname_set_after.inames):
-                            # before contains single iname to be coalesced,
-                            # after contains iname along with others,
-                            # -> remove iname from iname_set_after.inames
-                            coalesced_nesting[i+1] = UnexpandedInameSet(
-                                inames=iname_set_after.inames - set([iname, ]),
-                                complement=iname_set_after.complement,
-                                )
-                            found_duplicates = True
-                        elif (iname in iname_set_before.inames and
-                                iname_set_after.inames == set([iname, ])):
-                            # after contains single iname to be coalesced,
-                            # before contains iname along with others,
-                            # -> remove iname from iname_set_before.inames
-                            coalesced_nesting[i] = UnexpandedInameSet(
-                                inames=iname_set_before.inames - set([iname, ]),
-                                complement=iname_set_before.complement,
-                                )
-                            found_duplicates = True
-                        elif (iname in iname_set_before.inames and
-                                iname in iname_set_after.inames):
-                            # before and after contain iname along with others,
-                            # -> remove iname from iname_set_{before,after}.inames
-                            # and insert it in between them
-                            coalesced_nesting[i] = UnexpandedInameSet(
-                                inames=iname_set_before.inames - set([iname, ]),
-                                complement=iname_set_before.complement,
-                                )
-                            coalesced_nesting[i+1] = UnexpandedInameSet(
-                                inames=iname_set_after.inames - set([iname, ]),
-                                complement=iname_set_after.complement,
-                                )
-                            coalesced_nesting.insert(i+1, UnexpandedInameSet(
-                                inames=set([iname, ]),
-                                complement=False,
-                                ))
-                            found_duplicates = True
-                        # else, iname was not found in both sets, so do nothing
-                    i = i + 1
-
-            return tuple(coalesced_nesting)
 
         # loop through new_constraints; handle each nesting independently
         coalesced_constraints = set()
         for new_nesting in new_constraints:
             coalesced_constraints.add(
-                coalesce_duplicate_inames_in_nesting(
+                _coalesce_duplicate_inames_in_one_nesting(
                     new_nesting, replacement_inames))
 
         return coalesced_constraints
     else:
         return new_constraints
+
+    # }}}
 
 # }}}
 
