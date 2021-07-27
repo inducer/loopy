@@ -1359,6 +1359,19 @@ def _split_iname_backend(kernel, iname_to_split,
                 new_prio = new_prio + (prio_iname,)
         new_priorities.append(new_prio)
 
+    # {{{ Update nest constraints
+
+    # Add {inner,outer} wherever iname_to_split is found in constraints.
+    # Let remove_unused_inames handle removal of the old iname if necessary
+
+    # update must_nest, must_not_nest, and must_nest_graph
+    kernel = replace_inames_in_all_nest_constraints(
+        kernel,
+        set([iname_to_split, ]), [iname_to_split, inner_iname, outer_iname],
+        )
+
+    # }}}
+
     kernel = kernel.copy(
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
