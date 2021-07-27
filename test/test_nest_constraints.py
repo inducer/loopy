@@ -750,6 +750,109 @@ def test_constraint_updating_split_iname():
 
 # }}}
 
+
+# {{{ test_constraint_updating_duplicate_inames
+
+def test_constraint_updating_duplicate_inames():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            out0[g,h,i,j,k] = 2*a0[g,h,i,j,k]  {id=insn0,dep=insn}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(
+        ref_knl,
+        {"a": np.dtype(np.float32), "a0": np.dtype(np.float32)})
+
+    # {{{ Duplicate within insn0
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        )
+    knl = lp.duplicate_inames(
+        knl,
+        inames=["g", "h"],
+        within="id:insn0",
+        new_inames=["gg", "hh"])
+
+    must_nest_graph_exp = dict([
+        (iname, set()) for iname in ["g", "h", "j", "k", "gg", "hh"]])
+    must_nest_graph_exp["i"] = set(["g", "h", "j", "k", "gg", "hh"])
+
+    assert knl[
+        "loopy_kernel"].loop_nest_constraints.must_nest_graph == must_nest_graph_exp
+
+    nesting_for_insn, nesting_for_insn0 = _linearize_and_get_nestings(knl)
+
+    # i must be outermost
+    assert nesting_for_insn[0] == nesting_for_insn0[0] == "i"
+    # j and k are shared between both insns, must come next
+    assert (
+        set(nesting_for_insn[1:3]) ==
+        set(nesting_for_insn0[1:3]) ==
+        set(["j", "k"]))
+    # g,h and gg,hh should come after that
+    assert set(nesting_for_insn[3:]) == set(["g", "h"])
+    assert set(nesting_for_insn0[3:]) == set(["gg", "hh"])  # new names
+
+    # }}}
+
+    # {{{ Duplicate within BOTH insns
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        )
+    knl = lp.duplicate_inames(
+        knl,
+        inames=["g", "h"],
+        within="id:insn0 or id:insn",
+        new_inames=["gg", "hh"])
+
+    must_nest_graph_exp = dict([
+        (iname, set()) for iname in ["j", "k", "gg", "hh"]])
+    must_nest_graph_exp["i"] = set(["j", "k", "gg", "hh"])
+
+    assert knl[
+        "loopy_kernel"].loop_nest_constraints.must_nest_graph == must_nest_graph_exp
+
+    loop_nestings = _linearize_and_get_nestings(knl)
+    assert len(loop_nestings) == 1
+    loop_nesting = loop_nestings[0]
+
+    # i must be outermost
+    assert loop_nesting[0] == loop_nesting[0] == "i"
+    # j and k are shared between both insns, must come next
+    assert set(loop_nesting[1:]) == set(["j", "k", "gg", "hh"])
+
+    # }}}
+
+    # {{{ Duplicate within insn0 with must-not-nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("~{i}", "i"),
+        )
+    knl = lp.duplicate_inames(
+        knl,
+        inames=["g", "h"],
+        within="id:insn0",
+        new_inames=["gg", "hh"])
+    nesting_for_insn, nesting_for_insn0 = _linearize_and_get_nestings(knl)
+
+    assert nesting_for_insn[0] == nesting_for_insn0[0] == "i"
+
+    # }}}
+
+# }}}
+
 # }}}
 
 
