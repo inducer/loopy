@@ -58,6 +58,12 @@ def _process_and_linearize(prog, knl_name="loopy_kernel"):
         proc_prog[knl_name], proc_prog.callables_table)
     return lin_prog
 
+
+def _linearize_and_get_nestings(prog, knl_name="loopy_kernel"):
+    from loopy.transform.iname import get_iname_nestings
+    lin_knl = _process_and_linearize(prog, knl_name)
+    return get_iname_nestings(lin_knl.linearization)
+
 # }}}
 
 
@@ -639,6 +645,110 @@ def test_linearization_with_nesting_constraints():
         assert "no valid schedules found" in str(e)
 
     # }}}
+
+# }}}
+
+
+# {{{ Test constraint updating during transformation
+
+# {{{ test_constraint_updating_split_iname
+
+def test_constraint_updating_split_iname():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    # Test split_iname where 'within'=None
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("k", "{g, h, i, j}"),
+        )
+    knl = lp.split_iname(knl, "j", 4)
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "k"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i, j}", "k"),
+        )
+    knl = lp.split_iname(knl, "j", 4)
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[-1] == "k"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("{j, k}", "~{j, k}"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}"),
+        )
+    knl = lp.split_iname(knl, "g", 4)
+    knl = lp.split_iname(knl, "j", 4)
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert set(loop_nesting[1:4]) == set(["g_outer", "g_inner", "h"])
+    assert set(loop_nesting[4:]) == set(["j_outer", "j_inner", "k"])
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.split_iname(knl, "g", 4)
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert loop_nesting[1:4] == ("g_outer", "g_inner", "h")
+    assert set(loop_nesting[4:]) == set(["j", "k"])
+
+    # Testing split_iname with 'within'
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out1[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn1}
+            out2[i,j,k] = 2+i+j+k  {id=insn2}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(
+        ref_knl, {"a": np.dtype(np.float32)}, {"out2": np.dtype(np.float32)})
+    ref_knl = lp.constrain_loop_nesting(
+        ref_knl,
+        must_nest=("k", "i", "j"),
+        must_not_nest=("g", "{j,h}"),
+        )
+
+    knl = ref_knl
+    knl = lp.split_iname(knl, "j", 4, within="id:insn1")
+    loop_nestings = _linearize_and_get_nestings(knl)
+    assert ("k", "i", "j_outer", "j_inner", "h", "g") in loop_nestings
+    assert ("k", "i", "j") in loop_nestings
+    assert len(loop_nestings) == 2
+
+    knl = ref_knl
+    knl = lp.split_iname(knl, "j", 4, within="id:insn2")
+    loop_nestings = _linearize_and_get_nestings(knl)
+    assert ("k", "i", "j", "h", "g") in loop_nestings
+    assert ("k", "i", "j_outer", "j_inner") in loop_nestings
+    assert len(loop_nestings) == 2
+
+# }}}
 
 # }}}
 
