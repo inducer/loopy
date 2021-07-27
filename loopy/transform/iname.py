@@ -377,6 +377,7 @@ def process_loop_nest_specification(
 
 # {{{ constrain_loop_nesting
 
+@for_each_kernel
 def constrain_loop_nesting(
         kernel, must_nest=None, must_not_nest=None):
     r"""Add the provided constraints to the kernel.
