@@ -1981,6 +1981,14 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         from loopy.kernel.tools import DomainChanger
         domch = DomainChanger(kernel, frozenset([old_iname]))
 
+        # {{{ Update nest constraints
+
+        # (don't remove any unused inames yet, that happens later)
+        kernel = replace_inames_in_all_nest_constraints(
+            kernel, set([old_iname, ]), [old_iname, new_iname])
+
+        # }}}
+
         from loopy.isl_helpers import duplicate_axes
         kernel = kernel.copy(
                 domains=domch.get_domains_with(
@@ -2007,6 +2015,18 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         new_tag = tags.get(old_iname)
         if new_tag is not None:
             kernel = tag_inames(kernel, {new_iname: new_tag})
+
+    # }}}
+
+    # Why isn't remove_unused_inames called on kernel here?
+
+    # {{{ Remove any newly unused inames from nest constraints
+
+    now_unused_inames = (set(inames) - get_used_inames(kernel)) & set(inames)
+    kernel = replace_inames_in_all_nest_constraints(
+        kernel, old_inames=now_unused_inames, new_inames=[],
+        coalesce_new_iname_duplicates=False,
+        )
 
     # }}}
 
