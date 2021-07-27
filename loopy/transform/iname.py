@@ -1071,7 +1071,7 @@ def replace_inames_in_graph(
 def replace_inames_in_all_nest_constraints(
         kernel, old_inames, new_inames,
         coalesce_new_iname_duplicates=False,
-        pairs_that_must_not_voilate_constraints=set(),
+        pairs_that_must_not_voilate_constraints=frozenset(),
         ):
     """Replace each iname in old_inames with all inames in new_inames"""
     # TODO more thorough docstring after initial code review
