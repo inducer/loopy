@@ -2335,6 +2335,15 @@ def remove_unused_inames(kernel, inames=None):
 
     # }}}
 
+    # {{{ Remove inames from loop nest constraints
+
+    kernel = replace_inames_in_all_nest_constraints(
+        kernel, old_inames=unused_inames, new_inames=[],
+        coalesce_new_iname_duplicates=False,
+        )
+
+    # }}}
+
     return kernel
 
 
