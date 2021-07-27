@@ -1010,7 +1010,7 @@ def replace_inames_in_graph(
         inames_to_replace, replacement_inames, old_graph):
     """Replace each iname in inames_to_replace with all inames in
     replacement_inames"""
-    # TODO more thorough documentation after initial code review
+    # TODO more thorough docstring after initial code review
 
     # For any iname to replace is found as a key, their children will
     # need to become children of the replacement inames. Keep track of all
@@ -1073,9 +1073,10 @@ def replace_inames_in_all_nest_constraints(
         coalesce_new_iname_duplicates=False,
         pairs_that_must_not_voilate_constraints=set(),
         ):
-    # replace each iname in old_inames with all inames in new_inames
+    """Replace each iname in old_inames with all inames in new_inames"""
+    # TODO more thorough docstring after initial code review
 
-    # get old must_nest and must_not_nest
+    # Get old must_nest and must_not_nest, if they exist
     # (must_nest_graph will be rebuilt)
     if kernel.loop_nest_constraints:
         old_must_nest = kernel.loop_nest_constraints.must_nest
@@ -1085,8 +1086,10 @@ def replace_inames_in_all_nest_constraints(
         old_must_nest = None
         old_must_not_nest = None
 
+    # {{{ Perform replacement on must-nest constraints
+
     if old_must_nest:
-        # check to make sure special pairs don't conflict with constraints
+        # Check to make sure special pairs don't conflict with constraints
         for iname_before, iname_after in pairs_that_must_not_voilate_constraints:
             if iname_before in kernel.loop_nest_constraints.must_nest_graph[
                     iname_after]:
@@ -1095,12 +1098,17 @@ def replace_inames_in_all_nest_constraints(
                     "\nimplied nestings: %s\nmust-nest constraints: %s"
                     % (pairs_that_must_not_voilate_constraints, old_must_nest))
 
+        # Compute new must nest constraints with replacements
         new_must_nest = replace_inames_in_nest_constraints(
             old_inames, new_inames, old_must_nest,
             coalesce_new_iname_duplicates=coalesce_new_iname_duplicates,
             )
     else:
         new_must_nest = None
+
+    # }}}
+
+    # {{{ Perform replacement on must-not-nest constraints
 
     if old_must_not_nest:
         # check to make sure special pairs don't conflict with constraints
@@ -1112,17 +1120,19 @@ def replace_inames_in_all_nest_constraints(
                 "\nimplied nestings: %s\nmust-not-nest constraints: %s"
                 % (pairs_that_must_not_voilate_constraints, old_must_not_nest))
 
+        # Compute new must not nest constraints with replacements
         new_must_not_nest = replace_inames_in_nest_constraints(
             old_inames, new_inames, old_must_not_nest,
             coalesce_new_iname_duplicates=False,
             # (for now, never coalesce must-not-nest constraints)
             )
-        # each must not nest constraint may only contain two tiers
-        # TODO coalesce_new_iname_duplicates?
     else:
         new_must_not_nest = None
 
-    # Rebuild must_nest graph
+    # }}}
+
+    # {{{ Rebuild must_nest graph
+
     if new_must_nest:
         new_must_nest_graph = {}
         new_all_inames = (
@@ -1138,12 +1148,14 @@ def replace_inames_in_all_nest_constraints(
                     "with inames %s. Previous must_nest constraints: %s"
                     % (old_inames, new_inames, old_must_nest))
 
-        # make sure none of the must_nest constraints violate must_not_nest
-        # this may not catch all problems
+        # Make sure none of the must_nest constraints violate must_not_nest
+        # (this may not catch all problems)
         check_must_not_nest_against_must_nest_graph(
             new_must_not_nest, new_must_nest_graph)
     else:
         new_must_nest_graph = None
+
+    # }}}
 
     return kernel.copy(
             loop_nest_constraints=LoopNestConstraints(
@@ -1154,7 +1166,6 @@ def replace_inames_in_all_nest_constraints(
             )
 
 # }}}
-
 
 # }}}
 
