@@ -1008,40 +1008,56 @@ def replace_inames_in_nest_constraints(
 
 def replace_inames_in_graph(
         inames_to_replace, replacement_inames, old_graph):
-    # replace each iname in inames_to_replace with all inames in replacement_inames
+    """Replace each iname in inames_to_replace with all inames in
+    replacement_inames"""
+    # TODO more thorough documentation after initial code review
 
-    new_graph = {}
+    # For any iname to replace is found as a key, their children will
+    # need to become children of the replacement inames. Keep track of all
+    # these children during initial replacement pass for graph values; then add
+    # them as children to the new keys afterward.
     iname_to_replace_found_as_key = False
     union_of_inames_after_for_replaced_keys = set()
+
+    new_graph = {}
+
+    # {{{ Replace graph values
+
     for iname, inames_after in old_graph.items():
-        # create new inames_after
+
+        # Create new inames_after (graph children) with replacements
         new_inames_after = inames_after.copy()
         inames_found = inames_to_replace & new_inames_after
-
         if inames_found:
             new_inames_after -= inames_found
             new_inames_after.update(replacement_inames)
 
-        # update dict
+        # If graph key is also one of the inames to be replaced, track its
+        # children but don't insert it into the new graph (replacement key will
+        # be added below).
+        # Otherwise, add original iname as key with new children to new graph
         if iname in inames_to_replace:
             iname_to_replace_found_as_key = True
             union_of_inames_after_for_replaced_keys = \
                 union_of_inames_after_for_replaced_keys | new_inames_after
-            # don't add this iname as a key in new graph,
-            # its replacements will be added below
         else:
             new_graph[iname] = new_inames_after
 
-    # add replacement iname keys
+    # }}}
+
+    # {{{ Add replacement inames as keys, and add appropriate children
+
     if iname_to_replace_found_as_key:
         for new_key in replacement_inames:
             new_graph[new_key] = union_of_inames_after_for_replaced_keys.copy()
 
-    # check for cycle
+    # }}}
+
+    # Check for cycle
     from pytools.graph import contains_cycle
     if contains_cycle(new_graph):
         raise ValueError(
-            "replace_inames_in_graph: Loop priority cycle detected. "
+            "replace_inames_in_graph: Loop nesting constraint cycle detected. "
             "Cannot replace inames %s with inames %s."
             % (inames_to_replace, replacement_inames))
 
