@@ -954,6 +954,7 @@ def test_constraint_updating_join_inames():
         must_nest=("{g, h, i}", "{j, k}"),
         )
     knl = lp.join_inames(knl, inames=["j", "k"], new_iname="jk")
+    # TODO figure out reason for jk key error
     loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
     assert loop_nesting[0] == "i"
     assert loop_nesting[1:3] == ("g", "h")
