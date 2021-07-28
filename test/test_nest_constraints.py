@@ -1015,6 +1015,153 @@ def test_constraint_updating_join_inames():
 
 # }}}
 
+
+# {{{ test_iname_coalescing_in_loop_nest_constraints
+
+def test_iname_coalescing_in_loop_nest_constraints():
+
+    def get_sets_of_inames(iname_sets_tuple, iname_universe):
+        # convert UnexpandedInameSets to sets
+        sets_of_inames = []
+        for iname_set in iname_sets_tuple:
+            sets_of_inames.append(
+                iname_set.get_inames_represented(iname_universe))
+        return sets_of_inames
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<1024 }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            )
+    # (join_inames errors if domain bound is variable)
+
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "g", "h", "j", "k"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", ]), set(["k", ])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{i, g}", "h", "j", "k"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", ]), set(["k", ])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "g", "{h, j}", "k"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", ]), set(["k", ])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "g", "{h, j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", "k"])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}", "j", "k"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", ]), set(["k", ])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{i, g}", "{h, j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", "k"])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "g", "j", "h", "k"),
+        )
+    try:
+        knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+        raise AssertionError()
+    except ValueError as e:
+        assert "contains cycle" in str(e)
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{i, g}", "j", "{h, k}"),
+        )
+    try:
+        knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+        raise AssertionError()
+    except ValueError as e:
+        assert "contains cycle" in str(e)
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{i, h}", "j", "{g, k}"),
+        )
+    try:
+        knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+        raise AssertionError()
+    except ValueError as e:
+        assert "nestings violate existing must-nest" in str(e)
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("g", "h"),
+        )
+    try:
+        knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+        raise AssertionError()
+    except ValueError as e:
+        assert "nestings violate existing must-not-nest" in str(e)
+
+# }}}
+
 # }}}
 
 # }}}
