@@ -58,6 +58,12 @@ def _process_and_linearize(prog, knl_name="loopy_kernel"):
         proc_prog[knl_name], proc_prog.callables_table)
     return lin_prog
 
+
+def _linearize_and_get_nestings(prog, knl_name="loopy_kernel"):
+    from loopy.transform.iname import get_iname_nestings
+    lin_knl = _process_and_linearize(prog, knl_name)
+    return get_iname_nestings(lin_knl.linearization)
+
 # }}}
 
 
@@ -452,6 +458,9 @@ def test_vec_innermost():
             "iname h tagged with ConcurrentTag, "
             "cannot use iname in must-nest constraint" in str(e))
 
+    # (testing these two operations in opposite order in
+    # test_constraint_handling_tag_inames)
+
     # Add a must_not_nest constraint that conflicts with a vec tag
     # and attempt to linearize
     knl = ref_knl
@@ -639,6 +648,521 @@ def test_linearization_with_nesting_constraints():
         assert "no valid schedules found" in str(e)
 
     # }}}
+
+# }}}
+
+
+# {{{ Test constraint updating during transformation
+
+# {{{ test_constraint_updating_split_iname
+
+def test_constraint_updating_split_iname():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    # Test split_iname where 'within'=None
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("k", "{g, h, i, j}"),
+        )
+    knl = lp.split_iname(knl, "j", 4)
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "k"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i, j}", "k"),
+        )
+    knl = lp.split_iname(knl, "j", 4)
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[-1] == "k"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("{j, k}", "~{j, k}"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}"),
+        )
+    knl = lp.split_iname(knl, "g", 4)
+    knl = lp.split_iname(knl, "j", 4)
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert set(loop_nesting[1:4]) == set(["g_outer", "g_inner", "h"])
+    assert set(loop_nesting[4:]) == set(["j_outer", "j_inner", "k"])
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.split_iname(knl, "g", 4)
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert loop_nesting[1:4] == ("g_outer", "g_inner", "h")
+    assert set(loop_nesting[4:]) == set(["j", "k"])
+
+    # Testing split_iname with 'within'
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out1[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn1}
+            out2[i,j,k] = 2+i+j+k  {id=insn2}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(
+        ref_knl, {"a": np.dtype(np.float32)}, {"out2": np.dtype(np.float32)})
+    ref_knl = lp.constrain_loop_nesting(
+        ref_knl,
+        must_nest=("k", "i", "j"),
+        must_not_nest=("g", "{j,h}"),
+        )
+
+    knl = ref_knl
+    knl = lp.split_iname(knl, "j", 4, within="id:insn1")
+    loop_nestings = _linearize_and_get_nestings(knl)
+    assert ("k", "i", "j_outer", "j_inner", "h", "g") in loop_nestings
+    assert ("k", "i", "j") in loop_nestings
+    assert len(loop_nestings) == 2
+
+    knl = ref_knl
+    knl = lp.split_iname(knl, "j", 4, within="id:insn2")
+    loop_nestings = _linearize_and_get_nestings(knl)
+    assert ("k", "i", "j", "h", "g") in loop_nestings
+    assert ("k", "i", "j_outer", "j_inner") in loop_nestings
+    assert len(loop_nestings) == 2
+
+# }}}
+
+
+# {{{ test_constraint_updating_duplicate_inames
+
+def test_constraint_updating_duplicate_inames():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            out0[g,h,i,j,k] = 2*a0[g,h,i,j,k]  {id=insn0,dep=insn}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(
+        ref_knl,
+        {"a": np.dtype(np.float32), "a0": np.dtype(np.float32)})
+
+    # {{{ Duplicate within insn0
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        )
+    knl = lp.duplicate_inames(
+        knl,
+        inames=["g", "h"],
+        within="id:insn0",
+        new_inames=["gg", "hh"])
+
+    must_nest_graph_exp = dict([
+        (iname, set()) for iname in ["g", "h", "j", "k", "gg", "hh"]])
+    must_nest_graph_exp["i"] = set(["g", "h", "j", "k", "gg", "hh"])
+
+    assert knl[
+        "loopy_kernel"].loop_nest_constraints.must_nest_graph == must_nest_graph_exp
+
+    nesting_for_insn, nesting_for_insn0 = _linearize_and_get_nestings(knl)
+
+    # i must be outermost
+    assert nesting_for_insn[0] == nesting_for_insn0[0] == "i"
+    # j and k are shared between both insns, must come next
+    assert (
+        set(nesting_for_insn[1:3]) ==
+        set(nesting_for_insn0[1:3]) ==
+        set(["j", "k"]))
+    # g,h and gg,hh should come after that
+    assert set(nesting_for_insn[3:]) == set(["g", "h"])
+    assert set(nesting_for_insn0[3:]) == set(["gg", "hh"])  # new names
+
+    # }}}
+
+    # {{{ Duplicate within BOTH insns
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        )
+    knl = lp.duplicate_inames(
+        knl,
+        inames=["g", "h"],
+        within="id:insn0 or id:insn",
+        new_inames=["gg", "hh"])
+
+    must_nest_graph_exp = dict([
+        (iname, set()) for iname in ["j", "k", "gg", "hh"]])
+    must_nest_graph_exp["i"] = set(["j", "k", "gg", "hh"])
+
+    assert knl[
+        "loopy_kernel"].loop_nest_constraints.must_nest_graph == must_nest_graph_exp
+
+    loop_nestings = _linearize_and_get_nestings(knl)
+    assert len(loop_nestings) == 1
+    loop_nesting = loop_nestings[0]
+
+    # i must be outermost
+    assert loop_nesting[0] == loop_nesting[0] == "i"
+    # j and k are shared between both insns, must come next
+    assert set(loop_nesting[1:]) == set(["j", "k", "gg", "hh"])
+
+    # }}}
+
+    # {{{ Duplicate within insn0 with must-not-nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("~{i}", "i"),
+        )
+    knl = lp.duplicate_inames(
+        knl,
+        inames=["g", "h"],
+        within="id:insn0",
+        new_inames=["gg", "hh"])
+    nesting_for_insn, nesting_for_insn0 = _linearize_and_get_nestings(knl)
+
+    assert nesting_for_insn[0] == nesting_for_insn0[0] == "i"
+
+    # }}}
+
+
+# {{{ test_constraint_updating_rename_iname
+
+def test_constraint_updating_rename_iname():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    # Test rename_iname (+ remove_unused_inames) where new iname does not exist
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.rename_iname(knl, "g", "g_new")
+    knl = lp.rename_iname(knl, "h", "h_new")
+    knl = lp.rename_iname(knl, "i", "i_new")
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i_new"
+    assert loop_nesting[1:3] == ("g_new", "h_new")
+    assert set(loop_nesting[3:]) == set(["j", "k"])
+
+    # FIXME Test rename_iname where new iname DOES not exist (once implemented)
+
+# }}}
+
+
+# {{{ test_constraint_handling_tag_inames
+
+def test_constraint_handling_tag_inames():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<n }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            assumptions="n >= 1",
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    # Should error when constrained inames are tagged as concurrent
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    try:
+        lp.tag_inames(knl, {"i": "l.0"})
+        raise AssertionError()
+    except ValueError as e:
+        assert (
+            "cannot tag 'i' as concurrent--iname involved in must-nest constraint"
+            in str(e))
+
+    # Add a vec tag that conflicts with a must_nest constraint
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(knl, must_nest=("{g,h,i,j}", "{k}"))
+    try:
+        knl = lp.tag_inames(knl, {"h": "vec"})
+        raise AssertionError()
+    except ValueError as e:
+        assert (
+            "vectorized inames must nest innermost" in str(e))
+
+# }}}
+
+
+# {{{ test_constraint_updating_join_inames
+
+def test_constraint_updating_join_inames():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<1024 }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert loop_nesting[1] == "gh"
+    assert set(loop_nesting[2:]) == set(["j", "k"])
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["j", "k"], new_iname="jk")
+
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert loop_nesting[1:3] == ("g", "h")
+    assert loop_nesting[3] == "jk"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("h", "i", "g", "{j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["i", "g"], new_iname="ig")
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "h"
+    assert loop_nesting[1] == "ig"
+    assert set(loop_nesting[2:4]) == set(["j", "k"])
+
+    # Test cycle detection
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}", "{j, k}"),
+        )
+    try:
+        lp.join_inames(knl, inames=["i", "k"], new_iname="ik")
+        raise AssertionError()
+    except ValueError as e:
+        assert "cycle" in str(e)
+
+    # Test implied nesting that creates constraint violation
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("i", "k"),
+        )
+    try:
+        lp.join_inames(knl, inames=["i", "k"], new_iname="ik")
+        raise AssertionError()
+    except ValueError as e:
+        assert "Implied nestings violate existing must-not-nest" in str(e)
+
+# }}}
+
+
+# {{{ test_iname_coalescing_in_loop_nest_constraints
+
+def test_iname_coalescing_in_loop_nest_constraints():
+
+    def get_sets_of_inames(iname_sets_tuple, iname_universe):
+        # convert UnexpandedInameSets to sets
+        sets_of_inames = []
+        for iname_set in iname_sets_tuple:
+            sets_of_inames.append(
+                iname_set.get_inames_represented(iname_universe))
+        return sets_of_inames
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<1024 }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            )
+    # (join_inames errors if domain bound is variable)
+
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "g", "h", "j", "k"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", ]), set(["k", ])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{i, g}", "h", "j", "k"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", ]), set(["k", ])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "g", "{h, j}", "k"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", ]), set(["k", ])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "g", "{h, j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", "k"])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}", "j", "k"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", ]), set(["k", ])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{i, g}", "{h, j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    knl = knl["loopy_kernel"]
+    new_must_nest = get_sets_of_inames(
+        list(knl.loop_nest_constraints.must_nest)[0], knl.all_inames())
+    expected_must_nest = [
+        set(["i", ]), set(["gh", ]), set(["j", "k"])]
+    assert new_must_nest == expected_must_nest
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "g", "j", "h", "k"),
+        )
+    try:
+        knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+        raise AssertionError()
+    except ValueError as e:
+        assert "contains cycle" in str(e)
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{i, g}", "j", "{h, k}"),
+        )
+    try:
+        knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+        raise AssertionError()
+    except ValueError as e:
+        assert "contains cycle" in str(e)
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{i, h}", "j", "{g, k}"),
+        )
+    try:
+        knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+        raise AssertionError()
+    except ValueError as e:
+        assert "nestings violate existing must-nest" in str(e)
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("g", "h"),
+        )
+    try:
+        knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+        raise AssertionError()
+    except ValueError as e:
+        assert "nestings violate existing must-not-nest" in str(e)
+
+# }}}
+
+# }}}
 
 # }}}
 
