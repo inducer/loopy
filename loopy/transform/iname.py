@@ -1071,7 +1071,6 @@ def replace_inames_in_graph(
 def replace_inames_in_all_nest_constraints(
         kernel, old_inames, new_inames,
         coalesce_new_iname_duplicates=False,
-        pairs_that_must_not_voilate_constraints=frozenset(),
         ):
     """Replace each iname in old_inames with all inames in new_inames"""
     # TODO more thorough docstring after initial code review
@@ -1089,15 +1088,6 @@ def replace_inames_in_all_nest_constraints(
     # {{{ Perform replacement on must-nest constraints
 
     if old_must_nest:
-        # Check to make sure special pairs don't conflict with constraints
-        for iname_before, iname_after in pairs_that_must_not_voilate_constraints:
-            if iname_before in kernel.loop_nest_constraints.must_nest_graph[
-                    iname_after]:
-                raise ValueError(
-                    "Implied nestings violate existing must-nest constraints."
-                    "\nimplied nestings: %s\nmust-nest constraints: %s"
-                    % (pairs_that_must_not_voilate_constraints, old_must_nest))
-
         # Compute new must nest constraints with replacements
         new_must_nest = replace_inames_in_nest_constraints(
             old_inames, new_inames, old_must_nest,
@@ -1111,15 +1101,6 @@ def replace_inames_in_all_nest_constraints(
     # {{{ Perform replacement on must-not-nest constraints
 
     if old_must_not_nest:
-        # check to make sure special pairs don't conflict with constraints
-        if not loop_nest_constraints_satisfied(
-                pairs_that_must_not_voilate_constraints,
-                must_not_nest_constraints=old_must_not_nest):
-            raise ValueError(
-                "Implied nestings violate existing must-not-nest constraints."
-                "\nimplied nestings: %s\nmust-not-nest constraints: %s"
-                % (pairs_that_must_not_voilate_constraints, old_must_not_nest))
-
         # Compute new must not nest constraints with replacements
         new_must_not_nest = replace_inames_in_nest_constraints(
             old_inames, new_inames, old_must_not_nest,
@@ -1609,7 +1590,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     from loopy.match import parse_match
     within = parse_match(within)
 
-    # {{{ return the same kernel if no kernel matches
+    # {{{ return the same kernel if no insn matches
 
     if not any(within(kernel, insn) for insn in kernel.instructions):
         return kernel
@@ -1703,6 +1684,64 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
                 domains=domch.get_domains_with(new_domain),
                 applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
                 ))
+
+    # {{{ Update loop nest constraints
+
+    if kernel.loop_nest_constraints and (
+            kernel.loop_nest_constraints.must_nest or
+            kernel.loop_nest_constraints.must_not_nest or
+            kernel.loop_nest_constraints.must_nest_graph):
+
+        if within != parse_match(None):
+            raise NotImplementedError(
+                "join_inames() does not yet handle new loop nest "
+                "constraints when within is not None.")
+
+        # When joining inames, we create *implied* loop nestings.
+
+        # {{{ Make sure that these implied nestings don't violate existing
+        # constraints.
+
+        implied_nestings = set()
+        inames_orig_order = inames[::-1]  # This was reversed above
+        for i, iname_before in enumerate(inames_orig_order[:-1]):
+            for iname_after in inames_orig_order[i+1:]:
+                implied_nestings.add((iname_before, iname_after))
+
+        old_must_nest = kernel.loop_nest_constraints.must_nest
+        old_must_not_nest = kernel.loop_nest_constraints.must_not_nest
+        # (these could still be None)
+
+        # Check to make sure special pairs don't conflict with constraints
+        if old_must_nest:
+            for iname_before, iname_after in implied_nestings:
+                if iname_before in kernel.loop_nest_constraints.must_nest_graph[
+                        iname_after]:
+                    raise ValueError(
+                        "Implied nestings violate existing must-nest constraints."
+                        "\nimplied nestings: %s\nmust-nest constraints: %s"
+                        % (implied_nestings, old_must_nest))
+
+        if old_must_not_nest:
+            if not loop_nest_constraints_satisfied(
+                    implied_nestings,
+                    must_not_nest_constraints=old_must_not_nest):
+                raise ValueError(
+                    "Implied nestings violate existing must-not-nest constraints."
+                    "\nimplied nestings: %s\nmust-not-nest constraints: %s"
+                    % (implied_nestings, old_must_not_nest))
+
+        # }}}
+
+        # When replacing inames, coalesce newly created iname duplicates
+        # (see docstring for replace_inames_in_all_nest_constraints)
+        kernel = replace_inames_in_all_nest_constraints(
+            kernel, set(inames), [new_iname],
+            coalesce_new_iname_duplicates=True,
+            )
+        # (will fail if cycle is created in must-nest graph)
+
+    # }}}
 
     from loopy.match import parse_stack_match
     within = parse_stack_match(within)
