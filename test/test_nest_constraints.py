@@ -458,6 +458,9 @@ def test_vec_innermost():
             "iname h tagged with ConcurrentTag, "
             "cannot use iname in must-nest constraint" in str(e))
 
+    # (testing these two operations in opposite order in
+    # test_constraint_handling_tag_inames)
+
     # Add a must_not_nest constraint that conflicts with a vec tag
     # and attempt to linearize
     knl = ref_knl
@@ -917,7 +920,15 @@ def test_constraint_handling_tag_inames():
             "cannot tag 'i' as concurrent--iname involved in must-nest constraint"
             in str(e))
 
-    # Need to test anything else here...?
+    # Add a vec tag that conflicts with a must_nest constraint
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(knl, must_nest=("{g,h,i,j}", "{k}"))
+    try:
+        knl = lp.tag_inames(knl, {"h": "vec"})
+        raise AssertionError()
+    except ValueError as e:
+        assert (
+            "vectorized inames must nest innermost" in str(e))
 
 # }}}
 
