@@ -932,6 +932,89 @@ def test_constraint_handling_tag_inames():
 
 # }}}
 
+
+# {{{ test_constraint_updating_join_inames
+
+def test_constraint_updating_join_inames():
+
+    ref_knl = lp.make_kernel(
+            "{ [g,h,i,j,k]: 0<=g,h,i,j,k<1024 }",
+            """
+            out[g,h,i,j,k] = 2*a[g,h,i,j,k]  {id=insn}
+            """,
+            )
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"a": np.dtype(np.float32)})
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["g", "h"], new_iname="gh")
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert loop_nesting[1] == "gh"
+    assert set(loop_nesting[2:]) == set(["j", "k"])
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h, j, k}"),
+        must_not_nest=("h", "g"),
+        )
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("{g, h, i}", "{j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["j", "k"], new_iname="jk")
+
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "i"
+    assert loop_nesting[1:3] == ("g", "h")
+    assert loop_nesting[3] == "jk"
+
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("h", "i", "g", "{j, k}"),
+        )
+    knl = lp.join_inames(knl, inames=["i", "g"], new_iname="ig")
+    loop_nesting = _linearize_and_get_nestings(knl)[0]  # only one nesting
+    assert loop_nesting[0] == "h"
+    assert loop_nesting[1] == "ig"
+    assert set(loop_nesting[2:4]) == set(["j", "k"])
+
+    # Test cycle detection
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_nest=("i", "{g, h}", "{j, k}"),
+        )
+    try:
+        lp.join_inames(knl, inames=["i", "k"], new_iname="ik")
+        raise AssertionError()
+    except ValueError as e:
+        assert "cycle" in str(e)
+
+    # Test implied nesting that creates constraint violation
+    knl = ref_knl
+    knl = lp.constrain_loop_nesting(
+        knl,
+        must_not_nest=("i", "k"),
+        )
+    try:
+        lp.join_inames(knl, inames=["i", "k"], new_iname="ik")
+        raise AssertionError()
+    except ValueError as e:
+        assert "Implied nestings violate existing must-not-nest" in str(e)
+
+# }}}
+
 # }}}
 
 # }}}
