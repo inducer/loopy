@@ -1,4 +1,4 @@
-# TODO: adapt for pycuda 
+# TODO: adapt for pycuda -> PyCUDAKernelExecutor.PyCUDAExecutionWrapperGenerator
 
 from pytools import memoize_method
 from pytools.py_codegen import Indentation
