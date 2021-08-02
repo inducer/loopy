@@ -109,11 +109,13 @@ class InstructionBase(ImmutableRecord, Taggable):
     .. attribute:: dependencies
 
         A :class:`dict` mapping :attr:`id` values of :class:`InstructionBase`
-        instances (each referring to a statement with statement instances that
-        must be executed before instances of this statement) to lists (one list
-        per key) of class:`islpy.Map`\ s mapping each instance of the dependee
-        statement to all instances of this statement that must occur later. Note
-        that this dict will eventually replace the `depends_on` attribute.
+        instances, each referring to a dependee statement (i.e., a statement
+        with statement instances that must be executed before instances of this
+        statement), to lists (one list per key) of class:`islpy.Map`\ s that
+        express dependency relationships by mapping each instance of the
+        dependee statement to all instances of this statement that must occur
+        later. This dict expresses the new statement-instance-level
+        dependencies and will eventually replace the `depends_on` attribute.
 
     .. attribute:: depends_on_is_final
 
@@ -477,7 +479,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
-        # TODO something with dependencies?
+        # FIXME Do something with self.dependencies?
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
@@ -1350,20 +1352,14 @@ class CInstruction(InstructionBase):
 
     def __init__(self,
             iname_exprs, code,
-            read_variables=frozenset(),
-            assignees=tuple(),
-            id=None,
-            depends_on=None,
-            depends_on_is_final=None,
+            read_variables=frozenset(), assignees=tuple(),
+            id=None, depends_on=None, depends_on_is_final=None,
             dependencies=None,
-            groups=None,
-            conflicts_with_groups=None,
+            groups=None, conflicts_with_groups=None,
             no_sync_with=None,
-            within_inames_is_final=None,
-            within_inames=None,
+            within_inames_is_final=None, within_inames=None,
             priority=0,
-            predicates=frozenset(),
-            tags=None):
+            predicates=frozenset(), tags=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -1383,8 +1379,7 @@ class CInstruction(InstructionBase):
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                priority=priority, predicates=predicates,
-                tags=tags)
+                priority=priority, predicates=predicates, tags=tags)
 
         # {{{ normalize iname_exprs
 
