@@ -1621,9 +1621,10 @@ def test_add_dependency_v2():
     dep_b_on_a = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i > i' "
         "and {0} }}".format(assumptions_str),
-        self_dep=False, knl_with_domains=knl["loopy_kernel"])
+        knl_with_domains=knl["loopy_kernel"])
 
-    # test make_dep_map while we're here:
+    # {{{ Test make_dep_map while we're here
+
     dep_b_on_a_test = _isl_map_with_marked_dims(
         "[pi] -> {{ [{3}'=0, i'] -> [{3}=1, i] : i > i' "
         "and {0} and {1} and {2} }}".format(
@@ -1633,6 +1634,8 @@ def test_add_dependency_v2():
             STATEMENT_VAR_NAME,
             ))
     _align_and_compare_maps([(dep_b_on_a, dep_b_on_a_test)])
+
+    # }}}
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
 
@@ -1648,9 +1651,10 @@ def test_add_dependency_v2():
     dep_b_on_a_2 = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i = i' "
         "and {0}}}".format(assumptions_str),
-        self_dep=False, knl_with_domains=knl["loopy_kernel"])
+        knl_with_domains=knl["loopy_kernel"])
 
-    # test make_dep_map while we're here:
+    # {{{ Test make_dep_map while we're here
+
     dep_b_on_a_2_test = _isl_map_with_marked_dims(
         "[pi] -> {{ [{3}'=0, i'] -> [{3}=1, i] : i = i' "
         "and {0} and {1} and {2} }}".format(
@@ -1660,6 +1664,8 @@ def test_add_dependency_v2():
             STATEMENT_VAR_NAME,
             ))
     _align_and_compare_maps([(dep_b_on_a_2, dep_b_on_a_2_test)])
+
+    # }}}
 
     knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
 
@@ -1672,24 +1678,16 @@ def test_add_dependency_v2():
             assert not stmt.dependencies
 
     # Add dependencies to stmt_c
-    # TODO use make_dep_map instead of _isl_map_with_marked_dims where possible
 
-    dep_c_on_a = _isl_map_with_marked_dims(
-        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i >= i' "
-        "and {1} and {2} and {3} }}".format(
-            STATEMENT_VAR_NAME,
-            i_range_str,
-            i_range_str_p,
-            assumptions_str,
-            ))
-    dep_c_on_b = _isl_map_with_marked_dims(
-        "[pi] -> {{ [{0}'=0, i'] -> [{0}=1, i] : i >= i' "
-        "and {1} and {2} and {3} }}".format(
-            STATEMENT_VAR_NAME,
-            i_range_str,
-            i_range_str_p,
-            assumptions_str,
-            ))
+    dep_c_on_a = make_dep_map(
+        "[pi] -> {{ [i'] -> [i] : i >= i' "
+        "and {0} }}".format(assumptions_str),
+        knl_with_domains=knl["loopy_kernel"])
+
+    dep_c_on_b = make_dep_map(
+        "[pi] -> {{ [i'] -> [i] : i >= i' "
+        "and {0} }}".format(assumptions_str),
+        knl_with_domains=knl["loopy_kernel"])
 
     knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_a", dep_c_on_a)
     knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_b", dep_c_on_b)
@@ -1736,7 +1734,6 @@ def test_make_dep_map():
     j_range_str = "0 <= j < n"
     j_range_str_p = "0 <= j' < n"
     k_range_str = "0 <= k < n"
-    # k_range_str_p = "0 <= k' < n"  # (not used)
     knl = lp.make_kernel(
         "{[i,j,k]: %s}" % (" and ".join([i_range_str, j_range_str, k_range_str])),
         """
@@ -1753,7 +1750,7 @@ def test_make_dep_map():
     # Add a dependency to stmt_b
     dep_b_on_a = make_dep_map(
         "[n] -> { [i',j'] -> [i,k] : i > i' and j' < k}",
-        self_dep=False, knl_with_domains=knl["loopy_kernel"])
+        knl_with_domains=knl["loopy_kernel"])
 
     # Create expected dep
     dep_b_on_a_test = _isl_map_with_marked_dims(
@@ -1788,6 +1785,14 @@ def test_new_dependencies_finite_diff():
     xt_range_str = "0 <= x < nx and 0 <= t < nt"
     xt_range_str_p = "0 <= x' < nx and 0 <= t' < nt"
     dep = make_dep_map(
+        "[nx,nt] -> { [x', t'] -> [x, t] : "
+        "((x = x' and t = t'+2) or "
+        " (x'-1 <= x <= x'+1 and t = t' + 1)) }",
+        self_dep=True, knl_with_domains=knl["loopy_kernel"])
+
+    # {{{ Test make_dep_map while we're here
+
+    dep_test = make_dep_map(
         "[nx,nt] -> {{ [x', t'] -> [x, t] : "
         "((x = x' and t = t'+2) or "
         " (x'-1 <= x <= x'+1 and t = t' + 1)) and "
@@ -1797,11 +1802,15 @@ def test_new_dependencies_finite_diff():
             ),
         self_dep=True)
 
+    _align_and_compare_maps([(dep, dep_test)])
+
+    # }}}
+
     knl = lp.add_dependency_v2(knl, "stmt", "stmt", dep)
 
     ref_knl = knl
 
-    # {{{ Check with corrct loop nest order
+    # {{{ Test find_unsatisfied_dependencies with corrct loop nest order
 
     # Prioritize loops correctly
     knl = lp.prioritize_loops(knl, "t,x")
@@ -1820,7 +1829,8 @@ def test_new_dependencies_finite_diff():
     assert not unsatisfied_deps
 
     # }}}
-    # {{{ Check with incorrect loop nest order
+
+    # {{{ Test find_unsatisfied_dependencies with incorrect loop nest order
 
     # Now prioritize loops incorrectly
     knl = ref_knl
@@ -1835,7 +1845,8 @@ def test_new_dependencies_finite_diff():
     assert len(unsatisfied_deps) == 1
 
     # }}}
-    # {{{ Check with parallel x and no barrier
+
+    # {{{ Test find_unsatisfied_dependencies with parallel x and no barrier
 
     # Parallelize the x loop
     knl = ref_knl
@@ -1845,7 +1856,7 @@ def test_new_dependencies_finite_diff():
     # Make sure unsatisfied deps are caught
     lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
-    # Without a barrier, deps not satisfied
+    # Without a barrier, deps are not satisfied
     # Make sure there is no barrier, and that unsatisfied deps are caught
     from loopy.schedule import Barrier
     for lin_item in lin_items:
@@ -1857,7 +1868,8 @@ def test_new_dependencies_finite_diff():
     assert len(unsatisfied_deps) == 1
 
     # }}}
-    # {{{ Check with parallel x and included barrier
+
+    # {{{ Test find_unsatisfied_dependencies with parallel x and included barrier
 
     # Insert a barrier to satisfy deps
     knl = lp.make_kernel(
@@ -1881,11 +1893,6 @@ def test_new_dependencies_finite_diff():
     assert not unsatisfied_deps
 
     # }}}
-
-    # Transformations to test after dep handling during transformation:
-    # knl = lp.split_iname(knl, "x", 14)
-    # knl = lp.assume(knl, "nx % 14 = 0 and nt >= 1 and nx >= 1")
-    # knl = lp.tag_inames(knl, "x_outer:g.0, x_inner:l.0")
 
 # }}}
 

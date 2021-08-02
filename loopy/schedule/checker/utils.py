@@ -147,31 +147,65 @@ def append_mark_to_strings(strings, mark):
 # {{{ make_dep_map
 
 def make_dep_map(s, self_dep=False, knl_with_domains=None):
+    """Given a string representation of a before->after mapping of statement
+    instances, create an :class:`islpy.Map` representing the dependency. Insert
+    a dimension into this map to represent the statement identifier for both
+    the 'before' and 'after' statements. If ``knl_with_domains`` is provided,
+    intersect the input and output map domains with the domains for the
+    inames found in the kernel.
 
-    # TODO put this function in the right place
+    :arg s: An :class:`str` describing a before->after mapping of statement
+        instances using islpy map syntax. The input and output spaces
+        of the map represented by this string should *not* include a dimension
+        for statement identifiers; these dimension will be added. Inames in
+        the input space should be suffixed with
+        ``loopy.schedule.checker.schedule.BEFORE_MARK``.
+
+    :arg self_dep: A :class`bool` expressing whether the depender and
+        dependee are the same instruction. If so, the value for *both* the
+        input and output statement identifier dimensions will be set to 0.
+        If not, the value for the *output* statement identifier dimension will
+        be set to 1.
+
+    :arg knl_with_domains: A :class:`loopy.kernel.LoopKernel` containing iname
+        domains that will be used to constrain the inames in the dependency map.
+        If provided, the domains for the inames found in the dependency will be
+        intersected with their domains expressed in the kernel.
+
+    :returns: An :class:`islpy.Map` representing a dependency as a mapping from
+        from each instance of the first statement to all instances of the
+        second statement that must occur later.
+
+    """
 
     from loopy.schedule.checker.schedule import (
         BEFORE_MARK,
         STATEMENT_VAR_NAME,
     )
 
+    # Pass the input string to isl.Map to initialize the map
     map_init = isl.Map(s)
 
-    # TODO something smarter than this assert
-    for dim_name in map_init.get_var_names(dt.in_):
-        assert BEFORE_MARK not in dim_name
+    # {{{ Islpy drops apostrophes, make sure this hasn't changed
+    # and manually add the mark if necessary
 
-    # append BEFORE_MARK to in-vars
-    map_marked = append_mark_to_isl_map_var_names(
-        map_init, dt.in_, BEFORE_MARK)
+    if BEFORE_MARK == "'":
+        for dim_name in map_init.get_var_names(dt.in_):
+            assert BEFORE_MARK not in dim_name
 
-    # insert statement dims:
+        # Append BEFORE_MARK to in_ dims
+        map_marked = append_mark_to_isl_map_var_names(
+            map_init, dt.in_, BEFORE_MARK)
+
+    # }}}
+
+    # {{{ Insert input/output statement dims and set them to 0 or 1
+
     map_with_stmts = insert_and_name_isl_dims(
         map_marked, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
     map_with_stmts = insert_and_name_isl_dims(
         map_with_stmts, dt.out, [STATEMENT_VAR_NAME], 0)
 
-    # assign values 0 or 1 to statement dims
     sid_after = 0 if self_dep else 1
 
     map_with_stmts = map_with_stmts.add_constraint(
@@ -184,21 +218,37 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
             map_with_stmts.space,
             {1: sid_after, STATEMENT_VAR_NAME: -1}))
 
+    # }}}
+
+    # {{{ Intersect map domain and range with iname domains in knl
+
     if knl_with_domains is not None:
-        # intersect map with knl domains
+
+        if BEFORE_MARK != "'":
+            raise NotImplementedError(
+                "make_dep_map() does not yet handle a knl_with_domains argument "
+                "when BEFORE_MARK != \"'\"")
+
+        # {{{ Get inames domain for input and output inames
+
+        # Get the inames from map_init; islpy already dropped the apostrophes
         inames_in = map_init.get_var_names(dt.in_)
         inames_out = map_init.get_var_names(dt.out)
 
+        # Get inames domain
         inames_in_dom = knl_with_domains.get_inames_domain(
             inames_in).project_out_except(inames_in, [dt.set])
         inames_out_dom = knl_with_domains.get_inames_domain(
             inames_out).project_out_except(inames_out, [dt.set])
 
-        # mark dependee inames
+        # Mark dependee inames
         inames_in_dom_marked = append_mark_to_isl_map_var_names(
             inames_in_dom, dt.set, BEFORE_MARK)
 
-        # align spaces adds the stmt var
+        # }}}
+
+        # {{{ Align spaces for iname domains with dep map (which adds the stmt var)
+
         inames_in_dom_marked_aligned = isl.align_spaces(
             inames_in_dom_marked, map_with_stmts.domain(),
             obj_bigger_ok=True)  # e.g., params might exist
@@ -206,9 +256,14 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
             inames_out_dom, map_with_stmts.range(),
             obj_bigger_ok=True)  # e.g., params might exist
 
+        # }}}
+
+        # Intersect iname domains with dependency map
         map_with_stmts = map_with_stmts.intersect_range(
             inames_out_dom_aligned
             ).intersect_domain(inames_in_dom_marked_aligned)
+
+    # }}}
 
     return map_with_stmts
 
