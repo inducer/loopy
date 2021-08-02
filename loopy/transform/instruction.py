@@ -149,7 +149,7 @@ def add_dependency(kernel, insn_match, depends_on):
 @for_each_kernel
 def add_dependency_v2(
         kernel, stmt_id, depends_on_id, new_dependency):
-    """Add the statement instance dependency `new_dependency` to the statement with
+    """Add the statement instance dependency *new_dependency* to the statement with
     id `stmt_id`.
 
     :arg kernel: A :class:`loopy.kernel.LoopKernel`.
@@ -166,31 +166,31 @@ def add_dependency_v2(
         later.
 
     """
-    # TODO make this accept multiple deps and/or multiple stmts so that
-    # these can be added in fewer passes through the instructions
+
+    # FIXME Make this allow multiple deps and/or multiple stmts so that
+    # these can all be in one pass through the instructions
 
     if stmt_id not in kernel.id_to_insn:
-        raise LoopyError("no instructions found matching '%s',"
+        raise LoopyError("No instructions found matching '%s',"
                 "cannot add dependency %s->%s"
                 % (stmt_id, depends_on_id, stmt_id))
     if depends_on_id not in kernel.id_to_insn:
-        raise LoopyError("no instructions found matching '%s',"
+        raise LoopyError("No instructions found matching '%s',"
                 "cannot add dependency %s->%s"
                 % (depends_on_id, depends_on_id, stmt_id))
 
     matched = [False]
 
     def _add_dep(stmt):
-        new_deps_dict = stmt.dependencies  # dict mapping depends-on ids to dep maps
+        new_deps_dict = stmt.dependencies  # Dict mapping depends-on ids to dep maps
         matched[0] = True
         new_deps_dict.setdefault(depends_on_id, []).append(new_dependency)
         return stmt.copy(dependencies=new_deps_dict)
 
     result = map_instructions(kernel, "id:%s" % (stmt_id), _add_dep)
 
-    if not matched[0]:  # Is this possible, given check above?
-        raise LoopyError("no instructions found matching '%s' "
-                "(to which dependencies would be added)" % stmt_id)
+    # Should have matched (id check above passed)
+    assert matched[0]
 
     return result
 
