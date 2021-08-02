@@ -159,14 +159,14 @@ def find_unsatisfied_dependencies(
         containing the statements (:class:`loopy.InstructionBase`) whose
         dependencies will be checked against the linearization items.
 
-    :arg lin_items: A list of :class:`loopy.schedule.ScheduleItem`
+    :arg lin_items: A sequence of :class:`loopy.schedule.ScheduleItem`
         (to be renamed to `loopy.schedule.LinearizationItem`) containing all
         linearization items in `knl.linearization`. To allow usage of
         this routine during linearization, a truncated (i.e. partial)
         linearization may be passed through this argument. If not provided,
         `knl.linearization` will be used.
 
-    :returns: A list of unsatisfied dependencies, each described using a
+    :returns: A list of unsatisfied dependencies, each represented as a
         :class:`collections.namedtuple` containing the following:
 
         - `statement_pair`: The (before, after) pair of statement IDs involved
@@ -174,21 +174,8 @@ def find_unsatisfied_dependencies(
         - `dependency`: An class:`islpy.Map` from each instance of the first
           statement to all instances of the second statement that must occur
           later.
-        - `statement_ordering`: A statement ordering information tuple
-          resulting from `lp.get_pairwise_statement_orderings`, a
-          :class:`collections.namedtuple` containing the intra-thread
-          statement instance ordering (SIO) (`sio_intra_thread`),
-          intra-group SIO (`sio_intra_group`), and global
-          SIO (`sio_global`), each realized as an :class:`islpy.Map` from each
-          instance of the first statement to all instances of the second
-          statement that occur later, as well as the intra-thread pairwise
-          schedule (`pwsched_intra_thread`), intra-group pairwise schedule
-          (`pwsched_intra_group`), and the global pairwise schedule
-          (`pwsched_global`), each containing a pair of mappings from statement
-          instances to points in a lexicographic ordering, one for each
-          statement. Note that a pairwise schedule alone cannot be used to
-          reproduce the corresponding SIO without the corresponding (unique)
-          lexicographic order map, which is not returned.
+        - `statement_ordering`: A :class:`StatementOrdering` resulting from
+          `lp.get_pairwise_statement_orderings` (defined above).
 
     """
 
@@ -206,19 +193,19 @@ def find_unsatisfied_dependencies(
 
     # }}}
 
-    # {{{ Create map from dependent statement id pairs to dependencies
+    # {{{ Create map from before->after statement id pairs to dependency maps
 
-    # To minimize time complexity, all pairwise schedules will be created
-    # in one pass, which first requires finding all pairs of statements involved
-    # in deps. We will also need to collect the deps for each statement pair,
-    # so do this at the same time.
-
-    stmt_pairs_to_deps = {}
+    # To minimize time complexity, all pairwise SIOs will be created
+    # in one pass, which first requires finding all pairs of statements that
+    # are connected by at least one dependency.
+    # We will also later need to collect all deps for each statement pair,
+    # so do this at the same time; create stmt_pairs_to_deps:
 
     # stmt_pairs_to_deps:
     # {(stmt_id_before1, stmt_id_after1): [dep1, dep2, ...],
     #  (stmt_id_before2, stmt_id_after2): [dep1, dep2, ...],
     #  ...}
+    stmt_pairs_to_deps = {}
 
     from loopy.kernel.instruction import BarrierInstruction
     # TODO (fix) for now, don't check deps on/by barriers
@@ -226,13 +213,11 @@ def find_unsatisfied_dependencies(
         if not isinstance(stmt_after, BarrierInstruction):
             for before_id, dep_list in stmt_after.dependencies.items():
                 if not isinstance(knl.id_to_insn[before_id], BarrierInstruction):
-                    # (don't compare dep maps to maps found;
-                    # duplicate deps should be rare)
                     stmt_pairs_to_deps.setdefault(
                         (before_id, stmt_after.id), []).extend(dep_list)
     # }}}
 
-    # {{{ Get statement instance orderings
+    # {{{ Get statement instance ordering for every before->after statement pair
 
     pworders = get_pairwise_statement_orderings(
         knl,
@@ -244,8 +229,9 @@ def find_unsatisfied_dependencies(
 
     # {{{ For each depender-dependee pair of statements, check all deps vs. SIO
 
-    # Collect info about unsatisfied deps
     unsatisfied_deps = []
+
+    # Collect info about unsatisfied deps
     from collections import namedtuple
     UnsatisfiedDependencyInfo = namedtuple(
         "UnsatisfiedDependencyInfo",
@@ -267,7 +253,8 @@ def find_unsatisfied_dependencies(
             aligned_dep_map = ensure_dim_names_match_and_align(
                 dependency, pworder.sio_intra_thread)
 
-            # Spaces must match
+            # {{{ Assert that map spaces match
+
             assert aligned_dep_map.space == pworder.sio_intra_thread.space
             assert aligned_dep_map.space == pworder.sio_intra_group.space
             assert aligned_dep_map.space == pworder.sio_global.space
@@ -277,6 +264,8 @@ def find_unsatisfied_dependencies(
                 pworder.sio_intra_group.get_var_dict())
             assert (aligned_dep_map.get_var_dict() ==
                 pworder.sio_global.get_var_dict())
+
+            # }}}
 
             # Check dependency
             if not aligned_dep_map.is_subset(
@@ -288,7 +277,8 @@ def find_unsatisfied_dependencies(
                 unsatisfied_deps.append(UnsatisfiedDependencyInfo(
                     stmt_id_pair, aligned_dep_map, pworder))
 
-                # Could break here if we don't care about remaining deps
+                # Could break here if we only care about correctness and don't
+                # need to find all unsatisfied deps
 
     # }}}
 
