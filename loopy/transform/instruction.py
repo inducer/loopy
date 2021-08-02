@@ -149,7 +149,7 @@ def add_dependency(kernel, insn_match, depends_on):
 @for_each_kernel
 def add_dependency_v2(
         kernel, stmt_id, depends_on_id, new_dependency):
-    """Add the statement instance dependency *new_dependency* to the statement with
+    """Add the statement-instance dependency *new_dependency* to the statement with
     id `stmt_id`.
 
     :arg kernel: A :class:`loopy.kernel.LoopKernel`.
@@ -164,6 +164,8 @@ def add_dependency_v2(
     :arg new_dependency: An class:`islpy.Map` from each instance of the first
         statement to all instances of the second statement that must occur
         later.
+
+    :returns: The updated :class:`loopy.kernel.LoopKernel` with the new dependency.
 
     """
 
