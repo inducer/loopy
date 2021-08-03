@@ -684,6 +684,7 @@ class SchedulerState(ImmutableRecord):
         A list of loopy :class:`Instruction` objects in topologically sorted
         order with instruction priorities as tie breaker.
     """
+    # TODO document simplified_depends_on_graph
 
     @property
     def last_entered_loop(self):
@@ -695,12 +696,20 @@ class SchedulerState(ImmutableRecord):
 # }}}
 
 
-def get_insns_in_topologically_sorted_order(kernel):
+def get_insns_in_topologically_sorted_order(
+        kernel, simplified_depends_on_graph):
     from pytools.graph import compute_topological_order
 
     rev_dep_map = {insn.id: set() for insn in kernel.instructions}
     for insn in kernel.instructions:
-        for dep in insn.depends_on:
+
+        if kernel.options.use_dependencies_v2:
+            dependee_ids = simplified_depends_on_graph.get(
+                insn.id, set())
+        else:
+            dependee_ids = insn.depends_on
+
+        for dep in dependee_ids:
             rev_dep_map[dep].add(insn.id)
 
     # For breaking ties, we compare the features of an intruction
