@@ -253,57 +253,100 @@ def find_loop_nest_around_map(kernel):
     return result
 
 
-def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
+def find_loop_insn_dep_map(
+        kernel, loop_nest_with_map, loop_nest_around_map,
+        simplified_depends_on_graph):
     """Returns a dictionary mapping inames to other instruction ids that need to
     be scheduled before the iname should be eligible for scheduling.
+
+    :arg loop_nest_with_map: Dictionary mapping iname1 to a set containing
+        iname2 iff either iname1 nests around iname2 or iname2 nests around
+        iname1
+
+    :arg loop_nest_around_map: Dictionary mapping iname1 to a set containing
+        iname2 iff iname2 nests around iname1
+
+    :arg simplified_depends_on_graph: Dictionary mapping depender statement IDs
+        to sets of dependee statement IDs, as produced by
+        `loopy.schedule.checker.dependency.filter_deps_by_intersection_with_SAME`,
+        which will be used to acquire depndee statement ids if
+        `kernel.options.use_dependencies_v2` is 'True' (otherwise old
+        dependencies in insn.depends_on will be used).
+
     """
 
     result = {}
 
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag
+    # For each insn, examine its inames (`iname`) and its dependees' inames
+    # (`dep_iname`) to determine which instructions must be scheduled before
+    # entering the iname loop.
+    # Create result dict, which maps iname to instructions that must be
+    # scheduled prior to entering iname.
+
+    # For each insn, loop over its non-concurrent inames (`iname`)
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
+
+            # (Ignore concurrent inames)
             if kernel.iname_tags_of_type(iname, ConcurrentTag):
                 continue
-
+            # Let iname_dep be the set of ids associated with result[iname]
+            # (if iname is not already in result, add iname as a key)
             iname_dep = result.setdefault(iname, set())
 
-            for dep_insn_id in insn.depends_on:
+            # Loop over instructions on which insn depends (dep_insn)
+            # and determine whether dep_insn must be schedued before
+            # iname, in which case add its id to iname_dep (result[iname])
+            if kernel.options.use_dependencies_v2:
+                dependee_ids = simplified_depends_on_graph.get(insn.id, set())
+            else:
+                dependee_ids = insn.depends_on
+
+            for dep_insn_id in dependee_ids:
                 if dep_insn_id in iname_dep:
                     # already depending, nothing to check
                     continue
 
-                dep_insn = kernel.id_to_insn[dep_insn_id]
-                dep_insn_inames = dep_insn.within_inames
+                dep_insn = kernel.id_to_insn[dep_insn_id]  # Dependee
+                dep_insn_inames = dep_insn.within_inames  # Dependee inames
 
+                # Check whether insn's iname is also in dependee inames
                 if iname in dep_insn_inames:
-                    # Nothing to be learned, dependency is in loop over iname
+                    # Nothing to be learned, dependee is inside loop over iname
                     # already.
                     continue
 
                 # To make sure dep_insn belongs outside of iname, we must prove
-                # that all inames that dep_insn will be executed in nest
+                # that all inames in which dep_insn will be executed nest
                 # outside of the loop over *iname*. (i.e. nested around, or
                 # before).
 
+                # Loop over each of the dependee's inames (dep_insn_iname)
                 may_add_to_loop_dep_map = True
                 for dep_insn_iname in dep_insn_inames:
+
+                    # If loop_nest_around_map says dep_insn_iname nests around
+                    # iname, dep_insn_iname is guaranteed to nest outside of
+                    # iname, we're safe, so continue
                     if dep_insn_iname in loop_nest_around_map[iname]:
-                        # dep_insn_iname is guaranteed to nest outside of iname
-                        # -> safe.
                         continue
 
+                    # If dep_insn_iname is concurrent, continue
+                    # (parallel tags don't really nest, so disregard them here)
                     if kernel.iname_tags_of_type(dep_insn_iname,
                                 (ConcurrentTag, IlpBaseTag)):
-                        # Parallel tags don't really nest, so we'll disregard
-                        # them here.
                         continue
 
+                    # If loop_nest_with_map says dep_insn_iname does not nest
+                    # inside or around iname, it must be nested separately;
+                    # we're safe, so continue
                     if dep_insn_iname not in loop_nest_with_map.get(iname, []):
-                        # dep_insn_iname does not nest with iname, so its nest
-                        # must occur outside.
                         continue
 
+                    # If none of the three cases above succeeds for any
+                    # dep_insn_iname in dep_insn_inames, we cannot add dep_insn
+                    # to iname's set of insns in result dict.
                     may_add_to_loop_dep_map = False
                     break
 
@@ -318,6 +361,9 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                             dep_insn=dep_insn_id,
                             insn=insn.id))
 
+                # If at least one of the three cases above succeeds for every
+                # dep_insn_iname, we can add dep_insn to iname's set of insns
+                # in result dict.
                 iname_dep.add(dep_insn_id)
 
     return result
