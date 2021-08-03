@@ -1619,15 +1619,16 @@ def test_add_dependency_v2():
 
     # Add a dependency to stmt_b
     dep_b_on_a = make_dep_map(
-        "[pi] -> {{ [i'] -> [i] : i > i' "
-        "and {0} }}".format(assumptions_str),
+        "[pi] -> {{ [i'] -> [i] : i > i' and {0} "
+        "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
 
     # {{{ Test make_dep_map while we're here
 
     dep_b_on_a_test = _isl_map_with_marked_dims(
         "[pi] -> {{ [{3}'=0, i'] -> [{3}=1, i] : i > i' "
-        "and {0} and {1} and {2} }}".format(
+        "and {0} and {1} and {2} "
+        "}}".format(
             i_range_str,
             i_range_str_p,
             assumptions_str,
@@ -1649,15 +1650,16 @@ def test_add_dependency_v2():
 
     # Add a second dependency to stmt_b
     dep_b_on_a_2 = make_dep_map(
-        "[pi] -> {{ [i'] -> [i] : i = i' "
-        "and {0}}}".format(assumptions_str),
+        "[pi] -> {{ [i'] -> [i] : i = i' and {0}"
+        "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
 
     # {{{ Test make_dep_map while we're here
 
     dep_b_on_a_2_test = _isl_map_with_marked_dims(
         "[pi] -> {{ [{3}'=0, i'] -> [{3}=1, i] : i = i' "
-        "and {0} and {1} and {2} }}".format(
+        "and {0} and {1} and {2} "
+        "}}".format(
             i_range_str,
             i_range_str_p,
             assumptions_str,
@@ -1680,13 +1682,13 @@ def test_add_dependency_v2():
     # Add dependencies to stmt_c
 
     dep_c_on_a = make_dep_map(
-        "[pi] -> {{ [i'] -> [i] : i >= i' "
-        "and {0} }}".format(assumptions_str),
+        "[pi] -> {{ [i'] -> [i] : i >= i' and {0} "
+        "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
 
     dep_c_on_b = make_dep_map(
-        "[pi] -> {{ [i'] -> [i] : i >= i' "
-        "and {0} }}".format(assumptions_str),
+        "[pi] -> {{ [i'] -> [i] : i >= i' and {0} "
+        "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
 
     knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_a", dep_c_on_a)
@@ -1754,8 +1756,8 @@ def test_make_dep_map():
 
     # Create expected dep
     dep_b_on_a_test = _isl_map_with_marked_dims(
-        "[n] -> {{ [{0}'=0, i', j'] -> [{0}=1, i, k] : i > i' and j' < k"
-        " and {1} }}".format(
+        "[n] -> {{ [{0}'=0, i', j'] -> [{0}=1, i, k] : i > i' and j' < k and {1} "
+        "}}".format(
             STATEMENT_VAR_NAME,
             " and ".join([
                 i_range_str,
@@ -1796,7 +1798,8 @@ def test_new_dependencies_finite_diff():
         "[nx,nt] -> {{ [x', t'] -> [x, t] : "
         "((x = x' and t = t'+2) or "
         " (x'-1 <= x <= x'+1 and t = t' + 1)) and "
-        "{0} and {1} }}".format(
+        "{0} and {1} "
+        "}}".format(
             xt_range_str,
             xt_range_str_p,
             ),
