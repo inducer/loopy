@@ -23,8 +23,11 @@ import islpy as isl
 
 class DependencyType:
     """Strings specifying a particular type of dependency relationship.
+
     .. attribute:: SAME
+
        A :class:`str` specifying the following dependency relationship:
+
        If ``S = {i, j, ...}`` is a set of inames used in both statements
        ``insn0`` and ``insn1``, and ``{i', j', ...}`` represent the values
        of the inames in ``insn0``, and ``{i, j, ...}`` represent the
@@ -32,8 +35,11 @@ class DependencyType:
        ``insn0 happens before insn1 iff SAME({i, j})`` specifies that
        ``insn0 happens before insn1 iff {i' = i and j' = j and ...}``.
        Note that ``SAME({}) = True``.
+
     .. attribute:: PRIOR
+
        A :class:`str` specifying the following dependency relationship:
+
        If ``S = {i, j, k, ...}`` is a set of inames used in both statements
        ``insn0`` and ``insn1``, and ``{i', j', k', ...}`` represent the values
        of the inames in ``insn0``, and ``{i, j, k, ...}`` represent the
@@ -45,6 +51,7 @@ class DependencyType:
        If the loop nest ordering is known, the condition becomes
        ``{i', j', k', ...}`` is lexicographically less than ``{i, j, k, ...}``,
        i.e., ``i' < i or (i' = i and j' < j) or (i' = i and j' = j and k' < k) ...``.
+
     """
 
     SAME = "same"
