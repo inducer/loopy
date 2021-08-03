@@ -2087,13 +2087,32 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
+
+    # {{{  Create simplified dependency graph with edge from *depender* to
+    # *dependee* iff intersection (SAME_map & DEP_map) is not empty
+
+    if kernel.options.use_dependencies_v2:
+        from loopy.schedule.checker.dependency import (
+            filter_deps_by_intersection_with_SAME,
+        )
+
+        # Get dep graph edges with edges FROM depender TO dependee
+        simplified_depends_on_graph = filter_deps_by_intersection_with_SAME(kernel)
+    else:
+        simplified_depends_on_graph = None
+
+    # }}}
+
     sched_state = SchedulerState(
             kernel=kernel,
             loop_nest_around_map=loop_nest_around_map,
             loop_insn_dep_map=find_loop_insn_dep_map(
                 kernel,
                 loop_nest_with_map=loop_nest_with_map,
-                loop_nest_around_map=loop_nest_around_map),
+                loop_nest_around_map=loop_nest_around_map,
+                simplified_depends_on_graph=simplified_depends_on_graph,
+                ),
+            simplified_depends_on_graph=simplified_depends_on_graph,
             breakable_inames=ilp_inames,
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
@@ -2123,7 +2142,8 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
             active_group_counts={},
 
             insns_in_topologically_sorted_order=(
-                get_insns_in_topologically_sorted_order(kernel)),
+                get_insns_in_topologically_sorted_order(
+                    kernel, simplified_depends_on_graph)),
     )
 
     schedule_gen_kwargs = {}
