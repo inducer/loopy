@@ -379,16 +379,24 @@ def group_insn_counts(kernel):
     return result
 
 
-def gen_dependencies_except(kernel, insn_id, except_insn_ids):
-    insn = kernel.id_to_insn[insn_id]
-    for dep_id in insn.depends_on:
+def gen_dependencies_except(
+        kernel, insn_id, except_insn_ids, simplified_depends_on_graph):
+
+    # Get dependee IDs
+    if kernel.options.use_dependencies_v2:
+        dependee_ids = simplified_depends_on_graph.get(insn_id, set())
+    else:
+        dependee_ids = kernel.id_to_insn[insn_id].depends_on
+
+    for dep_id in dependee_ids:
 
         if dep_id in except_insn_ids:
             continue
 
         yield dep_id
 
-        yield from gen_dependencies_except(kernel, dep_id, except_insn_ids)
+        yield from gen_dependencies_except(
+            kernel, dep_id, except_insn_ids, simplified_depends_on_graph)
 
 
 def get_priority_tiers(wanted, priorities):
