@@ -1007,7 +1007,14 @@ def generate_loop_schedules_internal(
     for insn_id in insn_ids_to_try:
         insn = kernel.id_to_insn[insn_id]
 
-        is_ready = insn.depends_on <= sched_state.scheduled_insn_ids
+        # make sure dependees have been scheduled
+        if kernel.options.use_dependencies_v2:
+            dependee_ids = sched_state.simplified_depends_on_graph.get(
+                insn.id, set())
+        else:
+            dependee_ids = insn.depends_on
+
+        is_ready = dependee_ids <= sched_state.scheduled_insn_ids
 
         if not is_ready:
             continue
