@@ -275,6 +275,15 @@ def sorted_union_of_names_in_isl_sets(
     return sorted(inames)
 
 
+def convert_map_to_set(isl_map):
+    # (also works for spaces)
+    n_in_dims = len(isl_map.get_var_names(dt.in_))
+    n_out_dims = len(isl_map.get_var_names(dt.out))
+    return isl_map.move_dims(
+        dt.in_, n_in_dims, dt.out, 0, n_out_dims
+        ).domain(), n_in_dims, n_out_dims
+
+
 def create_symbolic_map_from_tuples(
         tuple_pairs_with_domains,
         space,
