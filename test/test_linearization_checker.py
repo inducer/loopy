@@ -1899,6 +1899,92 @@ def test_new_dependencies_finite_diff():
 
 # }}}
 
+
+# {{{ Dependency handling during linearization
+
+# {{{ test_filtering_deps_by_same
+
+def test_filtering_deps_by_same():
+
+    # Make a kernel (just need something that can carry deps)
+    knl = lp.make_kernel(
+        "{[i,j,k,m] : 0 <= i,j,k,m < n}",
+        """
+        a[i,j,k,m] = 5 {id=s5}
+        a[i,j,k,m] = 4 {id=s4}
+        a[i,j,k,m] = 3 {id=s3}
+        a[i,j,k,m] = 2 {id=s2}
+        a[i,j,k,m] = 1 {id=s1}
+        """)
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    knl = lp.tag_inames(knl, "m:l.0")
+
+    # Make some deps
+
+    def _dep_with_condition(stmt_before, stmt_after, cond):
+        sid_after = 0 if stmt_before == stmt_after else 1
+        return _isl_map_with_marked_dims(
+            "[n] -> {{"
+            "[{0}'=0, i', j', k', m'] -> [{0}={1}, i, j, k, m] : "
+            "0 <= i,j,k,m,i',j',k',m' < n and {2}"
+            "}}".format(
+                STATEMENT_VAR_NAME, sid_after, cond))
+
+    dep_s2_on_s1_1 = _dep_with_condition(2, 1, "i'< i and j'<=j and k'=k and m'<m")
+    dep_s2_on_s1_2 = _dep_with_condition(2, 1, "i'<=i and j'<=j and k'=k and m'<m")
+
+    dep_s2_on_s2_1 = _dep_with_condition(2, 2, "i'< i and j'<=j and k'=k and m'<m")
+    dep_s2_on_s2_2 = _dep_with_condition(2, 2, "i'<=i and j'<=j and k'=k and m'<m")
+
+    dep_s3_on_s2_1 = _dep_with_condition(3, 2, "i'< i and j'< j and k'=k and m'<m")
+    dep_s3_on_s2_2 = _dep_with_condition(3, 2, "i' =i and j'= j and k'<k and m'<m")
+
+    dep_s4_on_s3_1 = _dep_with_condition(4, 3, "i'<=i and j'<=j and k'=k")
+    dep_s4_on_s3_2 = _dep_with_condition(4, 3, "i'<=i")
+
+    dep_s5_on_s4_1 = _dep_with_condition(5, 4, "i'< i")
+
+    dep_s5_on_s2_1 = _dep_with_condition(5, 2, "i'= i")
+
+    knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_1)
+    knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_2)
+
+    knl = lp.add_dependency_v2(knl, "s2", "s2", dep_s2_on_s2_1)
+    knl = lp.add_dependency_v2(knl, "s2", "s2", dep_s2_on_s2_2)
+
+    knl = lp.add_dependency_v2(knl, "s3", "s2", dep_s3_on_s2_1)
+    knl = lp.add_dependency_v2(knl, "s3", "s2", dep_s3_on_s2_2)
+
+    knl = lp.add_dependency_v2(knl, "s4", "s3", dep_s4_on_s3_1)
+    knl = lp.add_dependency_v2(knl, "s4", "s3", dep_s4_on_s3_2)
+
+    knl = lp.add_dependency_v2(knl, "s5", "s4", dep_s5_on_s4_1)
+
+    knl = lp.add_dependency_v2(knl, "s5", "s2", dep_s5_on_s2_1)
+
+    # Filter deps by intersection with SAME
+
+    from loopy.schedule.checker.dependency import (
+        filter_deps_by_intersection_with_SAME,
+    )
+    filtered_depends_on_dict = filter_deps_by_intersection_with_SAME(
+        knl["loopy_kernel"])
+
+    # Make sure filtered edges are correct
+
+    # (m is concurrent so shouldn't matter)
+    depends_on_dict_expected = {
+        "s2": set(["s1", "s2"]),
+        "s4": set(["s3"]),
+        "s5": set(["s2"]),
+        }
+
+    assert filtered_depends_on_dict == depends_on_dict_expected
+
+# }}}
+
+# }}}
+
 # }}}
 
 
