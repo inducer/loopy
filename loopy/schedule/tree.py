@@ -955,7 +955,7 @@ class PredicateInsertionMapper(PolyhedronLoopifier):
                                                       impl_domain).params())
 
         inner_condition = _align_and_gist(
-            domain,
+            domain.remove_divs(),
             _align_and_intersect(
                 _align_and_intersect(set_implemented_in_loop,
                                      impl_domain),
