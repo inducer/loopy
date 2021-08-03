@@ -284,6 +284,11 @@ def convert_map_to_set(isl_map):
         ).domain(), n_in_dims, n_out_dims
 
 
+def convert_set_back_to_map(isl_set, n_old_in_dims, n_old_out_dims):
+    return isl.Map.from_domain(
+        isl_set).move_dims(dt.out, 0, dt.in_, n_old_in_dims, n_old_out_dims)
+
+
 def create_symbolic_map_from_tuples(
         tuple_pairs_with_domains,
         space,
