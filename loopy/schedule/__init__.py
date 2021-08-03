@@ -743,7 +743,8 @@ def get_insns_in_topologically_sorted_order(
 
 # {{{ schedule_as_many_run_insns_as_possible
 
-def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
+def schedule_as_many_run_insns_as_possible(
+        sched_state, template_insn, use_dependencies_v2):
     """
     Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
     all reachable instructions that are similar to *template_insn*. We define
@@ -811,7 +812,13 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
 
         if is_similar_to_template(insn):
             # check reachability
-            if not (insn.depends_on & ignored_unscheduled_insn_ids):
+            if use_dependencies_v2:
+                dependee_ids = sched_state.simplified_depends_on_graph.get(
+                    insn.id, set())
+            else:
+                dependee_ids = insn.depends_on
+
+            if not (dependee_ids & ignored_unscheduled_insn_ids):
                 if insn.id in sched_state.prescheduled_insn_ids:
                     if next_preschedule_insn_id() == insn.id:
                         preschedule.pop(0)
@@ -1131,8 +1138,8 @@ def generate_loop_schedules_internal(
                     insns_in_topologically_sorted_order=new_toposorted_insns,
                     )
 
-            new_sched_state = schedule_as_many_run_insns_as_possible(new_sched_state,
-                    insn)
+            new_sched_state = schedule_as_many_run_insns_as_possible(
+                new_sched_state, insn, kernel.options.use_dependencies_v2)
 
             # Don't be eager about entering/leaving loops--if progress has been
             # made, revert to top of scheduler and see if more progress can be
