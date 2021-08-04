@@ -144,7 +144,7 @@ def add_dependency(kernel, insn_match, depends_on):
 # }}}
 
 
-# {{{ map dependencies
+# {{{ add/map dependencies v2
 
 # Terminiology:
 # stmtX.dependencies:  # <- "stmt dependencies" = full dict of deps
@@ -154,18 +154,7 @@ def add_dependency(kernel, insn_match, depends_on):
 # one dependency includes one "dependency list", which contains "dep maps"
 
 
-def map_stmt_dependencies(kernel, stmt_match, f):
-    # Set stmt.dependences = f(stmt.dependencies) for stmts matching stmt_match
-    # Only modifies dependencies for depender!
-    # Does not search for matching dependees of non-matching depender statements!
-
-    def _update_deps(stmt):
-        # pass stmt to f because might need info
-        new_deps = f(stmt.dependencies, stmt)
-        return stmt.copy(dependencies=new_deps)
-
-    return map_instructions(kernel, stmt_match, _update_deps)
-
+# {{{ _parse_match_if_necessary
 
 def _parse_match_if_necessary(match_candidate):
     from loopy.match import (
@@ -181,13 +170,26 @@ def _parse_match_if_necessary(match_candidate):
     else:
         return match_candidate
 
+# }}}
+
+
+# {{{ map_dependency_lists
 
 def map_dependency_lists(
         kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
-    # Set dependency = f(dependency) for:
-    # All deps of stmts matching stmt_match_depender
-    # All deps ON stmts matching stmt_match_dependee
-    # (but doesn't call f() twice if dep matches both depender and dependee)
+    """Replace dependency_list with f(dependency_list) if conditions match.
+
+    Let dependency_list = depender_stmt.dependencies[dependee_stmt];
+
+    Set dependency_list = f(dependency_list) if:
+
+    - stmt_match_depender matches depender_stmt OR
+    - stmt_match_dependee matches dependee_stmt
+    - (but don't call f() twice if both depender and dependee match)
+
+    """
+    # TODO refactor this so that separate depender and dependee updating
+    # functions can be provided and used in a single pass
     from loopy.match import (
         StackMatch,
     )
@@ -228,6 +230,10 @@ def map_dependency_lists(
 
     return kernel.copy(instructions=new_stmts)
 
+# }}}
+
+
+# {{{ map_dependency_maps
 
 def map_dependency_maps(
         kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
@@ -240,6 +246,23 @@ def map_dependency_maps(
 
     return map_dependency_lists(
         kernel, _update_dep_maps, stmt_match_depender, stmt_match_dependee)
+
+# }}}
+
+
+# {{{ map_stmt_dependencies
+
+def map_stmt_dependencies(kernel, stmt_match, f):
+    """Set stmt.dependences = f(stmt.dependencies) for stmts matching stmt_match"""
+    # (Only modifies dependencies for depender;
+    # does not search for matching dependee statements)
+
+    def _update_deps(stmt):
+        # pass stmt to f because might need info
+        new_deps = f(stmt.dependencies, stmt)
+        return stmt.copy(dependencies=new_deps)
+
+    return map_instructions(kernel, stmt_match, _update_deps)
 
 # }}}
 
@@ -267,7 +290,7 @@ def add_dependency_v2(
 
     """
     # TODO make this accept multiple deps and/or multiple stmts so that
-    # these can be added in fewer passes through the instructions
+    # these can be added in one pass through the instructions
 
     if stmt_id not in kernel.id_to_insn:
         raise LoopyError("no instructions found matching '%s',"
@@ -278,14 +301,19 @@ def add_dependency_v2(
                 "cannot add dependency %s->%s"
                 % (depends_on_id, depends_on_id, stmt_id))
 
-    def _add_dep(stmt_deps, stmt):
+    # Create func used to update stmt.dependencies
+    # (func to pass to map_stmt_dependencies)
+    def _add_dep_to_dict(stmt_deps, stmt):
         # stmt_deps: dict mapping depends-on ids to dep maps
+        # (expected func takes stmt param but in this case we don't need it)
         stmt_deps.setdefault(depends_on_id, []).append(new_dependency)
         return stmt_deps
 
-    result = map_stmt_dependencies(kernel, "id:%s" % (stmt_id), _add_dep)
+    result = map_stmt_dependencies(kernel, "id:%s" % (stmt_id), _add_dep_to_dict)
 
     return result
+
+# }}}
 
 # }}}
 
