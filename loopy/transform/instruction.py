@@ -272,7 +272,7 @@ def map_stmt_dependencies(kernel, stmt_match, f):
 @for_each_kernel
 def add_dependency_v2(
         kernel, stmt_id, depends_on_id, new_dependency):
-    """Add the statement instance dependency `new_dependency` to the statement with
+    """Add the statement-instance dependency *new_dependency* to the statement with
     id `stmt_id`.
 
     :arg kernel: A :class:`loopy.kernel.LoopKernel`.
@@ -288,16 +288,19 @@ def add_dependency_v2(
         statement to all instances of the second statement that must occur
         later.
 
+    :returns: The updated :class:`loopy.kernel.LoopKernel` with the new dependency.
+
     """
-    # TODO make this accept multiple deps and/or multiple stmts so that
-    # these can be added in one pass through the instructions
+
+    # FIXME Make this allow multiple deps and/or multiple stmts so that
+    # these can all be in one pass through the instructions
 
     if stmt_id not in kernel.id_to_insn:
-        raise LoopyError("no instructions found matching '%s',"
+        raise LoopyError("No instructions found matching '%s',"
                 "cannot add dependency %s->%s"
                 % (stmt_id, depends_on_id, stmt_id))
     if depends_on_id not in kernel.id_to_insn:
-        raise LoopyError("no instructions found matching '%s',"
+        raise LoopyError("No instructions found matching '%s',"
                 "cannot add dependency %s->%s"
                 % (depends_on_id, depends_on_id, stmt_id))
 
