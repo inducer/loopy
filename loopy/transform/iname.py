@@ -1319,9 +1319,6 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
         from loopy.transform.instruction import map_dependency_maps
         from loopy.schedule.checker.schedule import BEFORE_MARK
-        from loopy.schedule.checker.utils import (
-            find_and_rename_dim,
-        )
         old_iname_p = old_iname+BEFORE_MARK
         new_iname_p = new_iname+BEFORE_MARK
 
@@ -1330,7 +1327,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
             # For now, out_idx should not be -1 because this will only
             # be called on dependers
-            return find_and_rename_dim(
+            return _find_and_rename_dim(
                 dep, [dt.out], old_iname, new_iname, must_exist=True)
 
         def _rename_iname_in_dim_in(dep):
@@ -1338,7 +1335,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
             # For now, out_idx should not be -1 because this will only
             # be called on dependees
-            return find_and_rename_dim(
+            return _find_and_rename_dim(
                 dep, [dt.in_], old_iname_p, new_iname_p, must_exist=True)
 
         # TODO figure out proper way to match none
@@ -2148,6 +2145,23 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     return augmented_mapping, proxy_name_pairs
 
 
+def _find_and_rename_dim(old_map, dim_types, old_name, new_name, must_exist=False):
+    # (This function is only used once here, but do not inline it; it is used many
+    # times in child branch update-dependencies-during-transformations.)
+    new_map = old_map.copy()
+    for dim_type in dim_types:
+        idx = new_map.find_dim_by_name(dim_type, old_name)
+        if idx == -1:
+            if must_exist:
+                raise ValueError(
+                    "must_exist=True but did not find old_name %s in %s"
+                    % (old_name, old_map))
+            else:
+                continue
+        new_map = new_map.set_dim_name(dim_type, idx, new_name)
+    return new_map
+
+
 @for_each_kernel
 def map_domain(kernel, isl_map, within=None):
     # FIXME: Express _split_iname_backend in terms of this
@@ -2229,10 +2243,6 @@ def map_domain(kernel, isl_map, within=None):
 
         return overlap
 
-    from loopy.schedule.checker.utils import (
-        find_and_rename_dim,
-    )
-
     def process_set(s):
 
         overlap = _check_overlap_condition_for_domain(s, old_inames)
@@ -2293,7 +2303,7 @@ def map_domain(kernel, isl_map, within=None):
 
         # Now rename the proxy dims back to their original names
         for real_iname, proxy_iname in proxy_name_pairs:
-            new_s = find_and_rename_dim(
+            new_s = _find_and_rename_dim(
                 new_s, [dt.set], proxy_iname, real_iname)
 
         return new_s
@@ -2355,7 +2365,7 @@ def map_domain(kernel, isl_map, within=None):
 
             # Now rename the proxy dims back to their original names
             for real_iname, proxy_iname in proxy_name_pairs:
-                new_dep_map = find_and_rename_dim(
+                new_dep_map = _find_and_rename_dim(
                     new_dep_map, [dt.out], proxy_iname, real_iname)
 
             # Statement var may have moved, so put it back at the beginning
@@ -2403,7 +2413,7 @@ def map_domain(kernel, isl_map, within=None):
 
             # Now rename the proxy dims back to their original names
             for real_iname, proxy_iname in proxy_name_pairs:
-                new_dep_map = find_and_rename_dim(
+                new_dep_map = _find_and_rename_dim(
                     new_dep_map, [dt.in_], proxy_iname, real_iname)
 
             # Statement var may have moved, so put it back at the beginning
