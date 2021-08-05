@@ -383,18 +383,10 @@ class PyCUDATarget(CUDATarget):
     def get_dtype_registry(self):
         from pycuda.compyte.dtypes import TYPE_REGISTRY
         result = TYPE_REGISTRY
-# TODO: CUDA EQUIVALENTS FOR THIS STUFF ???vvv ================================================================================================================
-        from loopy.target.opencl import (
-                DTypeRegistryWrapperWithCL1Atomics,
-                DTypeRegistryWrapperWithInt8ForBool)
-
-        result = DTypeRegistryWrapperWithInt8ForBool(result)
-        if self.atomics_flavor == "cl1":
-            result = DTypeRegistryWrapperWithCL1Atomics(result)
-        else:
-            raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
 
         return result
+
+#TODO: rewrite following for cuda
 
     def is_vector_dtype(self, dtype):
         try:
@@ -418,7 +410,7 @@ class PyCUDATarget(CUDATarget):
         return NumpyType(
                 vec_types[base.numpy_dtype, count],
                 target=self)
-# ===============================================================================================================================================================
+
     def alignment_requirement(self, type_decl):
         import struct
 

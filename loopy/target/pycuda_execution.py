@@ -1,5 +1,3 @@
-# TODO: adapt for pycuda -> PyCUDAKernelExecutor.PyCUDAExecutionWrapperGenerator
-
 from pytools import memoize_method
 from pytools.py_codegen import Indentation
 from loopy.target.execution import (
@@ -17,27 +15,27 @@ logger = logging.getLogger(__name__)
 class PyCUDAExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     """
     Specialized form of the :class:`ExecutionWrapperGeneratorBase` for
-    pyCUDA execution
+    pycuda execution
     """
 
     def __init__(self):
         system_args = [
-            "_lpy_cl_kernels", "queue", "allocator=None", "wait_for=None",
+            "_lpy_cuda_kernels", "queue", "allocator=None", "wait_for=None",
             # ignored if options.no_numpy
             "out_host=None"
             ]
         super().__init__(system_args)
 
     def python_dtype_str_inner(self, dtype):
-        import pyopencl.tools as cl_tools
+        import pycuda.tools as cuda_tools
         if dtype.isbuiltin:
             name = dtype.name
             if dtype.name == "bool":
                 name = "bool8"
             return f"_lpy_np.dtype(_lpy_np.{name})"
         else:
-            return ('_lpy_cl_tools.get_or_register_dtype("%s")'
-                    % cl_tools.dtype_to_ctype(dtype))
+            return ('_lpy_cuda_tools.get_or_register_dtype("%s")'
+                    % cuda_tools.dtype_to_ctype(dtype))
 
     # {{{ handle non-numpy args
 
@@ -47,7 +45,7 @@ class PyCUDAExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             gen("# retain originally passed array")
             gen(f"_lpy_{arg.name}_np_input = {arg.name}")
             gen("# synchronous, nothing to worry about")
-            gen("%s = _lpy_cl_array.to_device("
+            gen("%s = _lpy_cuda_array.to_device("
                     "queue, %s, allocator=allocator)"
                     % (arg.name, arg.name))
             gen("_lpy_encountered_numpy = True")
@@ -67,7 +65,7 @@ class PyCUDAExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(self, gen, arg, kernel_arg, strify, skip_arg_checks):
         """
-        Handle allocation of non-specified arguments for pyopencl execution
+        Handle allocation of non-specified arguments for pycuda execution
         """
         from pymbolic import var
 
@@ -99,7 +97,7 @@ class PyCUDAExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         sym_strides = tuple(itemsize*s_i for s_i in sym_ustrides)
 
         dtype_name = self.python_dtype_str(gen, kernel_arg.dtype.numpy_dtype)
-        gen(f"{arg.name} = _lpy_cl_array.Array(None, {strify(sym_shape)}, "
+        gen(f"{arg.name} = _lpy_cuda_array.Array(None, {strify(sym_shape)}, "
                 f"{dtype_name}, strides={strify(sym_strides)}, "
                 f"data=allocator({strify(itemsize * var('_lpy_size'))}), "
                 "allocator=allocator, "
@@ -115,12 +113,12 @@ class PyCUDAExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def target_specific_preamble(self, gen):
         """
-        Add default pyopencl imports to preamble
+        Add default pycuda imports to preamble
         """
         gen.add_to_preamble("import numpy as _lpy_np")
-        gen.add_to_preamble("import pyopencl as _lpy_cl")
-        gen.add_to_preamble("import pyopencl.array as _lpy_cl_array")
-        gen.add_to_preamble("import pyopencl.tools as _lpy_cl_tools")
+        gen.add_to_preamble("import pycuda as _lpy_cuda")
+        gen.add_to_preamble("import pycuda.array as _lpy_cuda_array")
+        gen.add_to_preamble("import pycuda.tools as _lpy_cuda_tools")
         gen.add_to_preamble("from struct import pack as _lpy_pack")
 
     def initialize_system_args(self, gen):
@@ -129,14 +127,14 @@ class PyCUDAExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         """
         gen("if allocator is None:")
         with Indentation(gen):
-            gen("allocator = _lpy_cl_tools.DeferredAllocator(queue.context)")
+            gen("allocator = _lpy_cuda_tools.DeferredAllocator(queue.context)")
         gen("")
 
     # {{{ generate invocation
 
     def generate_invocation(self, gen, kernel_name, args,
             kernel, implemented_data_info):
-        if kernel.options.cl_exec_manage_array_events:
+        if kernel.options.cuda_exec_manage_array_events:
             gen("""
                 if wait_for is None:
                     wait_for = []
@@ -156,11 +154,11 @@ class PyCUDAExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         .format(
             kernel_name=kernel_name,
             args=", ".join(
-                ["_lpy_cl_kernels", "queue"]
+                ["_lpy_cuda_kernels", "queue"]
                 + args
                 + ["wait_for=wait_for", "allocator=allocator"])))
 
-        if kernel.options.cl_exec_manage_array_events:
+        if kernel.options.cuda_exec_manage_array_events:
             gen("")
             from loopy.kernel.data import ArrayArg
             for arg in implemented_data_info:
@@ -228,7 +226,7 @@ class PyCUDAExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 # {{{ kernel executor
 
 class PyCUDAKernelExecutor(KernelExecutorBase):
-    """An object connecting a kernel to a :class:`pyopencl.Context`
+    """An object connecting a kernel to a :class:`pycuda.Context`
     for execution.
 
     .. automethod:: __init__
@@ -237,7 +235,7 @@ class PyCUDAKernelExecutor(KernelExecutorBase):
 
     def __init__(self, context, program, entrypoint):
         """
-        :arg context: a :class:`pyopencl.Context`
+        :arg context: a :class:`pycuda.Context`
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
             kernel has not yet been loop-scheduled, that is done, too, with no
@@ -247,7 +245,7 @@ class PyCUDAKernelExecutor(KernelExecutorBase):
         super().__init__(program, entrypoint)
 
         self.context = context
-
+# TODO: rewrite for cuda ===================================================================
     def get_invoker_uncached(self, program, entrypoint, codegen_result):
         generator = PyCUDAExecutionWrapperGenerator()
         return generator(program, entrypoint, codegen_result)
@@ -264,41 +262,41 @@ class PyCUDAKernelExecutor(KernelExecutorBase):
         # FIXME: now just need to add the types to the arguments
         from loopy.codegen import generate_code_v2
         from loopy.target.execution import get_highlighted_code
-        codegen_result = generate_code_v2(program)
+        codegen_result = generate_code_v2(proxsgram)
 
         dev_code = codegen_result.device_code()
 
-        if program[entrypoint].options.write_cl:
+        if program[entrypoint].options.write_cuda:
             #FIXME: redirect to "translation unit" level option as well.
             output = dev_code
-            if self.program[entrypoint].options.highlight_cl:
+            if self.program[entrypoint].options.highlight_cuda:
                 output = get_highlighted_code(output)
 
-            if self.program[entrypoint].options.write_cl is True:
+            if self.program[entrypoint].options.write_cuda is True:
                 print(output)
             else:
-                with open(self.program[entrypoint].options.write_cl, "w") as outf:
+                with open(self.program[entrypoint].options.write_cuda, "w") as outf:
                     outf.write(output)
 
-        if program[entrypoint].options.edit_cl:
+        if program[entrypoint].options.edit_cuda:
             #FIXME: redirect to "translation unit" level option as well.
             from pytools import invoke_editor
-            dev_code = invoke_editor(dev_code, "code.cl")
+            dev_code = invoke_editor(dev_code, "code.cuda")
 
-        import pyopencl as cl
+        import pycuda as cuda
 
         #FIXME: redirect to "translation unit" level option as well.
-        cl_program = (
-                cl.Program(self.context, dev_code)
-                .build(options=program[entrypoint].options.cl_build_options))
+        cuda_program = (
+                cuda.Program(self.context, dev_code)
+                .build(options=program[entrypoint].options.cuda_build_options))
 
-        cl_kernels = _Kernels()
-        for dp in cl_program.kernel_names.split(";"):
-            setattr(cl_kernels, dp, getattr(cl_program, dp))
+        cuda_kernels = _Kernels()
+        for dp in cuda_program.kernel_names.split(";"):
+            setattr(cuda_kernels, dp, getattr(cuda_program, dp))
 
         return _KernelInfo(
                 program=program,
-                cl_kernels=cl_kernels,
+                cuda_kernels=cuda_kernels,
                 implemented_data_info=codegen_result.implemented_data_infos[
                     entrypoint],
                 invoker=self.get_invoker(program, entrypoint, codegen_result))
@@ -344,7 +342,7 @@ class PyCUDAKernelExecutor(KernelExecutorBase):
                 self.arg_to_dtype_set(kwargs))
 
         return translation_unit_info.invoker(
-                translation_unit_info.cl_kernels, queue, allocator, wait_for,
+                translation_unit_info.cuda_kernels, queue, allocator, wait_for,
                 out_host, **kwargs)
 
 # }}}
