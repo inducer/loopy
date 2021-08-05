@@ -2162,6 +2162,11 @@ def _find_and_rename_dim(old_map, dim_types, old_name, new_name, must_exist=Fals
     return new_map
 
 
+# FIXME to match convention elsewhere, swap 'dt' and 'dim_type' identifiers
+# (use dt to abbreviate islpy.dim_type, and use dim_type for variables
+# containing a specific dim_type)
+
+
 @for_each_kernel
 def map_domain(kernel, isl_map, within=None):
     # FIXME: Express _split_iname_backend in terms of this
