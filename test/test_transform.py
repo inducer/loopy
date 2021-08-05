@@ -574,7 +574,6 @@ def test_split_iname_only_if_in_within():
 
 def test_nested_substs_in_insns(ctx_factory):
     ctx = ctx_factory()
-    import loopy as lp
 
     ref_prg = lp.make_kernel(
         "{[i]: 0<=i<10}",
@@ -592,6 +591,232 @@ def test_nested_substs_in_insns(ctx_factory):
             for cknl in t_unit.callables_table.values())
 
     lp.auto_test_vs_ref(ref_prg, ctx, t_unit)
+
+
+# {{{ test_map_domain_vs_split_iname
+
+def test_map_domain_vs_split_iname():
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        [
+            "[nx,nt] -> {[x, t]: 0 <= x < nx and 0 <= t < nt}",
+            "[ni] -> {[i]: 0 <= i < ni}",
+        ],
+        """
+        a[x,t] = b[x,t]  {id=stmta}
+        c[x,t] = d[x,t]  {id=stmtc}
+        e[i] = f[i]
+        """,
+        lang_version=(2018, 2),
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b,d,f": np.float32})
+    ref_knl = knl
+
+    # }}}
+
+    # {{{ Apply domain change mapping
+
+    knl_map_dom = ref_knl  # loop priority goes away, deps stay
+
+    # Create map_domain mapping:
+    import islpy as isl
+    transform_map = isl.BasicMap(
+        "[nt] -> {[t] -> [t_outer, t_inner]: "
+        "0 <= t_inner < 32 and "
+        "32*t_outer + t_inner = t and "
+        "0 <= 32*t_outer + t_inner < nt}")
+
+    # Call map_domain to transform kernel
+    knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+
+    # Prioritize loops (prio should eventually be updated in map_domain?)
+    knl_map_dom = lp.prioritize_loops(knl_map_dom, "x, t_outer, t_inner")
+
+    # Get a linearization
+    proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
+    lin_knl_map_dom = lp.get_one_linearized_kernel(
+        proc_knl_map_dom["loopy_kernel"], proc_knl_map_dom.callables_table)
+
+    # }}}
+
+    # {{{ Split iname and see if we get the same result
+
+    knl_split_iname = ref_knl
+    knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
+    knl_split_iname = lp.prioritize_loops(knl_split_iname, "x, t_outer, t_inner")
+    proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
+    lin_knl_split_iname = lp.get_one_linearized_kernel(
+        proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
+
+    from loopy.schedule.checker.utils import (
+        ensure_dim_names_match_and_align,
+    )
+    for d_map_domain, d_split_iname in zip(
+            knl_map_dom["loopy_kernel"].domains,
+            knl_split_iname["loopy_kernel"].domains):
+        d_map_domain_aligned = ensure_dim_names_match_and_align(
+            d_map_domain, d_split_iname)
+        assert d_map_domain_aligned == d_split_iname
+
+    for litem_map_domain, litem_split_iname in zip(
+            lin_knl_map_dom.linearization, lin_knl_split_iname.linearization):
+        assert litem_map_domain == litem_split_iname
+
+    # Can't easily compare instructions because equivalent subscript
+    # expressions may have different orders
+
+    # }}}
+
+# }}}
+
+
+# {{{ test_map_domain_with_transform_map_missing_dims
+
+def test_map_domain_with_transform_map_missing_dims():
+    # Make sure map_domain works correctly when the mapping doesn't include
+    # all the dims in the domain.
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        [
+            "[nx,nt] -> {[x, y, z, t]: 0 <= x,y,z < nx and 0 <= t < nt}",
+        ],
+        """
+        a[y,x,t,z] = b[y,x,t,z]  {id=stmta}
+        """,
+        lang_version=(2018, 2),
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32})
+    ref_knl = knl
+
+    # }}}
+
+    # {{{ Apply domain change mapping
+
+    knl_map_dom = ref_knl  # loop priority goes away, deps stay
+
+    # Create map_domain mapping that only includes t and y
+    # (x and z should be unaffected)
+    import islpy as isl
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[t, y] -> [t_outer, t_inner, y_new]: "
+        "0 <= t_inner < 32 and "
+        "32*t_outer + t_inner = t and "
+        "0 <= 32*t_outer + t_inner < nt and "
+        "y = y_new"
+        "}")
+
+    # Call map_domain to transform kernel
+    knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+
+    # Prioritize loops (prio should eventually be updated in map_domain?)
+    try:
+        # Use constrain_loop_nesting if it's available
+        desired_prio = "x, t_outer, t_inner, z, y_new"
+        knl_map_dom = lp.constrain_loop_nesting(knl_map_dom, desired_prio)
+    except AttributeError:
+        # For some reason, prioritize_loops can't handle the ordering above
+        # when linearizing knl_split_iname below
+        desired_prio = "z, y_new, x, t_outer, t_inner"
+        knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
+
+    # Get a linearization
+    proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
+    lin_knl_map_dom = lp.get_one_linearized_kernel(
+        proc_knl_map_dom["loopy_kernel"], proc_knl_map_dom.callables_table)
+
+    # }}}
+
+    # {{{ Split iname and see if we get the same result
+
+    knl_split_iname = ref_knl
+    knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
+    knl_split_iname = lp.rename_iname(knl_split_iname, "y", "y_new")
+    try:
+        # Use constrain_loop_nesting if it's available
+        knl_split_iname = lp.constrain_loop_nesting(knl_split_iname, desired_prio)
+    except AttributeError:
+        knl_split_iname = lp.prioritize_loops(knl_split_iname, desired_prio)
+    proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
+    lin_knl_split_iname = lp.get_one_linearized_kernel(
+        proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
+
+    from loopy.schedule.checker.utils import (
+        ensure_dim_names_match_and_align,
+    )
+    for d_map_domain, d_split_iname in zip(
+            knl_map_dom["loopy_kernel"].domains,
+            knl_split_iname["loopy_kernel"].domains):
+        d_map_domain_aligned = ensure_dim_names_match_and_align(
+            d_map_domain, d_split_iname)
+        assert d_map_domain_aligned == d_split_iname
+
+    for litem_map_domain, litem_split_iname in zip(
+            lin_knl_map_dom.linearization, lin_knl_split_iname.linearization):
+        assert litem_map_domain == litem_split_iname
+
+    # Can't easily compare instructions because equivalent subscript
+    # expressions may have different orders
+
+    # }}}
+
+# }}}
+
+
+def test_diamond_tiling(ctx_factory, interactive=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    ref_knl = lp.make_kernel(
+        "[nx,nt] -> {[ix, it]: 1<=ix<nx-1 and 0<=it<nt}",
+        """
+        u[ix, it+2] = (
+            2*u[ix, it+1]
+            + dt**2/dx**2 * (u[ix+1, it+1] - 2*u[ix, it+1] + u[ix-1, it+1])
+            - u[ix, it])
+        """)
+
+    # FIXME: Handle priorities in map_domain
+    knl_for_transform = ref_knl
+
+    ref_knl = lp.prioritize_loops(ref_knl, "it, ix")
+
+    import islpy as isl
+    m = isl.BasicMap(
+        "[nx,nt] -> {[ix, it] -> [tx, tt, tparity, itt, itx]: "
+        "16*(tx - tt) + itx - itt = ix - it and "
+        "16*(tx + tt + tparity) + itt + itx = ix + it and "
+        "0<=tparity<2 and 0 <= itx - itt < 16 and 0 <= itt+itx < 16}")
+    knl = lp.map_domain(knl_for_transform, m)
+    knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
+
+    if interactive:
+        nx = 43
+        u = np.zeros((nx, 200))
+        x = np.linspace(-1, 1, nx)
+        dx = x[1] - x[0]
+        u[:, 0] = u[:, 1] = np.exp(-100*x**2)
+
+        u_dev = cl.array.to_device(queue, u)
+        knl(queue, u=u_dev, dx=dx, dt=dx)
+
+        u = u_dev.get()
+        import matplotlib.pyplot as plt
+        plt.imshow(u.T)
+        plt.show()
+    else:
+        types = {"dt,dx,u": np.float64}
+        knl = lp.add_and_infer_dtypes(knl, types)
+        ref_knl = lp.add_and_infer_dtypes(ref_knl, types)
+
+        lp.auto_test_vs_ref(ref_knl, ctx, knl,
+                parameters={
+                    "nx": 200, "nt": 300,
+                    "dx": 1, "dt": 1
+                    })
 
 
 def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
