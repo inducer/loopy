@@ -1939,9 +1939,37 @@ def _find_aff_subst_from_map(iname, isl_map):
     raise LoopyError("no suitable equation for '%s' found" % iname)
 
 
-# TODO to match convention elsewhere, swap 'dt' and 'dim_type' identifiers
+# FIXME to match convention elsewhere, swap 'dt' and 'dim_type' identifiers
 # (use dt to abbreviate islpy.dim_type, and use dim_type for variables
 # containing a specific dim_type)
+
+def _add_and_name_isl_dims(isl_map, dt, names):
+    # (This function is also defined in independent, unmerged branch
+    # statement-instance-order-and-lex-order-map, and used in child branches
+    # thereof. Once these branches are all merged, it may make sense to move
+    # this function to a location for more general-purpose machinery. In the
+    # other branches, this function's name excludes the leading underscore.)
+    new_idx_start = isl_map.dim(dt)
+    new_map = isl_map.add_dims(dt, len(names))
+    for i, name in enumerate(names):
+        new_map = new_map.set_dim_name(dt, new_idx_start+i, name)
+    return new_map
+
+
+def _add_eq_isl_constraint_from_names(isl_map, var1, var2):
+    # (This function is also defined in independent, unmerged branch
+    # statement-instance-order-and-lex-order-map, and used in child branches
+    # thereof. Once these branches are all merged, it may make sense to move
+    # this function to a location for more general-purpose machinery. In the
+    # other branches, this function's name excludes the leading underscore.)
+
+    # add constraint var1 = var2
+
+    return isl_map.add_constraint(
+               isl.Constraint.eq_from_names(
+                   isl_map.space,
+                   {1: 0, var1: 1, var2: -1}))
+
 
 def _find_and_rename_dim(old_map, dim_types, old_name, new_name):
     # (This function is only used once here, but do not inline it; it is used many
@@ -2008,10 +2036,6 @@ def map_domain(kernel, isl_map, within=None):
 
     # }}}
 
-    from loopy.schedule.checker.utils import (
-        add_and_name_isl_dims,
-    )
-
     def process_set(s):
         var_dict = s.get_var_dict()
 
@@ -2026,10 +2050,6 @@ def map_domain(kernel, isl_map, within=None):
                     "of the map domain inames. Domains must "
                     "either involve all or none of the map domain "
                     "inames." % s)
-
-        from loopy.schedule.checker.utils import (
-            add_eq_isl_constraint_from_names,
-        )
 
         # {{{ align dims of isl_map and s
 
@@ -2047,7 +2067,7 @@ def map_domain(kernel, isl_map, within=None):
         dims_missing_from_transform_map = list(
             set(s.get_var_names(dim_type.set)) -
             set(isl_map.get_var_names(dim_type.in_)))
-        augmented_isl_map = add_and_name_isl_dims(
+        augmented_isl_map = _add_and_name_isl_dims(
             isl_map, dim_type.in_, dims_missing_from_transform_map)
 
         # We want these missing inames to map to themselves so that the transform
@@ -2061,14 +2081,14 @@ def map_domain(kernel, isl_map, within=None):
         assert not set(dims_missing_from_transform_map_proxies) & set(
             augmented_isl_map.get_var_dict().keys())
 
-        augmented_isl_map = add_and_name_isl_dims(
+        augmented_isl_map = _add_and_name_isl_dims(
             augmented_isl_map, dim_type.out, dims_missing_from_transform_map_proxies)
 
         # Set proxy iname equal to real iname
         for proxy_iname, real_iname in zip(
                 dims_missing_from_transform_map_proxies,
                 dims_missing_from_transform_map):
-            augmented_isl_map = add_eq_isl_constraint_from_names(
+            augmented_isl_map = _add_eq_isl_constraint_from_names(
                 augmented_isl_map, proxy_iname, real_iname)
 
         # }}}
