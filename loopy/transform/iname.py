@@ -1939,7 +1939,19 @@ def _find_aff_subst_from_map(iname, isl_map):
     raise LoopyError("no suitable equation for '%s' found" % iname)
 
 
-# TODO swap dt and dim_type
+# TODO to match convention elsewhere, swap 'dt' and 'dim_type' identifiers
+# (use dt to abbreviate islpy.dim_type, and use dim_type for variables
+# containing a specific dim_type)
+
+def _find_and_rename_dim(old_map, dim_types, old_name, new_name):
+    # (This function is only used once here, but do not inline it; it is used many
+    # times in child branch update-dependencies-during-transformations.)
+    new_map = old_map.copy()
+    for dt in dim_types:
+        new_map = new_map.set_dim_name(
+            dt, new_map.find_dim_by_name(dt, old_name), new_name)
+    return new_map
+
 
 @for_each_kernel
 def map_domain(kernel, isl_map, within=None):
@@ -2016,7 +2028,6 @@ def map_domain(kernel, isl_map, within=None):
                     "inames." % s)
 
         from loopy.schedule.checker.utils import (
-            find_and_rename_dim,
             add_eq_isl_constraint_from_names,
         )
 
@@ -2095,7 +2106,7 @@ def map_domain(kernel, isl_map, within=None):
         for proxy_iname, real_iname in zip(
                 dims_missing_from_transform_map_proxies,
                 dims_missing_from_transform_map):
-            new_s = find_and_rename_dim(
+            new_s = _find_and_rename_dim(
                 new_s, [dim_type.set], proxy_iname, real_iname)
 
         return new_s
