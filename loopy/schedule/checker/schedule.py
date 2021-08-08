@@ -650,12 +650,18 @@ def get_pairwise_statement_orderings_inner(
     # this information will be used later when creating *intra-group* and
     # *global* lexicographic orderings
     loops_with_barriers = {"local": set(), "global": set()}
-    current_inames = set()
+    current_inames = []
+
+    # While we're passing through, also determine the values of the active
+    # inames on the first and last iteration of each loop that contains
+    # barriers. We will need these later on when creating the FIRST and LAST
+    # blex points.
+    loop_bounds = {}
 
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
             iname = lin_item.iname
-            current_inames.add(iname)
+            current_inames.append(iname)
 
             if iname in loops_to_ignore:
                 continue
@@ -674,7 +680,7 @@ def get_pairwise_statement_orderings_inner(
 
         elif isinstance(lin_item, LeaveLoop):
             iname = lin_item.iname
-            current_inames.remove(iname)
+            current_inames.pop()
 
             if iname in loops_to_ignore:
                 continue
@@ -704,7 +710,39 @@ def get_pairwise_statement_orderings_inner(
 
         elif isinstance(lin_item, Barrier):
             lp_stmt_id = lin_item.originating_insn_id
-            loops_with_barriers[lin_item.synchronization_kind] |= current_inames
+            loops_with_barriers[lin_item.synchronization_kind] |= set(current_inames)
+
+            # {{{ Store bounds for inames containing barriers
+
+            # (only compute the ones we haven't already stored; bounds finding
+            # will only happen once for each barrier-containing loop)
+            for depth, iname in enumerate(current_inames):
+
+                # If we haven't already stored bounds for this iname, do so
+                if iname not in loop_bounds:
+
+                    # Get set of inames nested outside this one (including this iname)
+                    inames_involved_in_bound = set(current_inames[:depth+1])
+
+                    # Get inames domain
+                    dom = knl.get_inames_domain(
+                        inames_involved_in_bound).project_out_except(
+                            inames_involved_in_bound, [dt.set])
+
+                    # {{{ Move domain dims for surrounding inames to parameters
+                    # (keeping them in order, which might come in handy later...)
+
+                    # Move those inames to params
+                    for outer_iname in current_inames[:depth]:
+                        outer_iname_idx = dom.find_dim_by_name(dt.set, outer_iname)
+                        dom = dom.move_dims(
+                            dt.param, dom.n_param(), dt.set, outer_iname_idx, 1)
+
+                    # }}}
+
+                    loop_bounds[iname] = (dom.lexmin(), dom.lexmax())
+
+            # }}}
 
             if lp_stmt_id is None:
                 # Barriers without stmt ids were inserted as a result of a
@@ -730,6 +768,16 @@ def get_pairwise_statement_orderings_inner(
             assert isinstance(
                 lin_item, (CallKernel, ReturnFromKernel))
             pass
+
+    # Debugging.... (TODO remove)
+    from loopy.schedule.checker.utils import prettier_map_string
+    for iname, (lbound, ubound) in loop_bounds.items():
+        print(iname)
+        print(prettier_map_string(lbound))
+        print(prettier_map_string(ubound))
+
+    1/0
+    # TODO left off here
 
     # }}}
 
