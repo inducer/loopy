@@ -560,7 +560,6 @@ class TemporarySaver:
             within_inames=(
                 self.subkernel_to_surrounding_inames[subkernel]
                 | frozenset(hw_inames + dim_inames)),
-            within_inames_is_final=True,
             depends_on=depends_on)
 
         if mode == "save":

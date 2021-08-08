@@ -946,13 +946,11 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
     # {{{ determine inames for compute insn
 
     if precompute_outer_inames is None:
-        from loopy.kernel.tools import guess_iname_deps_based_on_var_use
         precompute_outer_inames = (
                     frozenset(non1_storage_axis_names)
                     | frozenset(
                         (expanding_usage_arg_deps | value_inames)
-                        - sweep_inames_set)
-                    | guess_iname_deps_based_on_var_use(kernel, compute_insn))
+                        - sweep_inames_set))
     else:
         if not isinstance(precompute_outer_inames, frozenset):
             raise TypeError("precompute_outer_inames must be a frozenset")
