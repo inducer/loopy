@@ -1977,6 +1977,40 @@ def _find_and_rename_dim(old_map, dim_types, old_name, new_name):
     return new_map
 
 
+def _apply_identity_for_missing_map_dims(mapping, desired_dims):
+
+    # If dims in s are missing from transform map, they need to be added
+    # so that, e.g, intersect_domain doesn't remove them.
+    # (assume ordering will be handled afterward)
+
+    missing_dims = list(
+        set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
+    augmented_mapping = _add_and_name_isl_dims(
+        mapping, dim_type.in_, missing_dims)
+
+    # We want these missing inames to map to themselves so that the map
+    # has no effect on them. Unfortunatley isl will break if the
+    # names of the out dims aren't unique, so we will temporariliy rename them
+    # (and then plan to change the names back afterward).
+
+    # FIXME: need better way to make sure proxy dim names are unique within map
+    missing_dims_proxies = [d+"__prox" for d in missing_dims]
+    assert not set(missing_dims_proxies) & set(
+        augmented_mapping.get_var_dict().keys())
+
+    augmented_mapping = _add_and_name_isl_dims(
+        augmented_mapping, dim_type.out, missing_dims_proxies)
+
+    proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies))
+
+    # Set proxy iname equal to real iname with equality constraint
+    for real_iname, proxy_iname in proxy_name_pairs:
+        augmented_mapping = _add_eq_isl_constraint_from_names(
+            augmented_mapping, proxy_iname, real_iname)
+
+    return augmented_mapping, proxy_name_pairs
+
+
 @for_each_kernel
 def map_domain(kernel, isl_map, within=None):
     # FIXME: Express _split_iname_backend in terms of this
@@ -2049,46 +2083,22 @@ def map_domain(kernel, isl_map, within=None):
 
         # {{{ align dims of isl_map and s
 
-        # FIXME: Make this less gross
-        # FIXME: Make an exported/documented interface of this in islpy
         from islpy import _align_dim_type
 
         map_with_s_domain = isl.Map.from_domain(s)
 
-        # {{{ deal with dims missing from transform map (isl_map)
+        # If there are dims in s that are not mapped by isl_map, add them
+        # to the in/out space of isl_map so that they remain unchanged.
+        # (temporary proxy dim names are needed in out space of transform
+        # map because isl won't allow any dim names to match, i.e., instead
+        # of just mapping {[unused_iname]->[unused_iname]}, we have to map
+        # {[unused_name]->[unused_name__prox] : unused_name__prox = unused_name},
+        # and then rename unused_name__prox afterward.)
+        augmented_isl_map, proxy_name_pairs = _apply_identity_for_missing_map_dims(
+            isl_map, s.get_var_names(dim_type.set))
 
-        # If dims in s are missing from transform map, they need to be added
-        # so that intersect_domain doesn't remove them.
-        # Order doesn't matter here because dims will be aligned in the next step.
-        dims_missing_from_transform_map = list(
-            set(s.get_var_names(dim_type.set)) -
-            set(isl_map.get_var_names(dim_type.in_)))
-        augmented_isl_map = _add_and_name_isl_dims(
-            isl_map, dim_type.in_, dims_missing_from_transform_map)
-
-        # We want these missing inames to map to themselves so that the transform
-        # has no effect on them. Unfortunatley isl will break if the
-        # names of the out dims aren't unique, so we will temporariliy rename them
-        # and then change the names back afterward.
-
-        # FIXME: need better way to make sure proxy dim names are unique
-        dims_missing_from_transform_map_proxies = [
-            d+"__prox" for d in dims_missing_from_transform_map]
-        assert not set(dims_missing_from_transform_map_proxies) & set(
-            augmented_isl_map.get_var_dict().keys())
-
-        augmented_isl_map = _add_and_name_isl_dims(
-            augmented_isl_map, dim_type.out, dims_missing_from_transform_map_proxies)
-
-        # Set proxy iname equal to real iname
-        for proxy_iname, real_iname in zip(
-                dims_missing_from_transform_map_proxies,
-                dims_missing_from_transform_map):
-            augmented_isl_map = _add_eq_isl_constraint_from_names(
-                augmented_isl_map, proxy_iname, real_iname)
-
-        # }}}
-
+        # FIXME: Make this less gross
+        # FIXME: Make an exported/documented interface of this in islpy
         dim_types = [dim_type.param, dim_type.in_, dim_type.out]
         s_names = [
                 map_with_s_domain.get_dim_name(dt, i)
@@ -2119,9 +2129,7 @@ def map_domain(kernel, isl_map, within=None):
         new_s = aligned_map.intersect_domain(s).range()
 
         # Now rename the proxy dims back to their original names
-        for proxy_iname, real_iname in zip(
-                dims_missing_from_transform_map_proxies,
-                dims_missing_from_transform_map):
+        for real_iname, proxy_iname in proxy_name_pairs:
             new_s = _find_and_rename_dim(
                 new_s, [dim_type.set], proxy_iname, real_iname)
 
