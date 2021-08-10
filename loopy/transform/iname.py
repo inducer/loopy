@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 
 import islpy as isl
-from islpy import dim_type as dt
+from islpy import dim_type
 
 from loopy.symbolic import (
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
@@ -284,7 +284,7 @@ def _split_iname_backend(kernel, iname_to_split,
     def _split_iname_in_depender(dep):
 
         # If iname is not present in dep, return unmodified dep
-        if iname_to_split not in dep.get_var_names(dt.out):
+        if iname_to_split not in dep.get_var_names(dim_type.out):
             return dep
 
         # Temporarily convert map to set for processing
@@ -301,11 +301,11 @@ def _split_iname_backend(kernel, iname_to_split,
         map_from_set = isl.Map.from_domain(set_from_map)
         # Move original out dims + 2 new dims:
         map_from_set = map_from_set.move_dims(
-            dt.out, 0, dt.in_, n_in_dims, n_out_dims+2)
+            dim_type.out, 0, dim_type.in_, n_in_dims, n_out_dims+2)
 
         # Remove iname that was split:
         map_from_set = remove_dim_by_name(
-            map_from_set, dt.out, iname_to_split)
+            map_from_set, dim_type.out, iname_to_split)
 
         return map_from_set
 
@@ -314,7 +314,7 @@ def _split_iname_backend(kernel, iname_to_split,
         iname_to_split_marked = iname_to_split+BEFORE_MARK
 
         # If iname is not present in dep, return unmodified dep
-        if iname_to_split_marked not in dep.get_var_names(dt.in_):
+        if iname_to_split_marked not in dep.get_var_names(dim_type.in_):
             return dep
 
         # Temporarily convert map to set for processing
@@ -332,11 +332,11 @@ def _split_iname_backend(kernel, iname_to_split,
         map_from_set = isl.Map.from_domain(set_from_map)
         # Move original out dims new dims:
         map_from_set = map_from_set.move_dims(
-            dt.out, 0, dt.in_, n_in_dims, n_out_dims)
+            dim_type.out, 0, dim_type.in_, n_in_dims, n_out_dims)
 
         # Remove iname that was split:
         map_from_set = remove_dim_by_name(
-            map_from_set, dt.in_, iname_to_split_marked)
+            map_from_set, dim_type.in_, iname_to_split_marked)
 
         return map_from_set
 
@@ -535,15 +535,15 @@ def chunk_iname(kernel, split_iname, num_chunks,
         if split_iname not in var_dict:
             continue
 
-        dim_type, idx = var_dict[split_iname]
-        assert dim_type == dt.set
+        dt, idx = var_dict[split_iname]
+        assert dt == dim_type.set
 
         aff_zero = isl.Aff.zero_on_domain(dom.space)
-        aff_split_iname = aff_zero.set_coefficient_val(dt.in_, idx, 1)
+        aff_split_iname = aff_zero.set_coefficient_val(dim_type.in_, idx, 1)
         aligned_size = isl.align_spaces(size, aff_zero)
         box_dom = (
                 dom
-                .eliminate(dim_type, idx, 1)
+                .eliminate(dt, idx, 1)
                 & aff_zero.le_set(aff_split_iname)
                 & aff_split_iname.lt_set(aligned_size)
                 )
@@ -647,9 +647,9 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
                     "join's leaf domain" % iname)
 
     new_domain = domch.domain
-    new_dim_idx = new_domain.dim(dt.set)
-    new_domain = new_domain.add_dims(dt.set, 1)
-    new_domain = new_domain.set_dim_name(dt.set, new_dim_idx, new_iname)
+    new_dim_idx = new_domain.dim(dim_type.set)
+    new_domain = new_domain.add_dims(dim_type.set, 1)
+    new_domain = new_domain.set_dim_name(dim_type.set, new_dim_idx, new_iname)
 
     joint_aff = zero = isl.Aff.zero_on_domain(new_domain.space)
     subst_dict = {}
@@ -1015,16 +1015,16 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
         def _rename_iname_in_dim_out(dep):
             # update iname in out-dim
-            out_idx = dep.find_dim_by_name(dt.out, old_iname)
+            out_idx = dep.find_dim_by_name(dim_type.out, old_iname)
             if out_idx != -1:
-                dep = dep.set_dim_name(dt.out, out_idx, new_iname)
+                dep = dep.set_dim_name(dim_type.out, out_idx, new_iname)
             return dep
 
         def _rename_iname_in_dim_in(dep):
             # update iname in in-dim
-            in_idx = dep.find_dim_by_name(dt.in_, old_iname_p)
+            in_idx = dep.find_dim_by_name(dim_type.in_, old_iname_p)
             if in_idx != -1:
-                dep = dep.set_dim_name(dt.in_, in_idx, new_iname_p)
+                dep = dep.set_dim_name(dim_type.in_, in_idx, new_iname_p)
             return dep
 
         # TODO figure out proper way to match none
@@ -1264,21 +1264,21 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
         _, old_idx = var_dict[old_iname]
         _, new_idx = var_dict[new_iname]
 
-        par_idx = dom.dim(dt.param)
+        par_idx = dom.dim(dim_type.param)
         dom_old = dom.move_dims(
-                dt.param, par_idx, dt.set, old_idx, 1)
+                dim_type.param, par_idx, dim_type.set, old_idx, 1)
         dom_old = dom_old.move_dims(
-                dt.set, dom_old.dim(dt.set), dt.param, par_idx, 1)
+                dim_type.set, dom_old.dim(dim_type.set), dim_type.param, par_idx, 1)
         dom_old = dom_old.project_out(
-                dt.set, new_idx if new_idx < old_idx else new_idx - 1, 1)
+                dim_type.set, new_idx if new_idx < old_idx else new_idx - 1, 1)
 
-        par_idx = dom.dim(dt.param)
+        par_idx = dom.dim(dim_type.param)
         dom_new = dom.move_dims(
-                dt.param, par_idx, dt.set, new_idx, 1)
+                dim_type.param, par_idx, dim_type.set, new_idx, 1)
         dom_new = dom_new.move_dims(
-                dt.set, dom_new.dim(dt.set), dt.param, par_idx, 1)
+                dim_type.set, dom_new.dim(dim_type.set), dim_type.param, par_idx, 1)
         dom_new = dom_new.project_out(
-                dt.set, old_idx if old_idx < new_idx else old_idx - 1, 1)
+                dim_type.set, old_idx if old_idx < new_idx else old_idx - 1, 1)
 
         if not (dom_old <= dom_new and dom_new <= dom_old):
             raise LoopyError(
@@ -1328,7 +1328,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
             # For now, out_idx should not be -1 because this will only
             # be called on dependers
             return _find_and_rename_dim(
-                dep, [dt.out], old_iname, new_iname, must_exist=True)
+                dep, [dim_type.out], old_iname, new_iname, must_exist=True)
 
         def _rename_iname_in_dim_in(dep):
             # Update iname in in-dim (dependee dim).
@@ -1336,7 +1336,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
             # For now, out_idx should not be -1 because this will only
             # be called on dependees
             return _find_and_rename_dim(
-                dep, [dt.in_], old_iname_p, new_iname_p, must_exist=True)
+                dep, [dim_type.in_], old_iname_p, new_iname_p, must_exist=True)
 
         # TODO figure out proper way to match none
         # TODO figure out match vs stack_match
@@ -1382,11 +1382,11 @@ def remove_vars_from_set(s, remove_vars):
     new_s = deepcopy(s)
     for var in remove_vars:
         try:
-            dim_type, idx = s.get_var_dict()[var]
+            dt, idx = s.get_var_dict()[var]
         except KeyError:
             continue
         else:
-            new_s = new_s.project_out(dim_type, idx, 1)
+            new_s = new_s.project_out(dt, idx, 1)
     return new_s
 
 
@@ -1746,10 +1746,10 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
         # add inames to domain with correct dim_types
         dom_new_inames = list(dom_new_inames)
         for iname in dom_new_inames:
-            dim_type = new_iname_dim_types[iname]
-            iname_idx = dom.dim(dim_type)
-            dom = dom.add_dims(dim_type, 1)
-            dom = dom.set_dim_name(dim_type, iname_idx, iname)
+            dt = new_iname_dim_types[iname]
+            iname_idx = dom.dim(dt)
+            dom = dom.add_dims(dt, 1)
+            dom = dom.set_dim_name(dt, iname_idx, iname)
 
         # add equations
         from loopy.symbolic import aff_from_expr
@@ -1760,8 +1760,8 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 
         # project out old inames
         for iname in dom_old_inames:
-            dim_type, idx = dom.get_var_dict()[iname]
-            dom = dom.project_out(dim_type, idx, 1)
+            dt, idx = dom.get_var_dict()[iname]
+            dom = dom.project_out(dt, idx, 1)
 
         new_domains.append(dom)
 
@@ -2066,33 +2066,33 @@ def _find_aff_subst_from_map(iname, isl_map):
     if not isinstance(isl_map, isl.BasicMap):
         raise RuntimeError("isl_map must be a BasicMap")
 
-    dim_type, dim_idx = isl_map.get_var_dict()[iname]
+    dt, dim_idx = isl_map.get_var_dict()[iname]
 
-    assert dim_type == dt.in_
+    assert dt == dim_type.in_
 
     # Force isl to solve for only this iname on its side of the map, by
     # projecting out all other "in" variables.
     isl_map = isl_map.project_out(
-        dim_type, dim_idx+1, isl_map.dim(dim_type)-(dim_idx+1))
-    isl_map = isl_map.project_out(dim_type, 0, dim_idx)
+        dt, dim_idx+1, isl_map.dim(dt)-(dim_idx+1))
+    isl_map = isl_map.project_out(dt, 0, dim_idx)
     dim_idx = 0
 
     # Convert map to set to avoid "domain of affine expression should be a set".
     # The old "in" variable will be the last of the out_dims.
-    new_dim_idx = isl_map.dim(dt.out)
+    new_dim_idx = isl_map.dim(dim_type.out)
     isl_map = isl_map.move_dims(
-            dt.out, isl_map.dim(dt.out),
-            dim_type, dim_idx, 1)
+            dim_type.out, isl_map.dim(dim_type.out),
+            dt, dim_idx, 1)
     isl_map = isl_map.range()  # now a set
-    dim_type = dt.set
+    dt = dim_type.set
     dim_idx = new_dim_idx
     del new_dim_idx
 
     for cns in isl_map.get_constraints():
-        if cns.is_equality() and cns.involves_dims(dim_type, dim_idx, 1):
-            coeff = cns.get_coefficient_val(dim_type, dim_idx)
-            cns_zeroed = cns.set_coefficient_val(dim_type, dim_idx, 0)
-            if cns_zeroed.involves_dims(dim_type, dim_idx, 1):
+        if cns.is_equality() and cns.involves_dims(dt, dim_idx, 1):
+            coeff = cns.get_coefficient_val(dt, dim_idx)
+            cns_zeroed = cns.set_coefficient_val(dt, dim_idx, 0)
+            if cns_zeroed.involves_dims(dt, dim_idx, 1):
                 # not suitable, constraint still involves dim, perhaps in a div
                 continue
 
@@ -2118,9 +2118,9 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # (assume ordering will be handled afterward)
 
     missing_dims = list(
-        set(desired_dims) - set(mapping.get_var_names(dt.in_)))
+        set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
     augmented_mapping = add_and_name_isl_dims(
-        mapping, dt.in_, missing_dims)
+        mapping, dim_type.in_, missing_dims)
 
     # We want these missing inames to map to themselves so that the map
     # has no effect on them. Unfortunatley isl will break if the
@@ -2133,7 +2133,7 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
         augmented_mapping.get_var_dict().keys())
 
     augmented_mapping = add_and_name_isl_dims(
-        augmented_mapping, dt.out, missing_dims_proxies)
+        augmented_mapping, dim_type.out, missing_dims_proxies)
 
     proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies))
 
@@ -2145,12 +2145,12 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     return augmented_mapping, proxy_name_pairs
 
 
-def _find_and_rename_dim(old_map, dim_types, old_name, new_name, must_exist=False):
+def _find_and_rename_dim(old_map, dts, old_name, new_name, must_exist=False):
     # (This function is only used once here, but do not inline it; it is used many
     # times in child branch update-dependencies-during-transformations.)
     new_map = old_map.copy()
-    for dim_type in dim_types:
-        idx = new_map.find_dim_by_name(dim_type, old_name)
+    for dt in dts:
+        idx = new_map.find_dim_by_name(dt, old_name)
         if idx == -1:
             if must_exist:
                 raise ValueError(
@@ -2158,13 +2158,8 @@ def _find_and_rename_dim(old_map, dim_types, old_name, new_name, must_exist=Fals
                     % (old_name, old_map))
             else:
                 continue
-        new_map = new_map.set_dim_name(dim_type, idx, new_name)
+        new_map = new_map.set_dim_name(dt, idx, new_name)
     return new_map
-
-
-# FIXME to match convention elsewhere, swap 'dt' and 'dim_type' identifiers
-# (use dt to abbreviate islpy.dim_type, and use dim_type for variables
-# containing a specific dim_type)
 
 
 @for_each_kernel
@@ -2200,8 +2195,8 @@ def map_domain(kernel, isl_map, within=None):
     if not isl_map.is_bijective():
         raise LoopyError("isl_map must be bijective")
 
-    new_inames = frozenset(isl_map.get_var_dict(dt.out))
-    old_inames = frozenset(isl_map.get_var_dict(dt.in_))
+    new_inames = frozenset(isl_map.get_var_dict(dim_type.out))
+    old_inames = frozenset(isl_map.get_var_dict(dim_type.in_))
 
     # {{{ solve for representation of old inames in terms of new
 
@@ -2273,20 +2268,20 @@ def map_domain(kernel, isl_map, within=None):
         # {[unused_name]->[unused_name__prox] : unused_name__prox = unused_name},
         # and then rename unused_name__prox afterward.)
         augmented_isl_map, proxy_name_pairs = _apply_identity_for_missing_map_dims(
-            isl_map, s.get_var_names(dt.set))
+            isl_map, s.get_var_names(dim_type.set))
 
         # FIXME: Make this less gross
         # FIXME: Make an exported/documented interface of this in islpy
-        dim_types = [dt.param, dt.in_, dt.out]
+        dts = [dim_type.param, dim_type.in_, dim_type.out]
         s_names = [
-                map_with_s_domain.get_dim_name(dim_type, i)
-                for dim_type in dim_types
-                for i in range(map_with_s_domain.dim(dim_type))
+                map_with_s_domain.get_dim_name(dt, i)
+                for dt in dts
+                for i in range(map_with_s_domain.dim(dt))
                 ]
         map_names = [
-                augmented_isl_map.get_dim_name(dim_type, i)
-                for dim_type in dim_types
-                for i in range(augmented_isl_map.dim(dim_type))
+                augmented_isl_map.get_dim_name(dt, i)
+                for dt in dts
+                for i in range(augmented_isl_map.dim(dt))
                 ]
 
         # (order doesn't matter in s_names/map_names,
@@ -2294,11 +2289,11 @@ def map_domain(kernel, isl_map, within=None):
         # to determine which names are in both the obj and template,
         # not sure why this isn't just handled inside _align_dim_type)
         aligned_map = _align_dim_type(
-                dt.param,
+                dim_type.param,
                 augmented_isl_map, map_with_s_domain, False,
                 map_names, s_names)
         aligned_map = _align_dim_type(
-                dt.in_,
+                dim_type.in_,
                 aligned_map, map_with_s_domain, False,
                 map_names, s_names)
 
@@ -2309,7 +2304,7 @@ def map_domain(kernel, isl_map, within=None):
         # Now rename the proxy dims back to their original names
         for real_iname, proxy_iname in proxy_name_pairs:
             new_s = _find_and_rename_dim(
-                new_s, [dt.set], proxy_iname, real_iname)
+                new_s, [dim_type.set], proxy_iname, real_iname)
 
         return new_s
 
@@ -2329,15 +2324,15 @@ def map_domain(kernel, isl_map, within=None):
     # Create version of transform map with before marks
     # (for aligning when applying map to dependee portion of deps)
     isl_map_marked = append_mark_to_isl_map_var_names(
-        append_mark_to_isl_map_var_names(isl_map, dt.in_, BEFORE_MARK),
-        dt.out, BEFORE_MARK)
+        append_mark_to_isl_map_var_names(isl_map, dim_type.in_, BEFORE_MARK),
+        dim_type.out, BEFORE_MARK)
 
     def _apply_transform_map_to_depender(dep_map):
         # (since 'out' dim of dep is unmarked, use unmarked transform map)
 
         # Check overlap condition
         overlap = _check_overlap_condition_for_domain(
-            dep_map.range(), set(isl_map.get_var_names(dt.in_)))
+            dep_map.range(), set(isl_map.get_var_names(dim_type.in_)))
 
         if not overlap:
             # Inames in s are not present in depender, don't change dep_map
@@ -2358,12 +2353,13 @@ def map_domain(kernel, isl_map, within=None):
             (
                 augmented_trans_map, proxy_name_pairs
             ) = _apply_identity_for_missing_map_dims(
-                isl_map, dep_map.get_var_names(dt.out))
+                isl_map, dep_map.get_var_names(dim_type.out))
 
             # Align 'in_' dim of transform map with 'out' dim of dep
             from loopy.schedule.checker.utils import reorder_dims_by_name
             augmented_trans_map_aligned = reorder_dims_by_name(
-                augmented_trans_map, dt.in_, dep_map.get_var_names(dt.out))
+                augmented_trans_map, dim_type.in_,
+                dep_map.get_var_names(dim_type.out))
 
             # Apply transform map to dep output dims
             new_dep_map = dep_map.apply_range(augmented_trans_map_aligned)
@@ -2371,11 +2367,11 @@ def map_domain(kernel, isl_map, within=None):
             # Now rename the proxy dims back to their original names
             for real_iname, proxy_iname in proxy_name_pairs:
                 new_dep_map = _find_and_rename_dim(
-                    new_dep_map, [dt.out], proxy_iname, real_iname)
+                    new_dep_map, [dim_type.out], proxy_iname, real_iname)
 
             # Statement var may have moved, so put it back at the beginning
             new_dep_map = move_dim_to_index(
-                new_dep_map, STATEMENT_VAR_NAME, dt.out, 0)
+                new_dep_map, STATEMENT_VAR_NAME, dim_type.out, 0)
 
             return new_dep_map
 
@@ -2384,7 +2380,7 @@ def map_domain(kernel, isl_map, within=None):
 
         # Check overlap condition
         overlap = _check_overlap_condition_for_domain(
-            dep_map.domain(), set(isl_map_marked.get_var_names(dt.in_)))
+            dep_map.domain(), set(isl_map_marked.get_var_names(dim_type.in_)))
 
         if not overlap:
             # Inames in s are not present in dependee, don't change dep_map
@@ -2405,13 +2401,13 @@ def map_domain(kernel, isl_map, within=None):
             (
                 augmented_trans_map_marked, proxy_name_pairs
             ) = _apply_identity_for_missing_map_dims(
-                isl_map_marked, dep_map.get_var_names(dt.in_))
+                isl_map_marked, dep_map.get_var_names(dim_type.in_))
 
             # Align 'in_' dim of transform map with 'in_' dim of dep
             from loopy.schedule.checker.utils import reorder_dims_by_name
             augmented_trans_map_aligned = reorder_dims_by_name(
-                augmented_trans_map_marked, dt.in_,
-                dep_map.get_var_names(dt.in_))
+                augmented_trans_map_marked, dim_type.in_,
+                dep_map.get_var_names(dim_type.in_))
 
             # Apply transform map to dep input dims
             new_dep_map = dep_map.apply_domain(augmented_trans_map_aligned)
@@ -2419,11 +2415,11 @@ def map_domain(kernel, isl_map, within=None):
             # Now rename the proxy dims back to their original names
             for real_iname, proxy_iname in proxy_name_pairs:
                 new_dep_map = _find_and_rename_dim(
-                    new_dep_map, [dt.in_], proxy_iname, real_iname)
+                    new_dep_map, [dim_type.in_], proxy_iname, real_iname)
 
             # Statement var may have moved, so put it back at the beginning
             new_dep_map = move_dim_to_index(
-                new_dep_map, STATEMENT_VAR_NAME+BEFORE_MARK, dt.in_, 0)
+                new_dep_map, STATEMENT_VAR_NAME+BEFORE_MARK, dim_type.in_, 0)
 
             return new_dep_map
 
