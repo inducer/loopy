@@ -1939,10 +1939,6 @@ def _find_aff_subst_from_map(iname, isl_map):
     raise LoopyError("no suitable equation for '%s' found" % iname)
 
 
-# FIXME to match convention elsewhere, swap 'dt' and 'dim_type' identifiers
-# (use dt to abbreviate islpy.dim_type, and use dim_type for variables
-# containing a specific dim_type)
-
 def _add_and_name_isl_dims(isl_map, dt, names):
     # (This function is also defined in independent, unmerged branch
     # statement-instance-order-and-lex-order-map, and used in child branches
