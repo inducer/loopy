@@ -780,6 +780,64 @@ def test_map_domain_with_transform_map_missing_dims():
 
     # }}}
 
+    # {{{ Make sure there's an error if transform map contains *extra* dims
+    # Note, this is only okay if transform map 'in' dims don't match *any*
+    # domain inames, in which case nothing happens.
+
+    # Not bijective
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[t, y, rogue] -> [t_new, y_new]: "
+        "y = y_new and t = t_new"
+        "}")
+
+    from loopy.diagnostic import LoopyError
+    knl_map_dom = ref_knl
+    try:
+        knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+        raise AssertionError()
+    except LoopyError as err:
+        assert "map must be bijective" in str(err)
+
+    # Bijective and rogue dim
+    # (with some inames missing from in-dims, which would otherwise be okay)
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[t, y, rogue] -> [t_new, y_new, rogue_new]: "
+        "y = y_new and t = t_new and rogue = rogue_new"
+        "}")
+
+    try:
+        knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+        raise AssertionError()
+    except LoopyError as err:
+        assert (
+            "attempts to map variables that are not present in domain" in str(err))
+
+    # Bijective and rogue dim
+    # (with all inames present in in-dims)
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[t, y, x, z, rogue] -> [t_new, y_new, x_new, z_new, rogue_new]:"
+        "y = y_new and t = t_new and x = x_new and z = z_new and rogue = rogue_new"
+        "}")
+
+    try:
+        knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+        raise AssertionError()
+    except LoopyError as err:
+        assert (
+            "attempts to map variables that are not present in domain" in str(err))
+
+    # Bijective and rogue dim with *no* inames present in domain
+    # (allowed but does nothing)
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[rogue] -> [rogue_new]: "
+        "rogue = rogue_new"
+        "}")
+
+    # This should not raise an error
+    knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+
+    # }}}
+
 # }}}
 
 
