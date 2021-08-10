@@ -2107,6 +2107,23 @@ def _find_aff_subst_from_map(iname, isl_map):
     raise LoopyError("no suitable equation for '%s' found" % iname)
 
 
+def _find_and_rename_dim(old_map, dts, old_name, new_name, must_exist=False):
+    # (This function is only used once here, but do not inline it; it is used many
+    # times in child branch update-dependencies-during-transformations.)
+    new_map = old_map.copy()
+    for dt in dts:
+        idx = new_map.find_dim_by_name(dt, old_name)
+        if idx == -1:
+            if must_exist:
+                raise ValueError(
+                    "must_exist=True but did not find old_name %s in %s"
+                    % (old_name, old_map))
+            else:
+                continue
+        new_map = new_map.set_dim_name(dt, idx, new_name)
+    return new_map
+
+
 def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     from loopy.schedule.checker.utils import (
         add_and_name_isl_dims,
@@ -2145,23 +2162,6 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     return augmented_mapping, proxy_name_pairs
 
 
-def _find_and_rename_dim(old_map, dts, old_name, new_name, must_exist=False):
-    # (This function is only used once here, but do not inline it; it is used many
-    # times in child branch update-dependencies-during-transformations.)
-    new_map = old_map.copy()
-    for dt in dts:
-        idx = new_map.find_dim_by_name(dt, old_name)
-        if idx == -1:
-            if must_exist:
-                raise ValueError(
-                    "must_exist=True but did not find old_name %s in %s"
-                    % (old_name, old_map))
-            else:
-                continue
-        new_map = new_map.set_dim_name(dt, idx, new_name)
-    return new_map
-
-
 @for_each_kernel
 def map_domain(kernel, isl_map, within=None):
     # FIXME: Express _split_iname_backend in terms of this
@@ -2173,8 +2173,6 @@ def map_domain(kernel, isl_map, within=None):
     # FIXME: Document
 
     # FIXME: Support within
-    # FIXME: Right now, this requires all inames in a domain (or none) to
-    # be mapped. That makes this awkward to use.
 
     # {{{ within processing (disabled for now)
     if within is not None:
@@ -2195,8 +2193,8 @@ def map_domain(kernel, isl_map, within=None):
     if not isl_map.is_bijective():
         raise LoopyError("isl_map must be bijective")
 
-    new_inames = frozenset(isl_map.get_var_dict(dim_type.out))
-    old_inames = frozenset(isl_map.get_var_dict(dim_type.in_))
+    transform_map_out_dims = frozenset(isl_map.get_var_dict(dim_type.out))
+    transform_map_in_dims = frozenset(isl_map.get_var_dict(dim_type.in_))
 
     # {{{ solve for representation of old inames in terms of new
 
@@ -2206,7 +2204,7 @@ def map_domain(kernel, isl_map, within=None):
 
     from loopy.symbolic import aff_to_expr
     from pymbolic import var
-    for iname in old_inames:
+    for iname in transform_map_in_dims:
         substitutions[iname] = aff_to_expr(
                 _find_aff_subst_from_map(iname, isl_map))
         var_substitutions[var(iname)] = aff_to_expr(
@@ -2222,10 +2220,16 @@ def map_domain(kernel, isl_map, within=None):
         STATEMENT_VAR_NAME,
     )
 
-    def _check_overlap_condition_for_domain(s, transform_map_in_names):
+    def _check_overlap_condition_for_domain(s, expected_vars_to_transform):
+        # Make sure the inames we're transforming are all present in the domain
+        # if not expected_vars_to_transform.issubset(frozenset(s.get_var_dict())):
+        #     raise LoopyError("transform map %s attempts to map inames "
+        #         "not present in domain %s. Transform map input inames "
+        #         "must be a subset of the domain inames."
+        #         % (isl_map, s))
 
         names_to_ignore = set([STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK])
-        transform_map_in_inames = transform_map_in_names - names_to_ignore
+        transform_map_in_inames = expected_vars_to_transform - names_to_ignore
 
         var_dict = s.get_var_dict()
 
@@ -2236,16 +2240,16 @@ def map_domain(kernel, isl_map, within=None):
         # added to a transform map or s), all of the transform map inames must be in
         # the overlap.
         if overlap and len(overlap) != len(transform_map_in_inames):
-            raise LoopyError("loop domain '%s' involves a part "
-                    "of the map domain inames. Domains must "
-                    "either involve all or none of the map domain "
-                    "inames." % s)
+            raise LoopyError(
+                "Transform map %s attempts to map variables that are not present "
+                "in domain %s. This is only allowed if *none* of the mapped "
+                "variables are found in the domain." % (isl_map, s))
 
         return overlap
 
-    def process_set(s):
+    def process_iname_dom(s):
 
-        overlap = _check_overlap_condition_for_domain(s, old_inames)
+        overlap = _check_overlap_condition_for_domain(s, transform_map_in_dims)
         if not overlap:
             # inames in s are not present in transform map, don't change s
             return s
@@ -2310,7 +2314,7 @@ def map_domain(kernel, isl_map, within=None):
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
 
-    new_domains = [process_set(dom) for dom in kernel.domains]
+    new_domains = [process_iname_dom(dom) for dom in kernel.domains]
 
     # {{{ update dependencies
 
@@ -2438,16 +2442,16 @@ def map_domain(kernel, isl_map, within=None):
 
     new_insns = []
     for insn in kernel.instructions:
-        overlap = old_inames & insn.within_inames
+        overlap = transform_map_in_dims & insn.within_inames
         if overlap and within(kernel, insn):
-            if len(overlap) != len(old_inames):
+            if len(overlap) != len(transform_map_in_dims):
                 raise LoopyError("instruction '%s' is within only a part "
                         "of the map domain inames. Instructions must "
                         "either be within all or none of the map domain "
                         "inames." % insn.id)
 
-            insn = insn.copy(
-                    within_inames=(insn.within_inames - old_inames) | new_inames)
+            insn = insn.copy(within_inames=(
+                insn.within_inames - transform_map_in_dims) | transform_map_out_dims)
         else:
             # leave insn unmodified
             pass
@@ -2464,7 +2468,7 @@ def map_domain(kernel, isl_map, within=None):
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
     ins = _MapDomainMapper(rule_mapping_context, within,
-            new_inames, substitutions)
+            transform_map_out_dims, substitutions)
 
     kernel = ins.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
