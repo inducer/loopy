@@ -2022,8 +2022,6 @@ def map_domain(kernel, isl_map, within=None):
     # FIXME: Document
 
     # FIXME: Support within
-    # FIXME: Right now, this requires all inames in a domain (or none) to
-    # be mapped. That makes this awkward to use.
 
     # {{{ within processing (disabled for now)
     if within is not None:
@@ -2044,8 +2042,8 @@ def map_domain(kernel, isl_map, within=None):
     if not isl_map.is_bijective():
         raise LoopyError("isl_map must be bijective")
 
-    new_inames = frozenset(isl_map.get_var_dict(dim_type.out))
-    old_inames = frozenset(isl_map.get_var_dict(dim_type.in_))
+    transform_map_out_dims = frozenset(isl_map.get_var_dict(dim_type.out))
+    transform_map_in_dims = frozenset(isl_map.get_var_dict(dim_type.in_))
 
     # {{{ solve for representation of old inames in terms of new
 
@@ -2055,7 +2053,7 @@ def map_domain(kernel, isl_map, within=None):
 
     from loopy.symbolic import aff_to_expr
     from pymbolic import var
-    for iname in old_inames:
+    for iname in transform_map_in_dims:
         substitutions[iname] = aff_to_expr(
                 _find_aff_subst_from_map(iname, isl_map))
         var_substitutions[var(iname)] = aff_to_expr(
@@ -2066,20 +2064,27 @@ def map_domain(kernel, isl_map, within=None):
 
     # }}}
 
-    def process_set(s):
+    def process_iname_dom(s):
+        # Make sure the inames we're transforming are all present in the domain
+        # if not transform_map_in_dims.issubset(frozenset(s.get_var_dict())):
+        #     raise LoopyError("transform map %s attempts to map inames "
+        #         "not present in domain %s. Transform map input inames "
+        #         "must be a subset of the domain inames."
+        #         % (isl_map, s))
+
         var_dict = s.get_var_dict()
 
-        overlap = old_inames & frozenset(var_dict)
+        overlap = transform_map_in_dims & frozenset(var_dict)
 
         if not overlap:
             # inames in s are not present in transform map, don't change s
             return s
 
-        if len(overlap) != len(old_inames):
-            raise LoopyError("loop domain '%s' involves a part "
-                    "of the map domain inames. Domains must "
-                    "either involve all or none of the map domain "
-                    "inames." % s)
+        if len(overlap) != len(transform_map_in_dims):
+            raise LoopyError(
+                "Transform map %s attempts to map variables that are not present "
+                "in domain %s. This is only allowed if *none* of the mapped "
+                "variables are found in the domain." % (isl_map, s))
 
         # {{{ align dims of isl_map and s
 
@@ -2137,22 +2142,22 @@ def map_domain(kernel, isl_map, within=None):
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
 
-    new_domains = [process_set(dom) for dom in kernel.domains]
+    new_domains = [process_iname_dom(dom) for dom in kernel.domains]
 
     # {{{ update within_inames
 
     new_insns = []
     for insn in kernel.instructions:
-        overlap = old_inames & insn.within_inames
+        overlap = transform_map_in_dims & insn.within_inames
         if overlap and within(kernel, insn):
-            if len(overlap) != len(old_inames):
+            if len(overlap) != len(transform_map_in_dims):
                 raise LoopyError("instruction '%s' is within only a part "
                         "of the map domain inames. Instructions must "
                         "either be within all or none of the map domain "
                         "inames." % insn.id)
 
-            insn = insn.copy(
-                    within_inames=(insn.within_inames - old_inames) | new_inames)
+            insn = insn.copy(within_inames=(
+                insn.within_inames - transform_map_in_dims) | transform_map_out_dims)
         else:
             # leave insn unmodified
             pass
@@ -2169,7 +2174,7 @@ def map_domain(kernel, isl_map, within=None):
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
     ins = _MapDomainMapper(rule_mapping_context, within,
-            new_inames, substitutions)
+            transform_map_out_dims, substitutions)
 
     kernel = ins.map_kernel(kernel)
     kernel = rule_mapping_context.finish_kernel(kernel)
