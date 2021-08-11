@@ -845,11 +845,11 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
 
     for var_chain in sccs:
         changed_during_last_queue_run = False
-        queue = var_chain[:]
+        var_queue = var_chain[:]
         failed_names = set()
 
-        while queue or changed_during_last_queue_run:
-            if not queue and changed_during_last_queue_run:
+        while var_queue or changed_during_last_queue_run:
+            if not var_queue and changed_during_last_queue_run:
                 changed_during_last_queue_run = False
                 # Optimization: If there's a single variable in the SCC without
                 # a self-referential dependency, then the type is known after a
@@ -859,24 +859,24 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                     single_var, = var_chain
                     if single_var not in dep_graph[single_var]:
                         break
-                queue = var_chain[:]
+                var_queue = var_chain[:]
 
-            name = queue.pop(0)
+            name = var_queue.pop(0)
             item = item_lookup[name]
 
             debug("inferring type for %s %s", type(item).__name__, item.name)
             try:
-                (result, symbols_with_unavailable_types,
+                (result, symbols_with_unknown_types,
                         new_old_calls_to_new_calls, clbl_inf_ctx) = (
                         _infer_var_type(
                                 kernel, item.name, type_inf_mapper, subst_expander))
             except DependencyTypeInferenceFailure:
-                result = tuple()
+                result = ()
+                symbols_with_unknown_types = ()
             type_inf_mapper = type_inf_mapper.copy(
                     clbl_inf_ctx=clbl_inf_ctx)
 
-            failed = not result
-            if not failed:
+            if result:
                 new_dtype, = result
 
                 debug("     success: %s", new_dtype)
@@ -891,17 +891,20 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                     else:
                         raise LoopyError("unexpected item type in type inference")
                 old_calls_to_new_calls.update(new_old_calls_to_new_calls)
+
+                # we've made progress, reset failure markers
+                failed_names = set()
+
             else:
                 debug("     failure")
 
-            if failed:
                 if item.name in failed_names:
                     # this item has failed before, give up.
                     advice = ""
-                    if symbols_with_unavailable_types:
+                    if symbols_with_unknown_types:
                         advice += (
                                 " (need type of '%s'--check for missing arguments)"
-                                % ", ".join(symbols_with_unavailable_types))
+                                % ", ".join(symbols_with_unknown_types))
 
                     debug("could not determine type of '%s'%s"
                            % (item.name, advice))
@@ -911,16 +914,13 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                 # remember that this item failed
                 failed_names.add(item.name)
 
-                if set(queue) == failed_names:
+                if set(var_queue) == failed_names:
                     # We did what we could...
-                    print(queue, failed_names, item.name)
+                    print(var_queue, failed_names, item.name)
                     break
 
-                # can't infer type yet, put back into queue
-                queue.append(name)
-            else:
-                # we've made progress, reset failure markers
-                failed_names = set()
+                # can't infer type yet, put back into var_queue
+                var_queue.append(name)
 
     # }}}
 
