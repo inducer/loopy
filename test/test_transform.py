@@ -672,20 +672,22 @@ def test_map_domain_vs_split_iname():
 # }}}
 
 
-# {{{ test_map_domain_with_transform_map_missing_dims
+# {{{ test_map_domain_transform_map_validity_and_errors
 
-def test_map_domain_with_transform_map_missing_dims():
-    # Make sure map_domain works correctly when the mapping doesn't include
-    # all the dims in the domain.
+def test_map_domain_transform_map_validity_and_errors():
 
     # {{{ Make kernel
 
     knl = lp.make_kernel(
         [
             "[nx,nt] -> {[x, y, z, t]: 0 <= x,y,z < nx and 0 <= t < nt}",
+            "[m] -> {[j]: 0 <= j < m}",
         ],
         """
         a[y,x,t,z] = b[y,x,t,z]  {id=stmta}
+        for j
+            <>temp = j  {dep=stmta}
+        end
         """,
         lang_version=(2018, 2),
         )
@@ -693,6 +695,9 @@ def test_map_domain_with_transform_map_missing_dims():
     ref_knl = knl
 
     # }}}
+
+    # Make sure map_domain works correctly when the mapping doesn't include
+    # all the dims in the domain.
 
     # {{{ Apply domain change mapping
 
@@ -709,10 +714,10 @@ def test_map_domain_with_transform_map_missing_dims():
         "y = y_new"
         "}")
 
-    # Call map_domain to transform kernel
+    # Call map_domain to transform kernel; this should not produce an error
     knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
 
-    # Prioritize loops (prio should eventually be updated in map_domain?)
+    # Prioritize loops (prio should eventually be updated in map_domain)
     try:
         # Use constrain_loop_nesting if it's available
         desired_prio = "x, t_outer, t_inner, z, y_new"
@@ -763,9 +768,7 @@ def test_map_domain_with_transform_map_missing_dims():
 
     # }}}
 
-    # {{{ Make sure there's an error if transform map contains *extra* dims
-    # Note, this is only okay if transform map 'in' dims don't match *any*
-    # domain inames, in which case nothing happens.
+    # {{{ Make sure we error on a map that is not bijective
 
     # Not bijective
     transform_map = isl.BasicMap(
@@ -781,43 +784,42 @@ def test_map_domain_with_transform_map_missing_dims():
     except LoopyError as err:
         assert "map must be bijective" in str(err)
 
-    # Bijective and rogue dim
-    # (with some inames missing from in-dims, which would otherwise be okay)
-    transform_map = isl.BasicMap(
-        "[nx,nt] -> {[t, y, rogue] -> [t_new, y_new, rogue_new]: "
-        "y = y_new and t = t_new and rogue = rogue_new"
-        "}")
+    # }}}
 
-    try:
-        knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
-        raise AssertionError()
-    except LoopyError as err:
-        assert (
-            "attempts to map variables that are not present in domain" in str(err))
+    # {{{ Make sure there's an error if transform map does not apply to
+    # exactly one domain.
 
-    # Bijective and rogue dim
-    # (with all inames present in in-dims)
-    transform_map = isl.BasicMap(
-        "[nx,nt] -> {[t, y, x, z, rogue] -> [t_new, y_new, x_new, z_new, rogue_new]:"
-        "y = y_new and t = t_new and x = x_new and z = z_new and rogue = rogue_new"
-        "}")
+    test_maps = [
+        # Map where some inames match exactly one domain but there's also a
+        # rogue dim
+        isl.BasicMap(
+            "[nx,nt] -> {[t, y, rogue] -> [t_new, y_new, rogue_new]: "
+            "y = y_new and t = t_new and rogue = rogue_new"
+            "}"),
+        # Map where all inames match exactly one domain but there's also a
+        # rogue dim
+        isl.BasicMap(
+            "[nx,nt] -> {[t, y, x, z, rogue] -> "
+            "[t_new, y_new, x_new, z_new, rogue_new]: "
+            "y = y_new and t = t_new and x = x_new and z = z_new "
+            "and rogue = rogue_new"
+            "}"),
+        # Map where no inames match any domain
+        isl.BasicMap(
+            "[nx,nt] -> {[rogue] -> [rogue_new]: "
+            "rogue = rogue_new"
+            "}"),
+        ]
 
-    try:
-        knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
-        raise AssertionError()
-    except LoopyError as err:
-        assert (
-            "attempts to map variables that are not present in domain" in str(err))
-
-    # Bijective and rogue dim with *no* inames present in domain
-    # (allowed but does nothing)
-    transform_map = isl.BasicMap(
-        "[nx,nt] -> {[rogue] -> [rogue_new]: "
-        "rogue = rogue_new"
-        "}")
-
-    # This should not raise an error
-    knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+    for transform_map in test_maps:
+        try:
+            knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+            raise AssertionError()
+        except LoopyError as err:
+            assert (
+                "was not applicable to any domain. "
+                "Transform map must be applicable to exactly one domain."
+                in str(err))
 
     # }}}
 

@@ -2215,44 +2215,9 @@ def map_domain(kernel, isl_map, within=None):
 
     # }}}
 
-    from loopy.schedule.checker.schedule import (
-        BEFORE_MARK,
-        STATEMENT_VAR_NAME,
-    )
-
-    def _check_overlap_condition_for_domain(s, expected_vars_to_transform):
-        # Make sure the inames we're transforming are all present in the domain
-        # if not expected_vars_to_transform.issubset(frozenset(s.get_var_dict())):
-        #     raise LoopyError("transform map %s attempts to map inames "
-        #         "not present in domain %s. Transform map input inames "
-        #         "must be a subset of the domain inames."
-        #         % (isl_map, s))
-
-        names_to_ignore = set([STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK])
-        transform_map_in_inames = expected_vars_to_transform - names_to_ignore
-
-        var_dict = s.get_var_dict()
-
-        overlap = transform_map_in_inames & frozenset(var_dict)
-
-        # If there is any overlap in the inames in the transform map and s
-        # (note that we're ignoring the statement var name, which may have been
-        # added to a transform map or s), all of the transform map inames must be in
-        # the overlap.
-        if overlap and len(overlap) != len(transform_map_in_inames):
-            raise LoopyError(
-                "Transform map %s attempts to map variables that are not present "
-                "in domain %s. This is only allowed if *none* of the mapped "
-                "variables are found in the domain." % (isl_map, s))
-
-        return overlap
-
-    def process_iname_dom(s):
-
-        overlap = _check_overlap_condition_for_domain(s, transform_map_in_dims)
-        if not overlap:
-            # inames in s are not present in transform map, don't change s
-            return s
+    def process_set(s):
+        """Return the transformed set. Assume that map is applicable to this
+        set."""
 
         # At this point, overlap condition check guarantees that the
         # in-dims of the transform map are a subset of the dims we're
@@ -2314,9 +2279,83 @@ def map_domain(kernel, isl_map, within=None):
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
 
-    new_domains = [process_iname_dom(dom) for dom in kernel.domains]
+    # {{{ Apply the transform map to exactly one domain
+
+    map_applied_to_one_dom = False
+    new_domains = []
+    transform_map_rules = (
+        "Transform map must be applicable to exactly one domain. "
+        "A transform map is applicable to a domain if its input "
+        "inames are a subset of the domain inames.")
+
+    for old_domain in kernel.domains:
+
+        # Make sure transform map is applicable to this set. Then transform.
+
+        if not transform_map_in_dims.issubset(
+                frozenset(old_domain.get_var_dict())):
+
+            # Map transforms inames that are not all present in the set.
+            # Don't transform.
+            new_domains.append(old_domain)
+            continue
+
+        elif map_applied_to_one_dom:
+
+            # Map is applicable to this domain, but this map was
+            # already applied. Error.
+            raise LoopyError(
+                "Transform map %s was applicable to more than one domain. %s"
+                % (isl_map, transform_map_rules))
+
+        else:
+
+            # Map is applicable to this domain, and this map has not yet
+            # been applied. Transform.
+            new_domains.append(process_set(old_domain))
+            map_applied_to_one_dom = True
+
+    # If the map could not be applied to any domain, error.
+    if not map_applied_to_one_dom:
+        raise LoopyError(
+            "Transform map %s was not applicable to any domain. %s"
+            % (isl_map, transform_map_rules))
+
+    # }}}
 
     # {{{ update dependencies
+
+    from loopy.schedule.checker.schedule import (
+        BEFORE_MARK,
+        STATEMENT_VAR_NAME,
+    )
+
+    def _check_overlap_condition_for_domain(s, expected_vars_to_transform):
+        # Make sure the inames we're transforming are all present in the domain
+        # if not expected_vars_to_transform.issubset(frozenset(s.get_var_dict())):
+        #     raise LoopyError("transform map %s attempts to map inames "
+        #         "not present in domain %s. Transform map input inames "
+        #         "must be a subset of the domain inames."
+        #         % (isl_map, s))
+
+        names_to_ignore = set([STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK])
+        transform_map_in_inames = expected_vars_to_transform - names_to_ignore
+
+        var_dict = s.get_var_dict()
+
+        overlap = transform_map_in_inames & frozenset(var_dict)
+
+        # If there is any overlap in the inames in the transform map and s
+        # (note that we're ignoring the statement var name, which may have been
+        # added to a transform map or s), all of the transform map inames must be in
+        # the overlap.
+        if overlap and len(overlap) != len(transform_map_in_inames):
+            raise LoopyError(
+                "Transform map %s attempts to map variables that are not present "
+                "in domain %s. This is only allowed if *none* of the mapped "
+                "variables are found in the domain." % (isl_map, s))
+
+        return overlap
 
     # Prep transform map to be applied to dependency
     from loopy.transform.instruction import map_dependency_maps
