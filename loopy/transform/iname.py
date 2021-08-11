@@ -2064,27 +2064,16 @@ def map_domain(kernel, isl_map, within=None):
 
     # }}}
 
-    def process_iname_dom(s):
-        # Make sure the inames we're transforming are all present in the domain
-        # if not transform_map_in_dims.issubset(frozenset(s.get_var_dict())):
-        #     raise LoopyError("transform map %s attempts to map inames "
-        #         "not present in domain %s. Transform map input inames "
-        #         "must be a subset of the domain inames."
-        #         % (isl_map, s))
+    def process_set(s):
+        """Return the transformed set if transformation is possible, otherwise
+        return the original set. Also return an int representing
+        the number of sets that were transformed (0 or 1)"""
 
-        var_dict = s.get_var_dict()
-
-        overlap = transform_map_in_dims & frozenset(var_dict)
-
-        if not overlap:
-            # inames in s are not present in transform map, don't change s
-            return s
-
-        if len(overlap) != len(transform_map_in_dims):
-            raise LoopyError(
-                "Transform map %s attempts to map variables that are not present "
-                "in domain %s. This is only allowed if *none* of the mapped "
-                "variables are found in the domain." % (isl_map, s))
+        # Make sure the inames we're transforming are all present in the set
+        # (okay if map only transforms a *subset* of the inames in the set)
+        if not transform_map_in_dims.issubset(frozenset(s.get_var_dict())):
+            # Don't transform this set
+            return s, 0
 
         # {{{ align dims of isl_map and s
 
@@ -2138,11 +2127,19 @@ def map_domain(kernel, isl_map, within=None):
             new_s = _find_and_rename_dim(
                 new_s, [dim_type.set], proxy_iname, real_iname)
 
-        return new_s
+        return new_s, 1
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
 
-    new_domains = [process_iname_dom(dom) for dom in kernel.domains]
+    new_doms_and_transform_ct = [process_set(dom) for dom in kernel.domains]
+    new_domains, transform_ct = zip(*new_doms_and_transform_ct)
+    if sum(transform_ct) != 1:
+        raise LoopyError(
+            "Transform map %s was applicable to %d domains. "
+            "Transform map must be applicable to exactly one domain. "
+            "A transform map is applicable to a domain if its input "
+            "inames are a subset of the domain inames."
+            % (isl_map, sum(transform_ct)))
 
     # {{{ update within_inames
 
