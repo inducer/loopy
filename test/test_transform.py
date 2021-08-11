@@ -834,7 +834,7 @@ def test_map_domain_transform_map_validity_and_errors():
             raise AssertionError()
         except LoopyError as err:
             assert (
-                "was applicable to 0 domains. "
+                "was not applicable to any domain. "
                 "Transform map must be applicable to exactly one domain."
                 in str(err))
 
