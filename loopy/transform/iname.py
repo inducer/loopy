@@ -2065,15 +2065,8 @@ def map_domain(kernel, isl_map, within=None):
     # }}}
 
     def process_set(s):
-        """Return the transformed set if transformation is possible, otherwise
-        return the original set. Also return an int representing
-        the number of sets that were transformed (0 or 1)"""
-
-        # Make sure the inames we're transforming are all present in the set
-        # (okay if map only transforms a *subset* of the inames in the set)
-        if not transform_map_in_dims.issubset(frozenset(s.get_var_dict())):
-            # Don't transform this set
-            return s, 0
+        """Return the transformed set. Assume that map is applicable to this
+        set."""
 
         # {{{ align dims of isl_map and s
 
@@ -2127,19 +2120,53 @@ def map_domain(kernel, isl_map, within=None):
             new_s = _find_and_rename_dim(
                 new_s, [dim_type.set], proxy_iname, real_iname)
 
-        return new_s, 1
+        return new_s
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
 
-    new_doms_and_transform_ct = [process_set(dom) for dom in kernel.domains]
-    new_domains, transform_ct = zip(*new_doms_and_transform_ct)
-    if sum(transform_ct) != 1:
+    # {{{ Apply the transform map to exactly one domain
+
+    map_applied_to_one_dom = False
+    new_domains = []
+    transform_map_rules = (
+        "Transform map must be applicable to exactly one domain. "
+        "A transform map is applicable to a domain if its input "
+        "inames are a subset of the domain inames.")
+
+    for old_domain in kernel.domains:
+
+        # Make sure transform map is applicable to this set. Then transform.
+
+        if not transform_map_in_dims.issubset(
+                frozenset(old_domain.get_var_dict())):
+
+            # Map transforms inames that are not all present in the set.
+            # Don't transform.
+            new_domains.append(old_domain)
+            continue
+
+        elif map_applied_to_one_dom:
+
+            # Map is applicable to this domain, but this map was
+            # already applied. Error.
+            raise LoopyError(
+                "Transform map %s was applicable to more than one domain. %s"
+                % (isl_map, transform_map_rules))
+
+        else:
+
+            # Map is applicable to this domain, and this map has not yet
+            # been applied. Transform.
+            new_domains.append(process_set(old_domain))
+            map_applied_to_one_dom = True
+
+    # If the map could not be applied to any domain, error.
+    if not map_applied_to_one_dom:
         raise LoopyError(
-            "Transform map %s was applicable to %d domains. "
-            "Transform map must be applicable to exactly one domain. "
-            "A transform map is applicable to a domain if its input "
-            "inames are a subset of the domain inames."
-            % (isl_map, sum(transform_ct)))
+            "Transform map %s was not applicable to any domain. %s"
+            % (isl_map, transform_map_rules))
+
+    # }}}
 
     # {{{ update within_inames
 
