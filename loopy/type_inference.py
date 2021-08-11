@@ -285,30 +285,40 @@ class TypeInferenceMapper(CombineMapper):
         while numpy_dtypes:
             other = numpy_dtypes.pop()
 
-            if result.fields is None and other.fields is None:
+            next_result = None
+            if result is other:
+                next_result = result
+            elif result.fields is None and other.fields is None:
                 if (result, other) in [
                         (np.int32, np.float32), (np.float32, np.int32)]:
                     # numpy makes this a double. I disagree.
-                    result = np.dtype(np.float32)
+                    next_result = np.dtype(np.float32)
                 else:
-                    result = (
+                    next_result = (
                             np.empty(0, dtype=result)
                             + np.empty(0, dtype=other)
                             ).dtype
 
             elif result.fields is None and other.fields is not None:
-                # assume the non-native type takes over
-                # (This is used for vector types.)
-                result = other
+                # Assume the non-native type takes over if all
+                # of its fields have the same dtype.
+                # (This crude hack is used for vector types.)
+                if all(fld[0] == result for fld in other.fields.values()):
+                    next_result = other
+
             elif result.fields is not None and other.fields is None:
-                # assume the non-native type takes over
-                # (This is used for vector types.)
-                pass
-            else:
-                if result is not other:
-                    raise TypeInferenceFailure(
-                            "nothing known about result of operation on "
-                            "'%s' and '%s'" % (result, other))
+                # Assume the non-native type takes over if all
+                # of its fields have the same dtype.
+                # (This crude hack is used for vector types.)
+                if all(fld[0] == other for fld in result.fields.values()):
+                    next_result = result
+
+            if next_result is None:
+                raise TypeInferenceFailure(
+                        "nothing known about result of operation on "
+                        "'%s' and '%s'" % (result, other))
+
+            result = next_result
 
         return [NumpyType(result)]
 
