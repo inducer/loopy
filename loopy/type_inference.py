@@ -698,30 +698,35 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         expr = subst_expander(writer_insn.expression)
 
         debug("             via expr %s", expr)
-        if isinstance(writer_insn, lp.Assignment):
-            result = type_inf_mapper(expr, return_dtype_set=True)
-        elif isinstance(writer_insn, lp.CallInstruction):
-            return_dtype_sets = type_inf_mapper(expr, return_tuple=True,
-                    return_dtype_set=True)
 
-            result = []
-            for return_dtype_set in return_dtype_sets:
-                result_i = None
-                found = False
-                for assignee, comp_dtype_set in zip(
-                        writer_insn.assignee_var_names(), return_dtype_set):
-                    if assignee == var_name:
-                        found = True
-                        result_i = comp_dtype_set
-                        break
+        result = ()
+        try:
+            if isinstance(writer_insn, lp.Assignment):
+                result = type_inf_mapper(expr, return_dtype_set=True)
+            elif isinstance(writer_insn, lp.CallInstruction):
+                return_dtype_sets = type_inf_mapper(expr, return_tuple=True,
+                        return_dtype_set=True)
 
-                assert found
-                if result_i is not None:
-                    result.append(result_i)
+                result = []
+                for return_dtype_set in return_dtype_sets:
+                    result_i = None
+                    found = False
+                    for assignee, comp_dtype_set in zip(
+                            writer_insn.assignee_var_names(), return_dtype_set):
+                        if assignee == var_name:
+                            found = True
+                            result_i = comp_dtype_set
+                            break
 
-        debug("             result: %s", result)
+                    assert found
+                    if result_i is not None:
+                        result.append(result_i)
+        except DependencyTypeInferenceFailure:
+            pass
 
-        dtype_sets.append(result)
+        if result:
+            debug("             result: %s", result)
+            dtype_sets.append(result)
 
     if not dtype_sets:
         return (
@@ -832,14 +837,15 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     from loopy.kernel.data import TemporaryVariable, KernelArgument
 
     old_calls_to_new_calls = {}
+    symbols_with_unavailable_types = set()
 
     for var_chain in sccs:
         changed_during_last_queue_run = False
-        queue = var_chain[:]
+        var_queue = var_chain[:]
         failed_names = set()
 
-        while queue or changed_during_last_queue_run:
-            if not queue and changed_during_last_queue_run:
+        while var_queue or changed_during_last_queue_run:
+            if not var_queue and changed_during_last_queue_run:
                 changed_during_last_queue_run = False
                 # Optimization: If there's a single variable in the SCC without
                 # a self-referential dependency, then the type is known after a
@@ -849,27 +855,23 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                     single_var, = var_chain
                     if single_var not in dep_graph[single_var]:
                         break
-                queue = var_chain[:]
+                var_queue = var_chain[:]
 
-            name = queue.pop(0)
+            name = var_queue.pop(0)
             item = item_lookup[name]
 
             debug("inferring type for %s %s", type(item).__name__, item.name)
-            try:
-                (result, symbols_with_unavailable_types,
-                        new_old_calls_to_new_calls, clbl_inf_ctx) = (
-                        _infer_var_type(
-                                kernel, item.name, type_inf_mapper, subst_expander))
-            except DependencyTypeInferenceFailure:
-                result = tuple()
-            type_inf_mapper = type_inf_mapper.copy(
-                    clbl_inf_ctx=clbl_inf_ctx)
+            (result, symbols_with_unavailable_types,
+                    new_old_calls_to_new_calls, clbl_inf_ctx) = (
+                    _infer_var_type(
+                            kernel, item.name, type_inf_mapper, subst_expander))
 
-            failed = not result
-            if not failed:
+            type_inf_mapper = type_inf_mapper.copy(clbl_inf_ctx=clbl_inf_ctx)
+
+            if result:
                 new_dtype, = result
-
                 debug("     success: %s", new_dtype)
+
                 if new_dtype != item.dtype:
                     debug("     changed from: %s", item.dtype)
                     changed_during_last_queue_run = True
@@ -881,10 +883,13 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                     else:
                         raise LoopyError("unexpected item type in type inference")
                 old_calls_to_new_calls.update(new_old_calls_to_new_calls)
+
+                # we've made progress, reset failure markers
+                failed_names = set()
+
             else:
                 debug("     failure")
 
-            if failed:
                 if item.name in failed_names:
                     # this item has failed before, give up.
                     advice = ""
@@ -901,16 +906,13 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                 # remember that this item failed
                 failed_names.add(item.name)
 
-                if set(queue) == failed_names:
+                if set(var_queue) == failed_names:
                     # We did what we could...
-                    print(queue, failed_names, item.name)
+                    print(var_queue, failed_names, item.name)
                     break
 
-                # can't infer type yet, put back into queue
-                queue.append(name)
-            else:
-                # we've made progress, reset failure markers
-                failed_names = set()
+                # can't infer type yet, put back into var_queue
+                var_queue.append(name)
 
     # }}}
 
