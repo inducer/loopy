@@ -221,7 +221,7 @@ class StatementOrdering:
 
 def _gather_blex_ordering_info(
         sync_kind,
-        lin_items, loops_with_barriers, loops_to_ignore,
+        lin_items, loops_with_barriers, loop_bounds, loops_to_ignore,
         all_stmt_ids, iname_bounds_pwaff,
         all_par_lex_dim_names, gid_lex_dim_names,
         ):
@@ -259,6 +259,7 @@ def _gather_blex_ordering_info(
     n_seq_blex_dims = 1  # Num dims representing sequential order in blex space
     next_blex_tuple = [0]  # Next tuple of points in blex order
 
+    print()  # Debugging. TODO remove
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
             enter_iname = lin_item.iname
@@ -277,6 +278,9 @@ def _gather_blex_ordering_info(
 
                 # Store 3 tuples that will be used later to create pairs
                 # that will later be subtracted from the blex order map
+
+                # {{{ OLD version without lexmin/lexmax:
+
                 lbound = iname_bounds_pwaff[enter_iname][0]
                 first_iter_blex_pt = next_blex_tuple[:]
                 first_iter_blex_pt[-2] = lbound
@@ -285,6 +289,19 @@ def _gather_blex_ordering_info(
                     slex.TOP: tuple(next_blex_tuple),
                     slex.FIRST: tuple(first_iter_blex_pt),
                     }
+
+                # }}}
+
+                # {{{ NEW version with lexmin/lexmax
+
+                from loopy.schedule.checker.utils import prettier_map_string
+                print("Iname %s" % (enter_iname))
+                print("OLD FIRST:", tuple(first_iter_blex_pt))
+                print("lexmin:")
+                print(prettier_map_string(loop_bounds[enter_iname][0]))
+
+                # }}}
+
                 # (copy these three blex points when creating dict because
                 # the lists will continue to be updated)
 
@@ -313,6 +330,9 @@ def _gather_blex_ordering_info(
 
                 # Store 3 tuples that will be used later to create pairs
                 # that will later be subtracted from the blex order map
+
+                # {{{ NEW version without lexmin/lexmax:
+
                 ubound = iname_bounds_pwaff[leave_iname][1]
                 last_iter_blex_pt = pre_end_loop_blex_pt[:]
                 last_iter_blex_pt[-2] = ubound
@@ -322,6 +342,19 @@ def _gather_blex_ordering_info(
                     last_iter_blex_pt)
                 blex_exclusion_info[leave_iname][slex.POST] = tuple(
                     next_blex_tuple)
+
+                # }}}
+
+                # {{{ NEW version with lexmin/lexmax
+
+                from loopy.schedule.checker.utils import prettier_map_string
+                print("Iname %s" % (leave_iname))
+                print("OLD LAST:", tuple(last_iter_blex_pt))
+                print("lexmax:")
+                print(prettier_map_string(loop_bounds[leave_iname][1]))
+
+                # }}}
+
                 # (copy these three blex points when creating dict because
                 # the lists will continue to be updated)
 
@@ -721,7 +754,7 @@ def get_pairwise_statement_orderings_inner(
                 # If we haven't already stored bounds for this iname, do so
                 if iname not in loop_bounds:
 
-                    # Get set of inames nested outside this one (including this iname)
+                    # Get set of inames nested outside (including this iname)
                     inames_involved_in_bound = set(current_inames[:depth+1])
 
                     # Get inames domain
@@ -775,9 +808,6 @@ def get_pairwise_statement_orderings_inner(
         print(iname)
         print(prettier_map_string(lbound))
         print(prettier_map_string(ubound))
-
-    1/0
-    # TODO left off here
 
     # }}}
 
@@ -856,7 +886,7 @@ def get_pairwise_statement_orderings_inner(
      lblex_order_map,
      seq_lblex_dim_names) = _gather_blex_ordering_info(
         "local",
-        lin_items, loops_with_barriers, loops_to_ignore,
+        lin_items, loops_with_barriers, loop_bounds, loops_to_ignore,
         all_stmt_ids, iname_bounds_pwaff,
         all_par_lex_dim_names, gid_lex_dim_names,
         )
@@ -864,7 +894,7 @@ def get_pairwise_statement_orderings_inner(
      gblex_order_map,
      seq_gblex_dim_names) = _gather_blex_ordering_info(
         "global",
-        lin_items, loops_with_barriers, loops_to_ignore,
+        lin_items, loops_with_barriers, loop_bounds, loops_to_ignore,
         all_stmt_ids, iname_bounds_pwaff,
         all_par_lex_dim_names, gid_lex_dim_names,
         )
