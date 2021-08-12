@@ -150,6 +150,82 @@ def _process_and_linearize(knl, knl_name="loopy_kernel"):
 # }}}
 
 
+
+
+from loopy.schedule.checker import (
+    get_pairwise_statement_orderings,
+)
+
+'''
+assumptions = "i_end >= i_start + 1 and j_end >= j_start + 1 and k_end >= 1"
+knl = lp.make_kernel(
+    [
+        "{[i,j,k]: i_start<=i<i_end and j_start<=j<j_end and 0<=k<k_end}",
+    ],
+    """
+    for k
+        <>temp0 = 0  {id=stmt_k0}
+        ... lbarrier  {id=stmt_b0,dep=stmt_k0}
+        <>temp1 = 1  {id=stmt_k1,dep=stmt_b0}
+        for i
+            <>tempi0 = 0  {id=stmt_i0,dep=stmt_k1}
+            ... lbarrier {id=stmt_ib0,dep=stmt_i0}
+            ... gbarrier {id=stmt_ibb0,dep=stmt_i0}
+            <>tempi1 = 0  {id=stmt_i1,dep=stmt_ib0}
+            <>tempi2 = 0  {id=stmt_i2,dep=stmt_i1}
+            for j
+                <>tempj0 = 0  {id=stmt_j0,dep=stmt_i2}
+                ... lbarrier {id=stmt_jb0,dep=stmt_j0}
+                <>tempj1 = 0  {id=stmt_j1,dep=stmt_jb0}
+            end
+        end
+        <>temp2 = 0  {id=stmt_k2,dep=stmt_i0}
+    end
+    """,
+    assumptions=assumptions,
+    lang_version=(2018, 2)
+    )
+'''
+assumptions = "ij_end >= i_start + 1 and k_end >= 1"
+knl = lp.make_kernel(
+    [
+        "{[i,j,k]: i_start<=i<ij_end and i<=j<ij_end and 0<=k<k_end}",
+    ],
+    """
+    for k
+        <>temp0 = 0  {id=stmt_k0}
+        ... lbarrier  {id=stmt_b0,dep=stmt_k0}
+        <>temp1 = 1  {id=stmt_k1,dep=stmt_b0}
+        for i
+            <>tempi0 = 0  {id=stmt_i0,dep=stmt_k1}
+            ... lbarrier {id=stmt_ib0,dep=stmt_i0}
+            ... gbarrier {id=stmt_ibb0,dep=stmt_i0}
+            <>tempi1 = 0  {id=stmt_i1,dep=stmt_ib0}
+            <>tempi2 = 0  {id=stmt_i2,dep=stmt_i1}
+            for j
+                <>tempj0 = 0  {id=stmt_j0,dep=stmt_i2}
+                ... lbarrier {id=stmt_jb0,dep=stmt_j0}
+                <>tempj1 = 0  {id=stmt_j1,dep=stmt_jb0}
+            end
+        end
+        <>temp2 = 0  {id=stmt_k2,dep=stmt_i0}
+    end
+    """,
+    assumptions=assumptions,
+    lang_version=(2018, 2)
+    )
+
+# Get a linearization
+lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+stmt_id_pairs = [("stmt_j1", "stmt_k2"), ("stmt_k1", "stmt_i0")]
+pworders = get_pairwise_statement_orderings(
+    lin_knl, lin_items, stmt_id_pairs)
+
+1/0
+
+
+
 # {{{ test_intra_thread_pairwise_schedule_creation()
 
 def test_intra_thread_pairwise_schedule_creation():
