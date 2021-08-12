@@ -2325,44 +2325,18 @@ def map_domain(kernel, isl_map, within=None):
 
     # {{{ update dependencies
 
-    from loopy.schedule.checker.schedule import (
-        BEFORE_MARK,
-        STATEMENT_VAR_NAME,
-    )
-
-    def _check_overlap_condition_for_domain(s, expected_vars_to_transform):
-        # Make sure the inames we're transforming are all present in the domain
-        # if not expected_vars_to_transform.issubset(frozenset(s.get_var_dict())):
-        #     raise LoopyError("transform map %s attempts to map inames "
-        #         "not present in domain %s. Transform map input inames "
-        #         "must be a subset of the domain inames."
-        #         % (isl_map, s))
-
-        names_to_ignore = set([STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK])
-        transform_map_in_inames = expected_vars_to_transform - names_to_ignore
-
-        var_dict = s.get_var_dict()
-
-        overlap = transform_map_in_inames & frozenset(var_dict)
-
-        # If there is any overlap in the inames in the transform map and s
-        # (note that we're ignoring the statement var name, which may have been
-        # added to a transform map or s), all of the transform map inames must be in
-        # the overlap.
-        if overlap and len(overlap) != len(transform_map_in_inames):
-            raise LoopyError(
-                "Transform map %s attempts to map variables that are not present "
-                "in domain %s. This is only allowed if *none* of the mapped "
-                "variables are found in the domain." % (isl_map, s))
-
-        return overlap
-
     # Prep transform map to be applied to dependency
     from loopy.transform.instruction import map_dependency_maps
     from loopy.schedule.checker.utils import (
         append_mark_to_isl_map_var_names,
         move_dim_to_index,
     )
+    from loopy.schedule.checker.schedule import (
+        BEFORE_MARK,
+        STATEMENT_VAR_NAME,
+    )
+
+    names_to_ignore = set([STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK])
 
     # Create version of transform map with before marks
     # (for aligning when applying map to dependee portion of deps)
@@ -2373,14 +2347,21 @@ def map_domain(kernel, isl_map, within=None):
     def _apply_transform_map_to_depender(dep_map):
         # (since 'out' dim of dep is unmarked, use unmarked transform map)
 
-        # Check overlap condition
-        overlap = _check_overlap_condition_for_domain(
-            dep_map.range(), set(isl_map.get_var_names(dim_type.in_)))
+        # Find overlap between transform map inames and *depender* inames
+        # (ignore the statement var name, which may have been
+        # added to a transform map or s)
+        mapped_inames = set(isl_map.get_var_names(dim_type.in_)) - names_to_ignore
+        overlap = set(dep_map.range().get_var_dict()) & mapped_inames
 
-        if not overlap:
-            # Inames in s are not present in depender, don't change dep_map
-            return dep_map
-        else:
+        if overlap:
+            # All of the transform map inames must be in the overlap.
+            if len(overlap) != len(mapped_inames):
+                raise LoopyError(
+                    "Attempted to transform range of dependency map %s "
+                    "(which corresponds to the depender statement) using "
+                    "transform map %s, but at least one dependency iname is not "
+                    "present in the transform map." % (dep_map, isl_map))
+
             # At this point, overlap condition check guarantees that the
             # in-dims of the transform map are a subset of the dims we're
             # about to change.
@@ -2417,18 +2398,29 @@ def map_domain(kernel, isl_map, within=None):
                 new_dep_map, STATEMENT_VAR_NAME, dim_type.out, 0)
 
             return new_dep_map
+        else:  # No overlap
+            # Transform map inames are not present in depender, don't change dep_map
+            return dep_map
 
     def _apply_transform_map_to_dependee(dep_map):
         # (since 'in_' dim of dep is marked, use isl_map_marked)
 
-        # Check overlap condition
-        overlap = _check_overlap_condition_for_domain(
-            dep_map.domain(), set(isl_map_marked.get_var_names(dim_type.in_)))
+        # Find overlap between transform map inames and *dependee* inames
+        # (ignore the statement var name, which may have been
+        # added to a transform map or s)
+        mapped_inames = set(
+            isl_map_marked.get_var_names(dim_type.in_)) - names_to_ignore
+        overlap = set(dep_map.domain().get_var_dict()) & mapped_inames
 
-        if not overlap:
-            # Inames in s are not present in dependee, don't change dep_map
-            return dep_map
-        else:
+        if overlap:
+            # All of the transform map inames must be in the overlap.
+            if len(overlap) != len(mapped_inames):
+                raise LoopyError(
+                    "Attempted to transform domain of dependency map %s "
+                    "(which corresponds to the dependee statement) using "
+                    "transform map %s, but at least one dependency iname is not "
+                    "present in the transform map." % (dep_map, isl_map))
+
             # At this point, overlap condition check guarantees that the
             # in-dims of the transform map are a subset of the dims we're
             # about to change.
@@ -2465,6 +2457,9 @@ def map_domain(kernel, isl_map, within=None):
                 new_dep_map, STATEMENT_VAR_NAME+BEFORE_MARK, dim_type.in_, 0)
 
             return new_dep_map
+        else:  # No overlap
+            # Transform map inames are not present in dependee, don't change dep_map
+            return dep_map
 
     # TODO figure out proper way to create false match condition
     false_id_match = "not id:*"
