@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 import islpy as isl
-dt = isl.dim_type
+dim_type = isl.dim_type
 
 
 def prettier_map_string(map_obj):
@@ -29,30 +29,30 @@ def prettier_map_string(map_obj):
                ).replace("{ ", "{\n").replace(" }", "\n}").replace("; ", ";\n")
 
 
-def insert_and_name_isl_dims(isl_set, dim_type, names, new_idx_start):
-    new_set = isl_set.insert_dims(dim_type, new_idx_start, len(names))
+def insert_and_name_isl_dims(isl_set, dt, names, new_idx_start):
+    new_set = isl_set.insert_dims(dt, new_idx_start, len(names))
     for i, name in enumerate(names):
-        new_set = new_set.set_dim_name(dim_type, new_idx_start+i, name)
+        new_set = new_set.set_dim_name(dt, new_idx_start+i, name)
     return new_set
 
 
-def add_and_name_isl_dims(isl_map, dim_type, names):
-    new_idx_start = isl_map.dim(dim_type)
-    new_map = isl_map.add_dims(dim_type, len(names))
+def add_and_name_isl_dims(isl_map, dt, names):
+    new_idx_start = isl_map.dim(dt)
+    new_map = isl_map.add_dims(dt, len(names))
     for i, name in enumerate(names):
-        new_map = new_map.set_dim_name(dim_type, new_idx_start+i, name)
+        new_map = new_map.set_dim_name(dt, new_idx_start+i, name)
     return new_map
 
 
 def reorder_dims_by_name(
-        isl_set, dim_type, desired_dims_ordered):
-    """Return an isl_set with the dimensions of the specified dim_type
+        isl_set, dt, desired_dims_ordered):
+    """Return an isl_set with the dimensions of the specified dim type
     in the specified order.
 
     :arg isl_set: A :class:`islpy.Set` whose dimensions are
         to be reordered.
 
-    :arg dim_type: A :class:`islpy.dim_type`, i.e., an :class:`int`,
+    :arg dt: A :class:`islpy.dim_type`, i.e., an :class:`int`,
         specifying the dimension to be reordered.
 
     :arg desired_dims_ordered: A :class:`list` of :class:`str` elements
@@ -63,23 +63,23 @@ def reorder_dims_by_name(
 
     """
 
-    assert dim_type != dt.param
-    assert set(isl_set.get_var_names(dim_type)) == set(desired_dims_ordered)
+    assert dt != dim_type.param
+    assert set(isl_set.get_var_names(dt)) == set(desired_dims_ordered)
 
-    other_dim_type = dt.param
-    other_dim_len = len(isl_set.get_var_names(other_dim_type))
+    other_dt = dim_type.param
+    other_dim_len = len(isl_set.get_var_names(other_dt))
 
     new_set = isl_set.copy()
     for desired_idx, name in enumerate(desired_dims_ordered):
 
-        current_idx = new_set.find_dim_by_name(dim_type, name)
+        current_idx = new_set.find_dim_by_name(dt, name)
         if current_idx != desired_idx:
             # First move to other dim because isl is stupid
             new_set = new_set.move_dims(
-                other_dim_type, other_dim_len, dim_type, current_idx, 1)
+                other_dt, other_dim_len, dt, current_idx, 1)
             # Now move it where we actually want it
             new_set = new_set.move_dims(
-                dim_type, desired_idx, other_dim_type, other_dim_len, 1)
+                dt, desired_idx, other_dt, other_dim_len, 1)
 
     return new_set
 
@@ -90,7 +90,7 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
     if not all(
             set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
             for dt in
-            [dt.in_, dt.out, dt.param]):
+            [dim_type.in_, dim_type.out, dim_type.param]):
         raise ValueError(
             "Cannot align spaces; names don't match:\n%s\n%s"
             % (prettier_map_string(obj_map), prettier_map_string(tgt_map))
@@ -107,27 +107,27 @@ def add_eq_isl_constraint_from_names(isl_map, var1, var2):
                    {1: 0, var1: 1, var2: -1}))
 
 
-def append_mark_to_isl_map_var_names(old_isl_map, dim_type, mark):
+def append_mark_to_isl_map_var_names(old_isl_map, dt, mark):
     """Return an :class:`islpy.Map` with a mark appended to the specified
     dimension names.
 
     :arg old_isl_map: An :class:`islpy.Map`.
 
-    :arg dim_type: An :class:`islpy.dim_type`, i.e., an :class:`int`,
+    :arg dt: An :class:`islpy.dim_type`, i.e., an :class:`int`,
         specifying the dimension to be marked.
 
     :arg mark: A :class:`str` to be appended to the specified dimension
         names. If not provided, `mark` defaults to an apostrophe.
 
     :returns: An :class:`islpy.Map` matching `old_isl_map` with
-        `mark` appended to the `dim_type` dimension names.
+        `mark` appended to the `dt` dimension names.
 
     """
 
     new_map = old_isl_map.copy()
-    for i in range(len(old_isl_map.get_var_names(dim_type))):
-        new_map = new_map.set_dim_name(dim_type, i, old_isl_map.get_dim_name(
-            dim_type, i)+mark)
+    for i in range(len(old_isl_map.get_var_names(dt))):
+        new_map = new_map.set_dim_name(dt, i, old_isl_map.get_dim_name(
+            dt, i)+mark)
     return new_map
 
 
@@ -181,21 +181,21 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
     # and manually add the mark if necessary
 
     if BEFORE_MARK == "'":
-        for dim_name in map_init.get_var_names(dt.in_):
+        for dim_name in map_init.get_var_names(dim_type.in_):
             assert BEFORE_MARK not in dim_name
 
         # Append BEFORE_MARK to in_ dims
         map_marked = append_mark_to_isl_map_var_names(
-            map_init, dt.in_, BEFORE_MARK)
+            map_init, dim_type.in_, BEFORE_MARK)
 
     # }}}
 
     # {{{ Insert input/output statement dims and set them to 0 or 1
 
     map_with_stmts = insert_and_name_isl_dims(
-        map_marked, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
+        map_marked, dim_type.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
     map_with_stmts = insert_and_name_isl_dims(
-        map_with_stmts, dt.out, [STATEMENT_VAR_NAME], 0)
+        map_with_stmts, dim_type.out, [STATEMENT_VAR_NAME], 0)
 
     sid_after = 0 if self_dep else 1
 
@@ -223,18 +223,18 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
         # {{{ Get inames domain for input and output inames
 
         # Get the inames from map_init; islpy already dropped the apostrophes
-        inames_in = map_init.get_var_names(dt.in_)
-        inames_out = map_init.get_var_names(dt.out)
+        inames_in = map_init.get_var_names(dim_type.in_)
+        inames_out = map_init.get_var_names(dim_type.out)
 
         # Get inames domain
         inames_in_dom = knl_with_domains.get_inames_domain(
-            inames_in).project_out_except(inames_in, [dt.set])
+            inames_in).project_out_except(inames_in, [dim_type.set])
         inames_out_dom = knl_with_domains.get_inames_domain(
-            inames_out).project_out_except(inames_out, [dt.set])
+            inames_out).project_out_except(inames_out, [dim_type.set])
 
         # Mark dependee inames
         inames_in_dom_marked = append_mark_to_isl_map_var_names(
-            inames_in_dom, dt.set, BEFORE_MARK)
+            inames_in_dom, dim_type.set, BEFORE_MARK)
 
         # }}}
 
@@ -263,7 +263,7 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
 
 def sorted_union_of_names_in_isl_sets(
         isl_sets,
-        set_dim=dt.set):
+        set_dim=dim_type.set):
     r"""Return a sorted list of the union of all variable names found in
     the provided :class:`islpy.Set`\ s.
     """
@@ -316,8 +316,8 @@ def create_symbolic_map_from_tuples(
     """
     # FIXME allow None for domains
 
-    space_out_names = space.get_var_names(dt.out)
-    space_in_names = space.get_var_names(dt.in_)
+    space_out_names = space.get_var_names(dim_type.out)
+    space_in_names = space.get_var_names(dim_type.in_)
 
     def _conjunction_of_dim_eq_conditions(dim_names, values, var_name_to_pwaff):
         condition = var_name_to_pwaff[0].eq_set(var_name_to_pwaff[0])
@@ -333,8 +333,8 @@ def create_symbolic_map_from_tuples(
     # Get islvars from space
     var_name_to_pwaff = isl.affs_from_space(
         space.move_dims(
-            dt.out, 0,
-            dt.in_, 0,
+            dim_type.out, 0,
+            dim_type.in_, 0,
             len(space_in_names),
             ).range()
         )
@@ -343,7 +343,7 @@ def create_symbolic_map_from_tuples(
     union_of_maps = isl.Map.from_domain(
         var_name_to_pwaff[0].eq_set(var_name_to_pwaff[0]+1)  # 0 == 1 (false)
         ).move_dims(
-            dt.out, 0, dt.in_, len(space_in_names), len(space_out_names))
+            dim_type.out, 0, dim_type.in_, len(space_in_names), len(space_out_names))
 
     # Loop through tuple pairs
     for (tup_in, tup_out), dom in tuple_pairs_with_domains:
@@ -359,13 +359,13 @@ def create_symbolic_map_from_tuples(
         # Convert set to map by moving dimensions around
         map_from_set = isl.Map.from_domain(condition)
         map_from_set = map_from_set.move_dims(
-            dt.out, 0, dt.in_,
+            dim_type.out, 0, dim_type.in_,
             len(space_in_names), len(space_out_names))
 
         # Align the *out* dims of dom with the space *in_* dims
         # in preparation for intersection
         dom_with_set_dim_aligned = reorder_dims_by_name(
-            dom, dt.set,
+            dom, dim_type.set,
             space_in_names,
             )
 
