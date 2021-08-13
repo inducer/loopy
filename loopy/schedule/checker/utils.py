@@ -85,7 +85,7 @@ def reorder_dims_by_name(
 
 
 def move_dim_to_index(
-        isl_map, dim_name, dim_type, destination_idx):
+        isl_map, dim_name, dt, destination_idx):
     """Return an isl map with the specified dimension moved to
     the specified index.
 
@@ -94,7 +94,7 @@ def move_dim_to_index(
     :arg dim_name: A :class:`str` specifying the name of the dimension
         to be moved.
 
-    :arg dim_type: A :class:`islpy.dim_type`, i.e., an :class:`int`,
+    :arg dt: A :class:`islpy.dim_type`, i.e., an :class:`int`,
         specifying the type of dimension to be reordered.
 
     :arg destination_idx: A :class:`int` specifying the desired dimension
@@ -105,32 +105,32 @@ def move_dim_to_index(
 
     """
 
-    assert dim_type != dt.param
+    assert dt != dim_type.param
 
-    layover_dim_type = dt.param
-    layover_dim_len = len(isl_map.get_var_names(layover_dim_type))
+    layover_dt = dim_type.param
+    layover_dim_len = len(isl_map.get_var_names(layover_dt))
 
-    current_idx = isl_map.find_dim_by_name(dim_type, dim_name)
+    current_idx = isl_map.find_dim_by_name(dt, dim_name)
     if current_idx == -1:
         raise ValueError("Dimension name %s not found in dim type %s of %s"
-            % (dim_name, dim_type, isl_map))
+            % (dim_name, dt, isl_map))
 
     if current_idx != destination_idx:
         # First move to other dim because isl is stupid
         new_map = isl_map.move_dims(
-            layover_dim_type, layover_dim_len, dim_type, current_idx, 1)
+            layover_dt, layover_dim_len, dt, current_idx, 1)
         # Now move it where we actually want it
         new_map = new_map.move_dims(
-            dim_type, destination_idx, layover_dim_type, layover_dim_len, 1)
+            dt, destination_idx, layover_dt, layover_dim_len, 1)
 
     return new_map
 
 
-def remove_dim_by_name(isl_map, dim_type, dim_name):
-    idx = isl_map.find_dim_by_name(dim_type, dim_name)
+def remove_dim_by_name(isl_map, dt, dim_name):
+    idx = isl_map.find_dim_by_name(dt, dim_name)
     if idx == -1:
         raise ValueError("Dim '%s' not found. Cannot remove dim.")
-    return isl_map.remove_dims(dim_type, idx, 1)
+    return isl_map.remove_dims(dt, idx, 1)
 
 
 def ensure_dim_names_match_and_align(obj_map, tgt_map):
@@ -324,10 +324,10 @@ def sorted_union_of_names_in_isl_sets(
 
 
 def convert_map_to_set(isl_map):
-    n_in_dims = len(isl_map.get_var_names(dt.in_))
-    n_out_dims = len(isl_map.get_var_names(dt.out))
+    n_in_dims = len(isl_map.get_var_names(dim_type.in_))
+    n_out_dims = len(isl_map.get_var_names(dim_type.out))
     return isl_map.move_dims(
-        dt.in_, n_in_dims, dt.out, 0, n_out_dims
+        dim_type.in_, n_in_dims, dim_type.out, 0, n_out_dims
         ).domain(), n_in_dims, n_out_dims
 
 
