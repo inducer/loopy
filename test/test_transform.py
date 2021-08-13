@@ -857,7 +857,6 @@ def test_diamond_tiling(ctx_factory, interactive=False):
             - u[ix, it])
         """)
 
-    # FIXME: Handle priorities in map_domain
     knl_for_transform = ref_knl
 
     ref_knl = lp.prioritize_loops(ref_knl, "it, ix")
