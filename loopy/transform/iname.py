@@ -1837,10 +1837,8 @@ def add_inames_to_insn(kernel, inames, insn_match):
 # {{{ map_domain
 
 class _MapDomainMapper(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, within, new_inames, substitutions):
+    def __init__(self, rule_mapping_context, new_inames, substitutions):
         super(_MapDomainMapper, self).__init__(rule_mapping_context)
-
-        self.within = within
 
         self.old_inames = frozenset(substitutions)
         self.new_inames = new_inames
@@ -1850,10 +1848,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
     def map_reduction(self, expr, expn_state):
         red_overlap = frozenset(expr.inames) & self.old_inames
         arg_ctx_overlap = frozenset(expn_state.arg_context) & self.old_inames
-        if (red_overlap
-                and self.within(
-                    expn_state.kernel,
-                    expn_state.instruction)):
+        if red_overlap:
             if len(red_overlap) != len(self.old_inames):
                 raise LoopyError("reduction '%s' involves a part "
                         "of the map domain inames. Reductions must "
@@ -1886,10 +1881,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
 
     def map_variable(self, expr, expn_state):
         if (expr.name in self.old_inames
-                and expr.name not in expn_state.arg_context
-                and self.within(
-                    expn_state.kernel,
-                    expn_state.instruction)):
+                and expr.name not in expn_state.arg_context):
             return self.substitutions[expr.name]
         else:
             return super(_MapDomainMapper, self).map_variable(expr, expn_state)
@@ -2012,7 +2004,7 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
 
 
 @for_each_kernel
-def map_domain(kernel, isl_map, within=None):
+def map_domain(kernel, isl_map):
     # FIXME: Express _split_iname_backend in terms of this
     #   Missing/deleted for now:
     #     - slab processing
@@ -2020,24 +2012,6 @@ def map_domain(kernel, isl_map, within=None):
     # FIXME: Process priorities
     # FIXME: Express affine_map_inames in terms of this, deprecate
     # FIXME: Document
-
-    # FIXME: Support within
-
-    # {{{ within processing (disabled for now)
-    if within is not None:
-        raise NotImplementedError("within")
-
-    from loopy.match import parse_match
-    within = parse_match(within)
-
-    # {{{ return the same kernel if no kernel matches
-
-    if not any(within(kernel, insn) for insn in kernel.instructions):
-        return kernel
-
-    # }}}
-
-    # }}}
 
     if not isl_map.is_bijective():
         raise LoopyError("isl_map must be bijective")
@@ -2173,7 +2147,7 @@ def map_domain(kernel, isl_map, within=None):
     new_insns = []
     for insn in kernel.instructions:
         overlap = transform_map_in_dims & insn.within_inames
-        if overlap and within(kernel, insn):
+        if overlap:
             if len(overlap) != len(transform_map_in_dims):
                 raise LoopyError("instruction '%s' is within only a part "
                         "of the map domain inames. Instructions must "
@@ -2197,7 +2171,7 @@ def map_domain(kernel, isl_map, within=None):
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
-    ins = _MapDomainMapper(rule_mapping_context, within,
+    ins = _MapDomainMapper(rule_mapping_context,
             transform_map_out_dims, substitutions)
 
     kernel = ins.map_kernel(kernel)
