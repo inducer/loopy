@@ -794,9 +794,9 @@ def test_map_domain_transform_map_validity_and_errors():
         "}")
 
     from loopy.diagnostic import LoopyError
-    knl_map_dom = ref_knl
+    knl = ref_knl
     try:
-        knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+        knl = lp.map_domain(knl, transform_map)
         raise AssertionError()
     except LoopyError as err:
         assert "map must be bijective" in str(err)
@@ -830,13 +830,31 @@ def test_map_domain_transform_map_validity_and_errors():
 
     for transform_map in test_maps:
         try:
-            knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+            knl = lp.map_domain(knl, transform_map)
             raise AssertionError()
         except LoopyError as err:
             assert (
                 "was not applicable to any domain. "
                 "Transform map must be applicable to exactly one domain."
                 in str(err))
+
+    # }}}
+
+    # {{{ Make sure there's an error if we try to map inames in priorities
+
+    knl = ref_knl
+    knl = lp.prioritize_loops(knl, "y, z")
+    knl = lp.prioritize_loops(knl, "x, z")
+    try:
+        transform_map = isl.BasicMap(
+            "[nx,nt] -> {[t, y] -> [t_new, y_new]: "
+            "y = y_new and t = t_new }")
+        knl = lp.map_domain(knl, transform_map)
+        raise AssertionError()
+    except ValueError as err:
+        assert (
+            "Loop priority ('y', 'z') contains iname(s) "
+            "transformed by map" in str(err))
 
     # }}}
 
