@@ -276,16 +276,17 @@ def sorted_union_of_names_in_isl_sets(
 
 def convert_map_to_set(isl_map):
     # (also works for spaces)
-    n_in_dims = len(isl_map.get_var_names(dt.in_))
-    n_out_dims = len(isl_map.get_var_names(dt.out))
+    n_in_dims = len(isl_map.get_var_names(dim_type.in_))
+    n_out_dims = len(isl_map.get_var_names(dim_type.out))
     return isl_map.move_dims(
-        dt.in_, n_in_dims, dt.out, 0, n_out_dims
+        dim_type.in_, n_in_dims, dim_type.out, 0, n_out_dims
         ).domain(), n_in_dims, n_out_dims
 
 
 def convert_set_back_to_map(isl_set, n_old_in_dims, n_old_out_dims):
     return isl.Map.from_domain(
-        isl_set).move_dims(dt.out, 0, dt.in_, n_old_in_dims, n_old_out_dims)
+        isl_set).move_dims(
+            dim_type.out, 0, dim_type.in_, n_old_in_dims, n_old_out_dims)
 
 
 def create_symbolic_map_from_tuples(
