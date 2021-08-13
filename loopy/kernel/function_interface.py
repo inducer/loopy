@@ -498,7 +498,7 @@ class InKernelCallable(ImmutableRecord):
 
 class ScalarCallable(InKernelCallable):
     """
-    An abstract interface the to a scalar callable encountered in a kernel.
+    An abstract interface to a scalar callable encountered in a kernel.
 
     .. attribute:: name_in_target
 
