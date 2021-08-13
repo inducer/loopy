@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 import islpy as isl
 from dataclasses import dataclass
-dt = isl.dim_type.set
+dim_type = isl.dim_type
 
 
 # {{{ Constants
@@ -289,7 +289,7 @@ def _gather_blex_ordering_info(
                 # the lists will continue to be updated)
 
                 # Store any new params found
-                blex_order_map_params |= set(lbound.get_var_names(dt.param))
+                blex_order_map_params |= set(lbound.get_var_names(dim_type.param))
 
         elif isinstance(lin_item, LeaveLoop):
             leave_iname = lin_item.iname
@@ -326,7 +326,7 @@ def _gather_blex_ordering_info(
                 # the lists will continue to be updated)
 
                 # Store any new params found
-                blex_order_map_params |= set(ubound.get_var_names(dt.param))
+                blex_order_map_params |= set(ubound.get_var_names(dim_type.param))
 
         elif isinstance(lin_item, RunInstruction):
             # Add stmt->blex pair to stmt_inst_to_blex
@@ -399,9 +399,9 @@ def _gather_blex_ordering_info(
 
     # Add LID/GID dims to blex order map
     blex_order_map = add_and_name_isl_dims(
-        blex_order_map, dt.out, all_par_lex_dim_names)
+        blex_order_map, dim_type.out, all_par_lex_dim_names)
     blex_order_map = add_and_name_isl_dims(
-        blex_order_map, dt.in_,
+        blex_order_map, dim_type.in_,
         append_mark_to_strings(all_par_lex_dim_names, mark=BEFORE_MARK))
     if sync_kind == "local":
         # For intra-group case, constrain GID 'before' to equal GID 'after'
@@ -422,14 +422,14 @@ def _gather_blex_ordering_info(
 
     # Add bounds params needed in blex map
     blex_order_map = add_and_name_isl_dims(
-        blex_order_map, dt.param, blex_order_map_params)
+        blex_order_map, dim_type.param, blex_order_map_params)
 
     # Get a set representing blex_order_map space
     n_blex_dims = n_seq_blex_dims + len(all_par_lex_dim_names)
     blex_set_template = isl.align_spaces(
         isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map
         ).move_dims(
-        dt.in_, n_blex_dims, dt.out, 0, n_blex_dims
+        dim_type.in_, n_blex_dims, dim_type.out, 0, n_blex_dims
         ).domain()
     blex_set_affs = isl.affs_from_space(blex_set_template.space)
 
@@ -523,7 +523,7 @@ def _gather_blex_ordering_info(
 
         # Convert blex set back to map
         map_to_subtract = isl.Map.from_domain(full_blex_set).move_dims(
-            dt.out, 0, dt.in_, n_blex_dims, n_blex_dims)
+            dim_type.out, 0, dim_type.in_, n_blex_dims, n_blex_dims)
 
         # }}}
 
@@ -835,7 +835,7 @@ def get_pairwise_statement_orderings_inner(
         # Get inames domain for statement instance (a BasicSet)
         within_inames = knl.id_to_insn[stmt_id].within_inames
         dom = knl.get_inames_domain(
-            within_inames).project_out_except(within_inames, [dt.set])
+            within_inames).project_out_except(within_inames, [dim_type.set])
 
         # Create map space (an isl space in current implementation)
         # {('statement', <inames used in statement domain>) ->
@@ -853,7 +853,7 @@ def get_pairwise_statement_orderings_inner(
         # Insert 'statement' dim into domain so that its space allows
         # for intersection with sched map later
         dom_to_intersect = insert_and_name_isl_dims(
-                dom, dt.set, [STATEMENT_VAR_NAME], 0)
+                dom, dim_type.set, [STATEMENT_VAR_NAME], 0)
 
         # Each map will map statement instances -> lex time.
         # At this point, statement instance tuples consist of single int.
@@ -938,9 +938,9 @@ def get_pairwise_statement_orderings_inner(
 
         # Add lid/gid dims to lex order map
         lex_order_map = add_and_name_isl_dims(
-            lex_order_map, dt.out, all_par_lex_dim_names)
+            lex_order_map, dim_type.out, all_par_lex_dim_names)
         lex_order_map = add_and_name_isl_dims(
-            lex_order_map, dt.in_,
+            lex_order_map, dim_type.in_,
             append_mark_to_strings(all_par_lex_dim_names, mark=BEFORE_MARK))
         # Constrain lid/gid vars to be equal
         for var_name in all_par_lex_dim_names:
