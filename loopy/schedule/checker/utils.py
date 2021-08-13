@@ -182,21 +182,21 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
     # and manually add the mark if necessary
 
     if BEFORE_MARK == "'":
-        for dim_name in map_init.get_var_names(dt.in_):
+        for dim_name in map_init.get_var_names(dim_type.in_):
             assert BEFORE_MARK not in dim_name
 
         # Append BEFORE_MARK to in_ dims
         map_marked = append_mark_to_isl_map_var_names(
-            map_init, dt.in_, BEFORE_MARK)
+            map_init, dim_type.in_, BEFORE_MARK)
 
     # }}}
 
     # {{{ Insert input/output statement dims and set them to 0 or 1
 
     map_with_stmts = insert_and_name_isl_dims(
-        map_marked, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
+        map_marked, dim_type.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
     map_with_stmts = insert_and_name_isl_dims(
-        map_with_stmts, dt.out, [STATEMENT_VAR_NAME], 0)
+        map_with_stmts, dim_type.out, [STATEMENT_VAR_NAME], 0)
 
     sid_after = 0 if self_dep else 1
 
@@ -224,18 +224,18 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
         # {{{ Get inames domain for input and output inames
 
         # Get the inames from map_init; islpy already dropped the apostrophes
-        inames_in = map_init.get_var_names(dt.in_)
-        inames_out = map_init.get_var_names(dt.out)
+        inames_in = map_init.get_var_names(dim_type.in_)
+        inames_out = map_init.get_var_names(dim_type.out)
 
         # Get inames domain
         inames_in_dom = knl_with_domains.get_inames_domain(
-            inames_in).project_out_except(inames_in, [dt.set])
+            inames_in).project_out_except(inames_in, [dim_type.set])
         inames_out_dom = knl_with_domains.get_inames_domain(
-            inames_out).project_out_except(inames_out, [dt.set])
+            inames_out).project_out_except(inames_out, [dim_type.set])
 
         # Mark dependee inames
         inames_in_dom_marked = append_mark_to_isl_map_var_names(
-            inames_in_dom, dt.set, BEFORE_MARK)
+            inames_in_dom, dim_type.set, BEFORE_MARK)
 
         # }}}
 
