@@ -500,7 +500,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         matched_usage_ids = subst_usage_ids - unmatched_usage_ids
         if matched_usage_ids:
             import islpy as isl
-            dt = isl.dim_type
+            dim_type = isl.dim_type
             # Create match condition string:
             match_any_matched_usage_id = " or ".join(
                 ["id:%s" % (usage_id) for usage_id in matched_usage_ids])
@@ -521,7 +521,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
                 # inames_domain for new inames to add
                 dom_for_new_inames = kernel.get_inames_domain(
                     out_inames_to_add
-                    ).project_out_except(out_inames_to_add, [dt.set])
+                    ).project_out_except(out_inames_to_add, [dim_type.set])
 
                 # process and add the old deps
                 for depends_on_id, old_dep_list in subst_def_deps_dict.items():
@@ -536,17 +536,17 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
                         # to this statement
                         for old_iname in out_inames_to_project_out:
                             idx_of_old_iname = old_dep.find_dim_by_name(
-                                dt.out, old_iname)
+                                dim_type.out, old_iname)
                             assert idx_of_old_iname != -1
                             new_dep = new_dep.project_out(
-                                dt.out, idx_of_old_iname, 1)
+                                dim_type.out, idx_of_old_iname, 1)
 
                         # add inames from this stmt that were not present in old dep
                         from loopy.schedule.checker.utils import (
                             add_and_name_isl_dims,
                         )
                         new_dep = add_and_name_isl_dims(
-                            new_dep, dt.out, out_inames_to_add)
+                            new_dep, dim_type.out, out_inames_to_add)
 
                         # add inames domain for new inames
                         dom_aligned = isl.align_spaces(

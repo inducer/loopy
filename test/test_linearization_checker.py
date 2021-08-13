@@ -47,6 +47,7 @@ from loopy.schedule.checker.utils import (
     ensure_dim_names_match_and_align,
     make_dep_map,
 )
+dim_type = isl.dim_type
 
 logger = logging.getLogger(__name__)
 
@@ -90,12 +91,11 @@ def _isl_map_with_marked_dims(s, placeholder_mark="'"):
     from loopy.schedule.checker.utils import (
         append_mark_to_isl_map_var_names,
     )
-    dt = isl.dim_type
     if BEFORE_MARK == "'":
         # ISL will ignore the apostrophe; manually name the in_ vars
         return append_mark_to_isl_map_var_names(
             isl.Map(s.replace(placeholder_mark, BEFORE_MARK)),
-            dt.in_,
+            dim_type.in_,
             BEFORE_MARK)
     else:
         return isl.Map(s.replace(placeholder_mark, BEFORE_MARK))
@@ -2721,12 +2721,11 @@ def test_map_domain_with_stencil_dependencies():
         add_eq_isl_constraint_from_names,
         append_mark_to_isl_map_var_names,
     )
-    dt = isl.dim_type
     # Insert 'statement' dim into transform map
     transform_map = insert_and_name_isl_dims(
-            transform_map, dt.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
+            transform_map, dim_type.in_, [STATEMENT_VAR_NAME+BEFORE_MARK], 0)
     transform_map = insert_and_name_isl_dims(
-            transform_map, dt.out, [STATEMENT_VAR_NAME], 0)
+            transform_map, dim_type.out, [STATEMENT_VAR_NAME], 0)
     # Add stmt = stmt' constraint
     transform_map = add_eq_isl_constraint_from_names(
         transform_map, STATEMENT_VAR_NAME, STATEMENT_VAR_NAME+BEFORE_MARK)
@@ -2734,7 +2733,7 @@ def test_map_domain_with_stencil_dependencies():
     # Apply transform map to dependency
     mapped_dep_map = dep_map.apply_range(transform_map).apply_domain(transform_map)
     mapped_dep_map = append_mark_to_isl_map_var_names(
-        mapped_dep_map, dt.in_, BEFORE_MARK)
+        mapped_dep_map, dim_type.in_, BEFORE_MARK)
 
     # }}}
 

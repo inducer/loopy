@@ -98,7 +98,7 @@ def _fix_parameter(kernel, name, value, within=None):
 
     def _fix_parameter_in_dep(dep):
         # For efficiency: could check for param presence first
-        dt = isl.dim_type
+        dim_type = isl.dim_type
 
         # Temporarily convert map to set for processing
         set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
@@ -111,7 +111,7 @@ def _fix_parameter(kernel, name, value, within=None):
         map_from_set = isl.Map.from_domain(set_from_map)
         # Move original out dims back
         map_from_set = map_from_set.move_dims(
-            dt.out, 0, dt.in_, n_in_dims, n_out_dims)
+            dim_type.out, 0, dim_type.in_, n_in_dims, n_out_dims)
 
         return map_from_set
 

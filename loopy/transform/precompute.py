@@ -1110,7 +1110,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         # }}}
 
-        from islpy import dim_type as dt
+        from islpy import dim_type
         for dependee_id, old_deps in usage_stmt.dependencies.items():
             for old_dep in old_deps:
                 # old dep: dependee->usage_stmt
@@ -1118,7 +1118,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
                 new_dep = old_dep.copy()
 
-                old_out_inames = old_dep.get_var_names(dt.out)
+                old_out_inames = old_dep.get_var_names(dim_type.out)
                 assert (
                     set(old_out_inames) - set([STATEMENT_VAR_NAME, ]) ==
                     set(usage_inames))
@@ -1126,7 +1126,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                 non_shared_inames = set(usage_inames) - shared_inames
                 # Remove inames from old out dims that won't appear in new out dims
                 for non_shared_iname in non_shared_inames:
-                    new_dep = remove_dim_by_name(new_dep, dt.out, non_shared_iname)
+                    new_dep = remove_dim_by_name(
+                        new_dep, dim_type.out, non_shared_iname)
 
                 # These new out inames will take on full domain values
                 assert (
@@ -1135,12 +1136,12 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
                 # Add new_unconstrained_out_names to out dims
                 new_dep = add_and_name_isl_dims(
-                    new_dep, dt.out, fetch_inames_not_shared)
+                    new_dep, dim_type.out, fetch_inames_not_shared)
 
                 # Intersect dom for fetch_inames_not_shared
                 dom_to_intersect = kernel.get_inames_domain(
                     fetch_inames_not_shared
-                    ).project_out_except(fetch_inames_not_shared, [dt.set])
+                    ).project_out_except(fetch_inames_not_shared, [dim_type.set])
 
                 dom_to_intersect_aligned = isl.align_spaces(
                     dom_to_intersect, new_dep.range(),
@@ -1151,9 +1152,10 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                 # {{{ Old dep might have been self-dep, set stmt var correctly
 
                 # add and remove stmt dim
-                new_dep = remove_dim_by_name(new_dep, dt.out, STATEMENT_VAR_NAME)
+                new_dep = remove_dim_by_name(
+                    new_dep, dim_type.out, STATEMENT_VAR_NAME)
                 new_dep = insert_and_name_isl_dims(
-                    new_dep, dt.out, [STATEMENT_VAR_NAME], 0)
+                    new_dep, dim_type.out, [STATEMENT_VAR_NAME], 0)
                 # set stmt dim value
                 sid_out = 0 if fetch_stmt_id == dependee_id else 1
                 new_dep = new_dep.add_constraint(
