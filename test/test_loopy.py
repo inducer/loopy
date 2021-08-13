@@ -3192,6 +3192,30 @@ def test_global_tv_with_base_storage_across_gbarrier(ctx_factory):
     np.testing.assert_allclose(out.get(), np.arange(9, -1, -1))
 
 
+def test_get_return_from_kernel_mapping():
+    from loopy.schedule.tools import get_return_from_kernel_mapping
+
+    t_unit = lp.make_kernel(
+        "{[i,j]: 0<=i,j<10}",
+        """
+        <> tmp[i] = i
+        ... gbarrier
+        out[j] = tmp[9-j]
+        """,
+        seq_dependencies=True)
+    t_unit = lp.linearize(lp.preprocess_kernel(t_unit))
+    ret_from_knl_idx = get_return_from_kernel_mapping(t_unit.default_entrypoint)
+    assert ret_from_knl_idx[0] == 4
+    assert ret_from_knl_idx[1] == 4
+    assert ret_from_knl_idx[2] == 4
+    assert ret_from_knl_idx[3] == 4
+
+    assert ret_from_knl_idx[6] == 10
+    assert ret_from_knl_idx[7] == 10
+    assert ret_from_knl_idx[8] == 10
+    assert ret_from_knl_idx[9] == 10
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
