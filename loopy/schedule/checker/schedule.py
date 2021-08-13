@@ -760,16 +760,18 @@ def get_pairwise_statement_orderings_inner(
                     # Get inames domain
                     dom = knl.get_inames_domain(
                         inames_involved_in_bound).project_out_except(
-                            inames_involved_in_bound, [dt.set])
+                            inames_involved_in_bound, [dim_type.set])
 
                     # {{{ Move domain dims for surrounding inames to parameters
                     # (keeping them in order, which might come in handy later...)
 
                     # Move those inames to params
                     for outer_iname in current_inames[:depth]:
-                        outer_iname_idx = dom.find_dim_by_name(dt.set, outer_iname)
+                        outer_iname_idx = dom.find_dim_by_name(
+                            dim_type.set, outer_iname)
                         dom = dom.move_dims(
-                            dt.param, dom.n_param(), dt.set, outer_iname_idx, 1)
+                            dim_type.param, dom.n_param(), dim_type.set,
+                            outer_iname_idx, 1)
 
                     # }}}
 
