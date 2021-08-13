@@ -2466,14 +2466,15 @@ def map_domain(kernel, isl_map):
             # Transform map inames are not present in dependee, don't change dep_map
             return dep_map
 
-    # TODO figure out proper way to create false match condition
+    # TODO figure out proper way to create false/true match conditions
     false_id_match = "not id:*"
+    true_id_match = "id:*"
     kernel = map_dependency_maps(
         kernel, _apply_transform_map_to_depender,
-        stmt_match_depender=within, stmt_match_dependee=false_id_match)
+        stmt_match_depender=true_id_match, stmt_match_dependee=false_id_match)
     kernel = map_dependency_maps(
         kernel, _apply_transform_map_to_dependee,
-        stmt_match_depender=false_id_match, stmt_match_dependee=within)
+        stmt_match_depender=false_id_match, stmt_match_dependee=true_id_match)
 
     # }}}
 
