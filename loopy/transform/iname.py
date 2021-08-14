@@ -2355,7 +2355,7 @@ def map_domain(kernel, transform_map):
 
     # Create version of transform map with before marks
     # (for aligning when applying map to dependee portion of deps)
-    isl_map_marked = append_mark_to_isl_map_var_names(
+    transform_map_marked = append_mark_to_isl_map_var_names(
         append_mark_to_isl_map_var_names(transform_map, dim_type.in_, BEFORE_MARK),
         dim_type.out, BEFORE_MARK)
 
@@ -2419,13 +2419,13 @@ def map_domain(kernel, transform_map):
             return dep_map
 
     def _apply_transform_map_to_dependee(dep_map):
-        # (since 'in_' dim of dep is marked, use isl_map_marked)
+        # (since 'in_' dim of dep is marked, use transform_map_marked)
 
         # Find overlap between transform map inames and *dependee* inames
         # (ignore the statement var name, which may have been
         # added to a transform map or s)
         mapped_inames = set(
-            isl_map_marked.get_var_names(dim_type.in_)) - names_to_ignore
+            transform_map_marked.get_var_names(dim_type.in_)) - names_to_ignore
         overlap = set(dep_map.domain().get_var_dict()) & mapped_inames
 
         if overlap:
@@ -2452,7 +2452,7 @@ def map_domain(kernel, transform_map):
             (
                 augmented_trans_map_marked, proxy_name_pairs
             ) = _apply_identity_for_missing_map_dims(
-                isl_map_marked, dep_map.get_var_names(dim_type.in_))
+                transform_map_marked, dep_map.get_var_names(dim_type.in_))
 
             # Align 'in_' dim of transform map with 'in_' dim of dep
             from loopy.schedule.checker.utils import reorder_dims_by_name
