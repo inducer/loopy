@@ -699,6 +699,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     import loopy as lp
 
     type_inf_mapper = type_inf_mapper.copy()
+    raised_type_dep_failure = False
 
     for writer_insn_id in kernel.writer_map().get(var_name, []):
         writer_insn = kernel.id_to_insn[writer_insn_id]
@@ -708,30 +709,38 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         expr = subst_expander(writer_insn.expression)
 
         debug("             via expr %s", expr)
-        if isinstance(writer_insn, lp.Assignment):
-            result = type_inf_mapper(expr, return_dtype_set=True)
-        elif isinstance(writer_insn, lp.CallInstruction):
-            return_dtype_sets = type_inf_mapper(expr, return_tuple=True,
-                    return_dtype_set=True)
 
-            result = []
-            for return_dtype_set in return_dtype_sets:
-                result_i = None
-                found = False
-                for assignee, comp_dtype_set in zip(
-                        writer_insn.assignee_var_names(), return_dtype_set):
-                    if assignee == var_name:
-                        found = True
-                        result_i = comp_dtype_set
-                        break
+        result = ()
+        try:
+            if isinstance(writer_insn, lp.Assignment):
+                result = type_inf_mapper(expr, return_dtype_set=True)
+            elif isinstance(writer_insn, lp.CallInstruction):
+                return_dtype_sets = type_inf_mapper(expr, return_tuple=True,
+                        return_dtype_set=True)
 
-                assert found
-                if result_i is not None:
-                    result.append(result_i)
+                result = []
+                for return_dtype_set in return_dtype_sets:
+                    result_i = None
+                    found = False
+                    for assignee, comp_dtype_set in zip(
+                            writer_insn.assignee_var_names(), return_dtype_set):
+                        if assignee == var_name:
+                            found = True
+                            result_i = comp_dtype_set
+                            break
 
-        debug("             result: %s", result)
+                    assert found
+                    if result_i is not None:
+                        result.append(result_i)
+        except DependencyTypeInferenceFailure:
+            raised_type_dep_failure = True
 
-        dtype_sets.append(result)
+        if result:
+            debug("             result: %s", result)
+            dtype_sets.append(result)
+
+    if raised_type_dep_failure and not dtype_sets:
+        raise DependencyTypeInferenceFailure
 
     if not dtype_sets:
         return (
