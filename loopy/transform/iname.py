@@ -2017,20 +2017,29 @@ def _error_if_any_iname_in_constraint(
 
 
 @for_each_kernel
-def map_domain(kernel, isl_map):
+def map_domain(kernel, transform_map):
+    """Transform an iname domain by applying a mapping from existing inames to
+    new inames.
+
+    :arg transform_map: A bijective :class:`islpy.Map` from existing inames to
+        new inames. To be applicable to a kernel domain, all input inames in
+        the map must be found in the domain. The map must be applicable to
+        exactly one domain found in *kernel.domains*.
+
+    """
+
     # FIXME: Express _split_iname_backend in terms of this
     #   Missing/deleted for now:
     #     - slab processing
     #     - priorities processing
     # FIXME: Express affine_map_inames in terms of this, deprecate
-    # FIXME: Document
 
     # Make sure the map is bijective
-    if not isl_map.is_bijective():
-        raise LoopyError("isl_map must be bijective")
+    if not transform_map.is_bijective():
+        raise LoopyError("transform_map must be bijective")
 
-    transform_map_out_dims = frozenset(isl_map.get_var_dict(dim_type.out))
-    transform_map_in_dims = frozenset(isl_map.get_var_dict(dim_type.in_))
+    transform_map_out_dims = frozenset(transform_map.get_var_dict(dim_type.out))
+    transform_map_in_dims = frozenset(transform_map.get_var_dict(dim_type.in_))
 
     # {{{ Make sure that none of the mapped inames are involved in loop priorities
 
@@ -2039,7 +2048,7 @@ def map_domain(kernel, isl_map):
             if set(prio) & transform_map_in_dims:
                 raise ValueError(
                     "Loop priority %s contains iname(s) transformed by "
-                    "map %s in map_domain." % (prio, isl_map))
+                    "map %s in map_domain." % (prio, transform_map))
     if hasattr(kernel, "loop_nest_constraints") and kernel.loop_nest_constraints:
         _error_if_any_iname_in_constraint(
             transform_map_in_dims,
@@ -2060,9 +2069,9 @@ def map_domain(kernel, isl_map):
     from pymbolic import var
     for iname in transform_map_in_dims:
         substitutions[iname] = aff_to_expr(
-                _find_aff_subst_from_map(iname, isl_map))
+                _find_aff_subst_from_map(iname, transform_map))
         var_substitutions[var(iname)] = aff_to_expr(
-                _find_aff_subst_from_map(iname, isl_map))
+                _find_aff_subst_from_map(iname, transform_map))
 
     applied_iname_rewrites.append(var_substitutions)
     del var_substitutions
@@ -2073,21 +2082,22 @@ def map_domain(kernel, isl_map):
         """Return the transformed set. Assume that map is applicable to this
         set."""
 
-        # {{{ align dims of isl_map and s
+        # {{{ align dims of transform_map and s
 
         from islpy import _align_dim_type
 
         map_with_s_domain = isl.Map.from_domain(s)
 
-        # If there are dims in s that are not mapped by isl_map, add them
-        # to the in/out space of isl_map so that they remain unchanged.
+        # If there are dims in s that are not mapped by transform_map, add them
+        # to the in/out space of transform_map so that they remain unchanged.
         # (temporary proxy dim names are needed in out space of transform
         # map because isl won't allow any dim names to match, i.e., instead
         # of just mapping {[unused_iname]->[unused_iname]}, we have to map
         # {[unused_name]->[unused_name__prox] : unused_name__prox = unused_name},
         # and then rename unused_name__prox afterward.)
-        augmented_isl_map, proxy_name_pairs = _apply_identity_for_missing_map_dims(
-            isl_map, s.get_var_names(dim_type.set))
+        augmented_transform_map, proxy_name_pairs = \
+            _apply_identity_for_missing_map_dims(
+                transform_map, s.get_var_names(dim_type.set))
 
         # FIXME: Make this less gross
         # FIXME: Make an exported/documented interface of this in islpy
@@ -2098,9 +2108,9 @@ def map_domain(kernel, isl_map):
                 for i in range(map_with_s_domain.dim(dt))
                 ]
         map_names = [
-                augmented_isl_map.get_dim_name(dt, i)
+                augmented_transform_map.get_dim_name(dt, i)
                 for dt in dim_types
-                for i in range(augmented_isl_map.dim(dt))
+                for i in range(augmented_transform_map.dim(dt))
                 ]
 
         # (order doesn't matter in s_names/map_names,
@@ -2109,7 +2119,7 @@ def map_domain(kernel, isl_map):
         # not sure why this isn't just handled inside _align_dim_type)
         aligned_map = _align_dim_type(
                 dim_type.param,
-                augmented_isl_map, map_with_s_domain, False,
+                augmented_transform_map, map_with_s_domain, False,
                 map_names, s_names)
         aligned_map = _align_dim_type(
                 dim_type.in_,
@@ -2156,7 +2166,7 @@ def map_domain(kernel, isl_map):
             # already applied. Error.
             raise LoopyError(
                 "Transform map %s was applicable to more than one domain. %s"
-                % (isl_map, transform_map_rules))
+                % (transform_map, transform_map_rules))
 
         else:
 
@@ -2169,7 +2179,7 @@ def map_domain(kernel, isl_map):
     if not map_applied_to_one_dom:
         raise LoopyError(
             "Transform map %s was not applicable to any domain. %s"
-            % (isl_map, transform_map_rules))
+            % (transform_map, transform_map_rules))
 
     # }}}
 
