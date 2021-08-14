@@ -3216,6 +3216,20 @@ def test_get_return_from_kernel_mapping():
     assert ret_from_knl_idx[9] == 10
 
 
+def test_type_inf_with_self_deps(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/481
+    ctx = ctx_factory()
+
+    prog = lp.make_kernel(
+            "{[i]: 0<=i<3}",
+            """
+            <> x[i] = if(i==0, 1, if(i==1, 1.1, if(i==2, 1.11, -1))) {id=insn1}
+            x[i] = if(x[i]>1.1, 2, x[i]) {id=insn2,dep=insn1,dup=i}
+            out[i] = x[i] {dep=insn2,dup=i}
+            """)
+    lp.auto_test_vs_ref(prog, ctx, prog)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
