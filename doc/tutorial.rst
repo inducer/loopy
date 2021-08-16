@@ -613,7 +613,7 @@ commonly called 'loop tiling':
     ...     assumptions="n mod 16 = 0 and n >= 1")
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.split_iname(knl, "j", 16)
-    >>> knl = lp.prioritize_loops(knl, "i_outer,j_outer,i_inner")
+    >>> knl = lp.prioritize_loops(knl, "i_outer,j_outer,i_inner,j_inner")
     >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -1032,8 +1032,8 @@ transformation exists in :func:`loopy.add_prefetch`:
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-        acc_k = 0.0f;
         a_fetch = a[16 * gid(0) + lid(0)];
+        acc_k = 0.0f;
         for (int k = 0; k <= 15; ++k)
           acc_k = acc_k + a_fetch;
         out[16 * gid(0) + lid(0)] = acc_k;
@@ -1057,11 +1057,10 @@ earlier:
     #define lid(N) ((int) get_local_id(N))
     ...
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
-        acc_k = 0.0f;
-      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
         a_fetch[lid(0)] = a[16 * gid(0) + lid(0)];
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
+        acc_k = 0.0f;
         for (int k = 0; k <= 15; ++k)
           acc_k = acc_k + a_fetch[lid(0)];
         out[16 * gid(0) + lid(0)] = acc_k;
@@ -1903,18 +1902,16 @@ Now to make things more interesting, we'll create a kernel with barriers:
     {
       __local int c[50 * 10 * 99];
     <BLANKLINE>
-      {
-        int const k_outer = 0;
-    <BLANKLINE>
+      for (int i = 0; i <= 49; ++i)
         for (int j = 0; j <= 9; ++j)
-          for (int i = 0; i <= 49; ++i)
-          {
-            barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
-            c[990 * i + 99 * j + lid(0) + 1] = 2 * a[980 * i + 98 * j + lid(0) + 1];
-            barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
-            e[980 * i + 98 * j + lid(0) + 1] = c[990 * i + 99 * j + 1 + lid(0) + 1] + c[990 * i + 99 * j + -1 + lid(0) + 1];
-          }
-      }
+        {
+          int const k_outer = 0;
+    <BLANKLINE>
+          barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
+          c[990 * i + 99 * j + lid(0) + 1] = 2 * a[980 * i + 98 * j + lid(0) + 1];
+          barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
+          e[980 * i + 98 * j + lid(0) + 1] = c[990 * i + 99 * j + 1 + lid(0) + 1] + c[990 * i + 99 * j + -1 + lid(0) + 1];
+        }
     }
 
 In this kernel, when a work-item performs the second instruction it uses data
