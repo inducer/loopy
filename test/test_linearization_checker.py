@@ -189,7 +189,16 @@ knl = lp.make_kernel(
 # Get a linearization
 lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
-stmt_id_pairs = [("stmt_k1", "stmt_i2"), ("stmt_i1", "stmt_j0")]
+#stmt_id_pairs = [("stmt_k1", "stmt_i2"), ("stmt_i1", "stmt_j0")]
+stmt_id_pairs = [
+    ("stmt_i0", "stmt_i1"),
+    ("stmt_i1", "stmt_j0"),
+    ("stmt_j0", "stmt_j1"),
+    ("stmt_j1", "stmt_j2"),
+    ("stmt_j2", "stmt_k0"),
+    ("stmt_k0", "stmt_k1"),
+    ("stmt_k1", "stmt_i2"),
+    ]
 pworders = get_pairwise_statement_orderings(
     lin_knl, lin_items, stmt_id_pairs)
 
