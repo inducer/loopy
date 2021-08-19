@@ -233,6 +233,7 @@ def _gather_blex_ordering_info(
     blex ordering map defining the blex ordering for all statement pairs,
     rather than separate (smaller) lex ordering maps for each pair
     """
+    # TODO just pass in loops_with_barriers for the appropriate sync kind
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from loopy.schedule.checker.lexicographic_order_map import (
         create_lex_order_map,
@@ -318,7 +319,7 @@ def _gather_blex_ordering_info(
 
                 # Store any new params found
                 _blex_order_map_params |= set(_lbound.get_var_names(dim_type.param))  # TODO remove
-                blex_order_map_params |= set(lbound.get_var_names(dim_type.param))
+                blex_order_map_params |= set(lbound.get_var_names(dim_type.param))  # might include inames
 
         elif isinstance(lin_item, LeaveLoop):
             leave_iname = lin_item.iname
@@ -427,7 +428,11 @@ def _gather_blex_ordering_info(
             pass
 
     _blex_order_map_params = sorted(_blex_order_map_params)  # TODO remove
-    blex_order_map_params = sorted(blex_order_map_params)
+    #blex_order_map_params = sorted(blex_order_map_params)
+    # Don't want inames in blex map params, remove them
+    # TODO: could we have introduced inames other than loops_with_barriers?
+    blex_order_map_params = sorted(blex_order_map_params - loops_with_barriers[sync_kind])
+
 
     # At this point, some blex tuples may have more dimensions than others;
     # the missing dims are the fastest-updating dims, and their values should
@@ -569,6 +574,7 @@ def _gather_blex_ordering_info(
                     blex_set &= blex_set_affs[dim_name].eq_set(
                         blex_set_affs[iname_to_blex_var[dim_val]])
                 else:
+                    """
                     # This is a pwaff iname bound, align and intersect
                     assert isinstance(dim_val, isl.PwMultiAff)
                     if dim_val.n_piece() != 1:
@@ -580,22 +586,27 @@ def _gather_blex_ordering_info(
                     pwaff_aligned = isl.align_spaces(dim_val_pwaff, blex_set_affs[0])
                     # (doesn't matter which blex_set_affs item we align to^)
                     blex_set &= blex_set_affs[dim_name].eq_set(pwaff_aligned)
+                    """
+                    # TODO figure out best place to do this:
+                    # Rename dims and align dim_val so it can intersect w/blex_set
 
-                    # TODO LEFT OFF HERE:
-                    # Problem: loop lexmin/max set in terms of inames but need
-                    # to use corresponding blex dim names in blex map,
-                    # rename set(/aff?) dims accordingly;
-                    # ALSO TODO: don't put inames into blex params.
-                    # dim_val_pwaff might have inames as params, and if it
-                    # does, we also (earlier) added those inames to
-                    # blex_set_affs. Blex map does not use inames for var names
-                    # (uses corresponding lex dim names), and these parameters
-                    # probably shouldn't be in the blex map. Figure out at what
-                    # point it makes sense to remove these params.
-                    # ALSO TODO see whether we should even be dealing with affs
-                    # in the first place, we could have used lexmin/lexmax to
-                    # get a set instead of a PwMultiAff and then delt with that
-                    # differently?
+                    # There might be inames as params in dim_val, move them to set dim
+                    dim_val_pre_aligned = dim_val.copy()  # maybe we can remove this copy
+                    for var_name in dim_val_pre_aligned.get_var_names(dim_type.param):
+                        if var_name in iname_to_blex_var:
+                            idx = dim_val_pre_aligned.find_dim_by_name(
+                                dim_type.param, var_name)  # (might have moved since loop start)
+                            dim_val_pre_aligned = dim_val_pre_aligned.move_dims(
+                                dim_type.out, 0, dim_type.param, idx, 1)
+
+                    # Rename inames to corresponding blex var names
+                    # TODO does this catch all potential inames?
+                    from loopy.schedule.checker.utils import rename_dims
+                    dim_val_renamed = rename_dims(
+                        dim_val_pre_aligned, iname_to_blex_var, [dim_type.set])
+
+                    dim_val_aligned = isl.align_spaces(dim_val_renamed, blex_set_template)
+                    blex_set &= dim_val_aligned
 
                 # TODO remove
                 if isinstance(_dim_val, int):
@@ -694,7 +705,6 @@ def _gather_blex_ordering_info(
         maps_to_subtract.append(map_to_subtract)
 
     # }}}
-    1/0
 
     # {{{ Subtract transitive closure of union of blex maps to subtract
 
@@ -909,8 +919,8 @@ def get_pairwise_statement_orderings_inner(
 
                     # }}}
 
-                    #loop_bounds[iname] = (dom.lexmin(), dom.lexmax())
-                    loop_bounds[iname] = (dom.lexmin_pw_multi_aff(), dom.lexmax_pw_multi_aff())
+                    loop_bounds[iname] = (dom.lexmin(), dom.lexmax())
+                    #loop_bounds[iname] = (dom.lexmin_pw_multi_aff(), dom.lexmax_pw_multi_aff())
 
             # }}}
 
