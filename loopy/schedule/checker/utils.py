@@ -84,6 +84,18 @@ def reorder_dims_by_name(
     return new_set
 
 
+def rename_dims(
+        isl_set, rename_map,
+        dts=(dim_type.in_, dim_type.out, dim_type.param)):
+    new_isl_set = isl_set.copy()
+    for dt in dts:
+        for idx, old_name in enumerate(isl_set.get_var_names(dt)):
+            if old_name in rename_map:
+                new_isl_set = new_isl_set.set_dim_name(
+                    dt, idx, rename_map[old_name])
+    return new_isl_set
+
+
 def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match
