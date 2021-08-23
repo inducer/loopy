@@ -417,6 +417,138 @@ def test_opencl_support_for_bool(ctx_factory):
     np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
 
 
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_opencl_math_funcs(ctx_factory, dtype):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from loopy.target.opencl import UNARY_FUNCS, _CL_SIMPLE_MULTI_ARG_FUNCTIONS
+
+    test_func = {}
+    test_func["asin"] = np.arcsin
+    test_func["acos"] = np.arccos
+    test_func["atan"] = np.arctan
+    test_func["asinh"] = np.arcsinh
+    test_func["acosh"] = np.arccosh
+    test_func["atanh"] = np.arctanh
+    test_func["rsqrt"] = lambda x: 1 / np.sqrt(x)
+    test_func["sinpi"] = lambda x: np.sin(np.pi * x)
+    test_func["cospi"] = lambda x: np.cos(np.pi * x)
+    test_func["tanpi"] = lambda x: np.tan(np.pi * x)
+    test_func["asinpi"] = lambda x: np.arcsin(x) / np.pi
+    test_func["acospi"] = lambda x: np.arccos(x) / np.pi
+    test_func["atanpi"] = lambda x: np.arctan(x) / np.pi
+    test_func["exp10"] = lambda x: np.power(10., x)
+
+    test_func["fdim"] = lambda x, y: max(0., x - y)
+    test_func["maxmag"] = lambda x, y: max(np.abs(x), np.abs(y))
+    test_func["minmag"] = lambda x, y: min(np.abs(x), np.abs(y))
+    test_func["pow"] = test_func["powr"] = np.power
+    test_func["step"] = lambda x, y: np.heaviside(y - x, 0)
+    test_func["atan2"] = lambda x, y: np.arctan(x / y)
+    test_func["atan2pi"] = lambda x, y: np.arctan(x / y) / np.pi
+
+    test_func["clamp"] = np.clip
+    test_func["fma"] = test_func["mad"] = lambda x, y, z: x * y + z
+    test_func["mix"] = lambda x, y, z: x + (y - x) * z
+
+    for func in ["erf", "erfc", "tgamma", "lgamma", "logb"]:
+        test_func[func] = lambda x: None
+
+    for func in (UNARY_FUNCS | _CL_SIMPLE_MULTI_ARG_FUNCTIONS.keys()):
+        if func not in test_func:
+            test_func[func] = getattr(np, func)
+
+    for func in UNARY_FUNCS:
+        if func in {"atanh", "asinpi", "asin", "acos", "acospi"}:
+            x = np.array(.43, dtype=dtype)
+        else:
+            x = np.array(1.43, dtype=dtype)
+
+        knl = lp.make_kernel(
+            "{:}",
+            f"f = {func}(x)"
+        )
+
+        _, (result,) = knl(queue, x=x)
+        result = result.get()
+        np_result = test_func[func](x)
+        if np_result is not None:
+            assert np.allclose(np_result, result), func
+
+    binary_funcs = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
+                    if val == 2}
+
+    for func in binary_funcs:
+        x = np.array(1.43, dtype=dtype)
+        y = np.array(.341, dtype=dtype)
+
+        knl = lp.make_kernel(
+            "{:}",
+            f"f = {func}(x, y)"
+        )
+
+        _, (result,) = knl(queue, x=x, y=y)
+        result = result.get()
+        np_result = test_func[func](x, y)
+        if np_result is not None:
+            assert np.allclose(np_result, result), func
+
+    ternary_funcs = {func for func, val in _CL_SIMPLE_MULTI_ARG_FUNCTIONS.items()
+                    if val == 3}
+
+    for func in ternary_funcs:
+        x = np.array(1.43, dtype=dtype)
+        y = np.array(.341, dtype=dtype)
+        z = np.array(1.0123, dtype=dtype)
+
+        knl = lp.make_kernel(
+            "{:}",
+            f"f = {func}(x, y, z)"
+        )
+
+        _, (result,) = knl(queue, x=x, y=y, z=z)
+        result = result.get()
+        np_result = test_func[func](x, y, z)
+        if np_result is not None:
+            assert np.allclose(np_result, result), func
+
+
+def test_cl_funcs_with_mixed_input_dtypes(ctx_factory):
+    cl_ctx = ctx_factory()
+    queue = cl.CommandQueue(cl_ctx)
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        f[0] = pow(x, y)
+        f[1] = atan2(x, y)
+        """,
+        options=lp.Options(write_cl=True),
+    )
+
+    x = np.array(1.923, dtype="float64")
+    y = np.array(.523, dtype="float32")
+    z = np.array(3, dtype="int")
+
+    _, (result,) = knl(queue, x=x, y=y)
+
+    assert np.allclose(result.get(), [np.power(x, y), np.arctan(x/y)])
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        f[0] = fma(x, y, z)
+        f[1] = mix(x, y, z)
+        """,
+        options=lp.Options(write_cl=True),
+    )
+
+    _, (result,) = knl(queue, x=x, y=y, z=z)
+
+    assert np.allclose(result.get(), [x * y + z, x + (y - x) * z])
+
+
 def test_nan_support(ctx_factory):
     from loopy.symbolic import parse
     ctx = ctx_factory()

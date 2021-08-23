@@ -102,20 +102,12 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def wrap_in_typecast(self, actual_type, needed_dtype, s):
         return s
 
-    def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
-        """This is similar to *wrap_in_typecast*, but takes a function for
-        the actual type argument instead of a type. This can be helpful
-        when actual type argument is expensive to calculate and is not
-        needed in some cases.
-        """
-        return s
-
     def rec(self, expr, type_context=None, needed_dtype=None):
         if needed_dtype is None:
             return RecursiveMapper.rec(self, expr, type_context)
 
-        return self.wrap_in_typecast_lazy(
-                lambda: self.infer_type(expr), needed_dtype,
+        return self.wrap_in_typecast(
+                self.infer_type(expr), needed_dtype,
                 RecursiveMapper.rec(self, expr, type_context))
 
     def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
@@ -380,10 +372,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def map_if(self, expr, type_context):
         from loopy.types import to_loopy_type
         result_type = self.infer_type(expr)
+        cond_type = to_loopy_type(
+            np.int8 if self.kernel.target.use_int8_for_bool else np.bool8)
         return type(expr)(
-                self.rec(expr.condition, type_context,
-                         to_loopy_type(np.bool8,
-                                       target=self.kernel.target)),
+                self.rec(expr.condition, type_context, cond_type),
                 self.rec(expr.then, type_context, result_type),
                 self.rec(expr.else_, type_context, result_type),
                 )
@@ -507,31 +499,40 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             elif is_zero(expr.exponent - 2):
                 return self.rec(expr.base*expr.base, type_context)
 
-        if exponent_dtype.is_integral():
-            from loopy.codegen import SeenFunction
-            func_name = ("loopy_pow_"
-                    f"{tgt_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")
+        from loopy.types import NumpyType
+        common_dtype = NumpyType(np.find_common_type(
+            [], [base_dtype.numpy_dtype, exponent_dtype.numpy_dtype]))
 
+        if common_dtype.is_integral():
+            func_name = ("loopy_pow_"
+                    f"{common_dtype.numpy_dtype}_{common_dtype.numpy_dtype}")
+
+            from loopy.codegen import SeenFunction
             self.codegen_state.seen_functions.add(
                     SeenFunction(
                         "int_pow", func_name,
-                        (tgt_dtype, exponent_dtype),
+                        (common_dtype, common_dtype),
                         (tgt_dtype, )))
             # FIXME: This need some more callables to be registered.
             return var(func_name)(self.rec(expr.base, type_context),
                                   self.rec(expr.exponent, type_context))
         else:
-            from loopy.codegen import SeenFunction
             clbl = self.codegen_state.ast_builder.known_callables["pow"]
             clbl = clbl.with_types({0: tgt_dtype, 1: exponent_dtype},
                     self.codegen_state.callables_table)[0]
-            self.codegen_state.seen_functions.add(
-                    SeenFunction(
-                        clbl.name, clbl.name_in_target,
-                        (base_dtype, exponent_dtype),
-                        (tgt_dtype,)))
-            return var(clbl.name_in_target)(self.rec(expr.base, type_context),
-                    self.rec(expr.exponent, type_context))
+
+            common_dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for id, dtype in clbl.arg_id_to_dtype.items()
+                     if (id >= 0 and dtype is not None)])
+            from loopy.types import NumpyType
+            dtype = NumpyType(common_dtype)
+            inner_type_context = dtype_to_type_context(
+                    self.kernel.target, dtype)
+
+            return var(clbl.name_in_target)(
+                self.rec(expr.base, inner_type_context, dtype),
+                self.rec(expr.exponent, inner_type_context, dtype)
+            )
 
     # }}}
 

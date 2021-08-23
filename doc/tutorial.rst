@@ -503,7 +503,7 @@ ambiguous.
     ...
       for (int j = 0; j <= -1 + n; ++j)
         for (int i = 0; i <= -1 + n; ++i)
-          a[n * i + j] = 0.0f;
+          a[n * i + j] = (float)(0.0f);
     ...
 
 No more warnings! Loop nesting is also reflected in the dependency graph:
@@ -561,7 +561,7 @@ Consider this example:
     ...
       for (int i_outer = 0; i_outer <= -1 + (15 + n) / 16; ++i_outer)
         for (int i_inner = 0; i_inner <= (-16 + n + -16 * i_outer >= 0 ? 15 : -1 + n + -16 * i_outer); ++i_inner)
-          a[16 * i_outer + i_inner] = 0.0f;
+          a[16 * i_outer + i_inner] = (float)(0.0f);
     ...
 
 By default, the new, split inames are named *OLD_outer* and *OLD_inner*,
@@ -592,7 +592,7 @@ relation to loop nesting. For example, it's perfectly possible to request
     ...
       for (int i_inner = 0; i_inner <= (-17 + n >= 0 ? 15 : -1 + n); ++i_inner)
         for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + (15 + n + 15 * i_inner) / 16; ++i_outer)
-          a[16 * i_outer + i_inner] = 0.0f;
+          a[16 * i_outer + i_inner] = (float)(0.0f);
     ...
 
 Notice how loopy has automatically generated guard conditionals to make
@@ -660,10 +660,10 @@ loop's tag to ``"unr"``:
     ...
       for (int i_outer = 0; i_outer <= loopy_floor_div_pos_b_int32(-4 + n, 4); ++i_outer)
       {
-        a[4 * i_outer] = 0.0f;
-        a[1 + 4 * i_outer] = 0.0f;
-        a[2 + 4 * i_outer] = 0.0f;
-        a[3 + 4 * i_outer] = 0.0f;
+        a[4 * i_outer] = (float)(0.0f);
+        a[1 + 4 * i_outer] = (float)(0.0f);
+        a[2 + 4 * i_outer] = (float)(0.0f);
+        a[3 + 4 * i_outer] = (float)(0.0f);
       }
     ...
 
@@ -735,7 +735,7 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *__restrict__ a, int const n)
     {
       if (-1 + -128 * gid(0) + -1 * lid(0) + n >= 0)
-        a[128 * gid(0) + lid(0)] = 0.0f;
+        a[128 * gid(0) + lid(0)] = (float)(0.0f);
     }
 
 Loopy requires that workgroup sizes are fixed and constant at compile time.
@@ -780,13 +780,13 @@ assumption:
     ...
       for (int i_outer = 0; i_outer <= -1 + (3 + n) / 4; ++i_outer)
       {
-        a[4 * i_outer] = 0.0f;
+        a[4 * i_outer] = (float)(0.0f);
         if (-2 + -4 * i_outer + n >= 0)
-          a[1 + 4 * i_outer] = 0.0f;
+          a[1 + 4 * i_outer] = (float)(0.0f);
         if (-3 + -4 * i_outer + n >= 0)
-          a[2 + 4 * i_outer] = 0.0f;
+          a[2 + 4 * i_outer] = (float)(0.0f);
         if (-4 + -4 * i_outer + n >= 0)
-          a[3 + 4 * i_outer] = 0.0f;
+          a[3 + 4 * i_outer] = (float)(0.0f);
       }
     ...
 
@@ -810,10 +810,10 @@ enabling some cost savings:
       /* bulk slab for 'i_outer' */
       for (int i_outer = 0; i_outer <= -2 + (3 + n) / 4; ++i_outer)
       {
-        a[4 * i_outer] = 0.0f;
-        a[1 + 4 * i_outer] = 0.0f;
-        a[2 + 4 * i_outer] = 0.0f;
-        a[3 + 4 * i_outer] = 0.0f;
+        a[4 * i_outer] = (float)(0.0f);
+        a[1 + 4 * i_outer] = (float)(0.0f);
+        a[2 + 4 * i_outer] = (float)(0.0f);
+        a[3 + 4 * i_outer] = (float)(0.0f);
       }
       /* final slab for 'i_outer' */
       {
@@ -821,13 +821,13 @@ enabling some cost savings:
     <BLANKLINE>
         if (-1 + n >= 0)
         {
-          a[4 * i_outer] = 0.0f;
+          a[4 * i_outer] = (float)(0.0f);
           if (-2 + -4 * i_outer + n >= 0)
-            a[1 + 4 * i_outer] = 0.0f;
+            a[1 + 4 * i_outer] = (float)(0.0f);
           if (-3 + -4 * i_outer + n >= 0)
-            a[2 + 4 * i_outer] = 0.0f;
+            a[2 + 4 * i_outer] = (float)(0.0f);
           if (4 + 4 * i_outer + -1 * n == 0)
-            a[3 + 4 * i_outer] = 0.0f;
+            a[3 + 4 * i_outer] = (float)(0.0f);
         }
       }
     ...

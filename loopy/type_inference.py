@@ -199,6 +199,11 @@ class TypeInferenceMapper(CombineMapper):
         self.clbl_inf_ctx = clbl_inf_ctx
         self.old_calls_to_new_calls = {}
 
+        if self.kernel.target.use_int8_for_bool:
+            self.bool_dtype = np.int8
+        else:
+            self.bool_dtype = np.dtype(bool)
+
     def __call__(self, expr, return_tuple=False, return_dtype_set=False):
         kwargs = {}
         if return_tuple:
@@ -529,16 +534,16 @@ class TypeInferenceMapper(CombineMapper):
         # format.
         self(expr.left, return_tuple=False, return_dtype_set=False)
         self(expr.right, return_tuple=False, return_dtype_set=False)
-        return [NumpyType(np.dtype(np.int32))]
+        return [NumpyType(self.bool_dtype)]
 
     def map_logical_not(self, expr):
-        return [NumpyType(np.dtype(np.int32))]
+        return [NumpyType(self.bool_dtype)]
 
     def map_logical_and(self, expr):
         for child in expr.children:
             self.rec(child)
 
-        return [NumpyType(np.dtype(np.int32))]
+        return [NumpyType(self.bool_dtype)]
 
     map_logical_or = map_logical_and
 
@@ -601,6 +606,11 @@ class TypeReader(TypeInferenceMapper):
         self.kernel = kernel
         self.callables = callables
         self.new_assignments = new_assignments
+
+        if self.kernel.target.use_int8_for_bool:
+            self.bool_dtype = np.int8
+        else:
+            self.bool_dtype = np.bool8
 
     # {{{ disabled interface
 

@@ -155,12 +155,38 @@ def _register_vector_types(dtype_registry):
 
 # {{{ function mangler
 
-_CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
-        "rsqrt": 1,
-        "clamp": 3,
-        "atan2": 2,
-        }
+UNARY_FUNCS = {
+    "acos", "acosh", "acospi", "asin", "asinh", "asinpi", "atan", "atanh", "atanpi",
+    "cbrt", "ceil", "cos", "cosh", "cospi", "erfc", "erf", "exp", "exp2", "exp10",
+    "expm1", "fabs", "floor", "lgamma", "log", "log2", "log10", "log1p", "logb",
+    "rint", "round", "rsqrt", "sin", "sinh", "sinpi", "sqrt", "tan", "tanh",
+    "tanpi", "tgamma", "trunc", "degrees", "radians", "sign",
+}
 
+# commented-out functions are special cased below
+_CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
+    "atan2": 2,
+    "atan2pi": 2,
+    "copysign": 2,
+    "fdim": 2,
+    "fmax": 2,
+    "fmin": 2,
+    "fmod": 2,
+    "hypot": 2,
+    "maxmag": 2,
+    "minmag": 2,
+    "nextafter": 2,
+    "pow": 2,
+    "powr": 2,
+    "remainder": 2,
+    # "max": 2,
+    # "min": 2,
+    "step": 2,
+    "fma": 3,
+    "mad": 3,
+    "clamp": 3,
+    "mix": 3,
+}
 
 VECTOR_LITERAL_FUNCS = {
         "make_%s%d" % (name, count): (name, dtype, count)
@@ -190,10 +216,7 @@ class OpenCLCallable(ScalarCallable):
         name = self.name
 
         # unary functions
-        if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-                    "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
-                    "erf", "erfc"]:
-
+        if name in UNARY_FUNCS:
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 0:
                     raise LoopyError(f"'{name}' can take only one argument.")
@@ -218,36 +241,6 @@ class OpenCLCallable(ScalarCallable):
                     self.copy(name_in_target=name,
                         arg_id_to_dtype={0: NumpyType(dtype), -1:
                             NumpyType(dtype)}),
-                    callables_table)
-        # binary functions
-        elif name in ["fmax", "fmin", "atan2", "copysign"]:
-
-            for id in arg_id_to_dtype:
-                if not -1 <= id <= 1:
-                    #FIXME: Do we need to raise here?:
-                    #   The pattern we generally follow is that if we don't find
-                    #   a function, then we just return None
-                    raise LoopyError("%s can take only two arguments." % name)
-
-            if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
-                    arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
-                # the types provided aren't mature enough to specialize the
-                # callable
-                return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        callables_table)
-
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
-
-            if dtype.kind == "c":
-                raise LoopyTypeError(f"'{name}' does not support complex numbers")
-
-            dtype = NumpyType(dtype)
-            return (
-                    self.copy(name_in_target=name,
-                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
                     callables_table)
 
         elif name in ["max", "min"]:
@@ -296,30 +289,6 @@ class OpenCLCallable(ScalarCallable):
                         NumpyType(scalar_dtype), 0: dtype, 1: dtype}),
                     callables_table)
 
-        elif name == "pow":
-            for id in arg_id_to_dtype:
-                if not -1 <= id <= 1:
-                    raise LoopyError(f"'{name}' can take only 2 arguments.")
-
-            common_dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                        if (id >= 0 and dtype is not None)])
-
-            if common_dtype == np.float64:
-                name = "powf64"
-            elif common_dtype == np.float32:
-                name = "powf32"
-            else:
-                raise LoopyTypeError(f"'pow' does not support type {dtype}.")
-
-            result_dtype = NumpyType(common_dtype)
-
-            return (
-                    self.copy(name_in_target=name,
-                              arg_id_to_dtype={-1: result_dtype,
-                                               0: common_dtype, 1: common_dtype}),
-                    callables_table)
-
         elif name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
             num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
             for id in arg_id_to_dtype:
@@ -340,11 +309,10 @@ class OpenCLCallable(ScalarCallable):
                         arg_id_to_dtype.items() if id >= 0])
 
             if dtype.kind == "c":
-                raise LoopyError("%s does not support complex numbers"
-                        % name)
+                raise LoopyTypeError("%s does not support complex numbers" % name)
 
-            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
-                num_args)}
+            dtype = NumpyType(dtype)
+            updated_arg_id_to_dtype = {id: dtype for id in range(-1, num_args)}
 
             return (
                     self.copy(name_in_target=name,
@@ -357,7 +325,7 @@ class OpenCLCallable(ScalarCallable):
             for id in arg_id_to_dtype:
                 if not -1 <= id < count:
                     raise LoopyError("%s can take only %d arguments." % (name,
-                            num_args))
+                            count))
 
             for i in range(count):
                 if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
@@ -390,12 +358,10 @@ def get_opencl_callables():
     *identifier* is known in OpenCL.
     """
     opencl_function_ids = (
-            {"max", "min", "dot", "pow", "abs", "acos", "asin",
-            "atan", "cos", "cosh", "sin", "sinh", "pow", "atan2", "tanh", "exp",
-            "log", "log10", "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-            "fabs", "tan", "erf", "erfc"}
-            | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
-            | set(VECTOR_LITERAL_FUNCS))
+        set(UNARY_FUNCS)
+        | {"min", "max", "pow", "dot", "abs"}
+        | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
+        | set(VECTOR_LITERAL_FUNCS))
 
     return {id_: OpenCLCallable(name=id_) for id_ in
         opencl_function_ids}
@@ -468,33 +434,26 @@ def opencl_preamble_generator(preamble_info):
                 """ % dict(idx_ctype=kernel.target.dtype_to_typename(
                     kernel.index_dtype))))
 
-    for func in preamble_info.seen_functions:
-        if func.name == "pow" and func.c_name == "powf32":
-            yield("08_clpowf32", """
-            inline float powf32(float x, float y) {
-              return pow(x, y);
-            }""")
-
-        if func.name == "pow" and func.c_name == "powf64":
-            yield("08_clpowf64", """
-            inline double powf64(double x, double y) {
-              return pow(x, y);
-            }""")
-
 # }}}
 
 
 # {{{ expression mapper
 
 class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
-
-    def wrap_in_typecast_lazy(self, actual_dtype, needed_dtype, s):
-        if needed_dtype.dtype.kind == "b" and actual_dtype().dtype.kind == "f":
+    def wrap_in_typecast(self, actual_dtype, needed_dtype, s):
+        if needed_dtype.dtype.kind == "b" and actual_dtype.dtype.kind == "f":
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
+        elif actual_dtype != needed_dtype:
+            # type cast for binary functions with mixed input types
+            # implemented manually rather than via self.rec(TypeCast(...))
+            # to avoid recursing on s
+            registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+            cast = var("(%s)" % registry.dtype_to_ctype(needed_dtype))
+            return cast(s)
 
-        return super().wrap_in_typecast_lazy(actual_dtype, needed_dtype, s)
+        return super().wrap_in_typecast(actual_dtype, needed_dtype, s)
 
     def map_group_hw_index(self, expr, type_context):
         return var("gid")(expr.axis)
