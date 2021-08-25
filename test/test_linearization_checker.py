@@ -45,6 +45,7 @@ from loopy.schedule.checker.schedule import (
 )
 from loopy.schedule.checker.utils import (
     ensure_dim_names_match_and_align,
+    prettier_map_string,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,7 +54,6 @@ logger = logging.getLogger(__name__)
 # {{{ Helper functions for map creation/handling
 
 def _align_and_compare_maps(maps):
-    from loopy.schedule.checker.utils import prettier_map_string
 
     for map1, map2 in maps:
         # Align maps and compare
@@ -185,6 +185,18 @@ knl = lp.make_kernel(
     )
 
 # TODO what happens if i+j<=k<ijk_end?
+
+"""
+from islpy import dim_type
+isets = [{"i"}, {"i", "j"}, {"i", "j", "k"}, {"j"}, {"j", "k"}, {"k"}]
+for iset in isets:
+    idom = knl["loopy_kernel"].get_inames_domain(iset)
+    idomp = idom.project_out_except(iset, [dim_type.set])
+    print(iset)
+    print(prettier_map_string(idom))
+    print(prettier_map_string(idomp))
+1/0
+"""
 
 # Get a linearization
 lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
