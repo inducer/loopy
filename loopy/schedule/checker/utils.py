@@ -107,6 +107,17 @@ def add_eq_isl_constraint_from_names(isl_map, var1, var2):
                    {1: 0, var1: 1, var2: -1}))
 
 
+def add_int_bounds_to_isl_var(isl_map, var, lbound, ubound):
+    # NOTE: these are inclusive bounds
+    # add constraint var1 = var2
+    return isl_map.add_constraint(
+        isl.Constraint.ineq_from_names(
+            isl_map.space, {1: -1*lbound, var: 1})
+        ).add_constraint(
+            isl.Constraint.ineq_from_names(
+                isl_map.space, {1: ubound, var: -1}))
+
+
 def append_mark_to_isl_map_var_names(old_isl_map, dt, mark):
     """Return an :class:`islpy.Map` with a mark appended to the specified
     dimension names.
