@@ -2059,7 +2059,7 @@ def map_domain(kernel, transform_map):
 
     # }}}
 
-    # {{{ solve for representation of old inames in terms of new
+    # {{{ Solve for representation of old inames in terms of new
 
     substitutions = {}
     var_substitutions = {}
@@ -2078,13 +2078,13 @@ def map_domain(kernel, transform_map):
 
     # }}}
 
+    # {{{ Function for applying mapping to one set
+
     def process_set(s):
         """Return the transformed set. Assume that map is applicable to this
         set."""
 
-        # {{{ align dims of transform_map and s
-
-        from islpy import _align_dim_type
+        # {{{ Align dims of transform_map and s so that map can be applied
 
         map_with_s_domain = isl.Map.from_domain(s)
 
@@ -2117,6 +2117,8 @@ def map_domain(kernel, transform_map):
         # _align_dim_type just converts these to sets
         # to determine which names are in both the obj and template,
         # not sure why this isn't just handled inside _align_dim_type)
+
+        from islpy import _align_dim_type
         aligned_map = _align_dim_type(
                 dim_type.param,
                 augmented_transform_map, map_with_s_domain, False,
@@ -2139,6 +2141,8 @@ def map_domain(kernel, transform_map):
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
 
+    # }}}
+
     # {{{ Apply the transform map to exactly one domain
 
     map_applied_to_one_dom = False
@@ -2155,8 +2159,8 @@ def map_domain(kernel, transform_map):
         if not transform_map_in_dims.issubset(
                 frozenset(old_domain.get_var_dict())):
 
-            # Map transforms inames that are not all present in the set.
-            # Don't transform.
+            # Map not applicable to this set because map transforms at least
+            # one iname that is not present in the set. Don't transform.
             new_domains.append(old_domain)
             continue
 
@@ -2175,7 +2179,8 @@ def map_domain(kernel, transform_map):
             new_domains.append(process_set(old_domain))
             map_applied_to_one_dom = True
 
-    # If the map could not be applied to any domain, error.
+    # If we get this far, either the map has been applied to 1 domain (good)
+    # or the map could not be applied to any domain, which should produce an error.
     if not map_applied_to_one_dom:
         raise LoopyError(
             "Transform map %s was not applicable to any domain. %s"
@@ -2183,31 +2188,40 @@ def map_domain(kernel, transform_map):
 
     # }}}
 
-    # {{{ update within_inames
+    # {{{ Update within_inames for each statement
 
-    new_insns = []
-    for insn in kernel.instructions:
-        overlap = transform_map_in_dims & insn.within_inames
+    # If we get this far, we know that the map was applied to exactly one domain,
+    # and that all the inames in transform_map_in_dims were transformed to
+    # inames in transform_map_out_dims. However, it's still possible that for some
+    # statements, stmt.within_inames will contain at least one but not all of the
+    # transformed inames (transform_map_in_dims).
+    # In this case, it's not clear what within_inames should be. Therefore, we
+    # require that if any transformed inames are found in stmt.within_inames,
+    # ALL transformed inames must be found in stmt.within_inames.
+
+    new_stmts = []
+    for stmt in kernel.instructions:
+        overlap = transform_map_in_dims & stmt.within_inames
         if overlap:
             if len(overlap) != len(transform_map_in_dims):
-                raise LoopyError("instruction '%s' is within only a part "
-                        "of the map domain inames. Instructions must "
-                        "either be within all or none of the map domain "
-                        "inames." % insn.id)
+                raise LoopyError("Statement '%s' is within only a part "
+                    "of the mapped inames in transformation map %s. "
+                    "Statements must be within all or none of the mapped "
+                    "inames." % (stmt.id, transform_map))
 
-            insn = insn.copy(within_inames=(
-                insn.within_inames - transform_map_in_dims) | transform_map_out_dims)
+            stmt = stmt.copy(within_inames=(
+                stmt.within_inames - transform_map_in_dims) | transform_map_out_dims)
         else:
-            # leave insn unmodified
+            # Leave stmt unmodified
             pass
 
-        new_insns.append(insn)
+        new_stmts.append(stmt)
 
     # }}}
 
     kernel = kernel.copy(
             domains=new_domains,
-            instructions=new_insns,
+            instructions=new_stmts,
             applied_iname_rewrites=applied_iname_rewrites)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
