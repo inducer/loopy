@@ -2090,11 +2090,12 @@ def map_domain(kernel, transform_map):
 
         # If there are dims in s that are not mapped by transform_map, add them
         # to the in/out space of transform_map so that they remain unchanged.
-        # (temporary proxy dim names are needed in out space of transform
-        # map because isl won't allow any dim names to match, i.e., instead
-        # of just mapping {[unused_iname]->[unused_iname]}, we have to map
+        # We cannot just map {[unused_iname]->[unused_iname]} because isl won't
+        # allow any dim names to match, so temporary proxy dim names are needed
+        # in out space of transform map. I.e., we apply mapping
         # {[unused_name]->[unused_name__prox] : unused_name__prox = unused_name},
-        # and then rename unused_name__prox afterward.)
+        # and then rename unused_name__prox afterward.
+
         augmented_transform_map, proxy_name_pairs = \
             _apply_identity_for_missing_map_dims(
                 transform_map, s.get_var_names(dim_type.set))
