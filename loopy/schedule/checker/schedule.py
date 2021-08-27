@@ -663,7 +663,6 @@ def _gather_blex_ordering_info(
         full_blex_set, _full_blex_set = _create_blex_set_from_tuple_pair(  # TODO remove
             key_lex_tuples[slex.PRE], key_lex_tuples[slex.FIRST],
             _key_lex_tuples[slex.PRE], _key_lex_tuples[slex.FIRST])
-        from loopy.schedule.checker.utils import prettier_map_string
         print("PRE->FIRST")
         print("full_blex_set before:")
         print(prettier_map_string(_full_blex_set))
