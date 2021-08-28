@@ -2021,8 +2021,13 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
 
 
 def _error_if_any_iname_in_constraint(
-        inames, nest_constraints,
-        constraint_descriptor_str):
+        inames, nest_constraints, constraint_descriptor_str):
+    """Raise informative error if any iname in *inames* is constrained by any
+    nest constraint in *nest_constraints*.
+    """
+    # (This function is only used when new machinery from
+    # new-loop-nest-constraints branch is detected.)
+
     for constraint in nest_constraints:
         for tier in constraint:
             for iname in inames:
