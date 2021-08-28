@@ -2001,7 +2001,9 @@ def add_inames_to_insn(kernel, inames, insn_match):
 # }}}
 
 
-# {{{ map_domain
+# {{{ map_domain and associated functions
+
+# {{{ _MapDomainMapper
 
 class _MapDomainMapper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, new_inames, substitutions):
@@ -2017,7 +2019,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
         arg_ctx_overlap = frozenset(expn_state.arg_context) & self.old_inames
         if red_overlap:
             if len(red_overlap) != len(self.old_inames):
-                raise LoopyError("reduction '%s' involves a part "
+                raise LoopyError("Reduction '%s' involves a part "
                         "of the map domain inames. Reductions must "
                         "either involve all or none of the map domain "
                         "inames." % str(expr))
@@ -2028,7 +2030,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
                     return super(_MapDomainMapper, self).map_reduction(
                             expr, expn_state)
                 else:
-                    raise LoopyError("reduction '%s' has"
+                    raise LoopyError("Reduction '%s' has"
                             "some of the reduction variables affected "
                             "by the map_domain shadowed by context. "
                             "Either all or none must be shadowed."
@@ -2053,6 +2055,10 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
         else:
             return super(_MapDomainMapper, self).map_variable(expr, expn_state)
 
+# }}}
+
+
+# {{{ _find_aff_subst_from_map(iname, isl_map)
 
 def _find_aff_subst_from_map(iname, isl_map):
     if not isinstance(isl_map, isl.BasicMap):
@@ -2096,8 +2102,12 @@ def _find_aff_subst_from_map(iname, isl_map):
                 # not suitable, coefficient does not have unit coefficient
                 continue
 
-    raise LoopyError("no suitable equation for '%s' found" % iname)
+    raise LoopyError("No suitable equation for '%s' found" % iname)
 
+# }}}
+
+
+# {{{ ISL map wrangling helper functions
 
 def _find_and_rename_dim(old_map, dts, old_name, new_name, must_exist=False):
     # (This function is only used once here, but do not inline it; it is used many
@@ -2115,29 +2125,46 @@ def _find_and_rename_dim(old_map, dts, old_name, new_name, must_exist=False):
         new_map = new_map.set_dim_name(dt, idx, new_name)
     return new_map
 
+# }}}
+
+
+# {{{ _apply_identity_for_missing_map_dims(mapping, desired_dims)
 
 def _apply_identity_for_missing_map_dims(mapping, desired_dims):
+    """For every variable v in *desired_dims* that is not found in the
+    input space for *mapping*, add input dimension v, output dimension
+    v_'proxy'_, and constraint v = v_'proxy'_ to the mapping. Also return a
+    list of the (v, v_'proxy'_) pairs.
+    """
+
+    # If the transform map in map_domain (below) does not contain all the
+    # inames in the iname domain (set) to which it is applied, the missing
+    # inames must be added to the transform map so that intersect_domain()
+    # doesn't remove them from the iname domain when the map is applied.
+
+    # No two map dimension names can match, so we create a unique name for each
+    # new variable in the output dimension by appending _'proxy'_, and return a
+    # list of the (v, v_'proxy'_) pairs so that the proxy dims can be
+    # identified and replaced later.
+
+    # (Apostrophes are not allowed in inames, so this suffix
+    # will not match any existing inames. This function is also used on
+    # dependency maps, which may contain variable names consisting of an iname
+    # suffixed with a single apostrophe.)
+
     from loopy.schedule.checker.utils import (
         add_and_name_isl_dims,
         add_eq_isl_constraint_from_names,
     )
 
-    # If dims in s are missing from transform map, they need to be added
-    # so that, e.g, intersect_domain doesn't remove them.
-    # (assume ordering will be handled afterward)
+    # {{{ Find any missing vars and add them to the input and output space
 
     missing_dims = list(
         set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
     augmented_mapping = add_and_name_isl_dims(
         mapping, dim_type.in_, missing_dims)
 
-    # We want these missing inames to map to themselves so that the map
-    # has no effect on them. Unfortunatley isl will break if the
-    # names of the out dims aren't unique, so we will temporariliy rename them
-    # (and then plan to change the names back afterward).
-
-    # FIXME: need better way to make sure proxy dim names are unique within map
-    missing_dims_proxies = [d+"__prox" for d in missing_dims]
+    missing_dims_proxies = [d+"_'prox'_" for d in missing_dims]
     assert not set(missing_dims_proxies) & set(
         augmented_mapping.get_var_dict().keys())
 
@@ -2146,17 +2173,31 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
 
     proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies))
 
-    # Set proxy iname equal to real iname with equality constraint
+    # }}}
+
+    # {{{ Add identity constraint (v = v_'proxy'_) for each new pair of dims
+
     for real_iname, proxy_iname in proxy_name_pairs:
         augmented_mapping = add_eq_isl_constraint_from_names(
             augmented_mapping, proxy_iname, real_iname)
 
+    # }}}
+
     return augmented_mapping, proxy_name_pairs
 
+# }}}
+
+
+# {{{ _error_if_any_iname_in_constraint
 
 def _error_if_any_iname_in_constraint(
-        inames, nest_constraints,
-        constraint_descriptor_str):
+        inames, nest_constraints, constraint_descriptor_str):
+    """Raise informative error if any iname in *inames* is constrained by any
+    nest constraint in *nest_constraints*.
+    """
+    # (This function is only used when new machinery from
+    # new-loop-nest-constraints branch is detected.)
+
     for constraint in nest_constraints:
         for tier in constraint:
             for iname in inames:
@@ -2166,6 +2207,10 @@ def _error_if_any_iname_in_constraint(
                         "transformed by map in map_domain."
                         % (constraint_descriptor_str, constraint))
 
+# }}}
+
+
+# {{{ map_domain
 
 @for_each_kernel
 def map_domain(kernel, transform_map):
@@ -2194,6 +2239,8 @@ def map_domain(kernel, transform_map):
 
     # {{{ Make sure that none of the mapped inames are involved in loop priorities
 
+    # kernel.loop_priority is being replaced with kernel.loop_nest_constraints,
+    # handle both attributes.
     if hasattr(kernel, "loop_priority") and kernel.loop_priority:
         for prio in kernel.loop_priority:
             if set(prio) & transform_map_in_dims:
@@ -2210,7 +2257,7 @@ def map_domain(kernel, transform_map):
 
     # }}}
 
-    # {{{ solve for representation of old inames in terms of new
+    # {{{ Solve for representation of old inames in terms of new
 
     substitutions = {}
     var_substitutions = {}
@@ -2229,6 +2276,8 @@ def map_domain(kernel, transform_map):
 
     # }}}
 
+    # {{{ Function to apply mapping to one set
+
     def process_set(s):
         """Return the transformed set. Assume that map is applicable to this
         set."""
@@ -2237,41 +2286,44 @@ def map_domain(kernel, transform_map):
         # in-dims of the transform map are a subset of the dims we're
         # about to change.
 
-        # {{{ align dims of transform_map and s
+        # {{{ Align dims of transform_map and s so that map can be applied
 
-        from islpy import _align_dim_type
-
+        # Create a map whose input space matches the set
         map_with_s_domain = isl.Map.from_domain(s)
 
-        # If there are dims in s that are not mapped by transform_map, add them
-        # to the in/out space of transform_map so that they remain unchanged.
-        # (temporary proxy dim names are needed in out space of transform
-        # map because isl won't allow any dim names to match, i.e., instead
-        # of just mapping {[unused_iname]->[unused_iname]}, we have to map
-        # {[unused_name]->[unused_name__prox] : unused_name__prox = unused_name},
-        # and then rename unused_name__prox afterward.)
+        # {{{ Check for missing map dims and add them
+
+        # For every iname v in the domain that is *not* found in the input
+        # space of the transform map, add input dimension v, output dimension
+        # v_'proxy'_, and constraint v = v_'proxy'_ to the transform map.
+        # Otherwise, v will be dropped from the domain when the map is applied.
+
         augmented_transform_map, proxy_name_pairs = \
             _apply_identity_for_missing_map_dims(
                 transform_map, s.get_var_names(dim_type.set))
 
-        # FIXME: Make this less gross
+        # }}}
+
+        # {{{ Align transform map input dims with set dims
+
         # FIXME: Make an exported/documented interface of this in islpy
         dts = [dim_type.param, dim_type.in_, dim_type.out]
-        s_names = [
+        # Variables found in iname domain set
+        s_names = {
                 map_with_s_domain.get_dim_name(dt, i)
                 for dt in dts
                 for i in range(map_with_s_domain.dim(dt))
-                ]
-        map_names = [
+                }
+        # Variables found in transform map
+        map_names = {
                 augmented_transform_map.get_dim_name(dt, i)
                 for dt in dts
                 for i in range(augmented_transform_map.dim(dt))
-                ]
+                }
+        # (_align_dim_type uses these two sets to determine which names are in
+        # both the obj and template)
 
-        # (order doesn't matter in s_names/map_names,
-        # _align_dim_type just converts these to sets
-        # to determine which names are in both the obj and template,
-        # not sure why this isn't just handled inside _align_dim_type)
+        from islpy import _align_dim_type
         aligned_map = _align_dim_type(
                 dim_type.param,
                 augmented_transform_map, map_with_s_domain, False,
@@ -2283,9 +2335,12 @@ def map_domain(kernel, transform_map):
 
         # }}}
 
+        # }}}
+
+        # Apply the transform map to the domain
         new_s = aligned_map.intersect_domain(s).range()
 
-        # Now rename the proxy dims back to their original names
+        # Now rename any proxy dims back to their original names
         for real_iname, proxy_iname in proxy_name_pairs:
             new_s = _find_and_rename_dim(
                 new_s, [dim_type.set], proxy_iname, real_iname)
@@ -2293,6 +2348,8 @@ def map_domain(kernel, transform_map):
         return new_s
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
+
+    # }}}
 
     # {{{ Apply the transform map to exactly one domain
 
@@ -2310,8 +2367,8 @@ def map_domain(kernel, transform_map):
         if not transform_map_in_dims.issubset(
                 frozenset(old_domain.get_var_dict())):
 
-            # Map transforms inames that are not all present in the set.
-            # Don't transform.
+            # Map not applicable to this set because map transforms at least
+            # one iname that is not present in the set. Don't transform.
             new_domains.append(old_domain)
             continue
 
@@ -2330,7 +2387,8 @@ def map_domain(kernel, transform_map):
             new_domains.append(process_set(old_domain))
             map_applied_to_one_dom = True
 
-    # If the map could not be applied to any domain, error.
+    # If we get this far, either the map has been applied to 1 domain (good)
+    # or the map could not be applied to any domain, which should produce an error.
     if not map_applied_to_one_dom:
         raise LoopyError(
             "Transform map %s was not applicable to any domain. %s"
@@ -2489,31 +2547,40 @@ def map_domain(kernel, transform_map):
 
     # }}}
 
-    # {{{ update within_inames
+    # {{{ Update within_inames for each statement
 
-    new_insns = []
-    for insn in kernel.instructions:
-        overlap = transform_map_in_dims & insn.within_inames
+    # If we get this far, we know that the map was applied to exactly one domain,
+    # and that all the inames in transform_map_in_dims were transformed to
+    # inames in transform_map_out_dims. However, it's still possible that for some
+    # statements, stmt.within_inames will contain at least one but not all of the
+    # transformed inames (transform_map_in_dims).
+    # In this case, it's not clear what within_inames should be. Therefore, we
+    # require that if any transformed inames are found in stmt.within_inames,
+    # ALL transformed inames must be found in stmt.within_inames.
+
+    new_stmts = []
+    for stmt in kernel.instructions:
+        overlap = transform_map_in_dims & stmt.within_inames
         if overlap:
             if len(overlap) != len(transform_map_in_dims):
-                raise LoopyError("instruction '%s' is within only a part "
-                        "of the map domain inames. Instructions must "
-                        "either be within all or none of the map domain "
-                        "inames." % insn.id)
+                raise LoopyError("Statement '%s' is within only a part "
+                    "of the mapped inames in transformation map %s. "
+                    "Statements must be within all or none of the mapped "
+                    "inames." % (stmt.id, transform_map))
 
-            insn = insn.copy(within_inames=(
-                insn.within_inames - transform_map_in_dims) | transform_map_out_dims)
+            stmt = stmt.copy(within_inames=(
+                stmt.within_inames - transform_map_in_dims) | transform_map_out_dims)
         else:
-            # leave insn unmodified
+            # Leave stmt unmodified
             pass
 
-        new_insns.append(insn)
+        new_stmts.append(stmt)
 
     # }}}
 
     kernel = kernel.copy(
             domains=new_domains,
-            instructions=new_insns,
+            instructions=new_stmts,
             applied_iname_rewrites=applied_iname_rewrites)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -2525,6 +2592,8 @@ def map_domain(kernel, transform_map):
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     return kernel
+
+# }}}
 
 # }}}
 

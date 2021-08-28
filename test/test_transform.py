@@ -841,6 +841,52 @@ def test_map_domain_transform_map_validity_and_errors():
 
     # }}}
 
+    # {{{ Make sure we error when stmt.within_inames contains at least one but
+    # not all mapped inames
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        [
+            "[n, m] -> { [i, j]: 0 <= i < n and 0 <= j < m }",
+            "[ell] -> { [k]: 0 <= k < ell }",
+        ],
+        """
+        for i
+            <>t0 = i  {id=stmt0}
+            for j
+                <>t1 = j  {id=stmt1, dep=stmt0}
+            end
+            <>t2 = i + 1  {id=stmt2, dep=stmt1}
+        end
+        for k
+           <>t3 = k  {id=stmt3, dep=stmt2}
+        end
+        """,
+        lang_version=(2018, 2),
+        )
+
+    # }}}
+
+    # This should fail:
+    try:
+        transform_map = isl.BasicMap(
+            "[n, m] -> {[i, j] -> [i_new, j_new]: "
+            "i_new = i + j and j_new = 2 + i }")
+        knl = lp.map_domain(knl, transform_map)
+        raise AssertionError()
+    except LoopyError as err:
+        assert (
+            "Statements must be within all or none of the mapped inames"
+            in str(err))
+
+    # This should succeed:
+    transform_map = isl.BasicMap(
+        "[n, m] -> {[i] -> [i_new]: i_new = i + 2 }")
+    knl = lp.map_domain(knl, transform_map)
+
+    # }}}
+
 # }}}
 
 
