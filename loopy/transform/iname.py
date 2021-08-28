@@ -1850,7 +1850,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
         arg_ctx_overlap = frozenset(expn_state.arg_context) & self.old_inames
         if red_overlap:
             if len(red_overlap) != len(self.old_inames):
-                raise LoopyError("reduction '%s' involves a part "
+                raise LoopyError("Reduction '%s' involves a part "
                         "of the map domain inames. Reductions must "
                         "either involve all or none of the map domain "
                         "inames." % str(expr))
@@ -1861,7 +1861,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
                     return super(_MapDomainMapper, self).map_reduction(
                             expr, expn_state)
                 else:
-                    raise LoopyError("reduction '%s' has"
+                    raise LoopyError("Reduction '%s' has"
                             "some of the reduction variables affected "
                             "by the map_domain shadowed by context. "
                             "Either all or none must be shadowed."
@@ -1928,7 +1928,7 @@ def _find_aff_subst_from_map(iname, isl_map):
                 # not suitable, coefficient does not have unit coefficient
                 continue
 
-    raise LoopyError("no suitable equation for '%s' found" % iname)
+    raise LoopyError("No suitable equation for '%s' found" % iname)
 
 
 def _add_and_name_isl_dims(isl_map, dt, names):
