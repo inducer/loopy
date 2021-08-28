@@ -2087,6 +2087,8 @@ def map_domain(kernel, transform_map):
 
     # {{{ Make sure that none of the mapped inames are involved in loop priorities
 
+    # kernel.loop_priority is being replaced with kernel.loop_nest_constraints,
+    # handle both attributes.
     if hasattr(kernel, "loop_priority") and kernel.loop_priority:
         for prio in kernel.loop_priority:
             if set(prio) & transform_map_in_dims:
@@ -2122,7 +2124,7 @@ def map_domain(kernel, transform_map):
 
     # }}}
 
-    # {{{ Function for applying mapping to one set
+    # {{{ Function to apply mapping to one set
 
     def process_set(s):
         """Return the transformed set. Assume that map is applicable to this
@@ -2130,38 +2132,41 @@ def map_domain(kernel, transform_map):
 
         # {{{ Align dims of transform_map and s so that map can be applied
 
+        # Create a map whose input space matches the set
         map_with_s_domain = isl.Map.from_domain(s)
 
-        # If there are dims in s that are not mapped by transform_map, add them
-        # to the in/out space of transform_map so that they remain unchanged.
-        # We cannot just map {[unused_iname]->[unused_iname]} because isl won't
-        # allow any dim names to match, so temporary proxy dim names are needed
-        # in out space of transform map. I.e., we apply mapping
-        # {[unused_name]->[unused_name__prox] : unused_name__prox = unused_name},
-        # and then rename unused_name__prox afterward.
+        # {{{ Check for missing map dims and add them
+
+        # For every iname v in the domain that is *not* found in the input
+        # space of the transform map, add input dimension v, output dimension
+        # v_'proxy'_, and constraint v = v_'proxy'_ to the transform map.
+        # Otherwise, v will be dropped from the domain when the map is applied.
 
         augmented_transform_map, proxy_name_pairs = \
             _apply_identity_for_missing_map_dims(
                 transform_map, s.get_var_names(dim_type.set))
 
-        # FIXME: Make this less gross
+        # }}}
+
+        # {{{ Align transform map input dims with set dims
+
         # FIXME: Make an exported/documented interface of this in islpy
+
         dim_types = [dim_type.param, dim_type.in_, dim_type.out]
-        s_names = [
+        # Variables found in iname domain set
+        s_names = {
                 map_with_s_domain.get_dim_name(dt, i)
                 for dt in dim_types
                 for i in range(map_with_s_domain.dim(dt))
-                ]
-        map_names = [
+                }
+        # Variables found in transform map
+        map_names = {
                 augmented_transform_map.get_dim_name(dt, i)
                 for dt in dim_types
                 for i in range(augmented_transform_map.dim(dt))
-                ]
-
-        # (order doesn't matter in s_names/map_names,
-        # _align_dim_type just converts these to sets
-        # to determine which names are in both the obj and template,
-        # not sure why this isn't just handled inside _align_dim_type)
+                }
+        # (_align_dim_type uses these two sets to determine which names are in
+        # both the obj and template)
 
         from islpy import _align_dim_type
         aligned_map = _align_dim_type(
@@ -2175,9 +2180,12 @@ def map_domain(kernel, transform_map):
 
         # }}}
 
+        # }}}
+
+        # Apply the transform map to the domain
         new_s = aligned_map.intersect_domain(s).range()
 
-        # Now rename the proxy dims back to their original names
+        # Now rename any proxy dims back to their original names
         for real_iname, proxy_iname in proxy_name_pairs:
             new_s = _find_and_rename_dim(
                 new_s, [dim_type.set], proxy_iname, real_iname)
