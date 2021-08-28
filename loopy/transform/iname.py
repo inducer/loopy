@@ -1834,7 +1834,9 @@ def add_inames_to_insn(kernel, inames, insn_match):
 # }}}
 
 
-# {{{ map_domain
+# {{{ map_domain and associated functions
+
+# {{{ _MapDomainMapper
 
 class _MapDomainMapper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, new_inames, substitutions):
@@ -1886,6 +1888,10 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
         else:
             return super(_MapDomainMapper, self).map_variable(expr, expn_state)
 
+# }}}
+
+
+# {{{ _find_aff_subst_from_map(iname, isl_map)
 
 def _find_aff_subst_from_map(iname, isl_map):
     if not isinstance(isl_map, isl.BasicMap):
@@ -1930,6 +1936,10 @@ def _find_aff_subst_from_map(iname, isl_map):
 
     raise LoopyError("No suitable equation for '%s' found" % iname)
 
+# }}}
+
+
+# {{{ ISL map wrangling helper functions
 
 def _add_and_name_isl_dims(isl_map, dt, names):
     # (This function is also defined in independent, unmerged branch
@@ -1968,6 +1978,10 @@ def _find_and_rename_dim(old_map, dim_types, old_name, new_name):
             dt, new_map.find_dim_by_name(dt, old_name), new_name)
     return new_map
 
+# }}}
+
+
+# {{{ _apply_identity_for_missing_map_dims(mapping, desired_dims)
 
 def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     """For every variable v in *desired_dims* that is not found in the
@@ -2019,6 +2033,10 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
 
     return augmented_mapping, proxy_name_pairs
 
+# }}}
+
+
+# {{{ _error_if_any_iname_in_constraint
 
 def _error_if_any_iname_in_constraint(
         inames, nest_constraints, constraint_descriptor_str):
@@ -2037,6 +2055,10 @@ def _error_if_any_iname_in_constraint(
                         "transformed by map in map_domain."
                         % (constraint_descriptor_str, constraint))
 
+# }}}
+
+
+# {{{ map_domain
 
 @for_each_kernel
 def map_domain(kernel, transform_map):
@@ -2256,6 +2278,8 @@ def map_domain(kernel, transform_map):
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     return kernel
+
+# }}}
 
 # }}}
 
