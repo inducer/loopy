@@ -1970,23 +1970,35 @@ def _find_and_rename_dim(old_map, dim_types, old_name, new_name):
 
 
 def _apply_identity_for_missing_map_dims(mapping, desired_dims):
+    """For every variable v in *desired_dims* that is not found in the
+    input space for *mapping*, add input dimension v, output dimension
+    v_'proxy'_, and constraint v = v_'proxy'_ to the mapping. Also return a
+    list of the (v, v_'proxy'_) pairs.
+    """
 
-    # If dims in s are missing from transform map, they need to be added
-    # so that, e.g, intersect_domain doesn't remove them.
-    # (assume ordering will be handled afterward)
+    # If the transform map in map_domain (below) does not contain all the
+    # inames in the iname domain (set) to which it is applied, the missing
+    # inames must be added to the transform map so that intersect_domain()
+    # doesn't remove them from the iname domain when the map is applied.
+
+    # No two map dimension names can match, so we create a unique name for each
+    # new variable in the output dimension by appending _'proxy'_, and return a
+    # list of the (v, v_'proxy'_) pairs so that the proxy dims can be
+    # identified and replaced later.
+
+    # (Apostrophes are not allowed in inames, so this suffix
+    # will not match any existing inames. This function is also used on
+    # dependency maps, which may contain variable names consisting of an iname
+    # suffixed with a single apostrophe.)
+
+    # {{{ Find any missing vars and add them to the input and output space
 
     missing_dims = list(
         set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
     augmented_mapping = _add_and_name_isl_dims(
         mapping, dim_type.in_, missing_dims)
 
-    # We want these missing inames to map to themselves so that the map
-    # has no effect on them. Unfortunatley isl will break if the
-    # names of the out dims aren't unique, so we will temporariliy rename them
-    # (and then plan to change the names back afterward).
-
-    # FIXME: need better way to make sure proxy dim names are unique within map
-    missing_dims_proxies = [d+"__prox" for d in missing_dims]
+    missing_dims_proxies = [d+"_'prox'_" for d in missing_dims]
     assert not set(missing_dims_proxies) & set(
         augmented_mapping.get_var_dict().keys())
 
@@ -1995,10 +2007,15 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
 
     proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies))
 
-    # Set proxy iname equal to real iname with equality constraint
+    # }}}
+
+    # {{{ Add identity constraint (v = v_'proxy'_) for each new pair of dims
+
     for real_iname, proxy_iname in proxy_name_pairs:
         augmented_mapping = _add_eq_isl_constraint_from_names(
             augmented_mapping, proxy_iname, real_iname)
+
+    # }}}
 
     return augmented_mapping, proxy_name_pairs
 
