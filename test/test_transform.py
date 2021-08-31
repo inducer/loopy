@@ -618,7 +618,7 @@ def _ensure_dim_names_match_and_align(obj_map, tgt_map):
     return align_spaces(obj_map, tgt_map)
 
 
-def test_map_domain_vs_split_iname():
+def test_map_domain_vs_split_iname(ctx_factory):
 
     # {{{ Make kernel
 
@@ -686,6 +686,9 @@ def test_map_domain_vs_split_iname():
 
     # Can't easily compare instructions because equivalent subscript
     # expressions may have different orders
+
+    lp.auto_test_vs_ref(proc_knl_split_iname, ctx_factory(), proc_knl_map_dom,
+        parameters={"nx": 256, "nt": 256, "ni": 256})
 
     # }}}
 
