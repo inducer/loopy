@@ -2085,10 +2085,10 @@ def map_domain(kernel, transform_map):
     from loopy.symbolic import aff_to_expr
     from pymbolic import var
     for iname in transform_map_in_dims:
-        substitutions[iname] = aff_to_expr(
-                _find_aff_subst_from_map(iname, transform_map))
-        var_substitutions[var(iname)] = aff_to_expr(
-                _find_aff_subst_from_map(iname, transform_map))
+        subst_from_map = aff_to_expr(
+            _find_aff_subst_from_map(iname, transform_map))
+        substitutions[iname] = subst_from_map
+        var_substitutions[var(iname)] = subst_from_map
 
     applied_iname_rewrites.append(var_substitutions)
     del var_substitutions
