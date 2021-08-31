@@ -115,10 +115,19 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
 def add_eq_isl_constraint_from_names(isl_map, var1, var2):
     # add constraint var1 = var2
-    return isl_map.add_constraint(
-               isl.Constraint.eq_from_names(
-                   isl_map.space,
-                   {1: 0, var1: 1, var2: -1}))
+    assert isinstance(var1, str)
+    # var2 may be an int or a string
+    if isinstance(var2, str):
+        return isl_map.add_constraint(
+                   isl.Constraint.eq_from_names(
+                       isl_map.space,
+                       {1: 0, var1: 1, var2: -1}))
+    else:
+        assert isinstance(var2, int)
+        return isl_map.add_constraint(
+                   isl.Constraint.eq_from_names(
+                       isl_map.space,
+                       {1: var2, var1: -1}))
 
 
 def add_int_bounds_to_isl_var(isl_map, var, lbound, ubound):
