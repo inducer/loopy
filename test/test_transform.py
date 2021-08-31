@@ -641,7 +641,7 @@ def test_map_domain_vs_split_iname(ctx_factory):
 
     # {{{ Apply domain change mapping
 
-    knl_map_dom = ref_knl  # loop priority goes away, deps stay
+    knl_map_dom = ref_knl
 
     # Create map_domain mapping:
     import islpy as isl
@@ -688,7 +688,7 @@ def test_map_domain_vs_split_iname(ctx_factory):
     # expressions may have different orders
 
     lp.auto_test_vs_ref(proc_knl_split_iname, ctx_factory(), proc_knl_map_dom,
-        parameters={"nx": 256, "nt": 256, "ni": 256})
+        parameters={"nx": 128, "nt": 128, "ni": 128})
 
     # }}}
 
@@ -697,7 +697,7 @@ def test_map_domain_vs_split_iname(ctx_factory):
 
 # {{{ test_map_domain_transform_map_validity_and_errors
 
-def test_map_domain_transform_map_validity_and_errors():
+def test_map_domain_transform_map_validity_and_errors(ctx_factory):
 
     # {{{ Make kernel
 
@@ -719,12 +719,14 @@ def test_map_domain_transform_map_validity_and_errors():
 
     # }}}
 
-    # Make sure map_domain works correctly when the mapping doesn't include
-    # all the dims in the domain.
+    # {{{ Make sure map_domain succeeds when we apply a map that includes 2 of 4
+    # dims in the domain.
 
-    # {{{ Apply domain change mapping
+    # {{{ Apply domain change mapping that splits t and renames y; (similar to
+    # split_iname test above, but doesn't hurt to test this slightly different
+    # scenario)
 
-    knl_map_dom = ref_knl  # loop priority goes away, deps stay
+    knl_map_dom = ref_knl
 
     # Create map_domain mapping that only includes t and y
     # (x and z should be unaffected)
@@ -737,15 +739,17 @@ def test_map_domain_transform_map_validity_and_errors():
         "y = y_new"
         "}")
 
-    # Call map_domain to transform kernel; this should not produce an error
+    # Call map_domain to transform kernel; this should *not* produce an error
     knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
 
-    # Prioritize loops (prio should eventually be updated in map_domain)
-    try:
-        # Use constrain_loop_nesting if it's available
+    # Prioritize loops
+
+    # Use constrain_loop_nesting if it's available
+    cln_attr = getattr(lp, "constrain_loop_nesting", None)
+    if cln_attr is not None:
         desired_prio = "x, t_outer, t_inner, z, y_new"
         knl_map_dom = lp.constrain_loop_nesting(knl_map_dom, desired_prio)
-    except AttributeError:
+    else:
         # For some reason, prioritize_loops can't handle the ordering above
         # when linearizing knl_split_iname below
         desired_prio = "z, y_new, x, t_outer, t_inner"
@@ -758,7 +762,7 @@ def test_map_domain_transform_map_validity_and_errors():
 
     # }}}
 
-    # {{{ Split iname and see if we get the same result
+    # {{{ Use split_iname, and rename_iname, and make sure we get the same result
 
     knl_split_iname = ref_knl
     knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
@@ -785,6 +789,11 @@ def test_map_domain_transform_map_validity_and_errors():
 
     # Can't easily compare instructions because equivalent subscript
     # expressions may have different orders
+
+    lp.auto_test_vs_ref(proc_knl_split_iname, ctx_factory(), proc_knl_map_dom,
+        parameters={"nx": 64, "nt": 64, "m": 64})
+
+    # }}}
 
     # }}}
 
