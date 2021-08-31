@@ -789,10 +789,10 @@ def add_and_name_dims(isl_obj, dt, names):
     """
 
     new_idx_start = isl_obj.dim(dt)
-    new_obj = isl_obj.add_dims(dt, len(names))
+    isl_obj = isl_obj.add_dims(dt, len(names))
     for i, name in enumerate(names):
-        new_obj = new_obj.set_dim_name(dt, new_idx_start+i, name)
-    return new_obj
+        isl_obj = isl_obj.set_dim_name(dt, new_idx_start+i, name)
+    return isl_obj
 
 # }}}
 
