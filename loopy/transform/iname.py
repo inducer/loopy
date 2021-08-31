@@ -1946,6 +1946,16 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     input space for *mapping*, add input dimension v, output dimension
     v_'proxy'_, and constraint v = v_'proxy'_ to the mapping. Also return a
     list of the (v, v_'proxy'_) pairs.
+
+    :arg mapping: An :class:`islpy.Map`.
+
+    :arg desired_dims: An iterable of :class:`str` specifying the names of the
+        desired map input dimensions.
+
+    :returns: A two-tuple containing the mapping with the new dimensions and
+        constraints added, and a list of two-tuples of :class:`str` values
+        specifying the (v, v_'proxy'_) pairs.
+
     """
 
     # If the transform map in map_domain (below) does not contain all the
