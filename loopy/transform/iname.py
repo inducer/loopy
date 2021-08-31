@@ -1964,20 +1964,20 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # suffixed with a single apostrophe.)
 
     from loopy.isl_helpers import (
-        add_and_name_isl_dims, add_eq_isl_constraint_from_names)
+        add_and_name_dims, add_eq_constraint_from_names)
 
     # {{{ Find any missing vars and add them to the input and output space
 
     missing_dims = list(
         set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
-    augmented_mapping = add_and_name_isl_dims(
+    augmented_mapping = add_and_name_dims(
         mapping, dim_type.in_, missing_dims)
 
     missing_dims_proxies = [d+"_'prox'_" for d in missing_dims]
     assert not set(missing_dims_proxies) & set(
         augmented_mapping.get_var_dict().keys())
 
-    augmented_mapping = add_and_name_isl_dims(
+    augmented_mapping = add_and_name_dims(
         augmented_mapping, dim_type.out, missing_dims_proxies)
 
     proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies))
@@ -1987,7 +1987,7 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # {{{ Add identity constraint (v = v_'proxy'_) for each new pair of dims
 
     for real_iname, proxy_iname in proxy_name_pairs:
-        augmented_mapping = add_eq_isl_constraint_from_names(
+        augmented_mapping = add_eq_constraint_from_names(
             augmented_mapping, proxy_iname, real_iname)
 
     # }}}
