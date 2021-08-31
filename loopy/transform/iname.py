@@ -1969,14 +1969,13 @@ def _add_eq_isl_constraint_from_names(isl_map, var1, var2):
                    {1: 0, var1: 1, var2: -1}))
 
 
-def _find_and_rename_dim(old_map, dim_types, old_name, new_name):
+def _find_and_rename_dim(map, dim_types, old_name, new_name):
     # (This function is only used once here, but do not inline it; it is used many
     # times in child branch update-dependencies-during-transformations.)
-    new_map = old_map.copy()
     for dt in dim_types:
-        new_map = new_map.set_dim_name(
-            dt, new_map.find_dim_by_name(dt, old_name), new_name)
-    return new_map
+        map = map.set_dim_name(
+            dt, map.find_dim_by_name(dt, old_name), new_name)
+    return map
 
 # }}}
 
