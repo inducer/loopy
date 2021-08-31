@@ -2208,8 +2208,7 @@ def map_domain(kernel, transform_map):
 
         # Make sure transform map is applicable to this set. Then transform.
 
-        if not transform_map_in_dims.issubset(
-                frozenset(old_domain.get_var_dict())):
+        if not transform_map_in_dims <= frozenset(old_domain.get_var_dict()):
 
             # Map not applicable to this set because map transforms at least
             # one iname that is not present in the set. Don't transform.
