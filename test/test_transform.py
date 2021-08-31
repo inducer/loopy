@@ -733,9 +733,9 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     import islpy as isl
     transform_map = isl.BasicMap(
         "[nx,nt] -> {[t, y] -> [t_outer, t_inner, y_new]: "
-        "0 <= t_inner < 32 and "
-        "32*t_outer + t_inner = t and "
-        "0 <= 32*t_outer + t_inner < nt and "
+        "0 <= t_inner < 16 and "
+        "16*t_outer + t_inner = t and "
+        "0 <= 16*t_outer + t_inner < nt and "
         "y = y_new"
         "}")
 
@@ -765,7 +765,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     # {{{ Use split_iname, and rename_iname, and make sure we get the same result
 
     knl_split_iname = ref_knl
-    knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
+    knl_split_iname = lp.split_iname(knl_split_iname, "t", 16)
     knl_split_iname = lp.rename_iname(knl_split_iname, "y", "y_new")
     try:
         # Use constrain_loop_nesting if it's available
@@ -791,7 +791,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     # expressions may have different orders
 
     lp.auto_test_vs_ref(proc_knl_split_iname, ctx_factory(), proc_knl_map_dom,
-        parameters={"nx": 64, "nt": 64, "m": 64})
+        parameters={"nx": 32, "nt": 32, "m": 32})
 
     # }}}
 
