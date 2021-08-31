@@ -1939,47 +1939,6 @@ def _find_aff_subst_from_map(iname, isl_map):
 # }}}
 
 
-# {{{ ISL map wrangling helper functions
-
-def _add_and_name_isl_dims(isl_map, dt, names):
-    # (This function is also defined in independent, unmerged branch
-    # statement-instance-order-and-lex-order-map, and used in child branches
-    # thereof. Once these branches are all merged, it may make sense to move
-    # this function to a location for more general-purpose machinery. In the
-    # other branches, this function's name excludes the leading underscore.)
-    new_idx_start = isl_map.dim(dt)
-    new_map = isl_map.add_dims(dt, len(names))
-    for i, name in enumerate(names):
-        new_map = new_map.set_dim_name(dt, new_idx_start+i, name)
-    return new_map
-
-
-def _add_eq_isl_constraint_from_names(isl_map, var1, var2):
-    # (This function is also defined in independent, unmerged branch
-    # statement-instance-order-and-lex-order-map, and used in child branches
-    # thereof. Once these branches are all merged, it may make sense to move
-    # this function to a location for more general-purpose machinery. In the
-    # other branches, this function's name excludes the leading underscore.)
-
-    # add constraint var1 = var2
-
-    return isl_map.add_constraint(
-               isl.Constraint.eq_from_names(
-                   isl_map.space,
-                   {1: 0, var1: 1, var2: -1}))
-
-
-def _find_and_rename_dim(map, dim_types, old_name, new_name):
-    # (This function is only used once here, but do not inline it; it is used many
-    # times in child branch update-dependencies-during-transformations.)
-    for dt in dim_types:
-        map = map.set_dim_name(
-            dt, map.find_dim_by_name(dt, old_name), new_name)
-    return map
-
-# }}}
-
-
 # {{{ _apply_identity_for_missing_map_dims(mapping, desired_dims)
 
 def _apply_identity_for_missing_map_dims(mapping, desired_dims):
@@ -2004,18 +1963,21 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # dependency maps, which may contain variable names consisting of an iname
     # suffixed with a single apostrophe.)
 
+    from loopy.isl_helpers import (
+        add_and_name_isl_dims, add_eq_isl_constraint_from_names)
+
     # {{{ Find any missing vars and add them to the input and output space
 
     missing_dims = list(
         set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
-    augmented_mapping = _add_and_name_isl_dims(
+    augmented_mapping = add_and_name_isl_dims(
         mapping, dim_type.in_, missing_dims)
 
     missing_dims_proxies = [d+"_'prox'_" for d in missing_dims]
     assert not set(missing_dims_proxies) & set(
         augmented_mapping.get_var_dict().keys())
 
-    augmented_mapping = _add_and_name_isl_dims(
+    augmented_mapping = add_and_name_isl_dims(
         augmented_mapping, dim_type.out, missing_dims_proxies)
 
     proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies))
@@ -2025,7 +1987,7 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # {{{ Add identity constraint (v = v_'proxy'_) for each new pair of dims
 
     for real_iname, proxy_iname in proxy_name_pairs:
-        augmented_mapping = _add_eq_isl_constraint_from_names(
+        augmented_mapping = add_eq_isl_constraint_from_names(
             augmented_mapping, proxy_iname, real_iname)
 
     # }}}
@@ -2185,8 +2147,10 @@ def map_domain(kernel, transform_map):
         new_s = aligned_map.intersect_domain(s).range()
 
         # Now rename any proxy dims back to their original names
+
+        from loopy.isl_helpers import find_and_rename_dim
         for real_iname, proxy_iname in proxy_name_pairs:
-            new_s = _find_and_rename_dim(
+            new_s = find_and_rename_dim(
                 new_s, [dim_type.set], proxy_iname, real_iname)
 
         return new_s

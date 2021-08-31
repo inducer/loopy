@@ -767,4 +767,54 @@ def subst_into_pwaff(new_space, pwaff, subst_dict):
 
 # }}}
 
+
+# {{{ add_and_name_isl_dims
+
+def add_and_name_isl_dims(isl_map, dt, names):
+    # (This function is also defined in independent, unmerged branch
+    # statement-instance-order-and-lex-order-map, and used in child branches
+    # thereof. Once these branches are all merged, it may make sense to move
+    # this function to a location for more general-purpose machinery. In the
+    # other branches, this function's name excludes the leading underscore.)
+    new_idx_start = isl_map.dim(dt)
+    new_map = isl_map.add_dims(dt, len(names))
+    for i, name in enumerate(names):
+        new_map = new_map.set_dim_name(dt, new_idx_start+i, name)
+    return new_map
+
+# }}}
+
+
+# {{{ add_eq_isl_constraint_from_names
+
+def add_eq_isl_constraint_from_names(isl_map, var1, var2):
+    # (This function is also defined in independent, unmerged branch
+    # statement-instance-order-and-lex-order-map, and used in child branches
+    # thereof. Once these branches are all merged, it may make sense to move
+    # this function to a location for more general-purpose machinery. In the
+    # other branches, this function's name excludes the leading underscore.)
+
+    # add constraint var1 = var2
+
+    return isl_map.add_constraint(
+               isl.Constraint.eq_from_names(
+                   isl_map.space,
+                   {1: 0, var1: 1, var2: -1}))
+
+# }}}
+
+
+# {{{ find_and_rename_dim
+
+def find_and_rename_dim(map, dim_types, old_name, new_name):
+    # (This function is only used once here, but do not inline it; it is used many
+    # times in child branch update-dependencies-during-transformations.)
+    for dt in dim_types:
+        map = map.set_dim_name(
+            dt, map.find_dim_by_name(dt, old_name), new_name)
+    return map
+
+# }}}
+
+
 # vim: foldmethod=marker
