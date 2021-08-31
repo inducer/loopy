@@ -2151,7 +2151,7 @@ def map_domain(kernel, transform_map):
         from loopy.isl_helpers import find_and_rename_dim
         for real_iname, proxy_iname in proxy_name_pairs:
             new_s = find_and_rename_dim(
-                new_s, [dim_type.set], proxy_iname, real_iname)
+                new_s, dim_type.set, proxy_iname, real_iname)
 
         return new_s
 

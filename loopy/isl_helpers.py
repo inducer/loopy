@@ -825,15 +825,14 @@ def add_eq_constraint_from_names(isl_obj, var1, var2):
 
 # {{{ find_and_rename_dim
 
-def find_and_rename_dim(isl_obj, dim_types, old_name, new_name):
+def find_and_rename_dim(isl_obj, dt, old_name, new_name):
     """Rename a dimension in an ISL object.
 
     :arg isl_obj: An :class:`islpy.Set` or  :class:`islpy.Map` containing the
         dimension to be renamed.
 
-    :arg dim_types: An iterable of :class:`islpy.dim_type` values (i.e.,
-        :class:`int` values) specifying the dimension types for any dimensions
-        to be renamed.
+    :arg dt: An :class:`islpy.dim_type` (i.e., :class:`int`) specifying the
+        dimension type containing the dimension to be renamed.
 
     :arg old_name: A :class:`str` specifying the name of the dimension to be
         renamed.
@@ -845,10 +844,8 @@ def find_and_rename_dim(isl_obj, dim_types, old_name, new_name):
         *old_name* renamed to *new_name*.
 
     """
-    for dt in dim_types:
-        isl_obj = isl_obj.set_dim_name(
+    return isl_obj.set_dim_name(
             dt, isl_obj.find_dim_by_name(dt, old_name), new_name)
-    return isl_obj
 
 # }}}
 
