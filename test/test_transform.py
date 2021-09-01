@@ -655,7 +655,8 @@ def test_map_domain_vs_split_iname(ctx_factory):
     knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
 
     # Prioritize loops (prio should eventually be updated in map_domain?)
-    knl_map_dom = lp.prioritize_loops(knl_map_dom, "x, t_outer, t_inner")
+    loop_priority = "x, t_outer, t_inner"
+    knl_map_dom = lp.prioritize_loops(knl_map_dom, loop_priority)
 
     # Get a linearization
     proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
@@ -668,7 +669,7 @@ def test_map_domain_vs_split_iname(ctx_factory):
 
     knl_split_iname = ref_knl
     knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
-    knl_split_iname = lp.prioritize_loops(knl_split_iname, "x, t_outer, t_inner")
+    knl_split_iname = lp.prioritize_loops(knl_split_iname, loop_priority)
     proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
     lin_knl_split_iname = lp.get_one_linearized_kernel(
         proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
@@ -719,8 +720,8 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
 
     # }}}
 
-    # {{{ Make sure map_domain succeeds when we apply a map that includes 2 of 4
-    # dims in the domain.
+    # {{{ Make sure map_domain *succeeds* when map includes 2 of 4 dims in one
+    # domain.
 
     # {{{ Apply domain change mapping that splits t and renames y; (similar to
     # split_iname test above, but doesn't hurt to test this slightly different
@@ -759,7 +760,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
 
     # }}}
 
-    # {{{ Use split_iname, and rename_iname, and make sure we get the same result
+    # {{{ Use split_iname and rename_iname, and make sure we get the same result
 
     knl_split_iname = ref_knl
     knl_split_iname = lp.split_iname(knl_split_iname, "t", 16)
@@ -870,7 +871,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     # {{{ Make sure we error when stmt.within_inames contains at least one but
     # not all mapped inames
 
-    # {{{ Make kernel
+    # {{{ Make potentially problematic kernel
 
     knl = lp.make_kernel(
         [
