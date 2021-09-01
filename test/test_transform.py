@@ -749,7 +749,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     # Use constrain_loop_nesting if it's available
     cln_attr = getattr(lp, "constrain_loop_nesting", None)
     if cln_attr is not None:
-        knl_map_dom = lp.constrain_loop_nesting(knl_map_dom, desired_prio)
+        knl_map_dom = lp.constrain_loop_nesting(knl_map_dom, desired_prio)  # noqa
     else:
         knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
 
