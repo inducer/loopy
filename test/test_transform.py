@@ -743,16 +743,13 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
 
     # Prioritize loops
+    desired_prio = "x, t_outer, t_inner, z, y_new"
 
     # Use constrain_loop_nesting if it's available
     cln_attr = getattr(lp, "constrain_loop_nesting", None)
     if cln_attr is not None:
-        desired_prio = "x, t_outer, t_inner, z, y_new"
         knl_map_dom = lp.constrain_loop_nesting(knl_map_dom, desired_prio)
     else:
-        # For some reason, prioritize_loops can't handle the ordering above
-        # when linearizing knl_split_iname below
-        desired_prio = "z, y_new, x, t_outer, t_inner"
         knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
 
     # Get a linearization
