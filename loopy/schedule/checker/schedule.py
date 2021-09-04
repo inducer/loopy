@@ -26,6 +26,7 @@ from loopy.schedule.checker.utils import (
     add_and_name_isl_dims,
     add_eq_isl_constraint_from_names,
     append_mark_to_isl_map_var_names,
+    rename_dims,
     prettier_map_string,  # noqa
 )
 dim_type = isl.dim_type
@@ -635,7 +636,9 @@ def _gather_blex_ordering_info(
 
     # Create mapping (dict) from iname to corresponding blex dim name
     iname_to_blex_var = {}
+    iname_to_iname_prime = {}
     for iname, dim in iname_to_blex_dim.items():
+        iname_to_iname_prime[iname] = iname+BEFORE_MARK
         iname_to_blex_var[iname] = seq_blex_dim_names[dim]
         iname_to_blex_var[iname+BEFORE_MARK] = seq_blex_dim_names_prime[dim]
 
@@ -705,8 +708,20 @@ def _gather_blex_ordering_info(
 
             # Add marks to inames in the 'before' tuple
             # (all strings should be inames)
+            before_prime = []
+            for v in before:
+                if isinstance(v, int):
+                    before_prime.append(v)
+                elif isinstance(v, str):
+                    before_prime.append(v+BEFORE_MARK)
+                else:
+                    assert isinstance(v, isl.Set)
+                    before_prime.append(rename_dims(v, iname_to_iname_prime))
+            before_prime = tuple(before_prime)
+            """
             before_prime = tuple(
                 v+BEFORE_MARK if isinstance(v, str) else v for v in before)
+            """
             before_padded = _pad_tuple_with_zeros(before_prime, n_seq_blex_dims)
             after_padded = _pad_tuple_with_zeros(after, n_seq_blex_dims)
 
@@ -761,7 +776,6 @@ def _gather_blex_ordering_info(
 
                     # Rename inames to corresponding blex var names
                     # TODO does this catch all potential inames?
-                    from loopy.schedule.checker.utils import rename_dims
                     dim_val_renamed = rename_dims(
                         dim_val_pre_aligned, iname_to_blex_var, [dim_type.set])
 
@@ -862,7 +876,6 @@ def _gather_blex_ordering_info(
         print(prettier_map_string(map_to_subtract))
         # Bound the blex dims by intersecting with the full blex map, which
         # contains all the bound constraints
-        assert map_to_subtract.is_subset(blex_order_map)
         map_to_subtract &= blex_order_map
         print("CONSTRAINED MAP_TO_SUBTRACT FOR LOOP", iname)
         print(prettier_map_string(map_to_subtract))
@@ -874,8 +887,6 @@ def _gather_blex_ordering_info(
         maps_to_subtract.append(map_to_subtract)
 
     # }}}
-
-    1/0
 
     # {{{ Subtract transitive closure of union of blex maps to subtract
 
