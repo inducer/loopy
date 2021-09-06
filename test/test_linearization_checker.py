@@ -212,7 +212,7 @@ stmt_id_pairs = [
     ("stmt_k1", "stmt_i2"),
     ]
 pworders = get_pairwise_statement_orderings(
-    lin_knl, lin_items, stmt_id_pairs)
+    lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
 
 #1/0
 
@@ -271,6 +271,7 @@ def test_intra_thread_pairwise_schedule_creation():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -487,6 +488,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -628,6 +630,7 @@ def test_intra_thread_statement_instance_ordering():
         proc_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -764,6 +767,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # Create string for representing parallel iname condition in sio
@@ -845,6 +849,7 @@ def test_statement_instance_ordering_of_barriers():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # Create string for representing parallel iname SAME condition in sio
@@ -1103,7 +1108,7 @@ def test_sios_and_schedules_with_barriers():
 
     stmt_id_pairs = [("stmt_j1", "stmt_2"), ("stmt_1", "stmt_i0")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
 
     # {{{ Relationship between stmt_j1 and stmt_2
 
@@ -1426,7 +1431,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
 
     stmt_id_pairs = [("stmt_1", "stmt_2")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
 
     # {{{ Relationship between stmt_1 and stmt_2
 
@@ -1653,7 +1658,7 @@ def test_sios_with_matmul():
 
     # Generate pairwise ordering info for every pair
     get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
 
 # }}}
 
