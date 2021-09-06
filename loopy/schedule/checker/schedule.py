@@ -26,7 +26,6 @@ from loopy.schedule.checker.utils import (
     add_and_name_isl_dims,
     add_eq_isl_constraint_from_names,
     append_mark_to_isl_map_var_names,
-    rename_dims,
     prettier_map_string,  # noqa
 )
 dim_type = isl.dim_type
@@ -266,6 +265,12 @@ def _add_eq_isl_constraints_for_ints_only(isl_obj, assignment_pairs):
     return isl_obj
 
 
+def _assert_exact_closure(mapping):
+    closure_test, closure_exact = mapping.transitive_closure()
+    assert closure_exact
+    assert closure_test == mapping
+
+
 def _add_one_blex_tuple(
         all_blex_points, blex_tuple, all_seq_blex_dim_names, knl):
 
@@ -317,9 +322,10 @@ def _gather_blex_ordering_info(
         knl,
         sync_kind,
         lin_items, loops_with_barriers,
-        loops_to_ignore, loop_bounds, new_loop_bounds,
+        loops_to_ignore, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
+        perform_closure_checks=False,
         ):
     """For the given sync_kind ("local" or "global"), create a mapping from
     statement instances to blex space (dict), as well as a mapping
@@ -387,13 +393,10 @@ def _gather_blex_ordering_info(
 
     # {{{  Create a template set for the space of all blex points
 
-    # TODO if we only use this template once, don't save it
-    blex_set_template = isl.align_spaces(
-        isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map).range()
-
     # Create set of all blex points by starting with (0, 0, 0, ...)
     # and then unioning this with each new set of blex points we find
-    all_blex_points = blex_set_template.copy()  # TODO do we need to copy?
+    all_blex_points = isl.align_spaces(
+        isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map).range()
     for var_name in seq_blex_dim_names:
         all_blex_points = add_eq_isl_constraint_from_names(
                 all_blex_points, var_name, 0)
@@ -405,13 +408,9 @@ def _gather_blex_ordering_info(
     # TODO may be able to remove some of this stuff now:
     stmt_inst_to_blex = {}  # Map stmt instances to blex space
     iname_to_blex_dim = {}  # Map from inames to corresponding blex space dim
-    # OLD blex_exclusion_info, TODO remove
     blex_exclusion_info = {}  # Info for creating maps to exclude from blex order
-    new_blex_exclusion_info = {}  # Info for creating maps to exclude from blex order
-    blex_order_map_params = set()  # Params needed in blex order map
     next_blex_tuple = [0]  # Next tuple of points in blex order
 
-    print()  # Debugging. TODO remove
     known_blex_dim_ubounds = [0, ]  # Place to store bounds for non-iname blex dims
     # TODO handle case where one non-iname blex dim is used in multiple
     # separate loops?
@@ -437,41 +436,17 @@ def _gather_blex_ordering_info(
                 # Store 3 tuples that will be used later to create pairs
                 # that will later be subtracted from the blex order map
 
-                # {{{ NEW version with lexmin/lexmax
-
-                print("Iname %s" % (enter_iname))
-                print("lexmin:")
-                print(loop_bounds[enter_iname][0])
-
-                lbound = loop_bounds[enter_iname][0]
                 first_iter_blex_pt = next_blex_tuple[:]
-                first_iter_blex_pt[-2] = lbound
+                first_iter_blex_pt[-2] = enter_iname
                 blex_exclusion_info[enter_iname] = {
                     slex.PRE: tuple(pre_loop_blex_pt),
                     slex.TOP: tuple(next_blex_tuple),
                     slex.FIRST: tuple(first_iter_blex_pt),
                     }
-
-                # TODO switch to this:
-                first_iter_blex_pt[-2] = enter_iname
-                new_blex_exclusion_info[enter_iname] = {
-                    slex.PRE: tuple(pre_loop_blex_pt),
-                    slex.TOP: tuple(next_blex_tuple),
-                    slex.FIRST: tuple(first_iter_blex_pt),
-                    }
-
-                # Create the set of blex points to add
-
-                # }}}
-
                 # (copy these three blex points when creating dict because
                 # the lists will continue to be updated)
 
-                # Store any new params found
-                # (might include inames)
-                blex_order_map_params |= set(lbound.get_var_names(dim_type.param))
-
-                # {{{ NEW NEW stuff: create the blex set for this blex point
+                # {{{ Create the blex set for this blex point
 
                 all_blex_points = _add_one_blex_tuple(
                         all_blex_points, next_blex_tuple, seq_blex_dim_names, knl)
@@ -504,40 +479,18 @@ def _gather_blex_ordering_info(
                 # Store 3 tuples that will be used later to create pairs
                 # that will later be subtracted from the blex order map
 
-                # {{{ NEW version with lexmin/lexmax
-
-                print("Iname %s" % (leave_iname))
-                print("lexmax:")
-                print(loop_bounds[leave_iname][1])
-
-                ubound = loop_bounds[leave_iname][1]
                 last_iter_blex_pt = pre_end_loop_blex_pt[:]
-                last_iter_blex_pt[-2] = ubound
+                last_iter_blex_pt[-2] = leave_iname
                 blex_exclusion_info[leave_iname][slex.BOTTOM] = tuple(
                     pre_end_loop_blex_pt)
                 blex_exclusion_info[leave_iname][slex.LAST] = tuple(
                     last_iter_blex_pt)
                 blex_exclusion_info[leave_iname][slex.POST] = tuple(
                     next_blex_tuple)
-
-                # TODO switch to this:
-                last_iter_blex_pt[-2] = leave_iname
-                new_blex_exclusion_info[leave_iname][slex.BOTTOM] = tuple(
-                    pre_end_loop_blex_pt)
-                new_blex_exclusion_info[leave_iname][slex.LAST] = tuple(
-                    last_iter_blex_pt)
-                new_blex_exclusion_info[leave_iname][slex.POST] = tuple(
-                    next_blex_tuple)
-
-                # }}}
-
                 # (copy these three blex points when creating dict because
                 # the lists will continue to be updated)
 
-                # Store any new params found
-                blex_order_map_params |= set(ubound.get_var_names(dim_type.param))
-
-                # {{{ NEW NEW stuff: create the blex set for this blex point
+                # {{{ Create the blex set for this blex point
 
                 all_blex_points = _add_one_blex_tuple(
                         all_blex_points, next_blex_tuple, seq_blex_dim_names, knl)
@@ -555,7 +508,7 @@ def _gather_blex_ordering_info(
             if lin_item.synchronization_kind == sync_kind:
                 next_blex_tuple[-1] += 1
 
-                # {{{ NEW NEW stuff: create the blex set for this blex point
+                # {{{ Create the blex set for this blex point
 
                 all_blex_points = _add_one_blex_tuple(
                         all_blex_points, next_blex_tuple, seq_blex_dim_names, knl)
@@ -587,7 +540,7 @@ def _gather_blex_ordering_info(
                 if lin_item.synchronization_kind == sync_kind:
                     next_blex_tuple[-1] += 1
 
-                    # {{{ NEW NEW stuff: create the blex set for this blex point
+                    # {{{ Create the blex set for this blex point
 
                     all_blex_points = _add_one_blex_tuple(
                         all_blex_points, next_blex_tuple, seq_blex_dim_names, knl)
@@ -599,14 +552,6 @@ def _gather_blex_ordering_info(
             assert isinstance(
                 lin_item, (CallKernel, ReturnFromKernel))
             pass
-
-    # Record the max value for the 0th non-iname blex dim
-    known_blex_dim_ubounds[0] = max(
-        next_blex_tuple[-1], known_blex_dim_ubounds[0])
-
-    # Don't want inames in blex map params, remove them
-    # TODO: could we have introduced inames other than loops_with_barriers?
-    blex_order_map_params = sorted(blex_order_map_params - loops_with_barriers)
 
     # At this point, some blex tuples may have more dimensions than others;
     # the missing dims are the fastest-updating dims, and their values should
@@ -637,33 +582,18 @@ def _gather_blex_ordering_info(
         iname_to_blex_var[iname] = seq_blex_dim_names[dim]
         iname_to_blex_var[iname+BEFORE_MARK] = seq_blex_dim_names_prime[dim]
 
-    # Add bounds params needed in blex map
-    """
-    _blex_order_map = add_and_name_isl_dims(  # TODO remove
-        blex_order_map, dim_type.param, _blex_order_map_params)
-    blex_order_map = add_and_name_isl_dims(
-        blex_order_map, dim_type.param, blex_order_map_params)
-    """
-
-    # Get a set representing blex_order_map space
-    blex_mapset_template = isl.align_spaces(
-        isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map
-        ).move_dims(
-        dim_type.in_, n_seq_blex_dims, dim_type.out, 0, n_seq_blex_dims
-        ).domain()
-    blex_set_affs = isl.affs_from_space(blex_mapset_template.space)
-
-    # New version
+    # Get a map representing blex_order_map space
+    # (Note that this template cannot be created until *after* the intersection
+    # of blex_order_map with all_blex_points above, otherwise the template will
+    # be missing necessary parameters)
     blex_map_template = isl.align_spaces(
         isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map)
     blex_set_template = blex_map_template.range()
-    #blex_set_template_prime = append_mark_to_isl_map_var_names(blex_set_template)
 
     # {{{ Create blex map to subtract for each iname in blex_exclusion_info
 
     maps_to_subtract = []
     for iname, key_lex_tuples in blex_exclusion_info.items():
-        new_key_lex_tuples = new_blex_exclusion_info[iname]
         print("")
         print(iname)
 
@@ -674,103 +604,6 @@ def _gather_blex_ordering_info(
         tuples in key_lex_tuples:
         PRE->FIRST, BOTTOM(iname')->TOP(iname'+1), LAST->POST
         """
-
-        # Note:
-        # only key_lex_tuples[slex.FIRST] & key_lex_tuples[slex.LAST] are pwaffs
-
-        # {{{ _create_blex_set_from_tuple_pair
-
-        def _create_blex_set_from_tuple_pair(before, after, wrap_cond=False):
-            """Given a before->after tuple pair in the key_lex_tuples, which may
-            have dim vals described by ints, strings (inames), and pwaffs,
-            create an ISL set in blex space that can be converted into
-            the ISL map to be subtracted
-            """
-            # (Vars from outside func used here:
-            # iname, blex_set_affs, blex_mapset_template, iname_to_blex_var,
-            # n_seq_blex_dims, seq_blex_dim_names,
-            # seq_blex_dim_names_prime)
-
-            # Start with a set representing blex_order_map space
-            blex_set = blex_mapset_template.copy()
-
-            # Add marks to inames in the 'before' tuple
-            # (all strings should be inames)
-            before_prime = []
-            for v in before:
-                if isinstance(v, int):
-                    before_prime.append(v)
-                elif isinstance(v, str):
-                    before_prime.append(v+BEFORE_MARK)
-                else:
-                    assert isinstance(v, isl.Set)
-                    before_prime.append(rename_dims(v, iname_to_iname_prime))
-            before_prime = tuple(before_prime)
-            """
-            before_prime = tuple(
-                v+BEFORE_MARK if isinstance(v, str) else v for v in before)
-            """
-            before_padded = _pad_tuple_with_zeros(before_prime, n_seq_blex_dims)
-            after_padded = _pad_tuple_with_zeros(after, n_seq_blex_dims)
-
-            # Assign vals in the tuple to dims in the ISL set
-            for dim_name, dim_val in zip(
-                    seq_blex_dim_names_prime+seq_blex_dim_names,
-                    before_padded+after_padded):
-
-                if isinstance(dim_val, int):
-                    # Set idx to int val
-                    blex_set &= blex_set_affs[dim_name].eq_set(
-                        blex_set_affs[0]+dim_val)
-                elif isinstance(dim_val, str):
-                    # This is an iname, set idx to corresponding blex var
-                    blex_set &= blex_set_affs[dim_name].eq_set(
-                        blex_set_affs[iname_to_blex_var[dim_val]])
-                else:
-                    # TODO figure out best place to do this:
-                    # Rename dims and align dim_val so it can intersect w/blex_set
-
-                    # There may be inames as params in dim_val, move them to set dim
-                    dim_val_pre_aligned = dim_val.copy()  # TODO maybe remove copy
-                    for var_name in dim_val_pre_aligned.get_var_names(
-                            dim_type.param):
-                        if var_name in iname_to_blex_var:
-                            # Get idx of var_name (might have moved since loop start)
-                            idx = dim_val_pre_aligned.find_dim_by_name(
-                                dim_type.param, var_name)
-                            dim_val_pre_aligned = dim_val_pre_aligned.move_dims(
-                                dim_type.out, 0, dim_type.param, idx, 1)
-
-                    # Rename inames to corresponding blex var names
-                    # TODO does this catch all potential inames?
-                    dim_val_renamed = rename_dims(
-                        dim_val_pre_aligned, iname_to_blex_var, [dim_type.set])
-
-                    dim_val_aligned = isl.align_spaces(
-                        dim_val_renamed, blex_mapset_template)
-                    blex_set &= dim_val_aligned
-
-            if wrap_cond:
-                # This is the BOTTOM->TOP pair, add condition i = i' + 1
-                blex_set &= blex_set_affs[iname_to_blex_var[iname]].eq_set(
-                    blex_set_affs[iname_to_blex_var[iname+BEFORE_MARK]] + 1)
-
-            return blex_set
-
-        # }}} end _create_blex_set_from_tuple_pair()
-
-        # Create pairs to be subtracted
-        # (set will be converted to map)
-
-        # Enter loop case: PRE->FIRST
-        blex_set_to_subtract = _create_blex_set_from_tuple_pair(
-            key_lex_tuples[slex.PRE], key_lex_tuples[slex.FIRST],
-            )
-        print("PRE->FIRST")
-        print("blex_set_to_subtract new:")
-        print(prettier_map_string(blex_set_to_subtract))
-
-        # {{{ New version:
 
         # {{{ PRE->FIRST
 
@@ -783,10 +616,10 @@ def _gather_blex_ordering_info(
 
         # Values in FIRST will involve one of our lexmin bounds.
 
-        first_tuple = new_key_lex_tuples[slex.FIRST]
+        first_tuple = key_lex_tuples[slex.FIRST]
         first_tuple_padded = _pad_tuple_with_zeros(first_tuple, n_seq_blex_dims)
         pre_tuple_padded = _pad_tuple_with_zeros(
-            new_key_lex_tuples[slex.PRE], n_seq_blex_dims)
+            key_lex_tuples[slex.PRE], n_seq_blex_dims)
         # Assign int dims; all other dims will have any necessary bounds set
         # later by intersecting with the (bounded) full blex map
         pre_to_first_map = _add_eq_isl_constraints_for_ints_only(
@@ -795,7 +628,7 @@ def _gather_blex_ordering_info(
                 seq_blex_dim_names_prime+seq_blex_dim_names,
                 pre_tuple_padded+first_tuple_padded))
 
-        loop_min_bound = new_loop_bounds[iname][0]
+        loop_min_bound = loop_bounds[iname][0]
 
         # Rename iname dims to blex dims
         # TODO could there be any other inames involved besides first_tuple[1::2]?
@@ -810,20 +643,11 @@ def _gather_blex_ordering_info(
 
         # }}}
 
-        # }}}
-
+        print("PRE->FIRST")
         print(prettier_map_string(pre_to_first_map))
 
-        # Wrap loop case: BOTTOM(iname')->TOP(iname'+1)
-        # TODO union in place:
-        temp = _create_blex_set_from_tuple_pair(
-            key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP],
-            wrap_cond=True)
-        blex_set_to_subtract |= temp
-
-        # {{{ New version:
-
         # {{{ BOTTOM->TOP
+        # Wrap loop case: BOTTOM(iname')->TOP(iname'+1)
 
         # Values in BOTTOM/TOP should be strings (inames) or ints.
         # We actually already know which blex dims correspond to the inames
@@ -832,9 +656,9 @@ def _gather_blex_ordering_info(
         # We only need to set the values for blex dims that will be ints,
         # i.e., the intra-loop-section blex dims and any trailing zeros.
         bottom_tuple_padded = _pad_tuple_with_zeros(
-            new_key_lex_tuples[slex.BOTTOM], n_seq_blex_dims)
+            key_lex_tuples[slex.BOTTOM], n_seq_blex_dims)
         top_tuple_padded = _pad_tuple_with_zeros(
-            new_key_lex_tuples[slex.TOP], n_seq_blex_dims)
+            key_lex_tuples[slex.TOP], n_seq_blex_dims)
         bottom_to_top_map = _add_eq_isl_constraints_for_ints_only(
             blex_map_template,
             zip(
@@ -850,23 +674,7 @@ def _gather_blex_ordering_info(
 
         # }}}
 
-        # }}}
-
         print(prettier_map_string(bottom_to_top_map))
-
-        # Leave loop case: LAST->POST
-        #blex_set_to_subtract |= _create_blex_set_from_tuple_pair(
-        #    key_lex_tuples[slex.LAST], key_lex_tuples[slex.POST])
-        # TODO union in place:
-        temp = _create_blex_set_from_tuple_pair(
-            key_lex_tuples[slex.LAST], key_lex_tuples[slex.POST],
-            )
-        blex_set_to_subtract |= temp
-        print("LAST->POST")
-        print("blex_set_to_subtract new:")
-        print(prettier_map_string(temp))
-
-        # {{{ New version:
 
         # {{{ LAST->POST
 
@@ -879,10 +687,10 @@ def _gather_blex_ordering_info(
 
         # Values in last will involve one of our lexmax bounds.
 
-        last_tuple = new_key_lex_tuples[slex.LAST]
+        last_tuple = key_lex_tuples[slex.LAST]
         last_tuple_padded = _pad_tuple_with_zeros(last_tuple, n_seq_blex_dims)
         post_tuple_padded = _pad_tuple_with_zeros(
-            new_key_lex_tuples[slex.POST], n_seq_blex_dims)
+            key_lex_tuples[slex.POST], n_seq_blex_dims)
         # Assign int dims; all other dims will have any necessary bounds set
         # later by intersecting with the (bounded) full blex map
         last_to_post_map = _add_eq_isl_constraints_for_ints_only(
@@ -891,7 +699,7 @@ def _gather_blex_ordering_info(
                 seq_blex_dim_names_prime+seq_blex_dim_names,
                 last_tuple_padded+post_tuple_padded))
 
-        loop_max_bound = new_loop_bounds[iname][1]
+        loop_max_bound = loop_bounds[iname][1]
 
         # Rename iname dims to blex dims
         # TODO could there be any other inames involved besides last_tuple[1::2]?
@@ -908,43 +716,29 @@ def _gather_blex_ordering_info(
 
         # }}}
 
-        # }}}
-
+        print("LAST->POST")
         print(prettier_map_string(last_to_post_map))
-        blex_map_to_subtract = pre_to_first_map | bottom_to_top_map | last_to_post_map
 
-        # Add condition to fix iteration value for *surrounding* loops (j = j')
-        # (odd indices in key_lex_tuples[PRE] contain the sounding inames)
-        # TODO make sure this is still the right strategy given new approach
-        for surrounding_iname in key_lex_tuples[slex.PRE][1::2]:
-            s_blex_var = iname_to_blex_var[surrounding_iname]
-            blex_set_to_subtract &= blex_set_affs[s_blex_var].eq_set(
-                blex_set_affs[s_blex_var+BEFORE_MARK])
+        map_to_subtract = pre_to_first_map | bottom_to_top_map | last_to_post_map
 
         # Add condition to fix iteration value for *surrounding* loops (j = j')
         # (odd indices in key_lex_tuples[PRE] contain the sounding inames)
         for surrounding_iname in key_lex_tuples[slex.PRE][1::2]:
             s_blex_var = iname_to_blex_var[surrounding_iname]
-            blex_map_to_subtract = add_eq_isl_constraint_from_names(
-                blex_map_to_subtract, s_blex_var, s_blex_var+BEFORE_MARK)
-
-        # Convert blex set back to map
-        map_to_subtract = isl.Map.from_domain(blex_set_to_subtract).move_dims(
-            dim_type.out, 0, dim_type.in_, n_seq_blex_dims, n_seq_blex_dims)
-
-        _align_and_compare_maps([(blex_map_to_subtract, map_to_subtract)])
+            map_to_subtract = add_eq_isl_constraint_from_names(
+                map_to_subtract, s_blex_var, s_blex_var+BEFORE_MARK)
 
         print("FULL MAP_TO_SUBTRACT FOR LOOP", iname)
         print(prettier_map_string(map_to_subtract))
         # Bound the blex dims by intersecting with the full blex map, which
         # contains all the bound constraints
-        blex_map_to_subtract &= blex_order_map
+        map_to_subtract &= blex_order_map
         print("CONSTRAINED MAP_TO_SUBTRACT FOR LOOP", iname)
-        print(prettier_map_string(blex_map_to_subtract))
+        print(prettier_map_string(map_to_subtract))
 
         # }}}
 
-        maps_to_subtract.append(blex_map_to_subtract)
+        maps_to_subtract.append(map_to_subtract)
 
     # }}}
 
@@ -957,68 +751,35 @@ def _gather_blex_ordering_info(
         for other_map in maps_to_subtract[1:]:
             map_to_subtract |= other_map
 
-        """
-        print(blex_order_map.space)
-        print(map_to_subtract.space)
-        #print(blex_order_map - map_to_subtract)
-        assert map_to_subtract.is_subset(blex_order_map)  # TODO why not subset?
-        """
-
         # Get transitive closure of maps
         map_to_subtract_closure, closure_exact = map_to_subtract.transitive_closure()
 
         assert closure_exact  # TODO warn instead?
 
-        # {{{ Check some assumptions about result of subtraction being transitive
-        from copy import deepcopy
+        # {{{ Check assumptions about map transitivity
 
-        # Make sure blex order map is transitive
-        closure_test = deepcopy(blex_order_map)
-        closure_test, closure_exact = closure_test.transitive_closure()
-        assert closure_exact
-        print("IS FULL BLEX MAP TRANSITIVE?")
-        assert closure_test == blex_order_map
-        print("yes")
+        if perform_closure_checks:
 
-        closure_test = deepcopy(map_to_subtract_closure)
-        closure_test, closure_exact = closure_test.transitive_closure()
-        assert closure_exact
-        print("IS SUBTRACTION MAP TRANSITIVE?")
-        assert closure_test == map_to_subtract_closure
-        print("yes")
+            # Make sure map_to_subtract_closure is subset of blex_order_map
+            assert map_to_subtract <= blex_order_map
+            assert map_to_subtract_closure <= blex_order_map
 
-        assert map_to_subtract.is_subset(blex_order_map)
-        print("IS SUBTRACTION MAP A SUBSET OF FULL BLEX ORDER MAP?")
-        assert map_to_subtract_closure.is_subset(blex_order_map)
-        print("yes")
+            # Make sure blex_order_map and map_to_subtract are closures
+            _assert_exact_closure(blex_order_map)
+            _assert_exact_closure(map_to_subtract_closure)
+
         # }}}
-
-        print("blex_order_map FULL")
-        print(prettier_map_string(blex_order_map))
-        #print(blex_order_map)
 
         # Subtract closure from blex order map
         blex_order_map = blex_order_map - map_to_subtract_closure
 
-        print("subtraction map for %s barriers" % (sync_kind))
-        print(prettier_map_string(map_to_subtract_closure))
-        #print(map_to_subtract_closure)
-        print("blex_order_map FINAL = blex_order_map FULL - map_to_subtract_closure")
-        print(prettier_map_string(blex_order_map))
-        closure_test = deepcopy(blex_order_map)
-        closure_test, closure_exact = closure_test.transitive_closure()
+        # {{{ Check assumptions about map transitivity
 
-        print("closure(blex_order_map FINAL)")
-        print(prettier_map_string(closure_test))
-        print("exact?", closure_exact)
+        # Make sure blex_order_map is closure after subtraction
+        if perform_closure_checks:
+            _assert_exact_closure(blex_order_map)
 
-        #assert closure_exact  # FAILS
-        print(
-            "IS RESULT OF SUBTRACTION TRANSITIVE?",
-            closure_test == blex_order_map
-            )
-        assert closure_test == blex_order_map
-        print("yes")
+        # }}}
 
     # }}}
 
@@ -1055,6 +816,7 @@ def get_pairwise_statement_orderings_inner(
         lin_items,
         stmt_id_pairs,
         loops_to_ignore=frozenset(),
+        perform_closure_checks=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -1144,7 +906,6 @@ def get_pairwise_statement_orderings_inner(
     # This information will be used later when creating *intra-group* and
     # *global* lexicographic orderings
     loop_bounds = {}
-    new_loop_bounds = {}
 
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
@@ -1234,11 +995,6 @@ def get_pairwise_statement_orderings_inner(
 
                     # }}}
 
-                    loop_bounds[iname] = (dom.lexmin(), dom.lexmax(), dom)
-                    # TODO adding dom^ for now
-                    #loop_bounds[iname] = (
-                    #    dom.lexmin_pw_multi_aff(), dom.lexmax_pw_multi_aff())
-
                     lmin = dom.lexmin()
                     lmax = dom.lexmax()
 
@@ -1247,15 +1003,13 @@ def get_pairwise_statement_orderings_inner(
                         outer_iname_idx = lmin.find_dim_by_name(
                             dim_type.param, outer_iname)
                         lmin = lmin.move_dims(
-                            dim_type.set, 0, dim_type.param,
-                            outer_iname_idx, 1)
+                            dim_type.set, 0, dim_type.param, outer_iname_idx, 1)
                         outer_iname_idx = lmax.find_dim_by_name(
                             dim_type.param, outer_iname)
                         lmax = lmax.move_dims(
-                            dim_type.set, 0, dim_type.param,
-                            outer_iname_idx, 1)
+                            dim_type.set, 0, dim_type.param, outer_iname_idx, 1)
 
-                    new_loop_bounds[iname] = (lmin, lmax)
+                    loop_bounds[iname] = (lmin, lmax)
 
             # }}}
 
@@ -1283,19 +1037,6 @@ def get_pairwise_statement_orderings_inner(
             assert isinstance(
                 lin_item, (CallKernel, ReturnFromKernel))
             pass
-
-    # Debugging.... (TODO remove)
-    for iname, (lbound, ubound, dom) in loop_bounds.items():
-        print(iname)
-        print(prettier_map_string(lbound))
-        print(prettier_map_string(ubound))
-        print(prettier_map_string(dom))
-
-    print()
-    for iname, (lbound, ubound) in new_loop_bounds.items():
-        print(iname)
-        print(prettier_map_string(lbound))
-        print(prettier_map_string(ubound))
 
     # }}}
 
@@ -1366,9 +1107,10 @@ def get_pairwise_statement_orderings_inner(
         knl,
         "local",
         lin_items, loops_with_barriers["local"],
-        loops_to_ignore, loop_bounds, new_loop_bounds,
+        loops_to_ignore, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
+        perform_closure_checks=perform_closure_checks,
         )
     (stmt_inst_to_gblex,
      gblex_order_map,
@@ -1376,9 +1118,10 @@ def get_pairwise_statement_orderings_inner(
         knl,
         "global",
         lin_items, loops_with_barriers["global"],
-        loops_to_ignore, loop_bounds, new_loop_bounds,
+        loops_to_ignore, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
+        perform_closure_checks=perform_closure_checks,
         )
 
     # }}}
