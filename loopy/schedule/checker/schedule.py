@@ -71,10 +71,9 @@ __doc__ = """
 
 """
 
-#LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
+LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
 #LEX_VAR_PREFIX = "%slex" % (LIN_CHECK_IDENTIFIER_PREFIX)
-LIN_CHECK_IDENTIFIER_PREFIX = ""  # TODO change back after debug
-LEX_VAR_PREFIX = "%slx" % (LIN_CHECK_IDENTIFIER_PREFIX)  # TODO change back
+LEX_VAR_PREFIX = "lx"  # TODO change back
 STATEMENT_VAR_NAME = "%sstmt" % (LIN_CHECK_IDENTIFIER_PREFIX)
 LTAG_VAR_NAMES = []
 GTAG_VAR_NAMES = []
