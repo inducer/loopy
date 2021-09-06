@@ -214,7 +214,7 @@ stmt_id_pairs = [
 pworders = get_pairwise_statement_orderings(
     lin_knl, lin_items, stmt_id_pairs)
 
-1/0
+#1/0
 
 
 # {{{ test_intra_thread_pairwise_schedule_creation()
