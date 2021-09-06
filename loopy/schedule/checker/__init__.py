@@ -27,6 +27,7 @@ def get_pairwise_statement_orderings(
         knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -137,6 +138,7 @@ def get_pairwise_statement_orderings(
         lin_items,
         stmt_id_pairs,
         loops_to_ignore=conc_loop_inames,
+        perform_closure_checks=perform_closure_checks,
         )
 
     # }}}
