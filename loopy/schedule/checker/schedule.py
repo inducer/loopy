@@ -31,22 +31,6 @@ from loopy.schedule.checker.utils import (
 dim_type = isl.dim_type
 
 
-# TODO delete this:
-def _align_and_compare_maps(maps):
-    from loopy.schedule.checker.utils import (
-        ensure_dim_names_match_and_align,
-    )
-
-    for map1, map2 in maps:
-        # Align maps and compare
-        map1_aligned = ensure_dim_names_match_and_align(map1, map2)
-        if map1_aligned != map2:
-            print("Maps not equal:")
-            print(prettier_map_string(map1_aligned))
-            print(prettier_map_string(map2))
-        assert map1_aligned == map2
-
-
 # {{{ Constants
 
 __doc__ = """
@@ -243,12 +227,6 @@ class StatementOrdering:
 
 # {{{ _gather_blex_ordering_info
 
-def _find_and_rename_dim(isl_obj, dt, old_name, new_name):
-    # TODO remove this func once it's merged into isl_helpers
-    return isl_obj.set_dim_name(
-            dt, isl_obj.find_dim_by_name(dt, old_name), new_name)
-
-
 def _find_and_rename_dims(isl_obj, dt, rename_dict):
     # TODO remove this func once it's merged into isl_helpers
     for old_name, new_name in rename_dict.items():
@@ -291,9 +269,9 @@ def _add_one_blex_tuple(
             seq_within_inames, [dim_type.set])
 
     # Rename iname dims to blex dims
-    for depth, iname in enumerate(current_inames):
-        blex_dim_name = all_seq_blex_dim_names[1 + 2*depth]
-        dom = _find_and_rename_dim(dom, dim_type.set, iname, blex_dim_name)
+    dom = _find_and_rename_dims(
+        dom, dim_type.set,
+        dict(zip(blex_tuple[1::2], all_seq_blex_dim_names[1::2])))
 
     # Add any new params to all_blex_points
     current_params = all_blex_points.get_var_names(dim_type.param)
@@ -402,8 +380,6 @@ def _gather_blex_ordering_info(
                 all_blex_points, var_name, 0)
 
     # }}}
-
-    print(prettier_map_string(all_blex_points))
 
     # TODO may be able to remove some of this stuff now:
     stmt_inst_to_blex = {}  # Map stmt instances to blex space
@@ -674,6 +650,7 @@ def _gather_blex_ordering_info(
 
         # }}}
 
+        print("BOTTOM->TOP")
         print(prettier_map_string(bottom_to_top_map))
 
         # {{{ LAST->POST
@@ -728,8 +705,6 @@ def _gather_blex_ordering_info(
             map_to_subtract = add_eq_isl_constraint_from_names(
                 map_to_subtract, s_blex_var, s_blex_var+BEFORE_MARK)
 
-        print("FULL MAP_TO_SUBTRACT FOR LOOP", iname)
-        print(prettier_map_string(map_to_subtract))
         # Bound the blex dims by intersecting with the full blex map, which
         # contains all the bound constraints
         map_to_subtract &= blex_order_map
