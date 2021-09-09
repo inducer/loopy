@@ -259,10 +259,13 @@ def _add_one_blex_tuple(
     # Get set of inames nested outside (including this iname)
     seq_within_inames = set(current_inames)
 
+    # TODO LEFT OFF HERE, need concurrent inames too because seq iname domain
+    # may depend on them; move them to params temporarily?
+
     # Get inames domain for current inames
     # TODO it's possible that we can project out more inames,
     # how do we figure out which ones to project out?
-    # TODO what if this iname bound also depends on a concurrent iname?
+    # TODO what if this iname domain depends on a concurrent iname?
     dom = knl.get_inames_domain(
         seq_within_inames).project_out_except(
             seq_within_inames, [dim_type.set])
@@ -454,6 +457,9 @@ def _gather_blex_ordering_info(
                 # Store 3 tuples that will be used later to create pairs
                 # that will later be subtracted from the blex order map
 
+                # TODO some of this storage may be unnecessary now that loop
+                # bounds are found elsewhere... clean this up
+
                 last_iter_blex_pt = pre_end_loop_blex_pt[:]
                 last_iter_blex_pt[-2] = leave_iname
                 blex_exclusion_info[leave_iname][slex.BOTTOM] = tuple(
@@ -550,6 +556,7 @@ def _gather_blex_ordering_info(
     # {{{ Subtract unwanted pairs from happens-before blex map
 
     # Create mapping (dict) from iname to corresponding blex dim name
+    # TODO do we need to do something with concurrent inames here?
     iname_to_blex_var = {}
     iname_to_iname_prime = {}
     for iname, dim in iname_to_blex_dim.items():
@@ -603,6 +610,7 @@ def _gather_blex_ordering_info(
                 seq_blex_dim_names_prime+seq_blex_dim_names,
                 pre_tuple_padded+first_tuple_padded))
 
+        # TODO need this to include concurrent inames (as params?)
         loop_min_bound = loop_bounds[iname][0]
 
         # Rename iname dims to blex dims
@@ -757,6 +765,7 @@ def _gather_blex_ordering_info(
 
     # }}}
 
+    pu.db
     # Add LID/GID dims to blex order map
     blex_order_map = add_and_name_isl_dims(
         blex_order_map, dim_type.out, all_par_lex_dim_names)
@@ -836,6 +845,7 @@ def get_pairwise_statement_orderings_inner(
         provided in `stmt_id_pairs` to a :class:`StatementOrdering`, which
         contains the three SIOs described above.
     """
+    pu.db
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from loopy.kernel.data import (LocalInameTag, GroupInameTag)
@@ -948,9 +958,9 @@ def get_pairwise_statement_orderings_inner(
                     # (this iname plus any nested outside this iname)
                     inames_involved_in_bound = set(current_inames[:depth+1])
 
+                    # TODO LEFT OFF HERE, this needs to include concurrent inames
+
                     # Get inames domain
-                    # (It's possible that we can project out more inames,
-                    # but for now, don't.)
                     # TODO what if this iname bound depends on a concurrent iname?
                     dom = knl.get_inames_domain(
                         inames_involved_in_bound).project_out_except(
@@ -968,6 +978,9 @@ def get_pairwise_statement_orderings_inner(
                             outer_iname_idx, 1)
 
                     # }}}
+
+                    # TODO LEFT OFF HERE, should concurrent inames be moved to
+                    # params before calling lexmin/max? after?
 
                     lmin = dom.lexmin()
                     lmax = dom.lexmax()
@@ -1073,6 +1086,7 @@ def get_pairwise_statement_orderings_inner(
 
     all_par_lex_dim_names = lid_lex_dim_names + gid_lex_dim_names
 
+    pu.db
     # Get the blex schedule blueprint (dict will become a map below) and
     # blex order map w.r.t. local and global barriers
     (stmt_inst_to_lblex,
@@ -1219,7 +1233,7 @@ def get_pairwise_statement_orderings_inner(
         lex_order_map = add_and_name_isl_dims(
             lex_order_map, dim_type.in_,
             append_mark_to_strings(all_par_lex_dim_names, mark=BEFORE_MARK))
-        # Constrain lid/gid vars to be equal
+        # Constrain lid/gid vars to be equal (this is the intra-thread case)
         for var_name in all_par_lex_dim_names:
             lex_order_map = add_eq_isl_constraint_from_names(
                 lex_order_map, var_name, var_name+BEFORE_MARK)
