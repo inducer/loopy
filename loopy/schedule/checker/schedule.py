@@ -26,6 +26,7 @@ from loopy.schedule.checker.utils import (
     add_and_name_isl_dims,
     add_eq_isl_constraint_from_names,
     append_mark_to_isl_map_var_names,
+    move_dims_by_name,
     prettier_map_string,  # noqa
 )
 dim_type = isl.dim_type
@@ -226,9 +227,17 @@ class StatementOrdering:
 
 # {{{ _gather_blex_ordering_info
 
-def _find_and_rename_dims(isl_obj, dt, rename_dict):
+def _find_and_rename_dims(isl_obj, dt, rename_dict, ok_if_missing=False):
     # TODO remove this func once it's merged into isl_helpers
     for old_name, new_name in rename_dict.items():
+        idx = isl_obj.find_dim_by_name(dt, old_name)
+        if idx == -1:
+            if ok_if_missing:
+                continue
+            else:
+                raise ValueError(
+                    "_find_and_rename_dims did not find dimension %s"
+                    % (old_name))
         isl_obj = isl_obj.set_dim_name(
             dt, isl_obj.find_dim_by_name(dt, old_name), new_name)
     return isl_obj
@@ -249,7 +258,8 @@ def _assert_exact_closure(mapping):
 
 
 def _add_one_blex_tuple(
-        all_blex_points, blex_tuple, all_seq_blex_dim_names, knl):
+        all_blex_points, blex_tuple, all_seq_blex_dim_names,
+        conc_inames, knl):
 
     # blex_tuple contains 1 dim plus 2 dims for each *current* loop, so it may
     # be shorter than all_seq_blex_dim_names, which contains *all* the blex dim
@@ -258,24 +268,27 @@ def _add_one_blex_tuple(
 
     # Get set of inames nested outside (including this iname)
     seq_within_inames = set(current_inames)
-
-    # TODO LEFT OFF HERE, need concurrent inames too because seq iname domain
-    # may depend on them; move them to params temporarily?
+    all_within_inames = seq_within_inames | conc_inames
 
     # Get inames domain for current inames
-    # TODO it's possible that we can project out more inames,
-    # how do we figure out which ones to project out?
-    # TODO what if this iname domain depends on a concurrent iname?
+    # (need to account for concurrent inames here rather than adding them on
+    # to blex map at the end because a sequential iname domain may depend on a
+    # concurrent iname domain)
     dom = knl.get_inames_domain(
-        seq_within_inames).project_out_except(
-            seq_within_inames, [dim_type.set])
+        all_within_inames).project_out_except(
+            all_within_inames, [dim_type.set])
 
-    # Rename iname dims to blex dims
+    # Rename sequential iname dims to blex dims
     dom = _find_and_rename_dims(
         dom, dim_type.set,
         dict(zip(blex_tuple[1::2], all_seq_blex_dim_names[1::2])))
 
-    # Add any new params to all_blex_points
+    # Move concurrent inames to params
+    dom = move_dims_by_name(
+        dom, dim_type.param, dom.n_param(),
+        dim_type.set, conc_inames)
+
+    # Add any new params in dom to all_blex_points
     current_params = all_blex_points.get_var_names(dim_type.param)
     needed_params = dom.get_var_names(dim_type.param)
     missing_params = set(needed_params) - set(current_params)
@@ -302,11 +315,14 @@ def _gather_blex_ordering_info(
         knl,
         sync_kind,
         lin_items, loops_with_barriers,
-        loops_to_ignore, loop_bounds,
+        loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
+        conc_iname_lex_var_pairs,
         perform_closure_checks=False,
         ):
+    # TODO some of these params might be redundant
+    # E.g., is conc_inames always equal to inames in conc_iname_lex_var_pairs?
     """For the given sync_kind ("local" or "global"), create a mapping from
     statement instances to blex space (dict), as well as a mapping
     defining the blex ordering (isl map from blex space -> blex space)
@@ -427,7 +443,8 @@ def _gather_blex_ordering_info(
                 # {{{ Create the blex set for this blex point
 
                 all_blex_points = _add_one_blex_tuple(
-                        all_blex_points, next_blex_tuple, seq_blex_dim_names, knl)
+                    all_blex_points, next_blex_tuple,
+                    seq_blex_dim_names, conc_inames, knl)
 
                 # }}}
 
@@ -474,7 +491,8 @@ def _gather_blex_ordering_info(
                 # {{{ Create the blex set for this blex point
 
                 all_blex_points = _add_one_blex_tuple(
-                        all_blex_points, next_blex_tuple, seq_blex_dim_names, knl)
+                    all_blex_points, next_blex_tuple,
+                    seq_blex_dim_names, conc_inames, knl)
 
                 # }}}
 
@@ -492,7 +510,8 @@ def _gather_blex_ordering_info(
                 # {{{ Create the blex set for this blex point
 
                 all_blex_points = _add_one_blex_tuple(
-                        all_blex_points, next_blex_tuple, seq_blex_dim_names, knl)
+                    all_blex_points, next_blex_tuple,
+                    seq_blex_dim_names, conc_inames, knl)
 
                 # }}}
 
@@ -524,7 +543,8 @@ def _gather_blex_ordering_info(
                     # {{{ Create the blex set for this blex point
 
                     all_blex_points = _add_one_blex_tuple(
-                        all_blex_points, next_blex_tuple, seq_blex_dim_names, knl)
+                        all_blex_points, next_blex_tuple,
+                        seq_blex_dim_names, conc_inames, knl)
 
                     # }}}
         else:
@@ -546,8 +566,13 @@ def _gather_blex_ordering_info(
 
     # {{{ Bound the (pre-subtraction) blex order map
 
+    conc_iname_to_iname_prime = {
+        conc_iname: conc_iname+BEFORE_MARK for conc_iname in conc_inames}
     all_blex_points_prime = append_mark_to_isl_map_var_names(
         all_blex_points, dim_type.set, BEFORE_MARK)
+    all_blex_points_prime = _find_and_rename_dims(
+        all_blex_points_prime, dim_type.param, conc_iname_to_iname_prime,
+        ok_if_missing=True)
     blex_order_map = blex_order_map.intersect_domain(
         all_blex_points_prime).intersect_range(all_blex_points)
 
@@ -556,7 +581,7 @@ def _gather_blex_ordering_info(
     # {{{ Subtract unwanted pairs from happens-before blex map
 
     # Create mapping (dict) from iname to corresponding blex dim name
-    # TODO do we need to do something with concurrent inames here?
+    # TODO rename to "seq_..."
     iname_to_blex_var = {}
     iname_to_iname_prime = {}
     for iname, dim in iname_to_blex_dim.items():
@@ -610,8 +635,8 @@ def _gather_blex_ordering_info(
                 seq_blex_dim_names_prime+seq_blex_dim_names,
                 pre_tuple_padded+first_tuple_padded))
 
-        # TODO need this to include concurrent inames (as params?)
         loop_min_bound = loop_bounds[iname][0]
+        # (in loop_bounds sets, concurrent inames are params)
 
         # Rename iname dims to blex dims
         # TODO could there be any other inames involved besides first_tuple[1::2]?
@@ -686,16 +711,29 @@ def _gather_blex_ordering_info(
         loop_max_bound = loop_bounds[iname][1]
 
         # Rename iname dims to blex dims
-        # TODO could there be any other inames involved besides last_tuple[1::2]?
         loop_max_bound = _find_and_rename_dims(
             loop_max_bound, dim_type.set,
             {k: iname_to_blex_var[k] for k in last_tuple[1::2]})
+
+        # We're going to intersect loop_max_bound with the *domain*
+        # (in-dimension) of the 'before'->'after' map below. We'll first align
+        # the space of loop_max_bound with the blex_set_template so that all
+        # the blex dimensions line up, and then use intersect_domain to apply
+        # loop_max_bound to the 'before' tuple. Because of this, we don't
+        # need to append the BEFORE_MARK to the inames in the dim_type.set
+        # dimensions of the loop_max_bound (even though they do apply to a
+        # 'before' tuple). However, there may be concurrent inames in the
+        # dim_type.param dimensions of the loop_max_bound, and we DO need to
+        # append the BEFORE_MARK to those inames to ensure that they are
+        # distinguished from the corresponding non-marked 'after' (concurrent)
+        # inames.
+        loop_max_bound = _find_and_rename_dims(
+            loop_max_bound, dim_type.param, conc_iname_to_iname_prime)
+
         # Align with blex space (adds needed dims)
         loop_last_set = isl.align_spaces(loop_max_bound, blex_set_template)
-        # These blex vars should all have BEFORE_MARK but that will be added
-        # when we intersect_domain below
 
-        # Make PRE->FIRST pair by intersecting this with the range of our map
+        # Make LAST->POST pair by intersecting this with the range of our map
         last_to_post_map = last_to_post_map.intersect_domain(loop_last_set)
 
         # }}}
@@ -705,10 +743,10 @@ def _gather_blex_ordering_info(
 
         map_to_subtract = pre_to_first_map | bottom_to_top_map | last_to_post_map
 
-        # Add condition to fix iteration value for *surrounding* loops (j = j')
+        # Add condition to fix iter value for *surrounding* sequential loops (j = j')
         # (odd indices in key_lex_tuples[PRE] contain the sounding inames)
-        for surrounding_iname in key_lex_tuples[slex.PRE][1::2]:
-            s_blex_var = iname_to_blex_var[surrounding_iname]
+        for seq_surrounding_iname in key_lex_tuples[slex.PRE][1::2]:
+            s_blex_var = iname_to_blex_var[seq_surrounding_iname]
             map_to_subtract = add_eq_isl_constraint_from_names(
                 map_to_subtract, s_blex_var, s_blex_var+BEFORE_MARK)
 
@@ -753,7 +791,7 @@ def _gather_blex_ordering_info(
         # }}}
 
         # Subtract closure from blex order map
-        blex_order_map = blex_order_map - map_to_subtract_closure
+        blex_order_map -= map_to_subtract_closure
 
         # {{{ Check assumptions about map transitivity
 
@@ -765,16 +803,40 @@ def _gather_blex_ordering_info(
 
     # }}}
 
-    pu.db
-    # Add LID/GID dims to blex order map
-    blex_order_map = add_and_name_isl_dims(
-        blex_order_map, dim_type.out, all_par_lex_dim_names)
-    blex_order_map = add_and_name_isl_dims(
-        blex_order_map, dim_type.in_,
-        append_mark_to_strings(all_par_lex_dim_names, mark=BEFORE_MARK))
+    # Add LID/GID dims to blex order map.
+    # At this point, all concurrent inames should be params in blex order map.
+    # Rename them and move them to in_/out dims.
+
+    blex_order_map = _find_and_rename_dims(
+        blex_order_map, dim_type.param,
+        {conc_iname+BEFORE_MARK: lex_var+BEFORE_MARK
+        for conc_iname, lex_var in conc_iname_lex_var_pairs},  #  'before' names
+        ok_if_missing=True,  # TODO actually track these so we know exactly what to expect
+        )
+    blex_order_map = _find_and_rename_dims(
+        blex_order_map, dim_type.param,
+        dict(conc_iname_lex_var_pairs),  # 'after' names
+        ok_if_missing=True,
+        )
+    # (this sets the order of the LID/GID dims: )
+    blex_order_map = move_dims_by_name(
+        blex_order_map, dim_type.in_, blex_order_map.dim(dim_type.in_),
+        dim_type.param,
+        [lex_var+BEFORE_MARK for _, lex_var in conc_iname_lex_var_pairs],
+        ok_if_missing=True,
+        )
+    blex_order_map = move_dims_by_name(
+        blex_order_map, dim_type.out, blex_order_map.dim(dim_type.out),
+        dim_type.param, [lex_var for _, lex_var in conc_iname_lex_var_pairs],
+        ok_if_missing=True,
+        )
+
     if sync_kind == "local":
         # For intra-group case, constrain GID 'before' to equal GID 'after'
-        for var_name in gid_lex_dim_names:
+        gid_lex_dim_names_found = set(
+            gid_lex_dim_names) & set(blex_order_map.get_var_names(dim_type.out))
+        # TODO actually track these^ so we know exactly what to expect
+        for var_name in gid_lex_dim_names_found:
             blex_order_map = add_eq_isl_constraint_from_names(
                     blex_order_map, var_name, var_name+BEFORE_MARK)
     # (if sync_kind == "global", don't need constraints on LID/GID vars)
@@ -845,7 +907,6 @@ def get_pairwise_statement_orderings_inner(
         provided in `stmt_id_pairs` to a :class:`StatementOrdering`, which
         contains the three SIOs described above.
     """
-    pu.db
 
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from loopy.kernel.data import (LocalInameTag, GroupInameTag)
@@ -859,9 +920,11 @@ def get_pairwise_statement_orderings_inner(
         sorted_union_of_names_in_isl_sets,
         create_symbolic_map_from_tuples,
         insert_and_name_isl_dims,
+        partition_inames_by_concurrency,
     )
 
     all_stmt_ids = set().union(*stmt_id_pairs)
+    conc_inames = partition_inames_by_concurrency(knl)[0] - loops_to_ignore
 
     # {{{ Intra-thread lex order creation
 
@@ -955,13 +1018,13 @@ def get_pairwise_statement_orderings_inner(
                 if iname not in loop_bounds:
 
                     # Get set of inames that might be involved in this bound
-                    # (this iname plus any nested outside this iname)
-                    inames_involved_in_bound = set(current_inames[:depth+1])
-
-                    # TODO LEFT OFF HERE, this needs to include concurrent inames
+                    # (this iname plus any nested outside this iname, including
+                    # concurrent inames)
+                    seq_surrounding_inames = set(current_inames[:depth])
+                    all_surrounding_inames = seq_surrounding_inames | conc_inames
 
                     # Get inames domain
-                    # TODO what if this iname bound depends on a concurrent iname?
+                    inames_involved_in_bound = all_surrounding_inames | {iname}
                     dom = knl.get_inames_domain(
                         inames_involved_in_bound).project_out_except(
                             inames_involved_in_bound, [dim_type.set])
@@ -970,31 +1033,52 @@ def get_pairwise_statement_orderings_inner(
                     # (keeping them in order, which might come in handy later...)
 
                     # Move those inames to params
-                    for outer_iname in current_inames[:depth]:
-                        outer_iname_idx = dom.find_dim_by_name(
+                    # TODO remove:
+                    _dom = dom
+                    for outer_iname in all_surrounding_inames:
+                        outer_iname_idx = _dom.find_dim_by_name(
                             dim_type.set, outer_iname)
-                        dom = dom.move_dims(
-                            dim_type.param, dom.n_param(), dim_type.set,
+                        _dom = _dom.move_dims(
+                            dim_type.param, _dom.n_param(), dim_type.set,
                             outer_iname_idx, 1)
 
-                    # }}}
+                    dom = move_dims_by_name(
+                        dom, dim_type.param, dom.n_param(),
+                        dim_type.set, all_surrounding_inames)
 
-                    # TODO LEFT OFF HERE, should concurrent inames be moved to
-                    # params before calling lexmin/max? after?
+                    assert dom == _dom  # TODO remove
+                    assert dom.get_var_dict() == _dom.get_var_dict()  # TODO remove
+
+                    # }}}
 
                     lmin = dom.lexmin()
                     lmax = dom.lexmax()
 
-                    # Now move param inames back to set dim
-                    for outer_iname in current_inames[:depth]:
-                        outer_iname_idx = lmin.find_dim_by_name(
+                    # Now move non-concurrent param inames back to set dim
+                    # TODO remove:
+                    _lmin = lmin
+                    _lmax = lmax
+                    for outer_iname in seq_surrounding_inames:
+                        outer_iname_idx = _lmin.find_dim_by_name(
                             dim_type.param, outer_iname)
-                        lmin = lmin.move_dims(
+                        _lmin = _lmin.move_dims(
                             dim_type.set, 0, dim_type.param, outer_iname_idx, 1)
-                        outer_iname_idx = lmax.find_dim_by_name(
+                        outer_iname_idx = _lmax.find_dim_by_name(
                             dim_type.param, outer_iname)
-                        lmax = lmax.move_dims(
+                        _lmax = _lmax.move_dims(
                             dim_type.set, 0, dim_type.param, outer_iname_idx, 1)
+
+                    lmin = move_dims_by_name(
+                        lmin, dim_type.set, 0,
+                        dim_type.param, seq_surrounding_inames)
+                    lmax = move_dims_by_name(
+                        lmax, dim_type.set, 0,
+                        dim_type.param, seq_surrounding_inames)
+
+                    assert lmin == _lmin  # TODO remove
+                    assert lmin.get_var_dict() == _lmin.get_var_dict()  # TODO remove
+                    assert lmax == _lmax  # TODO remove
+                    assert lmax.get_var_dict() == _lmax.get_var_dict()  # TODO remove
 
                     loop_bounds[iname] = (lmin, lmax)
 
@@ -1033,9 +1117,11 @@ def get_pairwise_statement_orderings_inner(
     # At the same time, create the dicts that will be used later to create map
     # constraints that match each parallel iname to the corresponding lex dim
     # name in schedules, i.e., i = lid0, j = lid1, etc.
+    # TODO some of these vars may be redundant:
     lid_lex_dim_names = set()
     gid_lex_dim_names = set()
     par_iname_constraint_dicts = {}
+    lex_var_to_conc_iname = {}
     for iname in knl.all_inames():
         ltag = knl.iname_tags_of_type(iname, LocalInameTag)
         if ltag:
@@ -1043,7 +1129,7 @@ def get_pairwise_statement_orderings_inner(
             ltag_var = LTAG_VAR_NAMES[ltag.pop().axis]
             lid_lex_dim_names.add(ltag_var)
             par_iname_constraint_dicts[iname] = {1: 0, iname: 1, ltag_var: -1}
-
+            lex_var_to_conc_iname[ltag_var] = iname
             continue  # Shouldn't be any GroupInameTags
 
         gtag = knl.iname_tags_of_type(iname, GroupInameTag)
@@ -1052,10 +1138,17 @@ def get_pairwise_statement_orderings_inner(
             gtag_var = GTAG_VAR_NAMES[gtag.pop().axis]
             gid_lex_dim_names.add(gtag_var)
             par_iname_constraint_dicts[iname] = {1: 0, iname: 1, gtag_var: -1}
+            lex_var_to_conc_iname[gtag_var] = iname
 
     # Sort for consistent dimension ordering
     lid_lex_dim_names = sorted(lid_lex_dim_names)
     gid_lex_dim_names = sorted(gid_lex_dim_names)
+    # TODO remove redundancy have one definitive list for these
+    # (just make separate 1-d lists for everything?)
+    conc_iname_lex_var_pairs = []
+    for lex_var in lid_lex_dim_names+gid_lex_dim_names:
+        conc_iname_lex_var_pairs.append(
+            (lex_var_to_conc_iname[lex_var], lex_var))
 
     # }}}
 
@@ -1086,7 +1179,6 @@ def get_pairwise_statement_orderings_inner(
 
     all_par_lex_dim_names = lid_lex_dim_names + gid_lex_dim_names
 
-    pu.db
     # Get the blex schedule blueprint (dict will become a map below) and
     # blex order map w.r.t. local and global barriers
     (stmt_inst_to_lblex,
@@ -1095,9 +1187,10 @@ def get_pairwise_statement_orderings_inner(
         knl,
         "local",
         lin_items, loops_with_barriers["local"],
-        loops_to_ignore, loop_bounds,
+        loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
+        conc_iname_lex_var_pairs,
         perform_closure_checks=perform_closure_checks,
         )
     (stmt_inst_to_gblex,
@@ -1106,9 +1199,10 @@ def get_pairwise_statement_orderings_inner(
         knl,
         "global",
         lin_items, loops_with_barriers["global"],
-        loops_to_ignore, loop_bounds,
+        loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
+        conc_iname_lex_var_pairs,
         perform_closure_checks=perform_closure_checks,
         )
 
@@ -1166,7 +1260,7 @@ def get_pairwise_statement_orderings_inner(
             space=sched_space,
             )
 
-        # Set inames equal to relevant gid/lid var names
+        # Set inames equal to relevant GID/LID var names
         for iname, constraint_dict in par_iname_constraint_dicts.items():
             # Even though all parallel thread dims are active throughout the
             # whole kernel, they may be assigned (tagged) to one iname for some
@@ -1270,6 +1364,7 @@ def get_pairwise_statement_orderings_inner(
             # 'before' to equal GID 'after' earlier in _gather_blex_ordering_info()
 
             # Create statement instance ordering
+            pu.db
             sio_par = get_statement_ordering_map(
                 *par_sched_maps,  # note, func accepts exactly two maps
                 blex_order_map,
