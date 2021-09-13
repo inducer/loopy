@@ -25,8 +25,10 @@ dim_type = isl.dim_type
 
 
 def prettier_map_string(map_obj):
-    return str(map_obj
-               ).replace("{ ", "{\n").replace(" }", "\n}").replace("; ", ";\n")
+    return str(
+        map_obj
+        ).replace("{ ", "{\n").replace(" }", "\n}").replace("; ", ";\n").replace(
+        "(", "\n (")
 
 
 def insert_and_name_isl_dims(isl_set, dt, names, new_idx_start):
@@ -84,6 +86,44 @@ def reorder_dims_by_name(
     return new_set
 
 
+def move_dims_by_name(
+        isl_obj, dst_type, dst_pos_start, src_type, dim_names):
+    dst_pos = dst_pos_start
+    for dim_name in dim_names:
+        src_idx = isl_obj.find_dim_by_name(src_type, dim_name)
+        if src_idx == -1:
+            raise ValueError(
+                "move_dims_by_name did not find dimension %s"
+                % (dim_name))
+        isl_obj = isl_obj.move_dims(
+            dst_type, dst_pos, src_type, src_idx, 1)
+        dst_pos += 1
+    return isl_obj
+
+
+def remove_dims_by_name(isl_obj, dt, dim_names):
+    for dim_name in dim_names:
+        idx = isl_obj.find_dim_by_name(dt, dim_name)
+        if idx == -1:
+            raise ValueError(
+                "remove_dims_by_name did not find dimension %s"
+                % (dim_name))
+        isl_obj = isl_obj.remove_dims(dt, idx, 1)
+    return isl_obj
+
+
+def rename_dims(
+        isl_set, rename_map,
+        dts=(dim_type.in_, dim_type.out, dim_type.param)):
+    new_isl_set = isl_set.copy()
+    for dt in dts:
+        for idx, old_name in enumerate(isl_set.get_var_names(dt)):
+            if old_name in rename_map:
+                new_isl_set = new_isl_set.set_dim_name(
+                    dt, idx, rename_map[old_name])
+    return new_isl_set
+
+
 def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
     # first make sure names match
@@ -101,10 +141,30 @@ def ensure_dim_names_match_and_align(obj_map, tgt_map):
 
 def add_eq_isl_constraint_from_names(isl_map, var1, var2):
     # add constraint var1 = var2
+    assert isinstance(var1, str)
+    # var2 may be an int or a string
+    if isinstance(var2, str):
+        return isl_map.add_constraint(
+                   isl.Constraint.eq_from_names(
+                       isl_map.space,
+                       {1: 0, var1: 1, var2: -1}))
+    else:
+        assert isinstance(var2, int)
+        return isl_map.add_constraint(
+                   isl.Constraint.eq_from_names(
+                       isl_map.space,
+                       {1: var2, var1: -1}))
+
+
+def add_int_bounds_to_isl_var(isl_map, var, lbound, ubound):
+    # NOTE: these are inclusive bounds
+    # add constraint var1 = var2
     return isl_map.add_constraint(
-               isl.Constraint.eq_from_names(
-                   isl_map.space,
-                   {1: 0, var1: 1, var2: -1}))
+        isl.Constraint.ineq_from_names(
+            isl_map.space, {1: -1*lbound, var: 1})
+        ).add_constraint(
+            isl.Constraint.ineq_from_names(
+                isl_map.space, {1: ubound, var: -1}))
 
 
 def append_mark_to_isl_map_var_names(old_isl_map, dt, mark):

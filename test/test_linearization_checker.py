@@ -46,6 +46,10 @@ from loopy.schedule.checker.schedule import (
 from loopy.schedule.checker.utils import (
     ensure_dim_names_match_and_align,
     make_dep_map,
+    prettier_map_string,
+)
+from loopy.schedule.checker import (
+    get_pairwise_statement_orderings,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,7 +58,6 @@ logger = logging.getLogger(__name__)
 # {{{ Helper functions for map creation/handling
 
 def _align_and_compare_maps(maps):
-    from loopy.schedule.checker.utils import prettier_map_string
 
     for map1, map2 in maps:
         # Align maps and compare
@@ -205,6 +208,7 @@ def test_intra_thread_pairwise_schedule_creation():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -421,6 +425,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -562,6 +567,7 @@ def test_intra_thread_statement_instance_ordering():
         proc_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -698,6 +704,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # Create string for representing parallel iname condition in sio
@@ -779,6 +786,7 @@ def test_statement_instance_ordering_of_barriers():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # Create string for representing parallel iname SAME condition in sio
@@ -1037,7 +1045,7 @@ def test_sios_and_schedules_with_barriers():
 
     stmt_id_pairs = [("stmt_j1", "stmt_2"), ("stmt_1", "stmt_i0")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
 
     # {{{ Relationship between stmt_j1 and stmt_2
 
@@ -1360,7 +1368,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
 
     stmt_id_pairs = [("stmt_1", "stmt_2")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
 
     # {{{ Relationship between stmt_1 and stmt_2
 
@@ -1587,7 +1595,181 @@ def test_sios_with_matmul():
 
     # Generate pairwise ordering info for every pair
     get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+# }}}
+
+
+# {{{ test_blex_map_transitivity_with_triangular_domain
+
+def test_blex_map_transitivity_with_triangular_domain():
+
+    assumptions = "i_start + 1 <= ijk_end"
+    knl = lp.make_kernel(
+        [
+            "{[i,j,k]: i_start<=i<ijk_end and i<=j<ijk_end and i+j<=k<ijk_end}",
+        ],
+        """
+        for i
+            <>temp0 = 0  {id=stmt_i0}
+            ... lbarrier  {id=stmt_b0,dep=stmt_i0}
+            <>temp1 = 1  {id=stmt_i1,dep=stmt_b0}
+            for j
+                <>tempj0 = 0  {id=stmt_j0,dep=stmt_i1}
+                ... lbarrier {id=stmt_jb0,dep=stmt_j0}
+                ... gbarrier {id=stmt_jbb0,dep=stmt_j0}
+                <>tempj1 = 0  {id=stmt_j1,dep=stmt_jb0}
+                <>tempj2 = 0  {id=stmt_j2,dep=stmt_j1}
+                for k
+                    <>tempk0 = 0  {id=stmt_k0,dep=stmt_j2}
+                    ... lbarrier {id=stmt_kb0,dep=stmt_k0}
+                    <>tempk1 = 0  {id=stmt_k1,dep=stmt_kb0}
+                end
+            end
+            <>temp2 = 0  {id=stmt_i2,dep=stmt_j0}
+        end
+        """,
+        assumptions=assumptions,
+        lang_version=(2018, 2)
+        )
+
+    ref_knl = knl
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("stmt_i0", "stmt_i1"),
+        ("stmt_i1", "stmt_j0"),
+        ("stmt_j0", "stmt_j1"),
+        ("stmt_j1", "stmt_j2"),
+        ("stmt_j2", "stmt_k0"),
+        ("stmt_k0", "stmt_k1"),
+        ("stmt_k1", "stmt_i2"),
+        ]
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # Now try it with concurrent i loop
+    knl = lp.tag_inames(knl, "i:g.0")
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("stmt_i0", "stmt_i1"),
+        ("stmt_i1", "stmt_j0"),
+        ("stmt_j0", "stmt_j1"),
+        ("stmt_j1", "stmt_j2"),
+        ("stmt_j2", "stmt_k0"),
+        ("stmt_k0", "stmt_k1"),
+        ("stmt_k1", "stmt_i2"),
+        ]
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # Now try it with concurrent i and j loops
+    knl = lp.tag_inames(knl, "j:g.1")
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("stmt_i0", "stmt_i1"),
+        ("stmt_i1", "stmt_j0"),
+        ("stmt_j0", "stmt_j1"),
+        ("stmt_j1", "stmt_j2"),
+        ("stmt_j2", "stmt_k0"),
+        ("stmt_k0", "stmt_k1"),
+        ("stmt_k1", "stmt_i2"),
+        ]
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # Now try it with concurrent i and k loops
+    knl = ref_knl
+    knl = lp.tag_inames(knl, {"i": "g.0", "k": "g.1"})
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("stmt_i0", "stmt_i1"),
+        ("stmt_i1", "stmt_j0"),
+        ("stmt_j0", "stmt_j1"),
+        ("stmt_j1", "stmt_j2"),
+        ("stmt_j2", "stmt_k0"),
+        ("stmt_k0", "stmt_k1"),
+        ("stmt_k1", "stmt_i2"),
+        ]
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # FIXME create some expected sios and compare
+
+# }}}
+
+
+# {{{ test_blex_map_transitivity_with_duplicate_conc_inames
+
+def test_blex_map_transitivity_with_duplicate_conc_inames():
+
+    knl = lp.make_kernel(
+        [
+            "{[i,j,ii,jj]: 0 <= i,j,jj < n and i <= ii < n}",
+            "{[k, kk]: 0 <= k,kk < n}",
+        ],
+        """
+        for i
+            for ii
+                <> si = 0  {id=si}
+                ... lbarrier {id=bari, dep=si}
+            end
+        end
+        for j
+            for jj
+                <> sj = 0  {id=sj, dep=si}
+                ... lbarrier {id=barj, dep=sj}
+            end
+        end
+        for k
+            for kk
+                <> sk = 0  {id=sk, dep=sj}
+                ... lbarrier {id=bark, dep=sk}
+            end
+        end
+        """,
+        assumptions="0 < n",
+        lang_version=(2018, 2)
+        )
+
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.0", "k": "l.0"})
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("si", "si"),
+        ("si", "sj"),
+        ("si", "sk"),
+        ("sj", "sj"),
+        ("sj", "sk"),
+        ("sk", "sk"),
+        ]
+
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_intra_thread))
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_intra_group))
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_global))
+
+    # FIXME create some expected sios and compare
 
 # }}}
 
