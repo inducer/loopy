@@ -1603,8 +1603,6 @@ def test_sios_with_matmul():
 
 def test_blex_map_transitivity_with_triangular_domain():
 
-    # TODO make version of this with parallel i and ensure maps are correct?
-
     assumptions = "i_start + 1 <= ijk_end"
     knl = lp.make_kernel(
         [
@@ -1709,6 +1707,68 @@ def test_blex_map_transitivity_with_triangular_domain():
     # Set perform_closure_checks=True and get the orderings
     get_pairwise_statement_orderings(
         lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # FIXME create some expected sios and compare
+
+# }}}
+
+
+# {{{ test_blex_map_transitivity_with_duplicate_conc_inames
+
+def test_blex_map_transitivity_with_duplicate_conc_inames():
+
+    knl = lp.make_kernel(
+        [
+            "{[i,j,ii,jj]: 0 <= i,j,jj < n and i <= ii < n}",
+            "{[k, kk]: 0 <= k,kk < n}",
+        ],
+        """
+        for i
+            for ii
+                <> si = 0  {id=si}
+                ... lbarrier {id=bari, dep=si}
+            end
+        end
+        for j
+            for jj
+                <> sj = 0  {id=sj, dep=si}
+                ... lbarrier {id=barj, dep=sj}
+            end
+        end
+        for k
+            for kk
+                <> sk = 0  {id=sk, dep=sj}
+                ... lbarrier {id=bark, dep=sk}
+            end
+        end
+        """,
+        assumptions="0 < n",
+        lang_version=(2018, 2)
+        )
+
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.0", "k": "l.0"})
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("si", "si"),
+        ("si", "sj"),
+        ("si", "sk"),
+        ("sj", "sj"),
+        ("sj", "sk"),
+        ("sk", "sk"),
+        ]
+
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_intra_thread))
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_intra_group))
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_global))
+
+    # FIXME create some expected sios and compare
 
 # }}}
 
