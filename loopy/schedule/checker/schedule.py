@@ -227,17 +227,14 @@ class StatementOrdering:
 
 # {{{ _gather_blex_ordering_info
 
-def _find_and_rename_dims(isl_obj, dt, rename_dict, ok_if_missing=False):
+def _find_and_rename_dims(isl_obj, dt, rename_dict):
     # TODO remove this func once it's merged into isl_helpers
     for old_name, new_name in rename_dict.items():
         idx = isl_obj.find_dim_by_name(dt, old_name)
         if idx == -1:
-            if ok_if_missing:
-                continue
-            else:
-                raise ValueError(
-                    "_find_and_rename_dims did not find dimension %s"
-                    % (old_name))
+            raise ValueError(
+                "_find_and_rename_dims did not find dimension %s"
+                % (old_name))
         isl_obj = isl_obj.set_dim_name(
             dt, isl_obj.find_dim_by_name(dt, old_name), new_name)
     return isl_obj
@@ -264,11 +261,9 @@ def _add_one_blex_tuple(
     # blex_tuple contains 1 dim plus 2 dims for each *current* loop, so it may
     # be shorter than all_seq_blex_dim_names, which contains *all* the blex dim
     # names
-    current_inames = blex_tuple[1::2]
 
     # Get set of inames nested outside (including this iname)
-    seq_within_inames = set(current_inames)
-    all_within_inames = seq_within_inames | conc_inames
+    all_within_inames = set(blex_tuple[1::2]) | conc_inames
 
     # Get inames domain for current inames
     # (need to account for concurrent inames here rather than adding them on
@@ -396,6 +391,10 @@ def _gather_blex_ordering_info(
     for var_name in seq_blex_dim_names:
         all_blex_points = add_eq_isl_constraint_from_names(
                 all_blex_points, var_name, 0)
+    # Add concurrent inames as params
+    # (iname domains found in the pass below may depend on concurrent inames)
+    all_blex_points = add_and_name_isl_dims(
+        all_blex_points, dim_type.param, conc_inames)
 
     # }}}
 
@@ -406,8 +405,6 @@ def _gather_blex_ordering_info(
     next_blex_tuple = [0]  # Next tuple of points in blex order
 
     known_blex_dim_ubounds = [0, ]  # Place to store bounds for non-iname blex dims
-    # TODO handle case where one non-iname blex dim is used in multiple
-    # separate loops?
 
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
@@ -572,7 +569,7 @@ def _gather_blex_ordering_info(
         all_blex_points, dim_type.set, BEFORE_MARK)
     all_blex_points_prime = _find_and_rename_dims(
         all_blex_points_prime, dim_type.param, conc_iname_to_iname_prime,
-        ok_if_missing=True)
+        )
     blex_order_map = blex_order_map.intersect_domain(
         all_blex_points_prime).intersect_range(all_blex_points)
 
@@ -811,24 +808,20 @@ def _gather_blex_ordering_info(
         blex_order_map, dim_type.param,
         {conc_iname+BEFORE_MARK: lex_var+BEFORE_MARK
         for conc_iname, lex_var in conc_iname_lex_var_pairs},  #  'before' names
-        ok_if_missing=True,  # TODO actually track these so we know exactly what to expect
         )
     blex_order_map = _find_and_rename_dims(
         blex_order_map, dim_type.param,
         dict(conc_iname_lex_var_pairs),  # 'after' names
-        ok_if_missing=True,
         )
     # (this sets the order of the LID/GID dims: )
     blex_order_map = move_dims_by_name(
         blex_order_map, dim_type.in_, blex_order_map.dim(dim_type.in_),
         dim_type.param,
         [lex_var+BEFORE_MARK for _, lex_var in conc_iname_lex_var_pairs],
-        ok_if_missing=True,
         )
     blex_order_map = move_dims_by_name(
         blex_order_map, dim_type.out, blex_order_map.dim(dim_type.out),
         dim_type.param, [lex_var for _, lex_var in conc_iname_lex_var_pairs],
-        ok_if_missing=True,
         )
 
     if sync_kind == "local":
@@ -1008,7 +1001,7 @@ def get_pairwise_statement_orderings_inner(
             lp_stmt_id = lin_item.originating_insn_id
             loops_with_barriers[lin_item.synchronization_kind] |= set(current_inames)
 
-            # {{{ Store bounds for inames containing barriers
+            # {{{ Store bounds for loops containing barriers
 
             # (only compute the ones we haven't already stored; bounds finding
             # will only happen once for each barrier-containing loop)
@@ -1033,7 +1026,7 @@ def get_pairwise_statement_orderings_inner(
                     # (keeping them in order, which might come in handy later...)
 
                     # Move those inames to params
-                    # TODO remove:
+                    # TODO remove after testing with downstream branches:
                     _dom = dom
                     for outer_iname in all_surrounding_inames:
                         outer_iname_idx = _dom.find_dim_by_name(
@@ -1046,8 +1039,9 @@ def get_pairwise_statement_orderings_inner(
                         dom, dim_type.param, dom.n_param(),
                         dim_type.set, all_surrounding_inames)
 
-                    assert dom == _dom  # TODO remove
-                    assert dom.get_var_dict() == _dom.get_var_dict()  # TODO remove
+                    # TODO remove after testing with downstream branches:
+                    assert dom == _dom
+                    assert dom.get_var_dict() == _dom.get_var_dict()
 
                     # }}}
 
@@ -1055,18 +1049,18 @@ def get_pairwise_statement_orderings_inner(
                     lmax = dom.lexmax()
 
                     # Now move non-concurrent param inames back to set dim
-                    # TODO remove:
+                    # TODO remove after testing with downstream branches:
                     _lmin = lmin
                     _lmax = lmax
-                    for outer_iname in seq_surrounding_inames:
+                    for new_idx, outer_iname in enumerate(seq_surrounding_inames):
                         outer_iname_idx = _lmin.find_dim_by_name(
                             dim_type.param, outer_iname)
                         _lmin = _lmin.move_dims(
-                            dim_type.set, 0, dim_type.param, outer_iname_idx, 1)
+                            dim_type.set, new_idx, dim_type.param, outer_iname_idx, 1)
                         outer_iname_idx = _lmax.find_dim_by_name(
                             dim_type.param, outer_iname)
                         _lmax = _lmax.move_dims(
-                            dim_type.set, 0, dim_type.param, outer_iname_idx, 1)
+                            dim_type.set, new_idx, dim_type.param, outer_iname_idx, 1)
 
                     lmin = move_dims_by_name(
                         lmin, dim_type.set, 0,
@@ -1075,10 +1069,11 @@ def get_pairwise_statement_orderings_inner(
                         lmax, dim_type.set, 0,
                         dim_type.param, seq_surrounding_inames)
 
-                    assert lmin == _lmin  # TODO remove
-                    assert lmin.get_var_dict() == _lmin.get_var_dict()  # TODO remove
-                    assert lmax == _lmax  # TODO remove
-                    assert lmax.get_var_dict() == _lmax.get_var_dict()  # TODO remove
+                    # TODO remove after testing with downstream branches:
+                    assert lmin == _lmin
+                    assert lmin.get_var_dict() == _lmin.get_var_dict()
+                    assert lmax == _lmax
+                    assert lmax.get_var_dict() == _lmax.get_var_dict()
 
                     loop_bounds[iname] = (lmin, lmax)
 
@@ -1364,7 +1359,6 @@ def get_pairwise_statement_orderings_inner(
             # 'before' to equal GID 'after' earlier in _gather_blex_ordering_info()
 
             # Create statement instance ordering
-            pu.db
             sio_par = get_statement_ordering_map(
                 *par_sched_maps,  # note, func accepts exactly two maps
                 blex_order_map,
