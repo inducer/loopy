@@ -27,6 +27,7 @@ from loopy.schedule.checker.utils import (
     add_eq_isl_constraint_from_names,
     append_mark_to_isl_map_var_names,
     move_dims_by_name,
+    remove_dims_by_name,
     prettier_map_string,  # noqa
 )
 dim_type = isl.dim_type
@@ -313,11 +314,10 @@ def _gather_blex_ordering_info(
         loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
-        conc_iname_lex_var_pairs,
+        conc_iname_constraint_dicts, conc_iname_constraint_dicts_prime,
         perform_closure_checks=False,
         ):
     # TODO some of these params might be redundant
-    # E.g., is conc_inames always equal to inames in conc_iname_lex_var_pairs?
     """For the given sync_kind ("local" or "global"), create a mapping from
     statement instances to blex space (dict), as well as a mapping
     defining the blex ordering (isl map from blex space -> blex space)
@@ -800,38 +800,58 @@ def _gather_blex_ordering_info(
 
     # }}}
 
-    # Add LID/GID dims to blex order map.
-    # At this point, all concurrent inames should be params in blex order map.
-    # Rename them and move them to in_/out dims.
+    # Add LID/GID dims to blex order map:
 
-    blex_order_map = _find_and_rename_dims(
+    # At this point, all concurrent inames should be params in blex order map.
+    # Rename them to the corresponding concurrent lex dim name and move them to
+    # in_/out dims.
+
+    # NOTE:
+    # Even though all parallel thread dims are active throughout the
+    # whole kernel, they may be assigned (tagged) to one iname for some
+    # subset of statements and another iname for a different subset of
+    # statements (e.g., tiled, parallel matmul).
+    # There could, e.g., be *multiple* inames that correspond to LID0, and each
+    # of these inames could be involved in defining the domain set for other
+    # inames. We don't want to lose any of this information. For this reason,
+    # we first creat the LID/GID dims, then set each one equal to *all*
+    # corresponding concurrent inames (which are in param dims), and then
+    # remove the (param) iname dims.
+
+    # Add conc lex dim names to both in_ and out dims
+    blex_order_map = add_and_name_isl_dims(
+        blex_order_map, dim_type.in_,
+        [v+BEFORE_MARK for v in all_par_lex_dim_names])
+    blex_order_map = add_and_name_isl_dims(
+        blex_order_map, dim_type.out, all_par_lex_dim_names)
+
+    # Set each of the new conc lex dims equal to *all* corresponding inames
+    for conc_iname, constraint_dict in conc_iname_constraint_dicts_prime.items():
+        blex_order_map = blex_order_map.add_constraint(
+            isl.Constraint.eq_from_names(blex_order_map.space, constraint_dict))
+    for conc_iname, constraint_dict in conc_iname_constraint_dicts.items():
+        blex_order_map = blex_order_map.add_constraint(
+            isl.Constraint.eq_from_names(blex_order_map.space, constraint_dict))
+
+    # Now remove conc inames from params
+    blex_order_map = remove_dims_by_name(
         blex_order_map, dim_type.param,
-        {conc_iname+BEFORE_MARK: lex_var+BEFORE_MARK
-        for conc_iname, lex_var in conc_iname_lex_var_pairs},  #  'before' names
-        )
-    blex_order_map = _find_and_rename_dims(
-        blex_order_map, dim_type.param,
-        dict(conc_iname_lex_var_pairs),  # 'after' names
-        )
-    # (this sets the order of the LID/GID dims: )
-    blex_order_map = move_dims_by_name(
-        blex_order_map, dim_type.in_, blex_order_map.dim(dim_type.in_),
-        dim_type.param,
-        [lex_var+BEFORE_MARK for _, lex_var in conc_iname_lex_var_pairs],
-        )
-    blex_order_map = move_dims_by_name(
-        blex_order_map, dim_type.out, blex_order_map.dim(dim_type.out),
-        dim_type.param, [lex_var for _, lex_var in conc_iname_lex_var_pairs],
-        )
+        conc_inames | set([v+BEFORE_MARK for v in conc_inames]))
 
     if sync_kind == "local":
         # For intra-group case, constrain GID 'before' to equal GID 'after'
+
+        # TODO remove after testing downstream:
+        # (they should all be there)
         gid_lex_dim_names_found = set(
             gid_lex_dim_names) & set(blex_order_map.get_var_names(dim_type.out))
-        # TODO actually track these^ so we know exactly what to expect
-        for var_name in gid_lex_dim_names_found:
+        assert gid_lex_dim_names_found == set(gid_lex_dim_names)
+        #for var_name in gid_lex_dim_names_found:
+
+        for var_name in gid_lex_dim_names:
             blex_order_map = add_eq_isl_constraint_from_names(
                     blex_order_map, var_name, var_name+BEFORE_MARK)
+
     # (if sync_kind == "global", don't need constraints on LID/GID vars)
 
     # }}}
@@ -1056,11 +1076,13 @@ def get_pairwise_statement_orderings_inner(
                         outer_iname_idx = _lmin.find_dim_by_name(
                             dim_type.param, outer_iname)
                         _lmin = _lmin.move_dims(
-                            dim_type.set, new_idx, dim_type.param, outer_iname_idx, 1)
+                            dim_type.set, new_idx,
+                            dim_type.param, outer_iname_idx, 1)
                         outer_iname_idx = _lmax.find_dim_by_name(
                             dim_type.param, outer_iname)
                         _lmax = _lmax.move_dims(
-                            dim_type.set, new_idx, dim_type.param, outer_iname_idx, 1)
+                            dim_type.set, new_idx,
+                            dim_type.param, outer_iname_idx, 1)
 
                     lmin = move_dims_by_name(
                         lmin, dim_type.set, 0,
@@ -1115,35 +1137,47 @@ def get_pairwise_statement_orderings_inner(
     # TODO some of these vars may be redundant:
     lid_lex_dim_names = set()
     gid_lex_dim_names = set()
-    par_iname_constraint_dicts = {}
-    lex_var_to_conc_iname = {}
+
+    # Dicts that will be used to create constraints i = lid0, j = lid1, etc.
+    # (for efficiency, create these dicts one time per concurrent iname here,
+    # rather than recreating the dicts multiple times later)
+    conc_iname_constraint_dicts = {}
+    conc_iname_constraint_dicts_prime = {}
+
+    # Even though all parallel thread dims are active throughout the
+    # whole kernel, they may be assigned (tagged) to one iname for some
+    # subset of statements and another iname for a different subset of
+    # statements (e.g., tiled, paralle. matmul).
+    #lex_var_to_conc_inames = {}
     for iname in knl.all_inames():
         ltag = knl.iname_tags_of_type(iname, LocalInameTag)
         if ltag:
             assert len(ltag) == 1  # (should always be true)
             ltag_var = LTAG_VAR_NAMES[ltag.pop().axis]
+            ltag_var_prime = ltag_var+BEFORE_MARK
+            iname_prime = iname+BEFORE_MARK
             lid_lex_dim_names.add(ltag_var)
-            par_iname_constraint_dicts[iname] = {1: 0, iname: 1, ltag_var: -1}
-            lex_var_to_conc_iname[ltag_var] = iname
+            conc_iname_constraint_dicts[iname] = {1: 0, iname: 1, ltag_var: -1}
+            conc_iname_constraint_dicts_prime[iname_prime] = {
+                1: 0, iname_prime: 1, ltag_var_prime: -1}
             continue  # Shouldn't be any GroupInameTags
 
         gtag = knl.iname_tags_of_type(iname, GroupInameTag)
         if gtag:
             assert len(gtag) == 1  # (should always be true)
             gtag_var = GTAG_VAR_NAMES[gtag.pop().axis]
+            gtag_var_prime = gtag_var+BEFORE_MARK
+            iname_prime = iname+BEFORE_MARK
             gid_lex_dim_names.add(gtag_var)
-            par_iname_constraint_dicts[iname] = {1: 0, iname: 1, gtag_var: -1}
-            lex_var_to_conc_iname[gtag_var] = iname
+            conc_iname_constraint_dicts[iname] = {1: 0, iname: 1, gtag_var: -1}
+            conc_iname_constraint_dicts_prime[iname_prime] = {
+                1: 0, iname_prime: 1, gtag_var_prime: -1}
 
     # Sort for consistent dimension ordering
     lid_lex_dim_names = sorted(lid_lex_dim_names)
     gid_lex_dim_names = sorted(gid_lex_dim_names)
     # TODO remove redundancy have one definitive list for these
     # (just make separate 1-d lists for everything?)
-    conc_iname_lex_var_pairs = []
-    for lex_var in lid_lex_dim_names+gid_lex_dim_names:
-        conc_iname_lex_var_pairs.append(
-            (lex_var_to_conc_iname[lex_var], lex_var))
 
     # }}}
 
@@ -1185,7 +1219,7 @@ def get_pairwise_statement_orderings_inner(
         loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
-        conc_iname_lex_var_pairs,
+        conc_iname_constraint_dicts, conc_iname_constraint_dicts_prime,
         perform_closure_checks=perform_closure_checks,
         )
     (stmt_inst_to_gblex,
@@ -1197,7 +1231,7 @@ def get_pairwise_statement_orderings_inner(
         loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
-        conc_iname_lex_var_pairs,
+        conc_iname_constraint_dicts, conc_iname_constraint_dicts_prime,
         perform_closure_checks=perform_closure_checks,
         )
 
@@ -1256,7 +1290,7 @@ def get_pairwise_statement_orderings_inner(
             )
 
         # Set inames equal to relevant GID/LID var names
-        for iname, constraint_dict in par_iname_constraint_dicts.items():
+        for iname, constraint_dict in conc_iname_constraint_dicts.items():
             # Even though all parallel thread dims are active throughout the
             # whole kernel, they may be assigned (tagged) to one iname for some
             # subset of statements and another iname for a different subset of
