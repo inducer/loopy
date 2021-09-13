@@ -87,21 +87,28 @@ def reorder_dims_by_name(
 
 
 def move_dims_by_name(
-        isl_obj, dst_type, dst_pos_start, src_type, dim_names,
-        ok_if_missing=False):
+        isl_obj, dst_type, dst_pos_start, src_type, dim_names):
     dst_pos = dst_pos_start
     for dim_name in dim_names:
         src_idx = isl_obj.find_dim_by_name(src_type, dim_name)
         if src_idx == -1:
-            if ok_if_missing:
-                continue
-            else:
-                raise ValueError(
-                    "move_dims_by_name did not find dimension %s"
-                    % (dim_name))
+            raise ValueError(
+                "move_dims_by_name did not find dimension %s"
+                % (dim_name))
         isl_obj = isl_obj.move_dims(
             dst_type, dst_pos, src_type, src_idx, 1)
         dst_pos += 1
+    return isl_obj
+
+
+def remove_dims_by_name(isl_obj, dt, dim_names):
+    for dim_name in dim_names:
+        idx = isl_obj.find_dim_by_name(dt, dim_name)
+        if idx == -1:
+            raise ValueError(
+                "remove_dims_by_name did not find dimension %s"
+                % (dim_name))
+        isl_obj = isl_obj.remove_dims(dt, idx, 1)
     return isl_obj
 
 
