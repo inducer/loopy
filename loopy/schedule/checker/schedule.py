@@ -841,13 +841,8 @@ def _gather_blex_ordering_info(
     if sync_kind == "local":
         # For intra-group case, constrain GID 'before' to equal GID 'after'
 
-        # TODO remove after testing downstream:
-        # (they should all be there)
-        gid_lex_dim_names_found = set(
-            gid_lex_dim_names) & set(blex_order_map.get_var_names(dim_type.out))
-        assert gid_lex_dim_names_found == set(gid_lex_dim_names)
-        #for var_name in gid_lex_dim_names_found:
-
+        # (in the current implementation, all gid_lex_dim_names should be
+        # present in blex_order_map)
         for var_name in gid_lex_dim_names:
             blex_order_map = add_eq_isl_constraint_from_names(
                     blex_order_map, var_name, var_name+BEFORE_MARK)
@@ -1023,8 +1018,8 @@ def get_pairwise_statement_orderings_inner(
 
             # {{{ Store bounds for loops containing barriers
 
-            # (only compute the ones we haven't already stored; bounds finding
-            # will only happen once for each barrier-containing loop)
+            # Only compute the bounds we haven't already stored; bounds finding
+            # will only happen once for each barrier-containing loop
             for depth, iname in enumerate(current_inames):
 
                 # If we haven't already stored bounds for this iname, do so
@@ -1043,25 +1038,10 @@ def get_pairwise_statement_orderings_inner(
                             inames_involved_in_bound, [dim_type.set])
 
                     # {{{ Move domain dims for surrounding inames to parameters
-                    # (keeping them in order, which might come in handy later...)
-
-                    # Move those inames to params
-                    # TODO remove after testing with downstream branches:
-                    _dom = dom
-                    for outer_iname in all_surrounding_inames:
-                        outer_iname_idx = _dom.find_dim_by_name(
-                            dim_type.set, outer_iname)
-                        _dom = _dom.move_dims(
-                            dim_type.param, _dom.n_param(), dim_type.set,
-                            outer_iname_idx, 1)
 
                     dom = move_dims_by_name(
                         dom, dim_type.param, dom.n_param(),
                         dim_type.set, all_surrounding_inames)
-
-                    # TODO remove after testing with downstream branches:
-                    assert dom == _dom
-                    assert dom.get_var_dict() == _dom.get_var_dict()
 
                     # }}}
 
@@ -1069,33 +1049,12 @@ def get_pairwise_statement_orderings_inner(
                     lmax = dom.lexmax()
 
                     # Now move non-concurrent param inames back to set dim
-                    # TODO remove after testing with downstream branches:
-                    _lmin = lmin
-                    _lmax = lmax
-                    for new_idx, outer_iname in enumerate(seq_surrounding_inames):
-                        outer_iname_idx = _lmin.find_dim_by_name(
-                            dim_type.param, outer_iname)
-                        _lmin = _lmin.move_dims(
-                            dim_type.set, new_idx,
-                            dim_type.param, outer_iname_idx, 1)
-                        outer_iname_idx = _lmax.find_dim_by_name(
-                            dim_type.param, outer_iname)
-                        _lmax = _lmax.move_dims(
-                            dim_type.set, new_idx,
-                            dim_type.param, outer_iname_idx, 1)
-
                     lmin = move_dims_by_name(
                         lmin, dim_type.set, 0,
                         dim_type.param, seq_surrounding_inames)
                     lmax = move_dims_by_name(
                         lmax, dim_type.set, 0,
                         dim_type.param, seq_surrounding_inames)
-
-                    # TODO remove after testing with downstream branches:
-                    assert lmin == _lmin
-                    assert lmin.get_var_dict() == _lmin.get_var_dict()
-                    assert lmax == _lmax
-                    assert lmax.get_var_dict() == _lmax.get_var_dict()
 
                     loop_bounds[iname] = (lmin, lmax)
 
