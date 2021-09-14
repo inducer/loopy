@@ -1097,30 +1097,23 @@ def get_pairwise_statement_orderings_inner(
     # whole kernel, they may be assigned (tagged) to one iname for some
     # subset of statements and another iname for a different subset of
     # statements (e.g., tiled, paralle. matmul).
-    #lex_var_to_conc_inames = {}
     for iname in knl.all_inames():
-        ltag = knl.iname_tags_of_type(iname, LocalInameTag)
-        if ltag:
-            assert len(ltag) == 1  # (should always be true)
-            ltag_var = LTAG_VAR_NAMES[ltag.pop().axis]
-            ltag_var_prime = ltag_var+BEFORE_MARK
-            iname_prime = iname+BEFORE_MARK
-            lid_lex_dim_names.add(ltag_var)
-            conc_iname_constraint_dicts[iname] = {1: 0, iname: 1, ltag_var: -1}
-            conc_iname_constraint_dicts_prime[iname_prime] = {
-                1: 0, iname_prime: 1, ltag_var_prime: -1}
-            continue  # Shouldn't be any GroupInameTags
+        conc_tag = knl.iname_tags_of_type(iname, (LocalInameTag, GroupInameTag))
+        if conc_tag:
+            assert len(conc_tag) == 1  # (should always be true)
+            conc_tag = conc_tag.pop()
+            if isinstance(conc_tag, LocalInameTag):
+                tag_var = LTAG_VAR_NAMES[conc_tag.axis]
+                lid_lex_dim_names.add(tag_var)
+            else:  # Must be GroupInameTag
+                tag_var = GTAG_VAR_NAMES[conc_tag.axis]
+                gid_lex_dim_names.add(tag_var)
 
-        gtag = knl.iname_tags_of_type(iname, GroupInameTag)
-        if gtag:
-            assert len(gtag) == 1  # (should always be true)
-            gtag_var = GTAG_VAR_NAMES[gtag.pop().axis]
-            gtag_var_prime = gtag_var+BEFORE_MARK
+            tag_var_prime = tag_var+BEFORE_MARK
             iname_prime = iname+BEFORE_MARK
-            gid_lex_dim_names.add(gtag_var)
-            conc_iname_constraint_dicts[iname] = {1: 0, iname: 1, gtag_var: -1}
+            conc_iname_constraint_dicts[iname] = {1: 0, iname: 1, tag_var: -1}
             conc_iname_constraint_dicts_prime[iname_prime] = {
-                1: 0, iname_prime: 1, gtag_var_prime: -1}
+                1: 0, iname_prime: 1, tag_var_prime: -1}
 
     # Sort for consistent dimension ordering
     lid_lex_dim_names = sorted(lid_lex_dim_names)
