@@ -51,7 +51,7 @@ class PyOpenCLCallable(ScalarCallable):
         for id in arg_id_to_dtype:
             # since all the below functions are single arg.
             if not -1 <= id <= 0:
-                raise LoopyError("%s can only take one argument." % name)
+                raise LoopyError(f"{name} can only take one argument")
 
         if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
             # the types provided aren't mature enough to specialize the
@@ -69,12 +69,21 @@ class PyOpenCLCallable(ScalarCallable):
                 elif dtype.numpy_dtype == np.complex128:
                     tpname = "cdouble"
                 else:
-                    raise LoopyTypeError("unexpected complex type '%s'" % dtype)
+                    raise LoopyTypeError(f"unexpected complex type '{dtype}'")
 
                 return (
                         self.copy(name_in_target=f"{tpname}_{name}",
                             arg_id_to_dtype={0: dtype, -1: NumpyType(
                                 np.dtype(dtype.numpy_dtype.type(0).real))}),
+                        callables_table)
+
+        if name in ["real", "imag"]:
+            if not dtype.is_complex():
+                tpname = dtype.numpy_dtype.type.__name__
+                return (
+                        self.copy(
+                            name_in_target=f"lpy_{name}_{tpname}",
+                            arg_id_to_dtype={0: dtype, -1: dtype}),
                         callables_table)
 
         if name in ["sqrt", "exp", "log",
@@ -109,6 +118,23 @@ class PyOpenCLCallable(ScalarCallable):
         return (
                 self.copy(arg_id_to_dtype=arg_id_to_dtype),
                 callables_table)
+
+    def generate_preambles(self, target):
+        name = self.name_in_target
+        if name.startswith("lpy_real") or name.startswith("lpy_imag"):
+            if name.startswith("lpy_real"):
+                ret = "x"
+            else:
+                ret = "0"
+
+            dtype = self.arg_id_to_dtype[-1]
+            ctype = target.dtype_to_typename(dtype)
+
+            yield(f"40_{name}", f"""
+            static inline {ctype} {name}({ctype} x) {{
+                return {ret};
+            }}
+            """)
 
 
 def get_pyopencl_callables():
