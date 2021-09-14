@@ -30,6 +30,9 @@ from loopy.schedule.checker.utils import (
     remove_dims_by_name,
     prettier_map_string,  # noqa
 )
+from loopy.isl_helpers import (
+    find_and_rename_dims,
+)
 dim_type = isl.dim_type
 
 
@@ -228,19 +231,6 @@ class StatementOrdering:
 
 # {{{ _gather_blex_ordering_info
 
-def _find_and_rename_dims(isl_obj, dt, rename_dict):
-    # TODO remove this func once it's merged into isl_helpers
-    for old_name, new_name in rename_dict.items():
-        idx = isl_obj.find_dim_by_name(dt, old_name)
-        if idx == -1:
-            raise ValueError(
-                "_find_and_rename_dims did not find dimension %s"
-                % (old_name))
-        isl_obj = isl_obj.set_dim_name(
-            dt, isl_obj.find_dim_by_name(dt, old_name), new_name)
-    return isl_obj
-
-
 def _add_eq_isl_constraints_for_ints_only(isl_obj, assignment_pairs):
     for dim_name, val in assignment_pairs:
         if isinstance(val, int):
@@ -275,7 +265,7 @@ def _add_one_blex_tuple(
             all_within_inames, [dim_type.set])
 
     # Rename sequential iname dims to blex dims
-    dom = _find_and_rename_dims(
+    dom = find_and_rename_dims(
         dom, dim_type.set,
         dict(zip(blex_tuple[1::2], all_seq_blex_dim_names[1::2])))
 
@@ -567,7 +557,7 @@ def _gather_blex_ordering_info(
         conc_iname: conc_iname+BEFORE_MARK for conc_iname in conc_inames}
     all_blex_points_prime = append_mark_to_isl_map_var_names(
         all_blex_points, dim_type.set, BEFORE_MARK)
-    all_blex_points_prime = _find_and_rename_dims(
+    all_blex_points_prime = find_and_rename_dims(
         all_blex_points_prime, dim_type.param, conc_iname_to_iname_prime,
         )
     blex_order_map = blex_order_map.intersect_domain(
@@ -637,7 +627,7 @@ def _gather_blex_ordering_info(
 
         # Rename iname dims to blex dims
         # TODO could there be any other inames involved besides first_tuple[1::2]?
-        loop_min_bound = _find_and_rename_dims(
+        loop_min_bound = find_and_rename_dims(
             loop_min_bound, dim_type.set,
             {k: iname_to_blex_var[k] for k in first_tuple[1::2]})
         # Align with blex space (adds needed dims)
@@ -708,7 +698,7 @@ def _gather_blex_ordering_info(
         loop_max_bound = loop_bounds[iname][1]
 
         # Rename iname dims to blex dims
-        loop_max_bound = _find_and_rename_dims(
+        loop_max_bound = find_and_rename_dims(
             loop_max_bound, dim_type.set,
             {k: iname_to_blex_var[k] for k in last_tuple[1::2]})
 
@@ -724,7 +714,7 @@ def _gather_blex_ordering_info(
         # append the BEFORE_MARK to those inames to ensure that they are
         # distinguished from the corresponding non-marked 'after' (concurrent)
         # inames.
-        loop_max_bound = _find_and_rename_dims(
+        loop_max_bound = find_and_rename_dims(
             loop_max_bound, dim_type.param, conc_iname_to_iname_prime)
 
         # Align with blex space (adds needed dims)
