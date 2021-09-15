@@ -347,29 +347,10 @@ def _gather_blex_ordering_info(
     # create sub-maps which will be *excluded* (subtracted) from a standard
     # lexicographic ordering in order to create the blex ordering
 
-    # {{{ Determine the number of blex dims we will need
-
-    # TODO remove after sanity checks on downstream branch(es):
-    max_nested_loops = 0
-    cur_nested_loops = 0
-    # TODO for effiency, this pass could be combined with an earlier pass
-    for lin_item in lin_items:
-        if isinstance(lin_item, EnterLoop):
-            if lin_item.iname in loops_with_barriers - ilp_and_vec_inames:
-                cur_nested_loops += 1
-        elif isinstance(lin_item, LeaveLoop):
-            if lin_item.iname in loops_with_barriers - ilp_and_vec_inames:
-                max_nested_loops = max(cur_nested_loops, max_nested_loops)
-                cur_nested_loops -= 1
-        else:
-            pass
-    assert max_nested_loops == max_seq_loop_depth
-
-    n_seq_blex_dims = max_seq_loop_depth*2 + 1
-
-    # }}}
-
     # {{{ Create the initial (pre-subtraction) blex order map, initially w/o bounds
+
+    # Determine the number of blex dims we will need
+    n_seq_blex_dims = max_seq_loop_depth*2 + 1
 
     # Create names for the blex dimensions for sequential loops
     seq_blex_dim_names = [
@@ -382,8 +363,7 @@ def _gather_blex_ordering_info(
     # all blex points)
     blex_order_map = create_lex_order_map(
         dim_names=seq_blex_dim_names,
-        in_dim_mark=BEFORE_MARK,
-        )
+        in_dim_mark=BEFORE_MARK)
 
     # }}}
 
