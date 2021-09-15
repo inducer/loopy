@@ -347,13 +347,10 @@ def _gather_blex_ordering_info(
     # create sub-maps which will be *excluded* (subtracted) from a standard
     # lexicographic ordering in order to create the blex ordering
 
-    # {{{ Determine the number of blex dims we will need
-
-    n_seq_blex_dims = max_seq_loop_depth*2 + 1
-
-    # }}}
-
     # {{{ Create the initial (pre-subtraction) blex order map, initially w/o bounds
+
+    # Determine the number of blex dims we will need
+    n_seq_blex_dims = max_seq_loop_depth*2 + 1
 
     # Create names for the blex dimensions for sequential loops
     seq_blex_dim_names = [
@@ -366,8 +363,7 @@ def _gather_blex_ordering_info(
     # all blex points)
     blex_order_map = create_lex_order_map(
         dim_names=seq_blex_dim_names,
-        in_dim_mark=BEFORE_MARK,
-        )
+        in_dim_mark=BEFORE_MARK)
 
     # }}}
 
