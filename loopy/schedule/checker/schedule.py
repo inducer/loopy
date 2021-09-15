@@ -311,9 +311,9 @@ def _add_one_blex_tuple(
 def _gather_blex_ordering_info(
         knl,
         sync_kind,
-        lin_items, loops_with_barriers,
+        lin_items, seq_loops_with_barriers,
         max_seq_loop_depth,
-        ilp_and_vec_inames, conc_inames, loop_bounds,
+        conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
         conc_iname_constraint_dicts,
@@ -394,7 +394,7 @@ def _gather_blex_ordering_info(
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
             enter_iname = lin_item.iname
-            if enter_iname in loops_with_barriers - ilp_and_vec_inames:
+            if enter_iname in seq_loops_with_barriers:
                 pre_loop_blex_pt = next_blex_tuple[:]
 
                 # Increment next_blex_tuple[-1] for statements in the section
@@ -432,7 +432,7 @@ def _gather_blex_ordering_info(
 
         elif isinstance(lin_item, LeaveLoop):
             leave_iname = lin_item.iname
-            if leave_iname in loops_with_barriers - ilp_and_vec_inames:
+            if leave_iname in seq_loops_with_barriers:
 
                 curr_blex_dim_ct = len(next_blex_tuple)
 
@@ -935,7 +935,7 @@ def get_pairwise_statement_orderings_inner(
     # While we're passing through, determine which loops contain barriers,
     # this information will be used later when creating *intra-group* and
     # *global* lexicographic orderings
-    loops_with_barriers = {"local": set(), "global": set()}
+    seq_loops_with_barriers = {"local": set(), "global": set()}
     max_depth_of_barrier_loop = {"local": 0, "global": 0}
     current_seq_inames = []
 
@@ -1001,7 +1001,7 @@ def get_pairwise_statement_orderings_inner(
         elif isinstance(lin_item, Barrier):
             lp_stmt_id = lin_item.originating_insn_id
             sync_kind = lin_item.synchronization_kind
-            loops_with_barriers[sync_kind] |= set(current_seq_inames)
+            seq_loops_with_barriers[sync_kind] |= set(current_seq_inames)
             max_depth_of_barrier_loop[sync_kind] = max(
                 len(current_seq_inames), max_depth_of_barrier_loop[sync_kind])
 
@@ -1159,9 +1159,9 @@ def get_pairwise_statement_orderings_inner(
      seq_lblex_dim_names) = _gather_blex_ordering_info(
         knl,
         "local",
-        lin_items, loops_with_barriers["local"],
+        lin_items, seq_loops_with_barriers["local"],
         max_depth_of_barrier_loop["local"],
-        ilp_and_vec_inames, conc_inames, loop_bounds,
+        conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
         all_conc_iname_constraint_dicts,
@@ -1172,9 +1172,9 @@ def get_pairwise_statement_orderings_inner(
      seq_gblex_dim_names) = _gather_blex_ordering_info(
         knl,
         "global",
-        lin_items, loops_with_barriers["global"],
+        lin_items, seq_loops_with_barriers["global"],
         max_depth_of_barrier_loop["global"],
-        ilp_and_vec_inames, conc_inames, loop_bounds,
+        conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
         all_conc_iname_constraint_dicts,
