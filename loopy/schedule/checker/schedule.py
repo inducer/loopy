@@ -349,22 +349,6 @@ def _gather_blex_ordering_info(
 
     # {{{ Determine the number of blex dims we will need
 
-    # TODO remove after sanity checks on downstream branch(es):
-    max_nested_loops = 0
-    cur_nested_loops = 0
-    # TODO for effiency, this pass could be combined with an earlier pass
-    for lin_item in lin_items:
-        if isinstance(lin_item, EnterLoop):
-            if lin_item.iname in loops_with_barriers - ilp_and_vec_inames:
-                cur_nested_loops += 1
-        elif isinstance(lin_item, LeaveLoop):
-            if lin_item.iname in loops_with_barriers - ilp_and_vec_inames:
-                max_nested_loops = max(cur_nested_loops, max_nested_loops)
-                cur_nested_loops -= 1
-        else:
-            pass
-    assert max_nested_loops == max_seq_loop_depth
-
     n_seq_blex_dims = max_seq_loop_depth*2 + 1
 
     # }}}
