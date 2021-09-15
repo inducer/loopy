@@ -197,7 +197,7 @@ def find_unsatisfied_dependencies(
 
     # {{{ Create map from before->after statement id pairs to dependency maps
 
-    # To minimize time complexity, all pairwise SIOs will be created
+    # For efficiency, all pairwise SIOs will be created
     # in one pass, which first requires finding all pairs of statements that
     # are connected by at least one dependency.
     # We will also later need to collect all deps for each statement pair,
