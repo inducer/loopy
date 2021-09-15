@@ -315,7 +315,7 @@ def _gather_blex_ordering_info(
         max_seq_loop_depth,
         conc_inames, loop_bounds,
         all_stmt_ids,
-        all_par_lex_dim_names, gid_lex_dim_names,
+        all_conc_lex_dim_names, gid_lex_dim_names,
         conc_iname_constraint_dicts,
         perform_closure_checks=False,
         ):
@@ -806,9 +806,9 @@ def _gather_blex_ordering_info(
     # Add conc lex dim names to both in_ and out dims
     blex_order_map = add_and_name_isl_dims(
         blex_order_map, dim_type.in_,
-        [v+BEFORE_MARK for v in all_par_lex_dim_names])
+        [v+BEFORE_MARK for v in all_conc_lex_dim_names])
     blex_order_map = add_and_name_isl_dims(
-        blex_order_map, dim_type.out, all_par_lex_dim_names)
+        blex_order_map, dim_type.out, all_conc_lex_dim_names)
 
     # Set each of the new conc lex dims equal to *all* corresponding inames
     # (here, conc_iname_constraint_dicts includes primed inames)
@@ -1147,7 +1147,7 @@ def get_pairwise_statement_orderings_inner(
 
     # {{{ Create blex order maps and blex tuples defining statement ordering (x2)
 
-    all_par_lex_dim_names = lid_lex_dim_names + gid_lex_dim_names
+    all_conc_lex_dim_names = lid_lex_dim_names + gid_lex_dim_names
     all_conc_iname_constraint_dicts = list(
         conc_iname_constraint_dicts.values()
         ) + list(conc_iname_constraint_dicts_prime.values())
@@ -1163,7 +1163,7 @@ def get_pairwise_statement_orderings_inner(
         max_depth_of_barrier_loop["local"],
         conc_inames, loop_bounds,
         all_stmt_ids,
-        all_par_lex_dim_names, gid_lex_dim_names,
+        all_conc_lex_dim_names, gid_lex_dim_names,
         all_conc_iname_constraint_dicts,
         perform_closure_checks=perform_closure_checks,
         )
@@ -1176,7 +1176,7 @@ def get_pairwise_statement_orderings_inner(
         max_depth_of_barrier_loop["global"],
         conc_inames, loop_bounds,
         all_stmt_ids,
-        all_par_lex_dim_names, gid_lex_dim_names,
+        all_conc_lex_dim_names, gid_lex_dim_names,
         all_conc_iname_constraint_dicts,
         perform_closure_checks=perform_closure_checks,
         )
@@ -1285,7 +1285,7 @@ def get_pairwise_statement_orderings_inner(
         intra_thread_sched_maps = [
             _get_map_for_stmt(
                 stmt_id, lex_tuple, int_sid,
-                seq_lex_dim_names+all_par_lex_dim_names)
+                seq_lex_dim_names+all_conc_lex_dim_names)
             for stmt_id, lex_tuple, int_sid
             in zip(stmt_ids, lex_tuples_simplified, int_sids)
             ]
@@ -1298,12 +1298,12 @@ def get_pairwise_statement_orderings_inner(
 
         # Add lid/gid dims to lex order map
         lex_order_map = add_and_name_isl_dims(
-            lex_order_map, dim_type.out, all_par_lex_dim_names)
+            lex_order_map, dim_type.out, all_conc_lex_dim_names)
         lex_order_map = add_and_name_isl_dims(
             lex_order_map, dim_type.in_,
-            append_mark_to_strings(all_par_lex_dim_names, mark=BEFORE_MARK))
+            append_mark_to_strings(all_conc_lex_dim_names, mark=BEFORE_MARK))
         # Constrain lid/gid vars to be equal (this is the intra-thread case)
-        for var_name in all_par_lex_dim_names:
+        for var_name in all_conc_lex_dim_names:
             lex_order_map = add_eq_isl_constraint_from_names(
                 lex_order_map, var_name, var_name+BEFORE_MARK)
 
@@ -1319,18 +1319,18 @@ def get_pairwise_statement_orderings_inner(
 
         # {{{  Create SIOs for intra-group case (gid0' == gid0, etc) and global case
 
-        def _get_sched_maps_and_sio(
+        def _get_sched_maps_and_sio_for_conc_exec(
                 stmt_inst_to_blex, blex_order_map, seq_blex_dim_names):
             # (Vars from outside func used here:
-            # stmt_ids, int_sids, all_par_lex_dim_names)
+            # stmt_ids, int_sids, all_conc_lex_dim_names)
 
             # Use *unsimplified* lex tuples w/ blex map, which are already padded
             blex_tuples_padded = [stmt_inst_to_blex[stmt_id] for stmt_id in stmt_ids]
 
-            par_sched_maps = [
+            sched_maps = [
                 _get_map_for_stmt(
                     stmt_id, blex_tuple, int_sid,
-                    seq_blex_dim_names+all_par_lex_dim_names)  # all par names
+                    seq_blex_dim_names+all_conc_lex_dim_names)  # all par names
                 for stmt_id, blex_tuple, int_sid
                 in zip(stmt_ids, blex_tuples_padded, int_sids)
                 ]
@@ -1339,17 +1339,17 @@ def get_pairwise_statement_orderings_inner(
             # 'before' to equal GID 'after' earlier in _gather_blex_ordering_info()
 
             # Create statement instance ordering
-            sio_par = get_statement_ordering_map(
-                *par_sched_maps,  # note, func accepts exactly two maps
+            sio = get_statement_ordering_map(
+                *sched_maps,  # note, func accepts exactly two maps
                 blex_order_map,
                 before_mark=BEFORE_MARK,
                 )
 
-            return par_sched_maps, sio_par
+            return sched_maps, sio
 
-        pwsched_intra_group, sio_intra_group = _get_sched_maps_and_sio(
+        pwsched_intra_group, sio_intra_group = _get_sched_maps_and_sio_for_conc_exec(
             stmt_inst_to_lblex, lblex_order_map, seq_lblex_dim_names)
-        pwsched_global, sio_global = _get_sched_maps_and_sio(
+        pwsched_global, sio_global = _get_sched_maps_and_sio_for_conc_exec(
             stmt_inst_to_gblex, gblex_order_map, seq_gblex_dim_names)
 
         # }}}
