@@ -304,7 +304,7 @@ def _gather_blex_ordering_info(
         loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
-        conc_iname_constraint_dicts, conc_iname_constraint_dicts_prime,
+        conc_iname_constraint_dicts,
         perform_closure_checks=False,
         ):
     # TODO some of these params might be redundant
@@ -816,9 +816,7 @@ def _gather_blex_ordering_info(
         blex_order_map, dim_type.out, all_par_lex_dim_names)
 
     # Set each of the new conc lex dims equal to *all* corresponding inames
-    for constraint_dict in conc_iname_constraint_dicts_prime:
-        blex_order_map = blex_order_map.add_constraint(
-            isl.Constraint.eq_from_names(blex_order_map.space, constraint_dict))
+    # (here, conc_iname_constraint_dicts includes primed inames)
     for constraint_dict in conc_iname_constraint_dicts:
         blex_order_map = blex_order_map.add_constraint(
             isl.Constraint.eq_from_names(blex_order_map.space, constraint_dict))
@@ -1149,6 +1147,9 @@ def get_pairwise_statement_orderings_inner(
     # {{{ Create blex order maps and blex tuples defining statement ordering (x2)
 
     all_par_lex_dim_names = lid_lex_dim_names + gid_lex_dim_names
+    all_conc_iname_constraint_dicts = list(
+        conc_iname_constraint_dicts.values()
+        ) + list(conc_iname_constraint_dicts_prime.values())
 
     # Get the blex schedule blueprint (dict will become a map below) and
     # blex order map w.r.t. local and global barriers
@@ -1161,8 +1162,7 @@ def get_pairwise_statement_orderings_inner(
         loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
-        conc_iname_constraint_dicts.values(),
-        conc_iname_constraint_dicts_prime.values(),
+        all_conc_iname_constraint_dicts,
         perform_closure_checks=perform_closure_checks,
         )
     (stmt_inst_to_gblex,
@@ -1174,8 +1174,7 @@ def get_pairwise_statement_orderings_inner(
         loops_to_ignore, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
-        conc_iname_constraint_dicts.values(),
-        conc_iname_constraint_dicts_prime.values(),
+        all_conc_iname_constraint_dicts,
         perform_closure_checks=perform_closure_checks,
         )
 
