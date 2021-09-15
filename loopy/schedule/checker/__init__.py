@@ -109,17 +109,22 @@ def get_pairwise_statement_orderings(
     # {{{ Find any EnterLoop inames that are tagged as concurrent
     # so that get_pairwise_statement_orderings_inner() knows to ignore them
     # (In the future, this should only include inames tagged with 'vec'.)
+
+    # FIXME Consider just putting this ilp/vec logic inside
+    # get_pairwise_statement_orderings_inner; passing these in as
+    # 'loops_to_ignore' made more sense when we were just dealing with the
+    # intra-thread case.
     from loopy.schedule.checker.utils import (
         partition_inames_by_concurrency,
         get_EnterLoop_inames,
     )
     conc_inames, _ = partition_inames_by_concurrency(knl)
     enterloop_inames = get_EnterLoop_inames(lin_items)
-    conc_loop_inames = conc_inames & enterloop_inames
+    ilp_and_vec_inames = conc_inames & enterloop_inames
 
     # The only concurrent EnterLoop inames should be Vec and ILP
     from loopy.kernel.data import (VectorizeTag, IlpBaseTag)
-    for conc_iname in conc_loop_inames:
+    for conc_iname in ilp_and_vec_inames:
         # Assert that there exists an ilp or vectorize tag (out of the
         # potentially multiple other tags on this concurrent iname).
         assert any(
@@ -137,7 +142,7 @@ def get_pairwise_statement_orderings(
         knl,
         lin_items,
         stmt_id_pairs,
-        loops_to_ignore=conc_loop_inames,
+        ilp_and_vec_inames=ilp_and_vec_inames,
         perform_closure_checks=perform_closure_checks,
         )
 
