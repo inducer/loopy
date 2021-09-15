@@ -248,53 +248,64 @@ def _assert_exact_closure(mapping):
 def _add_one_blex_tuple(
         all_blex_points, blex_tuple, all_seq_blex_dim_names,
         conc_inames, knl):
+    """Create the (bounded) set of blex points represented by *blex_tuple* and
+    add it to *all_blex_points*.
+    """
 
-    # blex_tuple contains 1 dim plus 2 dims for each *current* loop, so it may
-    # be shorter than all_seq_blex_dim_names, which contains *all* the blex dim
-    # names
+    # blex_tuple: (int, iname, int, iname, int, ...)
+    # - Contains 1 initial dim plus 2 dims for each sequential loop surrounding
+    # the *current* linearization item
+    # - blex_tuple[1::2] is a subset of all sequential inames
+
+    # {{{ Get inames domain for current inames
+
+    # (need to account for concurrent inames here rather than adding them on
+    # to blex map at the end because a sequential iname domain may depend on a
+    # concurrent iname domain)
 
     # Get set of inames nested outside (including this iname)
     all_within_inames = set(blex_tuple[1::2]) | conc_inames
 
-    # Get inames domain for current inames
-    # (need to account for concurrent inames here rather than adding them on
-    # to blex map at the end because a sequential iname domain may depend on a
-    # concurrent iname domain)
     dom = knl.get_inames_domain(
         all_within_inames).project_out_except(
             all_within_inames, [dim_type.set])
 
-    # Rename sequential iname dims to blex dims
+    # }}}
+
+    # {{{ Prepare for union between dom and all_blex_points
+
+    # Rename sequential iname dims in dom to corresponding blex dim names
     dom = find_and_rename_dims(
         dom, dim_type.set,
         dict(zip(blex_tuple[1::2], all_seq_blex_dim_names[1::2])))
 
-    # Move concurrent inames to params
+    # Move concurrent inames in dom to params
     dom = move_dims_by_name(
         dom, dim_type.param, dom.n_param(),
         dim_type.set, conc_inames)
 
-    # Add any new params in dom to all_blex_points
-    current_params = all_blex_points.get_var_names(dim_type.param)
-    needed_params = dom.get_var_names(dim_type.param)
-    missing_params = set(needed_params) - set(current_params)
+    # Add any new params found in dom to all_blex_points prior to aligning dom
+    # with all_blex_points
+    missing_params = set(
+        dom.get_var_names(dim_type.param)  # needed params
+        ) - set(all_blex_points.get_var_names(dim_type.param))  # current params
     all_blex_points = add_and_name_isl_dims(
         all_blex_points, dim_type.param, missing_params)
 
-    # Add missing blex dims and align
+    # Add missing blex dims to dom and align it with all_blex_points
     dom = isl.align_spaces(dom, all_blex_points)
 
-    # Set values for non-iname blex dims
+    # Set values for non-iname (integer) blex dims in dom
     for blex_dim_name, blex_val in zip(all_seq_blex_dim_names[::2], blex_tuple[::2]):
         dom = add_eq_isl_constraint_from_names(dom, blex_dim_name, blex_val)
-    # Set any unused (rightmost, fastest-updating) blex dims to zero
+    # Set values for any unused (rightmost, fastest-updating) dom blex dims to zero
     for blex_dim_name in all_seq_blex_dim_names[len(blex_tuple):]:
         dom = add_eq_isl_constraint_from_names(dom, blex_dim_name, 0)
 
-    # Add this blex set to full set of blex points
-    all_blex_points |= dom
+    # }}}
 
-    return all_blex_points
+    # Add this blex set to full set of blex points
+    return all_blex_points | dom
 
 
 def _gather_blex_ordering_info(
