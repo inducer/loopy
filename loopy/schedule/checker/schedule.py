@@ -248,60 +248,72 @@ def _assert_exact_closure(mapping):
 def _add_one_blex_tuple(
         all_blex_points, blex_tuple, all_seq_blex_dim_names,
         conc_inames, knl):
+    """Create the (bounded) set of blex points represented by *blex_tuple* and
+    add it to *all_blex_points*.
+    """
 
-    # blex_tuple contains 1 dim plus 2 dims for each *current* loop, so it may
-    # be shorter than all_seq_blex_dim_names, which contains *all* the blex dim
-    # names
+    # blex_tuple: (int, iname, int, iname, int, ...)
+    # - Contains 1 initial dim plus 2 dims for each sequential loop surrounding
+    # the *current* linearization item
+    # - blex_tuple[1::2] is a subset of all sequential inames
+
+    # {{{ Get inames domain for current inames
+
+    # (need to account for concurrent inames here rather than adding them on
+    # to blex map at the end because a sequential iname domain may depend on a
+    # concurrent iname domain)
 
     # Get set of inames nested outside (including this iname)
     all_within_inames = set(blex_tuple[1::2]) | conc_inames
 
-    # Get inames domain for current inames
-    # (need to account for concurrent inames here rather than adding them on
-    # to blex map at the end because a sequential iname domain may depend on a
-    # concurrent iname domain)
     dom = knl.get_inames_domain(
         all_within_inames).project_out_except(
             all_within_inames, [dim_type.set])
 
-    # Rename sequential iname dims to blex dims
+    # }}}
+
+    # {{{ Prepare for union between dom and all_blex_points
+
+    # Rename sequential iname dims in dom to corresponding blex dim names
     dom = find_and_rename_dims(
         dom, dim_type.set,
         dict(zip(blex_tuple[1::2], all_seq_blex_dim_names[1::2])))
 
-    # Move concurrent inames to params
+    # Move concurrent inames in dom to params
     dom = move_dims_by_name(
         dom, dim_type.param, dom.n_param(),
         dim_type.set, conc_inames)
 
-    # Add any new params in dom to all_blex_points
-    current_params = all_blex_points.get_var_names(dim_type.param)
-    needed_params = dom.get_var_names(dim_type.param)
-    missing_params = set(needed_params) - set(current_params)
+    # Add any new params found in dom to all_blex_points prior to aligning dom
+    # with all_blex_points
+    missing_params = set(
+        dom.get_var_names(dim_type.param)  # needed params
+        ) - set(all_blex_points.get_var_names(dim_type.param))  # current params
     all_blex_points = add_and_name_isl_dims(
         all_blex_points, dim_type.param, missing_params)
 
-    # Add missing blex dims and align
+    # Add missing blex dims to dom and align it with all_blex_points
     dom = isl.align_spaces(dom, all_blex_points)
 
-    # Set values for non-iname blex dims
+    # Set values for non-iname (integer) blex dims in dom
     for blex_dim_name, blex_val in zip(all_seq_blex_dim_names[::2], blex_tuple[::2]):
         dom = add_eq_isl_constraint_from_names(dom, blex_dim_name, blex_val)
-    # Set any unused (rightmost, fastest-updating) blex dims to zero
+    # Set values for any unused (rightmost, fastest-updating) dom blex dims to zero
     for blex_dim_name in all_seq_blex_dim_names[len(blex_tuple):]:
         dom = add_eq_isl_constraint_from_names(dom, blex_dim_name, 0)
 
-    # Add this blex set to full set of blex points
-    all_blex_points |= dom
+    # }}}
 
-    return all_blex_points
+    # Add this blex set to full set of blex points
+    return all_blex_points | dom
 
 
 def _gather_blex_ordering_info(
         knl,
         sync_kind,
         lin_items, loops_with_barriers,
-        loops_to_ignore, conc_inames, loop_bounds,
+        max_seq_loop_depth,
+        ilp_and_vec_inames, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
         conc_iname_constraint_dicts,
@@ -337,20 +349,23 @@ def _gather_blex_ordering_info(
 
     # {{{ Determine the number of blex dims we will need
 
+    # TODO remove after sanity checks on downstream branch(es):
     max_nested_loops = 0
     cur_nested_loops = 0
     # TODO for effiency, this pass could be combined with an earlier pass
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
-            if lin_item.iname in loops_with_barriers - loops_to_ignore:
+            if lin_item.iname in loops_with_barriers - ilp_and_vec_inames:
                 cur_nested_loops += 1
         elif isinstance(lin_item, LeaveLoop):
-            if lin_item.iname in loops_with_barriers - loops_to_ignore:
+            if lin_item.iname in loops_with_barriers - ilp_and_vec_inames:
                 max_nested_loops = max(cur_nested_loops, max_nested_loops)
                 cur_nested_loops -= 1
         else:
             pass
-    n_seq_blex_dims = max_nested_loops*2 + 1
+    assert max_nested_loops == max_seq_loop_depth
+
+    n_seq_blex_dims = max_seq_loop_depth*2 + 1
 
     # }}}
 
@@ -399,7 +414,7 @@ def _gather_blex_ordering_info(
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
             enter_iname = lin_item.iname
-            if enter_iname in loops_with_barriers - loops_to_ignore:
+            if enter_iname in loops_with_barriers - ilp_and_vec_inames:
                 pre_loop_blex_pt = next_blex_tuple[:]
 
                 # Increment next_blex_tuple[-1] for statements in the section
@@ -437,7 +452,7 @@ def _gather_blex_ordering_info(
 
         elif isinstance(lin_item, LeaveLoop):
             leave_iname = lin_item.iname
-            if leave_iname in loops_with_barriers - loops_to_ignore:
+            if leave_iname in loops_with_barriers - ilp_and_vec_inames:
 
                 curr_blex_dim_ct = len(next_blex_tuple)
 
@@ -856,7 +871,7 @@ def get_pairwise_statement_orderings_inner(
         knl,
         lin_items,
         stmt_id_pairs,
-        loops_to_ignore=frozenset(),
+        ilp_and_vec_inames=frozenset(),
         perform_closure_checks=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
@@ -894,7 +909,7 @@ def get_pairwise_statement_orderings_inner(
 
     :arg stmt_id_pairs: A list containing pairs of statement identifiers.
 
-    :arg loops_to_ignore: A set of inames that will be ignored when
+    :arg ilp_and_vec_inames: A set of inames that will be ignored when
         determining the relative ordering of statements. This will typically
         contain concurrent inames tagged with the ``vec`` or ``ilp`` array
         access tags.
@@ -920,7 +935,7 @@ def get_pairwise_statement_orderings_inner(
     )
 
     all_stmt_ids = set().union(*stmt_id_pairs)
-    conc_inames = partition_inames_by_concurrency(knl)[0] - loops_to_ignore
+    conc_inames = partition_inames_by_concurrency(knl)[0]
 
     # {{{ Intra-thread lex order creation
 
@@ -941,7 +956,8 @@ def get_pairwise_statement_orderings_inner(
     # this information will be used later when creating *intra-group* and
     # *global* lexicographic orderings
     loops_with_barriers = {"local": set(), "global": set()}
-    current_inames = []
+    max_depth_of_barrier_loop = {"local": 0, "global": 0}
+    current_seq_inames = []
 
     # While we're passing through, also determine the values of the active
     # inames on the first and last iteration of each loop that contains
@@ -953,10 +969,11 @@ def get_pairwise_statement_orderings_inner(
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
             iname = lin_item.iname
-            current_inames.append(iname)
 
-            if iname in loops_to_ignore:
+            if iname in ilp_and_vec_inames:
                 continue
+
+            current_seq_inames.append(iname)
 
             # Increment next_lex_tuple[-1] for statements in the section
             # of code between this EnterLoop and the matching LeaveLoop.
@@ -972,10 +989,11 @@ def get_pairwise_statement_orderings_inner(
 
         elif isinstance(lin_item, LeaveLoop):
             iname = lin_item.iname
-            current_inames.pop()
 
-            if iname in loops_to_ignore:
+            if iname in ilp_and_vec_inames:
                 continue
+
+            current_seq_inames.pop()
 
             # Upon leaving a loop:
             # - Pop lex dim for enumerating code sections within this loop
@@ -1002,13 +1020,16 @@ def get_pairwise_statement_orderings_inner(
 
         elif isinstance(lin_item, Barrier):
             lp_stmt_id = lin_item.originating_insn_id
-            loops_with_barriers[lin_item.synchronization_kind] |= set(current_inames)
+            sync_kind = lin_item.synchronization_kind
+            loops_with_barriers[sync_kind] |= set(current_seq_inames)
+            max_depth_of_barrier_loop[sync_kind] = max(
+                len(current_seq_inames), max_depth_of_barrier_loop[sync_kind])
 
             # {{{ Store bounds for loops containing barriers
 
             # Only compute the bounds we haven't already stored; bounds finding
             # will only happen once for each barrier-containing loop
-            for depth, iname in enumerate(current_inames):
+            for depth, iname in enumerate(current_seq_inames):
 
                 # If we haven't already stored bounds for this iname, do so
                 if iname not in loop_bounds:
@@ -1016,7 +1037,7 @@ def get_pairwise_statement_orderings_inner(
                     # Get set of inames that might be involved in this bound
                     # (this iname plus any nested outside this iname, including
                     # concurrent inames)
-                    seq_surrounding_inames = set(current_inames[:depth])
+                    seq_surrounding_inames = set(current_seq_inames[:depth])
                     all_surrounding_inames = seq_surrounding_inames | conc_inames
 
                     # Get inames domain
@@ -1159,7 +1180,8 @@ def get_pairwise_statement_orderings_inner(
         knl,
         "local",
         lin_items, loops_with_barriers["local"],
-        loops_to_ignore, conc_inames, loop_bounds,
+        max_depth_of_barrier_loop["local"],
+        ilp_and_vec_inames, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
         all_conc_iname_constraint_dicts,
@@ -1171,7 +1193,8 @@ def get_pairwise_statement_orderings_inner(
         knl,
         "global",
         lin_items, loops_with_barriers["global"],
-        loops_to_ignore, conc_inames, loop_bounds,
+        max_depth_of_barrier_loop["global"],
+        ilp_and_vec_inames, conc_inames, loop_bounds,
         all_stmt_ids,
         all_par_lex_dim_names, gid_lex_dim_names,
         all_conc_iname_constraint_dicts,
