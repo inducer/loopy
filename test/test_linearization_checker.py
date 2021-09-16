@@ -816,7 +816,6 @@ def test_statement_instance_ordering_of_barriers():
     # {{{ Relationship between gbar and stmt_a
 
     # intra-thread case
-
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
@@ -829,22 +828,22 @@ def test_statement_instance_ordering_of_barriers():
         )
 
     # intra-group case
-    # TODO figure out what this should be
-    """
+    # (this test also confirms that our SIO construction accounts for the fact
+    # that global barriers *also* syncronize across threads *within* a group,
+    # which is why the before->after condition below is *not*
+    # "and (ii > ii' or (ii = ii' and jj > 0))")
     sio_intra_group_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
         "0 <= i,ii,i',ii' < pi and 0 <= j,jj < pj "  # domains
         "and i = i' "  # GID inames must be same
-        "and (ii > ii' or (ii = ii' and jj = 0))"  # before->after condtion
+        "and ii >= ii'"  # before->after condtion
         "}}".format(
             STATEMENT_VAR_NAME,
             )
         )
-    """
 
     # global case
-
     sio_global_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
@@ -1062,6 +1061,9 @@ def test_sios_and_schedules_with_barriers():
 
     # {{{ Intra-group
 
+    # (this test also confirms that our sched/SIO construction accounts for the
+    # fact that global barriers *also* syncronize across threads *within* a
+    # group, which is why dim 2 below is asigned the value 3 instead of 2)
     sched_stmt_j1_intra_group_exp = isl.Map(
         "[ij_start, ij_end, lg_end] -> {"
         "[%s=0, i, j, l0, l1, g0] -> [%s] : "
@@ -1069,7 +1071,7 @@ def test_sios_and_schedules_with_barriers():
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["2", "i", "2", "j", "1"],  # lex points
+                ["2", "i", "3", "j", "1"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 ),
             ij_bound_str,
