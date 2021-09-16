@@ -652,9 +652,6 @@ def _gather_blex_ordering_info(
         pre_to_first_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             key_lex_tuples[slex.PRE], top_tuple)
 
-        pre_to_first_map = _pad_tuples_and_assign_integer_vals_to_map_template(
-            key_lex_tuples[slex.PRE], first_tuple)
-
         # Get the set representing the value of the iname on the first
         # iteration of the loop
         loop_min_bound = loop_bounds[iname][0]
@@ -707,9 +704,6 @@ def _gather_blex_ordering_info(
         # Create initial LAST->POST map and assign int (non-iname) dim values.
         last_to_post_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             bottom_tuple, key_lex_tuples[slex.POST])
-
-        last_to_post_map = _pad_tuples_and_assign_integer_vals_to_map_template(
-            last_tuple, key_lex_tuples[slex.POST])
 
         # Get the set representing the value of the iname on the last
         # iteration of the loop
