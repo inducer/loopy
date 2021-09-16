@@ -79,8 +79,7 @@ __doc__ = """
 """
 
 LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
-#LEX_VAR_PREFIX = "%slex" % (LIN_CHECK_IDENTIFIER_PREFIX)
-LEX_VAR_PREFIX = "lx"  # TODO change back
+LEX_VAR_PREFIX = "%slex" % (LIN_CHECK_IDENTIFIER_PREFIX)
 STATEMENT_VAR_NAME = "%sstmt" % (LIN_CHECK_IDENTIFIER_PREFIX)
 LTAG_VAR_NAMES = []
 GTAG_VAR_NAMES = []
@@ -1097,7 +1096,6 @@ def get_pairwise_statement_orderings_inner(
     # At the same time, create the dicts that will be used later to create map
     # constraints that match each parallel iname to the corresponding lex dim
     # name in schedules, i.e., i = lid0, j = lid1, etc.
-    # TODO some of these vars may be redundant:
     lid_lex_dim_names = set()
     gid_lex_dim_names = set()
 
@@ -1107,7 +1105,7 @@ def get_pairwise_statement_orderings_inner(
     conc_iname_constraint_dicts = {}
     conc_iname_constraint_dicts_prime = {}
 
-    # Even though all parallel thread dims are active throughout the
+    # NOTE: Even though all parallel thread dims are active throughout the
     # whole kernel, they may be assigned (tagged) to one iname for some
     # subset of statements and another iname for a different subset of
     # statements (e.g., tiled, paralle. matmul).
@@ -1132,8 +1130,6 @@ def get_pairwise_statement_orderings_inner(
     # Sort for consistent dimension ordering
     lid_lex_dim_names = sorted(lid_lex_dim_names)
     gid_lex_dim_names = sorted(gid_lex_dim_names)
-    # TODO remove redundancy have one definitive list for these
-    # (just make separate 1-d lists for everything?)
 
     # }}}
 
