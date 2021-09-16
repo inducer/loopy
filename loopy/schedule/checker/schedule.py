@@ -315,15 +315,17 @@ def _add_one_blex_tuple(
 def _gather_blex_ordering_info(
         knl,
         sync_kind,
-        lin_items, seq_loops_with_barriers,
+        lin_items,
+        seq_loops_with_barriers,
         max_seq_loop_depth,
-        conc_inames, loop_bounds,
+        conc_inames,
+        loop_bounds,
         all_stmt_ids,
-        all_conc_lex_dim_names, gid_lex_dim_names,
+        all_conc_lex_dim_names,
+        gid_lex_dim_names,
         conc_iname_constraint_dicts,
         perform_closure_checks=False,
         ):
-    # TODO some of these params might be redundant
     """For the given sync_kind ("local" or "global"), create a mapping from
     statement instances to blex space (dict), as well as a mapping
     defining the blex ordering (isl map from blex space -> blex space)
@@ -565,7 +567,6 @@ def _gather_blex_ordering_info(
     # {{{ Subtract unwanted pairs from full blex order map
 
     # Create mapping (dict) from iname to corresponding blex dim name
-    # TODO rename to "seq_..."
     seq_iname_to_blex_var = {}
     for iname, dim in iname_to_blex_dim.items():
         seq_iname_to_blex_var[iname] = seq_blex_dim_names[dim]
@@ -1176,11 +1177,14 @@ def get_pairwise_statement_orderings_inner(
      seq_lblex_dim_names) = _gather_blex_ordering_info(
         knl,
         "local",
-        lin_items, seq_loops_with_barriers["local"],
+        lin_items,
+        seq_loops_with_barriers["local"],
         max_depth_of_barrier_loop["local"],
-        conc_inames, loop_bounds,
+        conc_inames,
+        loop_bounds,
         all_stmt_ids,
-        all_conc_lex_dim_names, gid_lex_dim_names,
+        all_conc_lex_dim_names,
+        gid_lex_dim_names,
         all_conc_iname_constraint_dicts,
         perform_closure_checks=perform_closure_checks,
         )
@@ -1189,11 +1193,14 @@ def get_pairwise_statement_orderings_inner(
      seq_gblex_dim_names) = _gather_blex_ordering_info(
         knl,
         "global",
-        lin_items, seq_loops_with_barriers["global"],
+        lin_items,
+        seq_loops_with_barriers["global"],
         max_depth_of_barrier_loop["global"],
-        conc_inames, loop_bounds,
+        conc_inames,
+        loop_bounds,
         all_stmt_ids,
-        all_conc_lex_dim_names, gid_lex_dim_names,
+        all_conc_lex_dim_names,
+        gid_lex_dim_names,
         all_conc_iname_constraint_dicts,
         perform_closure_checks=perform_closure_checks,
         )
