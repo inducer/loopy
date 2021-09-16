@@ -172,10 +172,6 @@ class SpecialLexPointWRTLoop:
         A :class:`str` indicating the last lexicographic point that
         precedes the loop.
 
-    .. attribute:: FIRST
-        A :class:`str` indicating the first lexicographic point in the
-        first loop iteration (i.e., with the iname set to its min. val).
-
     .. attribute:: TOP
         A :class:`str` indicating the first lexicographic point in
         an arbitrary loop iteration.
@@ -184,20 +180,14 @@ class SpecialLexPointWRTLoop:
         A :class:`str` indicating the last lexicographic point in
         an arbitrary loop iteration.
 
-    .. attribute:: LAST
-        A :class:`str` indicating the last lexicographic point in the
-        last loop iteration (i.e., with the iname set to its max val).
-
     .. attribute:: POST
         A :class:`str` indicating the first lexicographic point that
         follows the loop.
     """
 
     PRE = "pre"
-    FIRST = "first"
     TOP = "top"
     BOTTOM = "bottom"
-    LAST = "last"
     POST = "post"
 
 # }}}
@@ -402,6 +392,7 @@ def _gather_blex_ordering_info(
         if isinstance(lin_item, EnterLoop):
             enter_iname = lin_item.iname
             if enter_iname in seq_loops_with_barriers:
+                # Save the blex point prior to this loop
                 pre_loop_blex_pt = next_blex_tuple[:]
 
                 # Increment next_blex_tuple[-1] for statements in the section
@@ -414,18 +405,14 @@ def _gather_blex_ordering_info(
                 next_blex_tuple.append(enter_iname)
                 next_blex_tuple.append(0)
 
-                # Store 3 tuples that will later be used to create mappings
+                # Store 2 tuples that will later be used to create mappings
                 # between blex points that will be subtracted from the full
                 # blex order map
-
-                first_iter_blex_pt = next_blex_tuple[:]
-                first_iter_blex_pt[-2] = enter_iname
                 blex_exclusion_info[enter_iname] = {
                     slex.PRE: tuple(pre_loop_blex_pt),
                     slex.TOP: tuple(next_blex_tuple),
-                    slex.FIRST: tuple(first_iter_blex_pt),
                     }
-                # (copy these three blex points when creating dict because
+                # (copy these blex points when creating dict because
                 # the lists will continue to be updated)
 
                 # {{{ Create the blex set for this point, add it to all_blex_points
@@ -440,13 +427,12 @@ def _gather_blex_ordering_info(
             leave_iname = lin_item.iname
             if leave_iname in seq_loops_with_barriers:
 
-                curr_blex_dim_ct = len(next_blex_tuple)
-
                 # Record the blex dim for this loop iname
-                iname_to_blex_dim[leave_iname] = curr_blex_dim_ct-2
+                iname_to_blex_dim[leave_iname] = len(next_blex_tuple) - 2
 
-                # Update next blex pt
+                # Save the blex tuple prior to exiting loop
                 pre_end_loop_blex_pt = next_blex_tuple[:]
+
                 # Upon leaving a loop:
                 # - Pop lex dim for enumerating code sections within this loop
                 # - Pop lex dim for the loop iteration
@@ -455,22 +441,14 @@ def _gather_blex_ordering_info(
                 next_blex_tuple.pop()
                 next_blex_tuple[-1] += 1
 
-                # Store 3 tuples that will later be used to create mappings
+                # Store 2 tuples that will later be used to create mappings
                 # between blex points that will be subtracted from the full
                 # blex order map
-
-                # TODO some of this storage may be unnecessary now that loop
-                # bounds are found elsewhere... clean this up
-
-                last_iter_blex_pt = pre_end_loop_blex_pt[:]
-                last_iter_blex_pt[-2] = leave_iname
                 blex_exclusion_info[leave_iname][slex.BOTTOM] = tuple(
                     pre_end_loop_blex_pt)
-                blex_exclusion_info[leave_iname][slex.LAST] = tuple(
-                    last_iter_blex_pt)
                 blex_exclusion_info[leave_iname][slex.POST] = tuple(
                     next_blex_tuple)
-                # (copy these three blex points when creating dict because
+                # (copy these blex points when creating dict because
                 # the lists will continue to be updated)
 
                 # {{{ Create the blex set for this point, add it to all_blex_points
@@ -623,10 +601,20 @@ def _gather_blex_ordering_info(
         initial blex order map for this particular loop using the 6 blex
         tuples in key_lex_tuples:
         PRE->FIRST, BOTTOM(iname')->TOP(iname'+1), LAST->POST
+
+        The PRE, TOP, BOTTOM, and POST blex points for a given loop are defined
+        above in doc for SpecialLexPointWRTLoop.
+
+        FIRST indicates the first lexicographic point in the
+        first loop iteration (i.e., TOP, with the iname set to its min. val).
+
+        LAST indicates the last lexicographic point in the
+        last loop iteration (i.e., BOTTOM, with the iname set to its max val).
+
         """
 
         # {{{ Create PRE->FIRST, BOTTOM(iname')->TOP(iname'+1), LAST->POST
-        # (initially without iname domain bounds)
+        # maps (initially without iname domain bounds)
 
         # We know which blex dims correspond to inames due to their
         # position in blex tuples (int, iname, int, iname, int, ...), and their
@@ -639,19 +627,30 @@ def _gather_blex_ordering_info(
         # set the values for blex dims that will be ints, i.e., the
         # even-indexed (intra-loop-section) blex dims and any trailing zeros.
         # - For map domains/ranges corresponding to the FIRST and LAST sets,
-        # set the map dimension corresponding to this iname using
-        # loop_bounds[iname][0] and loop_bounds[iname][1].
+        # start with the TOP and BOTTOM sets and then set the map dimension
+        # corresponding to this iname to loop_bounds[iname][0] and
+        # loop_bounds[iname][1].
         # - For the BOTTOM->TOP map, add constraint iname = iname' + 1
+
+        # We will add a condition to fix iteration values for
+        # *surrounding* sequential loops (iname = iname') after combining the three
+        # maps (PRE-FIRST, BOTTOM->TOP, LAST->POST) below
+
+        # BOTTOM/TOP tuples will be used multiple times, so grab them now
+        top_tuple = key_lex_tuples[slex.TOP]
+        bottom_tuple = key_lex_tuples[slex.BOTTOM]
 
         # {{{ Create PRE->FIRST map
 
         # PRE dim vals should all be inames (bounded later) or ints (assign now).
-        # FIRST dim values will be inames, ints, or one of our lexmin bounds.
+        # FIRST dim values will be inames, ints, and the lexmin bound for this iname.
 
-        # Create PRE->FIRST map and assign int (non-iname) dim values.
-        first_tuple = key_lex_tuples[slex.FIRST]
+        # Create FIRST by starting with TOP blex tuple and then intersecting
+        # it with a set that imposes the lexmin bound for this loop.
+
+        # Create initial PRE->FIRST map and assign int (non-iname) dim values.
         pre_to_first_map = _pad_tuples_and_assign_integer_vals_to_map_template(
-            key_lex_tuples[slex.PRE], first_tuple)
+            key_lex_tuples[slex.PRE], top_tuple)
 
         pre_to_first_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             key_lex_tuples[slex.PRE], first_tuple)
@@ -666,17 +665,13 @@ def _gather_blex_ordering_info(
         # spaces
         loop_min_bound = find_and_rename_dims(
             loop_min_bound, dim_type.set,
-            {k: seq_iname_to_blex_var[k] for k in first_tuple[INAME_DIMS]})
+            {k: seq_iname_to_blex_var[k] for k in top_tuple[INAME_DIMS]})
         # Align with blex space (adds needed dims)
         loop_first_set = isl.align_spaces(loop_min_bound, blex_set_template)
 
         # Finish making PRE->FIRST pair by intersecting this with the range of
         # our pre_to_first_map
         pre_to_first_map = pre_to_first_map.intersect_range(loop_first_set)
-
-        # NOTE: We will add a condition to fix iteration values for
-        # *surrounding* sequential loops (j = j') after combining the three
-        # maps (PRE-FIRST, BOTTOM->TOP, LAST->POST) below
 
         # }}}
 
@@ -687,7 +682,7 @@ def _gather_blex_ordering_info(
 
         # Create BOTTOM->TOP map and assign int (non-iname) dim values
         bottom_to_top_map = _pad_tuples_and_assign_integer_vals_to_map_template(
-            key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP])
+            bottom_tuple, top_tuple)
 
         bottom_to_top_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP])
@@ -704,12 +699,14 @@ def _gather_blex_ordering_info(
         # {{{ LAST->POST
 
         # POST dim vals should all be inames (bounded later) or ints (assign now).
-        # LAST dim values will be inames, ints, or one of our lexmax bounds.
+        # LAST dim values will be inames, ints, and our lexmax bound for this iname.
 
-        # Create LAST->POST map and assign int (non-iname) dim values.
-        last_tuple = key_lex_tuples[slex.LAST]
+        # Create LAST by starting with BOTTOM blex tuple and then intersecting
+        # it with a set that imposes the lexmax bound for this loop.
+
+        # Create initial LAST->POST map and assign int (non-iname) dim values.
         last_to_post_map = _pad_tuples_and_assign_integer_vals_to_map_template(
-            last_tuple, key_lex_tuples[slex.POST])
+            bottom_tuple, key_lex_tuples[slex.POST])
 
         last_to_post_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             last_tuple, key_lex_tuples[slex.POST])
@@ -724,7 +721,7 @@ def _gather_blex_ordering_info(
         # spaces
         loop_max_bound = find_and_rename_dims(
             loop_max_bound, dim_type.set,
-            {k: seq_iname_to_blex_var[k] for k in last_tuple[INAME_DIMS]})
+            {k: seq_iname_to_blex_var[k] for k in bottom_tuple[INAME_DIMS]})
 
         # There may be concurrent inames in the dim_type.param dimensions of
         # the loop_max_bound, and we need to append the BEFORE_MARK to those
