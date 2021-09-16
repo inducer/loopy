@@ -386,6 +386,10 @@ def _gather_blex_ordering_info(
     iname_to_blex_dim = {}  # Map from inames to corresponding blex space dim
     blex_exclusion_info = {}  # Info for creating maps to exclude from blex order
     next_blex_tuple = [0]  # Next tuple of points in blex order
+    sync_kinds_affecting_ordering = set([sync_kind])
+    # Global barriers also syncronize across threads within a group
+    if sync_kind == "local":
+        sync_kinds_affecting_ordering.add("global")
 
     for lin_item in lin_items:
         if isinstance(lin_item, EnterLoop):
@@ -466,7 +470,7 @@ def _gather_blex_ordering_info(
 
         elif isinstance(lin_item, Barrier):
             # Increment blex dim val if the sync scope matches
-            if lin_item.synchronization_kind == sync_kind:
+            if lin_item.synchronization_kind in sync_kinds_affecting_ordering:
                 next_blex_tuple[-1] += 1
 
                 # {{{ Create the blex set for this point, add it to all_blex_points
@@ -499,7 +503,7 @@ def _gather_blex_ordering_info(
 
                 # If sync scope matches, give this barrier its *own* point in
                 # lex time by updating blex tuple after barrier.
-                if lin_item.synchronization_kind == sync_kind:
+                if lin_item.synchronization_kind in sync_kinds_affecting_ordering:
                     next_blex_tuple[-1] += 1
 
                     # {{{ Create the blex set for this point, add it to
@@ -1087,6 +1091,15 @@ def get_pairwise_statement_orderings_inner(
             assert isinstance(
                 lin_item, (CallKernel, ReturnFromKernel))
             pass
+
+    # Since global barriers also syncronize threads *within* a work-group, our
+    # mechanisms that account for the effect of *local* barriers on execution
+    # order need to view *global* barriers as also having that effect.
+    # Include global barriers in seq_loops_with_barriers["local"] and
+    # max_depth_of_barrier_loop["local"].
+    seq_loops_with_barriers["local"] |= seq_loops_with_barriers["global"]
+    max_depth_of_barrier_loop["local"] = max(
+        max_depth_of_barrier_loop["local"], max_depth_of_barrier_loop["global"])
 
     # }}}
 
