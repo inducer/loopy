@@ -233,14 +233,6 @@ class StatementOrdering:
 
 # {{{ Helper functions
 
-def _add_eq_isl_constraints_for_ints_only(isl_obj, assignment_pairs):
-    for dim_name, val in assignment_pairs:
-        if isinstance(val, int):
-            isl_obj = add_eq_isl_constraint_from_names(
-                isl_obj, dim_name, val)
-    return isl_obj
-
-
 def _assert_exact_closure(mapping):
     closure_test, closure_exact = mapping.transitive_closure()
     assert closure_exact
@@ -649,27 +641,13 @@ def _gather_blex_ordering_info(
         # PRE dim vals should all be inames (bounded later) or ints (assign now).
         # FIRST dim values will be inames, ints, or one of our lexmin bounds.
 
-        # TODO remove after sanity tests:
-        # Pad PRE tuple
-        pre_tuple_padded = _pad_tuple_with_zeros(
-            key_lex_tuples[slex.PRE], n_seq_blex_dims)
-        # Pad FIRST tuple
-        first_tuple = key_lex_tuples[slex.FIRST]
-        first_tuple_padded = _pad_tuple_with_zeros(first_tuple, n_seq_blex_dims)
-
         # Create PRE->FIRST map and assign int (non-iname) dim values.
-        _pre_to_first_map = _add_eq_isl_constraints_for_ints_only(
-            blex_map_template,
-            zip(
-                seq_blex_dim_names_prime+seq_blex_dim_names,
-                pre_tuple_padded+first_tuple_padded))
-
+        first_tuple = key_lex_tuples[slex.FIRST]
         pre_to_first_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             key_lex_tuples[slex.PRE], first_tuple)
 
-        # TODO remove:
-        assert _pre_to_first_map == pre_to_first_map
-        assert _pre_to_first_map.get_var_dict() == pre_to_first_map.get_var_dict()
+        pre_to_first_map = _pad_tuples_and_assign_integer_vals_to_map_template(
+            key_lex_tuples[slex.PRE], first_tuple)
 
         # Get the set representing the value of the iname on the first
         # iteration of the loop
@@ -700,27 +678,12 @@ def _gather_blex_ordering_info(
         # BOTTOM/TOP dim vals should all be inames (bounded later) or ints
         # (assign now).
 
-        # TODO remove after sanity tests:
-        # Pad BOTTOM tuple
-        bottom_tuple_padded = _pad_tuple_with_zeros(
-            key_lex_tuples[slex.BOTTOM], n_seq_blex_dims)
-        # Pad TOP tuple
-        top_tuple_padded = _pad_tuple_with_zeros(
-            key_lex_tuples[slex.TOP], n_seq_blex_dims)
-
-        # Create BOTTOM->TOP map and assign int (non-iname) dim values.
-        _bottom_to_top_map = _add_eq_isl_constraints_for_ints_only(
-            blex_map_template,
-            zip(
-                seq_blex_dim_names_prime+seq_blex_dim_names,
-                bottom_tuple_padded+top_tuple_padded))
-
+        # Create BOTTOM->TOP map and assign int (non-iname) dim values
         bottom_to_top_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP])
 
-        # TODO remove after sanity tests:
-        assert _bottom_to_top_map == bottom_to_top_map
-        assert _bottom_to_top_map.get_var_dict() == bottom_to_top_map.get_var_dict()
+        bottom_to_top_map = _pad_tuples_and_assign_integer_vals_to_map_template(
+            key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP])
 
         # Add constraint iname = iname' + 1
         blex_var_for_iname = seq_iname_to_blex_var[iname]
@@ -736,27 +699,13 @@ def _gather_blex_ordering_info(
         # POST dim vals should all be inames (bounded later) or ints (assign now).
         # LAST dim values will be inames, ints, or one of our lexmax bounds.
 
-        # TODO remove after sanity tests:
-        # Pad POST tuple
-        post_tuple_padded = _pad_tuple_with_zeros(
-            key_lex_tuples[slex.POST], n_seq_blex_dims)
-        # Pad LAST tuple
-        last_tuple = key_lex_tuples[slex.LAST]
-        last_tuple_padded = _pad_tuple_with_zeros(last_tuple, n_seq_blex_dims)
-
         # Create LAST->POST map and assign int (non-iname) dim values.
-        _last_to_post_map = _add_eq_isl_constraints_for_ints_only(
-            blex_map_template,
-            zip(
-                seq_blex_dim_names_prime+seq_blex_dim_names,
-                last_tuple_padded+post_tuple_padded))
-
+        last_tuple = key_lex_tuples[slex.LAST]
         last_to_post_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             last_tuple, key_lex_tuples[slex.POST])
 
-        # TODO remove after sanity tests:
-        assert _last_to_post_map == last_to_post_map
-        assert _last_to_post_map.get_var_dict() == last_to_post_map.get_var_dict()
+        last_to_post_map = _pad_tuples_and_assign_integer_vals_to_map_template(
+            last_tuple, key_lex_tuples[slex.POST])
 
         # Get the set representing the value of the iname on the last
         # iteration of the loop
