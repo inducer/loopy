@@ -567,27 +567,55 @@ def _gather_blex_ordering_info(
 
     # Create mapping (dict) from iname to corresponding blex dim name
     # TODO rename to "seq_..."
-    iname_to_blex_var = {}
-    iname_to_iname_prime = {}
+    seq_iname_to_blex_var = {}
     for iname, dim in iname_to_blex_dim.items():
-        iname_to_iname_prime[iname] = iname+BEFORE_MARK
-        iname_to_blex_var[iname] = seq_blex_dim_names[dim]
-        iname_to_blex_var[iname+BEFORE_MARK] = seq_blex_dim_names_prime[dim]
+        seq_iname_to_blex_var[iname] = seq_blex_dim_names[dim]
+        seq_iname_to_blex_var[iname+BEFORE_MARK] = seq_blex_dim_names_prime[dim]
 
-    # Get a map representing blex_order_map space
-    # (Note that this template cannot be created until *after* the intersection
+    # {{{ Get a template map matching blex_order_map.space that will serve as
+    # the starting point when creating the maps to subtract from blex_order_map
+
+    # This template includes concurrent inames as params, both marked
+    # ('before') and unmarked ('after').
+    # Note that this template cannot be created until *after* the intersection
     # of blex_order_map with all_blex_points above, otherwise the template will
-    # be missing necessary parameters)
+    # be missing necessary parameters.
     blex_map_template = isl.align_spaces(
         isl.Map("[ ] -> { [ ] -> [ ] }"), blex_order_map)
     blex_set_template = blex_map_template.range()
+
+    # }}}
+
+    # {{{ _pad_tuples_and_assign_integer_vals_to_map_template() helper
+
+    seq_blex_in_out_dim_names = seq_blex_dim_names_prime + seq_blex_dim_names
+
+    def _pad_tuples_and_assign_integer_vals_to_map_template(
+            in_tuple, out_tuple):
+        # External variables read (not written):
+        # n_seq_blex_dims, seq_blex_in_out_dim_names, blex_map_template
+
+        # Pad the tuples
+        in_tuple_padded = _pad_tuple_with_zeros(in_tuple, n_seq_blex_dims)
+        out_tuple_padded = _pad_tuple_with_zeros(out_tuple, n_seq_blex_dims)
+
+        # Assign map values for ints only
+        map_with_int_vals_assigned = blex_map_template
+        for dim_name, val in zip(
+                seq_blex_in_out_dim_names,
+                in_tuple_padded+out_tuple_padded):
+            if isinstance(val, int):
+                map_with_int_vals_assigned = add_eq_isl_constraint_from_names(
+                    map_with_int_vals_assigned, dim_name, val)
+
+        return map_with_int_vals_assigned
+
+    # }}}
 
     # {{{ Create blex map to subtract for each iname in blex_exclusion_info
 
     maps_to_subtract = []
     for iname, key_lex_tuples in blex_exclusion_info.items():
-        print("")
-        print(iname)
 
         # {{{ Create blex map to subtract for one iname
 
@@ -621,6 +649,7 @@ def _gather_blex_ordering_info(
         # PRE dim vals should all be inames (bounded later) or ints (assign now).
         # FIRST dim values will be inames, ints, or one of our lexmin bounds.
 
+        # TODO remove after sanity tests:
         # Pad PRE tuple
         pre_tuple_padded = _pad_tuple_with_zeros(
             key_lex_tuples[slex.PRE], n_seq_blex_dims)
@@ -629,11 +658,18 @@ def _gather_blex_ordering_info(
         first_tuple_padded = _pad_tuple_with_zeros(first_tuple, n_seq_blex_dims)
 
         # Create PRE->FIRST map and assign int (non-iname) dim values.
-        pre_to_first_map = _add_eq_isl_constraints_for_ints_only(
+        _pre_to_first_map = _add_eq_isl_constraints_for_ints_only(
             blex_map_template,
             zip(
                 seq_blex_dim_names_prime+seq_blex_dim_names,
                 pre_tuple_padded+first_tuple_padded))
+
+        pre_to_first_map = _pad_tuples_and_assign_integer_vals_to_map_template(
+            key_lex_tuples[slex.PRE], first_tuple)
+
+        # TODO remove:
+        assert _pre_to_first_map == pre_to_first_map
+        assert _pre_to_first_map.get_var_dict() == pre_to_first_map.get_var_dict()
 
         # Get the set representing the value of the iname on the first
         # iteration of the loop
@@ -645,7 +681,7 @@ def _gather_blex_ordering_info(
         # spaces
         loop_min_bound = find_and_rename_dims(
             loop_min_bound, dim_type.set,
-            {k: iname_to_blex_var[k] for k in first_tuple[1::2]})
+            {k: seq_iname_to_blex_var[k] for k in first_tuple[1::2]})
         # Align with blex space (adds needed dims)
         loop_first_set = isl.align_spaces(loop_min_bound, blex_set_template)
 
@@ -664,6 +700,7 @@ def _gather_blex_ordering_info(
         # BOTTOM/TOP dim vals should all be inames (bounded later) or ints
         # (assign now).
 
+        # TODO remove after sanity tests:
         # Pad BOTTOM tuple
         bottom_tuple_padded = _pad_tuple_with_zeros(
             key_lex_tuples[slex.BOTTOM], n_seq_blex_dims)
@@ -672,14 +709,21 @@ def _gather_blex_ordering_info(
             key_lex_tuples[slex.TOP], n_seq_blex_dims)
 
         # Create BOTTOM->TOP map and assign int (non-iname) dim values.
-        bottom_to_top_map = _add_eq_isl_constraints_for_ints_only(
+        _bottom_to_top_map = _add_eq_isl_constraints_for_ints_only(
             blex_map_template,
             zip(
                 seq_blex_dim_names_prime+seq_blex_dim_names,
                 bottom_tuple_padded+top_tuple_padded))
 
+        bottom_to_top_map = _pad_tuples_and_assign_integer_vals_to_map_template(
+            key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP])
+
+        # TODO remove after sanity tests:
+        assert _bottom_to_top_map == bottom_to_top_map
+        assert _bottom_to_top_map.get_var_dict() == bottom_to_top_map.get_var_dict()
+
         # Add constraint iname = iname' + 1
-        blex_var_for_iname = iname_to_blex_var[iname]
+        blex_var_for_iname = seq_iname_to_blex_var[iname]
         bottom_to_top_map = bottom_to_top_map.add_constraint(
             isl.Constraint.eq_from_names(
                 bottom_to_top_map.space,
@@ -692,6 +736,7 @@ def _gather_blex_ordering_info(
         # POST dim vals should all be inames (bounded later) or ints (assign now).
         # LAST dim values will be inames, ints, or one of our lexmax bounds.
 
+        # TODO remove after sanity tests:
         # Pad POST tuple
         post_tuple_padded = _pad_tuple_with_zeros(
             key_lex_tuples[slex.POST], n_seq_blex_dims)
@@ -700,11 +745,18 @@ def _gather_blex_ordering_info(
         last_tuple_padded = _pad_tuple_with_zeros(last_tuple, n_seq_blex_dims)
 
         # Create LAST->POST map and assign int (non-iname) dim values.
-        last_to_post_map = _add_eq_isl_constraints_for_ints_only(
+        _last_to_post_map = _add_eq_isl_constraints_for_ints_only(
             blex_map_template,
             zip(
                 seq_blex_dim_names_prime+seq_blex_dim_names,
                 last_tuple_padded+post_tuple_padded))
+
+        last_to_post_map = _pad_tuples_and_assign_integer_vals_to_map_template(
+            last_tuple, key_lex_tuples[slex.POST])
+
+        # TODO remove after sanity tests:
+        assert _last_to_post_map == last_to_post_map
+        assert _last_to_post_map.get_var_dict() == last_to_post_map.get_var_dict()
 
         # Get the set representing the value of the iname on the last
         # iteration of the loop
@@ -715,7 +767,7 @@ def _gather_blex_ordering_info(
         # spaces
         loop_max_bound = find_and_rename_dims(
             loop_max_bound, dim_type.set,
-            {k: iname_to_blex_var[k] for k in last_tuple[1::2]})
+            {k: seq_iname_to_blex_var[k] for k in last_tuple[1::2]})
 
         # There may be concurrent inames in the dim_type.param dimensions of
         # the loop_max_bound, and we need to append the BEFORE_MARK to those
@@ -746,7 +798,7 @@ def _gather_blex_ordering_info(
         # Add condition to fix iter value for *surrounding* sequential loops (j = j')
         # (odd indices in key_lex_tuples[PRE] contain the sounding inames)
         for seq_surrounding_iname in key_lex_tuples[slex.PRE][1::2]:
-            s_blex_var = iname_to_blex_var[seq_surrounding_iname]
+            s_blex_var = seq_iname_to_blex_var[seq_surrounding_iname]
             map_to_subtract = add_eq_isl_constraint_from_names(
                 map_to_subtract, s_blex_var, s_blex_var+BEFORE_MARK)
 
