@@ -131,7 +131,9 @@ from loopy.schedule import (
     generate_loop_schedules, get_one_scheduled_kernel,
     get_one_linearized_kernel, linearize)
 from loopy.schedule.checker import (
-    find_unsatisfied_dependencies)
+    get_pairwise_statement_orderings,
+    find_unsatisfied_dependencies,
+    )
 from loopy.statistics import (ToCountMap, ToCountPolynomialMap, CountGranularity,
         stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
         get_synchronization_map, gather_access_footprints,
@@ -272,6 +274,7 @@ __all__ = [
         "generate_loop_schedules",
         "get_one_scheduled_kernel", "get_one_linearized_kernel",
         "linearize",
+        "get_pairwise_statement_orderings",
         "find_unsatisfied_dependencies",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
