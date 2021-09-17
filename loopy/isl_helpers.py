@@ -767,4 +767,91 @@ def subst_into_pwaff(new_space, pwaff, subst_dict):
 
 # }}}
 
+
+# {{{ add_and_name_dims
+
+def add_and_name_dims(isl_obj, dt, names):
+    """Append dimensions of the specified dimension type to the provided ISL
+    object, and set their names.
+
+    :arg isl_obj: An :class:`islpy.Set` or  :class:`islpy.Map` to which
+        new dimensions will be added.
+
+    :arg dt: An :class:`islpy.dim_type`, i.e., an :class:`int`, specifying the
+        dimension type for the new dimensions.
+
+    :arg names: An iterable of :class:`str` values specifying the names of the
+        new dimensions to be added.
+
+    :returns: An object of the same type as *isl_obj* with the new dimensions
+        added and named.
+
+    """
+
+    new_idx_start = isl_obj.dim(dt)
+    isl_obj = isl_obj.add_dims(dt, len(names))
+    for i, name in enumerate(names):
+        isl_obj = isl_obj.set_dim_name(dt, new_idx_start+i, name)
+    return isl_obj
+
+# }}}
+
+
+# {{{ add_eq_constraint_from_names
+
+def add_eq_constraint_from_names(isl_obj, var1, var2):
+    """Add constraint *var1* = *var2* to an ISL object.
+
+    :arg isl_obj: An :class:`islpy.Set` or  :class:`islpy.Map` to which
+        a new constraint will be added.
+
+    :arg var1: A :class:`str` specifying the name of the first variable
+        involved in constraint *var1* = *var2*.
+
+    :arg var2: A :class:`str` specifying the name of the second variable
+        involved in constraint *var1* = *var2*.
+
+    :returns: An object of the same type as *isl_obj* with the constraint
+        *var1* = *var2*.
+
+    """
+    return isl_obj.add_constraint(
+               isl.Constraint.eq_from_names(
+                   isl_obj.space,
+                   {1: 0, var1: 1, var2: -1}))
+
+# }}}
+
+
+# {{{ find_and_rename_dims
+
+def find_and_rename_dims(isl_obj, dt, rename_dict):
+    """Rename dimensions in an ISL object.
+
+    :arg isl_obj: An :class:`islpy.Set` or  :class:`islpy.Map` containing the
+        dimension to be renamed.
+
+    :arg dt: An :class:`islpy.dim_type` (i.e., :class:`int`) specifying the
+        dimension type containing the dimension to be renamed.
+
+    :arg rename_dict: A :class:`dict` mapping current :class:`string` dimension
+        names to replacement names.
+
+    :returns: An object of the same type as *isl_obj* with the dimension names
+        changed according to *rename_dict*.
+
+    """
+    for old_name, new_name in rename_dict.items():
+        idx = isl_obj.find_dim_by_name(dt, old_name)
+        if idx == -1:
+            raise ValueError(
+                "find_and_rename_dims did not find dimension %s"
+                % (old_name))
+        isl_obj = isl_obj.set_dim_name(
+            dt, isl_obj.find_dim_by_name(dt, old_name), new_name)
+    return isl_obj
+
+# }}}
+
+
 # vim: foldmethod=marker

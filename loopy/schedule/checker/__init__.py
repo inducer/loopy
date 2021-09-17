@@ -1,3 +1,10 @@
+"""
+.. autofunction:: get_pairwise_statement_orderings
+
+.. automodule:: loopy.schedule.checker.schedule
+"""
+
+
 __copyright__ = "Copyright (C) 2019 James Stevens"
 
 __license__ = """
@@ -21,38 +28,49 @@ THE SOFTWARE.
 """
 
 
-# {{{ create a pairwise schedules for statement pairs
+# {{{ get pairwise statement orderings
 
-def get_schedules_for_statement_pairs(
+def get_pairwise_statement_orderings(
         knl,
-        linearization_items,
-        insn_id_pairs,
+        lin_items,
+        stmt_id_pairs,
+        perform_closure_checks=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
-    instances are executed. For each pair, describe this relative ordering with
-    a pair of mappings from statement instances to points in a single
-    lexicographic ordering (a ``pairwise schedule''). When determining the
-    relative ordering, ignore concurrent inames.
+    instances are executed. For each pair, represent this relative ordering
+    using three ``statement instance orderings`` (SIOs):
 
-    :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
-        linearization items that will be used to create a schedule.
+    - The intra-thread SIO: A :class:`islpy.Map` from each instance of the
+      first statement to all instances of the second statement that occur
+      later, such that both statement instances in each before-after pair are
+      executed within the same work-item (thread).
 
-    :arg linearization_items: A list of :class:`loopy.schedule.ScheduleItem`
-        (to be renamed to `loopy.schedule.LinearizationItem`) containing
-        all linearization items for which pairwise schedules will be
-        created. To allow usage of this routine during linearization, a
-        truncated (i.e. partial) linearization may be passed through this
-        argument.
+    - The intra-group SIO: A :class:`islpy.Map` from each instance of the first
+      statement to all instances of the second statement that occur later, such
+      that both statement instances in each before-after pair are executed
+      within the same work-group (though potentially by different work-items).
 
-    :arg insn_id_pairs: A list containing pairs of instruction
-        identifiers.
+    - The global SIO: A :class:`islpy.Map` from each instance of the first
+      statement to all instances of the second statement that occur later, even
+      if the two statement instances in a given before-after pair are executed
+      within different work-groups.
 
-    :returns: A dictionary mapping each two-tuple of instruction identifiers
-        provided in `insn_id_pairs` to a corresponding two-tuple containing two
-        :class:`islpy.Map`\ s representing a pairwise schedule as two
-        mappings from statement instances to lexicographic time, one for
-        each of the two statements.
+    :arg knl: A preprocessed :class:`loopy.LoopKernel` containing the
+        linearization items that will be used to create the SIOs.
+
+    :arg lin_items: A list of :class:`loopy.schedule.ScheduleItem`
+        (to be renamed to `loopy.schedule.LinearizationItem`) containing all
+        linearization items for which SIOs will be created. To allow usage of
+        this routine during linearization, a truncated (i.e. partial)
+        linearization may be passed through this argument.
+
+    :arg stmt_id_pairs: A sequence containing pairs of statement identifiers.
+
+    :returns: A dictionary mapping each two-tuple of statement identifiers
+        provided in `stmt_id_pairs` to a
+        :class:`~loopy.schedule.checker.schedule.StatementOrdering`, which
+        contains the three SIOs described above.
 
     .. doctest:
 
@@ -60,38 +78,30 @@ def get_schedules_for_statement_pairs(
         >>> import numpy as np
         >>> # Make kernel -----------------------------------------------------------
         >>> knl = lp.make_kernel(
-        ...     "{[i,j,k]: 0<=i<pi and 0<=j<pj and 0<=k<pk}",
+        ...     "{[j,k]: 0<=j<pj and 0<=k<pk}",
         ...     [
-        ...         "a[i,j] = j  {id=insn_a}",
-        ...         "b[i,k] = k+a[i,0]  {id=insn_b,dep=insn_a}",
+        ...         "a[j] = j  {id=stmt_a}",
+        ...         "b[k] = k+a[0]  {id=stmt_b,dep=stmt_a}",
         ...     ])
         >>> knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
-        >>> knl = lp.prioritize_loops(knl, "i,j")
-        >>> knl = lp.prioritize_loops(knl, "i,k")
         >>> # Preprocess
         >>> knl = lp.preprocess_kernel(knl)
         >>> # Get a linearization
         >>> knl = lp.get_one_linearized_kernel(
         ...     knl["loopy_kernel"], knl.callables_table)
-        >>> # Get a pairwise schedule -----------------------------------------------
-        >>> from loopy.schedule.checker import get_schedules_for_statement_pairs
-        >>> # Get two maps ----------------------------------------------------------
-        >>> schedules = get_schedules_for_statement_pairs(
+        >>> # Get pairwise order info -----------------------------------------------
+        >>> from loopy.schedule.checker import get_pairwise_statement_orderings
+        >>> sio_dict = get_pairwise_statement_orderings(
         ...     knl,
         ...     knl.linearization,
-        ...     [("insn_a", "insn_b")],
+        ...     [("stmt_a", "stmt_b")],
         ...     )
-        >>> # Print maps
-        >>> print("\n".join(
-        ...     str(m).replace("{ ", "{\n").replace(" :", "\n:")
-        ...     for m in schedules[("insn_a", "insn_b")]
-        ...     ))
-        [pi, pj, pk] -> {
-        [_lp_linchk_stmt = 0, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 0]
-        : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
-        [pi, pj, pk] -> {
-        [_lp_linchk_stmt = 1, i, j, k] -> [_lp_linchk_l0 = i, _lp_linchk_l1 = 1]
-        : 0 <= i < pi and 0 <= j < pj and 0 <= k < pk }
+        >>> # Print map
+        >>> print(str(sio_dict[("stmt_a", "stmt_b")].sio_intra_thread
+        ...     ).replace("{ ", "{\n").replace(" :", "\n:"))
+        [pj, pk] -> {
+        [_lp_linchk_stmt' = 0, j'] -> [_lp_linchk_stmt = 1, k]
+        : pj > 0 and pk > 0 and 0 <= j' < pj and 0 <= k < pk }
 
     """
 
@@ -105,21 +115,24 @@ def get_schedules_for_statement_pairs(
     # }}}
 
     # {{{ Find any EnterLoop inames that are tagged as concurrent
-    # so that generate_pairwise_schedule() knows to ignore them
-    # (In the future, this shouldn't be necessary because there
-    # won't be any inames with ConcurrentTags in EnterLoop linearization items.
-    # Test which exercises this: test_linearization_checker_with_stroud_bernstein())
+    # so that get_pairwise_statement_orderings_inner() knows to ignore them
+    # (In the future, this should only include inames tagged with 'vec'.)
+
+    # FIXME Consider just putting this ilp/vec logic inside
+    # get_pairwise_statement_orderings_inner; passing these in as
+    # 'loops_to_ignore' made more sense when we were just dealing with the
+    # intra-thread case.
     from loopy.schedule.checker.utils import (
         partition_inames_by_concurrency,
         get_EnterLoop_inames,
     )
     conc_inames, _ = partition_inames_by_concurrency(knl)
-    enterloop_inames = get_EnterLoop_inames(linearization_items)
-    conc_loop_inames = conc_inames & enterloop_inames
+    enterloop_inames = get_EnterLoop_inames(lin_items)
+    ilp_and_vec_inames = conc_inames & enterloop_inames
 
     # The only concurrent EnterLoop inames should be Vec and ILP
     from loopy.kernel.data import (VectorizeTag, IlpBaseTag)
-    for conc_iname in conc_loop_inames:
+    for conc_iname in ilp_and_vec_inames:
         # Assert that there exists an ilp or vectorize tag (out of the
         # potentially multiple other tags on this concurrent iname).
         assert any(
@@ -128,17 +141,21 @@ def get_schedules_for_statement_pairs(
 
     # }}}
 
-    # {{{ Create two mappings from {statement instance: lex point}
+    # {{{ Create the SIOs
 
-    # include only instructions involved in this dependency
-    from loopy.schedule.checker.schedule import generate_pairwise_schedules
-    return generate_pairwise_schedules(
+    from loopy.schedule.checker.schedule import (
+        get_pairwise_statement_orderings_inner
+    )
+    return get_pairwise_statement_orderings_inner(
         knl,
-        linearization_items,
-        insn_id_pairs,
-        loops_to_ignore=conc_loop_inames,
+        lin_items,
+        stmt_id_pairs,
+        ilp_and_vec_inames=ilp_and_vec_inames,
+        perform_closure_checks=perform_closure_checks,
         )
 
     # }}}
 
 # }}}
+
+# vim: foldmethod=marker

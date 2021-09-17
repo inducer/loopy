@@ -76,7 +76,7 @@ from loopy.transform.iname import (
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
         has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn, add_inames_for_unused_hw_axes)
+        add_inames_to_insn, add_inames_for_unused_hw_axes, map_domain)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
@@ -129,6 +129,9 @@ from loopy.preprocess import (preprocess_kernel, realize_reduction,
 from loopy.schedule import (
     generate_loop_schedules, get_one_scheduled_kernel,
     get_one_linearized_kernel, linearize)
+from loopy.schedule.checker import (
+    get_pairwise_statement_orderings,
+)
 from loopy.statistics import (ToCountMap, ToCountPolynomialMap, CountGranularity,
         stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
         get_synchronization_map, gather_access_footprints,
@@ -202,7 +205,7 @@ __all__ = [
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
         "has_schedulable_iname_nesting", "get_iname_duplication_options",
-        "add_inames_to_insn", "add_inames_for_unused_hw_axes",
+        "add_inames_to_insn", "add_inames_for_unused_hw_axes", "map_domain",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
@@ -268,6 +271,7 @@ __all__ = [
         "generate_loop_schedules",
         "get_one_scheduled_kernel", "get_one_linearized_kernel",
         "linearize",
+        "get_pairwise_statement_orderings",
 
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
