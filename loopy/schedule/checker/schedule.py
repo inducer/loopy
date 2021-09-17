@@ -745,6 +745,9 @@ def _gather_blex_ordering_info(
         bottom_to_top_map = _pad_tuples_and_assign_integer_vals_to_map_template(
             bottom_tuple, top_tuple)
 
+        bottom_to_top_map = _pad_tuples_and_assign_integer_vals_to_map_template(
+            key_lex_tuples[slex.BOTTOM], key_lex_tuples[slex.TOP])
+
         # Add constraint iname = iname' + 1
         blex_var_for_iname = seq_iname_to_blex_var[iname]
         bottom_to_top_map = bottom_to_top_map.add_constraint(

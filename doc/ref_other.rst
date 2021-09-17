@@ -29,6 +29,8 @@ Automatic Testing
 Checking Dependencies at the Statement-Instance Level
 -----------------------------------------------------
 
+See also :func:`~loopy.add_dependency` for how to add dependencies.
+
 .. automodule:: loopy.schedule.checker
 
 Troubleshooting

@@ -75,7 +75,7 @@ class UseStreamingStoreTag(Tag):
 # {{{ instructions: base class
 
 class InstructionBase(ImmutableRecord, Taggable):
-    """A base class for all types of instruction that can occur in
+    r"""A base class for all types of instruction that can occur in
     a kernel.
 
     .. attribute:: id
@@ -87,7 +87,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     .. attribute:: depends_on
 
-        a :class:`frozenset` of :attr:`id` values of :class:`InstructionBase`
+        A :class:`frozenset` of :attr:`id` values of :class:`InstructionBase`
         instances that *must* be executed before this one. Note that
         :func:`loopy.preprocess_kernel` (usually invoked automatically)
         augments this by adding dependencies on any writes to temporaries read
@@ -105,6 +105,40 @@ class InstructionBase(ImmutableRecord, Taggable):
           matching instructions in the kernel to :attr:`depends_on` during
           :func:`loopy.make_kernel`. Note, that this is not meant as a user-facing
           interface.
+
+    .. attribute:: dependencies
+
+        A :class:`dict` mapping :attr:`id` values
+        instances, each referring to a dependee statement (i.e., a statement
+        with statement instances that must be executed before instances of this
+        statement), to lists (one list per key) of class:`islpy.Map`\ s that
+        express dependency relationships by mapping each instance of the
+        dependee statement to all instances of this statement that must occur
+        later.
+
+        The name of the first dimension in the `in_` and `out` spaces must be
+        :data:`loopy.schedule.checker.schedule.STATEMENT_VAR_NAME`, suffixed by
+        :data:`loopy.schedule.checker.schedule.BEFORE_MARK` for the `in_`
+        dimension. This dimension in the `in_` space must be assigned the value
+        0, and in the `out` space it must be assigned 0 for self-dependencies
+        (dependencies describing instances of a statement that must happen
+        before other instances of the same statement) and 1 otherwise.
+
+        In addition to the statement dimension, the `in_` space of a dependency
+        map must contain one dimension per iname in :attr:`within_inames` for
+        the dependee, and the `out` space must contain one dimension per iname
+        in :attr:`within_inames` for this statement. The dimension names should
+        match the corresponding iname, with those in the `in_` space suffixed
+        by :data:`loopy.schedule.checker.schedule.BEFORE_MARK`. Reduction
+        inames are not considered (for now). Only dependencies involving
+        instances of statements within the domain on either end of the map are
+        expected to be represented.
+
+        Creation of these maps may be facilitated with
+        :func:`loopy.schedule.checker.utils.make_dep_map`.
+
+        This dict expresses the new statement-instance-level dependencies and
+        will eventually replace :attr:`depends_on`.
 
     .. attribute:: depends_on_is_final
 
@@ -212,6 +246,7 @@ class InstructionBase(ImmutableRecord, Taggable):
     pymbolic_set_fields = {"predicates"}
 
     def __init__(self, id, depends_on, depends_on_is_final,
+            dependencies,
             groups, conflicts_with_groups,
             no_sync_with,
             within_inames_is_final, within_inames,
@@ -240,6 +275,9 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         if depends_on is None:
             depends_on = frozenset()
+
+        if dependencies is None:
+            dependencies = {}
 
         if groups is None:
             groups = frozenset()
@@ -297,6 +335,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 within_inames_is_final=within_inames_is_final,
@@ -392,6 +431,8 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
+        if self.dependencies:
+            result.append("dependencies="+":".join(self.dependencies.keys()))
         if self.no_sync_with:
             result.append("nosync="+":".join(
                     "%s@%s" % entry for entry in self.no_sync_with))
@@ -461,6 +502,9 @@ class InstructionBase(ImmutableRecord, Taggable):
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
+        self.dependencies = {
+            intern(dependee_id): deps
+            for dependee_id, deps in self.dependencies.items()}
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
@@ -887,6 +931,7 @@ class Assignment(MultiAssignmentBase):
             id=None,
             depends_on=None,
             depends_on_is_final=None,
+            dependencies=None,
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -903,6 +948,7 @@ class Assignment(MultiAssignmentBase):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1038,6 +1084,7 @@ class CallInstruction(MultiAssignmentBase):
             id=None,
             depends_on=None,
             depends_on_is_final=None,
+            dependencies=None,
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
@@ -1051,6 +1098,7 @@ class CallInstruction(MultiAssignmentBase):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1331,6 +1379,7 @@ class CInstruction(InstructionBase):
             iname_exprs, code,
             read_variables=frozenset(), assignees=tuple(),
             id=None, depends_on=None, depends_on_is_final=None,
+            dependencies=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
@@ -1350,6 +1399,7 @@ class CInstruction(InstructionBase):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
@@ -1495,16 +1545,25 @@ class NoOpInstruction(_DataObliviousInstruction):
         ... nop
     """
 
-    def __init__(self, id=None, depends_on=None, depends_on_is_final=None,
-            groups=None, conflicts_with_groups=None,
+    def __init__(
+            self,
+            id=None,
+            depends_on=None,
+            depends_on_is_final=None,
+            dependencies=None,
+            groups=None,
+            conflicts_with_groups=None,
             no_sync_with=None,
-            within_inames_is_final=None, within_inames=None,
+            within_inames_is_final=None,
+            within_inames=None,
             priority=None,
-            predicates=None, tags=None):
+            predicates=None,
+            tags=None):
         super().__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1554,12 +1613,21 @@ class BarrierInstruction(_DataObliviousInstruction):
     fields = _DataObliviousInstruction.fields | {"synchronization_kind",
                                                      "mem_kind"}
 
-    def __init__(self, id, depends_on=None, depends_on_is_final=None,
-            groups=None, conflicts_with_groups=None,
+    def __init__(
+            self,
+            id,
+            depends_on=None,
+            depends_on_is_final=None,
+            dependencies=None,
+            groups=None,
+            conflicts_with_groups=None,
             no_sync_with=None,
-            within_inames_is_final=None, within_inames=None,
+            within_inames_is_final=None,
+            within_inames=None,
             priority=None,
-            predicates=None, tags=None, synchronization_kind="global",
+            predicates=None,
+            tags=None,
+            synchronization_kind="global",
             mem_kind="local"):
 
         if predicates:
@@ -1569,6 +1637,7 @@ class BarrierInstruction(_DataObliviousInstruction):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                dependencies=dependencies,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,

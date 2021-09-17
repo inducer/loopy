@@ -80,7 +80,8 @@ from loopy.transform.iname import (
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
-        set_instruction_priority, add_dependency,
+        set_instruction_priority,
+        add_dependency,
         remove_instructions,
         replace_instruction_ids,
         tag_instructions,
@@ -131,7 +132,8 @@ from loopy.schedule import (
     get_one_linearized_kernel, linearize)
 from loopy.schedule.checker import (
     get_pairwise_statement_orderings,
-)
+    find_unsatisfied_dependencies,
+    )
 from loopy.statistics import (ToCountMap, ToCountPolynomialMap, CountGranularity,
         stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
         get_synchronization_map, gather_access_footprints,
@@ -215,7 +217,8 @@ __all__ = [
         "rename_argument", "set_temporary_scope",
 
         "find_instructions", "map_instructions",
-        "set_instruction_priority", "add_dependency",
+        "set_instruction_priority",
+        "add_dependency",
         "remove_instructions",
         "replace_instruction_ids",
         "tag_instructions",
@@ -272,6 +275,7 @@ __all__ = [
         "get_one_scheduled_kernel", "get_one_linearized_kernel",
         "linearize",
         "get_pairwise_statement_orderings",
+        "find_unsatisfied_dependencies",
 
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",

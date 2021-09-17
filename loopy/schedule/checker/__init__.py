@@ -1,7 +1,10 @@
 """
 .. autofunction:: get_pairwise_statement_orderings
 
+.. autofunction:: find_unsatisfied_dependencies
+
 .. automodule:: loopy.schedule.checker.schedule
+.. automodule:: loopy.schedule.checker.utils
 """
 
 
@@ -155,6 +158,157 @@ def get_pairwise_statement_orderings(
         )
 
     # }}}
+
+# }}}
+
+
+# {{{ find_unsatisfied_dependencies()
+
+def find_unsatisfied_dependencies(
+        knl,
+        lin_items=None,
+        stop_on_first_violation=True,
+        ):
+    """For each statement (:class:`loopy.InstructionBase`) found in a
+    preprocessed kernel, determine which dependencies, if any, have been
+    violated by the linearization described by `lin_items`, and return these
+    dependencies.
+
+    :arg knl: A preprocessed (or linearized) :class:`loopy.LoopKernel`
+        containing the statements (:class:`loopy.InstructionBase`) whose
+        dependencies will be checked against the linearization items.
+
+    :arg lin_items: A sequence of :class:`loopy.schedule.ScheduleItem`
+        (to be renamed to `loopy.schedule.LinearizationItem`) containing all
+        linearization items in `knl.linearization`. To allow usage of
+        this routine during linearization, a truncated (i.e. partial)
+        linearization may be passed through this argument. If not provided,
+        `knl.linearization` will be used.
+
+    :arg stop_on_first_violation: A :class:`bool` determining whether to stop
+        checking dependencies once the first unsatisfied dependency is found.
+
+    :returns: A list of unsatisfied dependencies, each represented as a
+        :func:`collections.namedtuple` containing the following:
+
+        - `statement_pair`: The (before, after) pair of statement IDs involved
+          in the dependency.
+        - `dependency`: An class:`islpy.Map` from each instance of the first
+          statement to all instances of the second statement that must occur
+          later.
+        - `statement_ordering`: A
+          :class:`~loopy.schedule.checker.schedule.StatementOrdering`
+          resulting from :func:`get_pairwise_statement_orderings` (defined above).
+
+    """
+
+    # {{{ Handle lin_items=None and make sure kernel has been preprocessed
+
+    from loopy.kernel import KernelState
+    if lin_items is None:
+        assert knl.state == KernelState.LINEARIZED
+        lin_items = knl.linearization
+    else:
+        # Note: kernels must always be preprocessed before scheduling
+        assert knl.state in [
+                KernelState.PREPROCESSED,
+                KernelState.LINEARIZED]
+
+    # }}}
+
+    # {{{ Create map from before->after statement id pairs to dependency maps
+
+    # For efficiency, all pairwise SIOs will be created
+    # in one pass, which first requires finding all pairs of statements that
+    # are connected by at least one dependency.
+    # We will also later need to collect all deps for each statement pair,
+    # so do this at the same time; create stmt_pairs_to_deps:
+
+    # stmt_pairs_to_deps:
+    # {(stmt_id_before1, stmt_id_after1): [dep1, dep2, ...],
+    #  (stmt_id_before2, stmt_id_after2): [dep1, dep2, ...],
+    #  ...}
+    stmt_pairs_to_deps = {}
+
+    for stmt_after in knl.instructions:
+        for before_id, dep_list in stmt_after.dependencies.items():
+            stmt_pairs_to_deps.setdefault(
+                (before_id, stmt_after.id), []).extend(dep_list)
+
+    # }}}
+
+    # {{{ Get statement instance ordering for every before->after statement pair
+
+    pworders = get_pairwise_statement_orderings(
+        knl,
+        lin_items,
+        stmt_pairs_to_deps.keys(),
+        )
+
+    # }}}
+
+    # {{{ For each depender-dependee pair of statements, check all deps vs. SIO
+
+    unsatisfied_deps = []
+
+    # Collect info about unsatisfied deps
+    from collections import namedtuple
+    UnsatisfiedDependencyInfo = namedtuple(
+        "UnsatisfiedDependencyInfo",
+        ["statement_pair", "dependency", "statement_ordering"])
+
+    for stmt_id_pair, dependencies in stmt_pairs_to_deps.items():
+
+        # Get the pairwise ordering info (includes SIOs)
+        pworder = pworders[stmt_id_pair]
+
+        # Check each dep for this statement pair
+        for dependency in dependencies:
+
+            # Align constraint map space to match SIO so we can
+            # check to see whether the constraint map is a subset of the SIO
+            from loopy.schedule.checker.utils import (
+                ensure_dim_names_match_and_align,
+            )
+            aligned_dep_map = ensure_dim_names_match_and_align(
+                dependency, pworder.sio_intra_thread)
+
+            # {{{ Assert that map spaces match
+
+            assert aligned_dep_map.space == pworder.sio_intra_thread.space
+            assert aligned_dep_map.space == pworder.sio_intra_group.space
+            assert aligned_dep_map.space == pworder.sio_global.space
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_intra_thread.get_var_dict())
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_intra_group.get_var_dict())
+            assert (aligned_dep_map.get_var_dict() ==
+                pworder.sio_global.get_var_dict())
+
+            # }}}
+
+            # Check dependency
+            if not aligned_dep_map <= (
+                    pworder.sio_intra_thread |
+                    pworder.sio_intra_group |
+                    pworder.sio_global
+                    ):
+                # FIXME This could be done by computing (via intersection)
+                # intra-thread, intra-group, and global parts of aligned_dep_map
+                # and demanding that each is a subset of the corresponding sio.
+                # Determine whether this would be more efficient, and if so, do
+                # it.
+
+                unsatisfied_deps.append(UnsatisfiedDependencyInfo(
+                    stmt_id_pair, aligned_dep_map, pworder))
+
+                # Break here if stop_on_first_violation==True
+                if stop_on_first_violation:
+                    break
+
+    # }}}
+
+    return unsatisfied_deps
 
 # }}}
 
