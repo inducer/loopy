@@ -26,6 +26,11 @@ Automatic Testing
 
 .. autofunction:: auto_test_vs_ref
 
+Checking Dependencies at the Statement-Instance Level
+-----------------------------------------------------
+
+.. autofunction:: get_pairwise_statement_orderings
+
 Troubleshooting
 ---------------
 
