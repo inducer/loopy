@@ -479,7 +479,9 @@ class InstructionBase(ImmutableRecord, Taggable):
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
-        self.dependencies = {intern(id): deps for id, deps in self.dependencies.items()}
+        self.dependencies = {
+            intern(dependee_id): deps
+            for dependee_id, deps in self.dependencies.items()}
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
