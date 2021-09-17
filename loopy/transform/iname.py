@@ -1319,24 +1319,25 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
         from loopy.transform.instruction import map_dependency_maps
         from loopy.schedule.checker.schedule import BEFORE_MARK
+        from loopy.isl_helpers import find_and_rename_dim
         old_iname_p = old_iname+BEFORE_MARK
         new_iname_p = new_iname+BEFORE_MARK
 
         def _rename_iname_in_dim_out(dep):
             # Update iname in out-dim (depender dim).
 
-            # For now, out_idx should not be -1 because this will only
+            # For now, dim should definitely exist because this will only
             # be called on dependers
-            return _find_and_rename_dim(
-                dep, [dim_type.out], old_iname, new_iname, must_exist=True)
+            return find_and_rename_dim(
+                dep, dim_type.out, old_iname, new_iname)
 
         def _rename_iname_in_dim_in(dep):
             # Update iname in in-dim (dependee dim).
 
-            # For now, out_idx should not be -1 because this will only
+            # For now, dim should definitely exist because this will only
             # be called on dependees
-            return _find_and_rename_dim(
-                dep, [dim_type.in_], old_iname_p, new_iname_p, must_exist=True)
+            return find_and_rename_dim(
+                dep, dim_type.in_, old_iname_p, new_iname_p)
 
         # TODO figure out proper way to match none
         # TODO figure out match vs stack_match
@@ -2107,27 +2108,6 @@ def _find_aff_subst_from_map(iname, isl_map):
 # }}}
 
 
-# {{{ ISL map wrangling helper functions
-
-def _find_and_rename_dim(old_map, dts, old_name, new_name, must_exist=False):
-    # (This function is only used once here, but do not inline it; it is used many
-    # times in child branch update-dependencies-during-transformations.)
-    new_map = old_map.copy()
-    for dt in dts:
-        idx = new_map.find_dim_by_name(dt, old_name)
-        if idx == -1:
-            if must_exist:
-                raise ValueError(
-                    "must_exist=True but did not find old_name %s in %s"
-                    % (old_name, old_map))
-            else:
-                continue
-        new_map = new_map.set_dim_name(dt, idx, new_name)
-    return new_map
-
-# }}}
-
-
 # {{{ _apply_identity_for_missing_map_dims(mapping, desired_dims)
 
 def _apply_identity_for_missing_map_dims(mapping, desired_dims):
@@ -2135,6 +2115,16 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     input space for *mapping*, add input dimension v, output dimension
     v_'proxy'_, and constraint v = v_'proxy'_ to the mapping. Also return a
     list of the (v, v_'proxy'_) pairs.
+
+    :arg mapping: An :class:`islpy.Map`.
+
+    :arg desired_dims: An iterable of :class:`str` specifying the names of the
+        desired map input dimensions.
+
+    :returns: A two-tuple containing the mapping with the new dimensions and
+        constraints added, and a list of two-tuples of :class:`str` values
+        specifying the (v, v_'proxy'_) pairs.
+
     """
 
     # If the transform map in map_domain (below) does not contain all the
@@ -2152,23 +2142,21 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # dependency maps, which may contain variable names consisting of an iname
     # suffixed with a single apostrophe.)
 
-    from loopy.schedule.checker.utils import (
-        add_and_name_isl_dims,
-        add_eq_isl_constraint_from_names,
-    )
+    from loopy.isl_helpers import (
+        add_and_name_dims, add_eq_constraint_from_names)
 
     # {{{ Find any missing vars and add them to the input and output space
 
     missing_dims = list(
         set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
-    augmented_mapping = add_and_name_isl_dims(
+    augmented_mapping = add_and_name_dims(
         mapping, dim_type.in_, missing_dims)
 
     missing_dims_proxies = [d+"_'prox'_" for d in missing_dims]
     assert not set(missing_dims_proxies) & set(
         augmented_mapping.get_var_dict().keys())
 
-    augmented_mapping = add_and_name_isl_dims(
+    augmented_mapping = add_and_name_dims(
         augmented_mapping, dim_type.out, missing_dims_proxies)
 
     proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies))
@@ -2178,7 +2166,7 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # {{{ Add identity constraint (v = v_'proxy'_) for each new pair of dims
 
     for real_iname, proxy_iname in proxy_name_pairs:
-        augmented_mapping = add_eq_isl_constraint_from_names(
+        augmented_mapping = add_eq_constraint_from_names(
             augmented_mapping, proxy_iname, real_iname)
 
     # }}}
@@ -2266,10 +2254,10 @@ def map_domain(kernel, transform_map):
     from loopy.symbolic import aff_to_expr
     from pymbolic import var
     for iname in transform_map_in_dims:
-        substitutions[iname] = aff_to_expr(
-                _find_aff_subst_from_map(iname, transform_map))
-        var_substitutions[var(iname)] = aff_to_expr(
-                _find_aff_subst_from_map(iname, transform_map))
+        subst_from_map = aff_to_expr(
+            _find_aff_subst_from_map(iname, transform_map))
+        substitutions[iname] = subst_from_map
+        var_substitutions[var(iname)] = subst_from_map
 
     applied_iname_rewrites.append(var_substitutions)
     del var_substitutions
@@ -2277,6 +2265,8 @@ def map_domain(kernel, transform_map):
     # }}}
 
     # {{{ Function to apply mapping to one set
+
+    from loopy.isl_helpers import find_and_rename_dim
 
     def process_set(s):
         """Return the transformed set. Assume that map is applicable to this
@@ -2341,9 +2331,10 @@ def map_domain(kernel, transform_map):
         new_s = aligned_map.intersect_domain(s).range()
 
         # Now rename any proxy dims back to their original names
+
         for real_iname, proxy_iname in proxy_name_pairs:
-            new_s = _find_and_rename_dim(
-                new_s, [dim_type.set], proxy_iname, real_iname)
+            new_s = find_and_rename_dim(
+                new_s, dim_type.set, proxy_iname, real_iname)
 
         return new_s
 
@@ -2364,8 +2355,7 @@ def map_domain(kernel, transform_map):
 
         # Make sure transform map is applicable to this set. Then transform.
 
-        if not transform_map_in_dims.issubset(
-                frozenset(old_domain.get_var_dict())):
+        if not transform_map_in_dims <= frozenset(old_domain.get_var_dict()):
 
             # Map not applicable to this set because map transforms at least
             # one iname that is not present in the set. Don't transform.
@@ -2464,8 +2454,8 @@ def map_domain(kernel, transform_map):
 
             # Now rename the proxy dims back to their original names
             for real_iname, proxy_iname in proxy_name_pairs:
-                new_dep_map = _find_and_rename_dim(
-                    new_dep_map, [dim_type.out], proxy_iname, real_iname)
+                new_dep_map = find_and_rename_dim(
+                    new_dep_map, dim_type.out, proxy_iname, real_iname)
 
             # Statement var may have moved, so put it back at the beginning
             new_dep_map = move_dim_to_index(
@@ -2523,8 +2513,8 @@ def map_domain(kernel, transform_map):
 
             # Now rename the proxy dims back to their original names
             for real_iname, proxy_iname in proxy_name_pairs:
-                new_dep_map = _find_and_rename_dim(
-                    new_dep_map, [dim_type.in_], proxy_iname, real_iname)
+                new_dep_map = find_and_rename_dim(
+                    new_dep_map, dim_type.in_, proxy_iname, real_iname)
 
             # Statement var may have moved, so put it back at the beginning
             new_dep_map = move_dim_to_index(

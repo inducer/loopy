@@ -101,7 +101,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         if not skip_arg_checks:
             for i in range(num_axes):
-                gen("assert _lpy_ustrides_%d > 0, "
+                gen("assert _lpy_ustrides_%d >= 0, "
                         "\"'%s' has negative stride in axis %d\""
                         % (i, arg.name, i))
 

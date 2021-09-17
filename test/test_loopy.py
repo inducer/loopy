@@ -3216,6 +3216,21 @@ def test_get_return_from_kernel_mapping():
     assert ret_from_knl_idx[9] == 10
 
 
+def test_zero_stride_array(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        ["{[i]: 0<=i<10}",
+         "{[j]: 1=0}"],
+        """
+        y[i, j] = 1
+        """, [lp.GlobalArg("y", shape=(10, 0))])
+
+    evt, (out,) = knl(cq)
+    assert out.shape == (10, 0)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
