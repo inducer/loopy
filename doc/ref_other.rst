@@ -29,17 +29,12 @@ Automatic Testing
 Checking Dependencies at the Statement-Instance Level
 -----------------------------------------------------
 
-<<<<<<< HEAD
 .. autofunction:: add_dependency
 
 .. autofunction:: get_pairwise_statement_orderings
 
 .. autofunction:: find_unsatisfied_dependencies
 
-=======
-.. autofunction:: get_pairwise_statement_orderings
-
->>>>>>> statement-instance-order-and-lex-order-map
 Troubleshooting
 ---------------
 
