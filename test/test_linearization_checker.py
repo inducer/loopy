@@ -1778,9 +1778,9 @@ def test_blex_map_transitivity_with_duplicate_conc_inames():
 
 # {{{ Dependency tests
 
-# {{{ test_add_dependency_v2
+# {{{ test_add_dependency_with_new_deps
 
-def test_add_dependency_v2():
+def test_add_dependency_with_new_deps():
 
     # Make kernel and use OLD deps to control linearization order for now
     i_range_str = "0 <= i < pi"
@@ -1821,7 +1821,7 @@ def test_add_dependency_v2():
 
     # }}}
 
-    knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
+    knl = lp.add_dependency(knl, "id:stmt_b", ("id:stmt_a", dep_b_on_a))
 
     for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
@@ -1851,7 +1851,7 @@ def test_add_dependency_v2():
 
     # }}}
 
-    knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
+    knl = lp.add_dependency(knl, "id:stmt_b", ("id:stmt_a", dep_b_on_a_2))
 
     for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
@@ -1873,8 +1873,8 @@ def test_add_dependency_v2():
         "and {0} }}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
 
-    knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_a", dep_c_on_a)
-    knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_b", dep_c_on_b)
+    knl = lp.add_dependency(knl, "id:stmt_c", ("id:stmt_a", dep_c_on_a))
+    knl = lp.add_dependency(knl, "id:stmt_c", ("id:stmt_b", dep_c_on_b))
 
     for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
@@ -1990,7 +1990,7 @@ def test_new_dependencies_finite_diff():
 
     # }}}
 
-    knl = lp.add_dependency_v2(knl, "stmt", "stmt", dep)
+    knl = lp.add_dependency(knl, "id:stmt", ("id:stmt", dep))
 
     ref_knl = knl
 
