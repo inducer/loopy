@@ -115,7 +115,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         express dependency relationships by mapping each instance of the
         dependee statement to all instances of this statement that must occur
         later. This dict expresses the new statement-instance-level
-        dependencies and will eventually replace the `depends_on` attribute.
+        dependencies and will eventually replace :attr:`depends_on`.
 
     .. attribute:: depends_on_is_final
 
