@@ -320,6 +320,7 @@ def test_join_inames(ctx_factory):
 
     knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"], default_tag="l.auto")
     knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
+    # TODO why does this lead to inames key error for 'a_dim_1_and_a_dim_0' ??
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
 
@@ -595,7 +596,29 @@ def test_nested_substs_in_insns(ctx_factory):
 
 # {{{ test_map_domain_vs_split_iname
 
-def test_map_domain_vs_split_iname():
+def _ensure_dim_names_match_and_align(obj_map, tgt_map):
+    # (This function is also defined in independent, unmerged branch
+    # new-dependency-and-nest-constraint-semantics-development, and used in
+    # child branches thereof. Once these branches are all merged, it may make
+    # sense to move this function to a location for more general-purpose
+    # machinery. In the other branches, this function's name excludes the
+    # leading underscore.)
+    from islpy import align_spaces
+    from islpy import dim_type as dt
+
+    # first make sure names match
+    if not all(
+            set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
+            for dt in
+            [dt.in_, dt.out, dt.param]):
+        raise ValueError(
+            "Cannot align spaces; names don't match:\n%s\n%s"
+            % (obj_map, tgt_map))
+
+    return align_spaces(obj_map, tgt_map)
+
+
+def test_map_domain_vs_split_iname(ctx_factory):
 
     # {{{ Make kernel
 
@@ -618,7 +641,7 @@ def test_map_domain_vs_split_iname():
 
     # {{{ Apply domain change mapping
 
-    knl_map_dom = ref_knl  # loop priority goes away, deps stay
+    knl_map_dom = ref_knl
 
     # Create map_domain mapping:
     import islpy as isl
@@ -632,7 +655,8 @@ def test_map_domain_vs_split_iname():
     knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
 
     # Prioritize loops (prio should eventually be updated in map_domain?)
-    knl_map_dom = lp.prioritize_loops(knl_map_dom, "x, t_outer, t_inner")
+    loop_priority = "x, t_outer, t_inner"
+    knl_map_dom = lp.prioritize_loops(knl_map_dom, loop_priority)
 
     # Get a linearization
     proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
@@ -645,7 +669,7 @@ def test_map_domain_vs_split_iname():
 
     knl_split_iname = ref_knl
     knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
-    knl_split_iname = lp.prioritize_loops(knl_split_iname, "x, t_outer, t_inner")
+    knl_split_iname = lp.prioritize_loops(knl_split_iname, loop_priority)
     proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
     lin_knl_split_iname = lp.get_one_linearized_kernel(
         proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
@@ -667,6 +691,9 @@ def test_map_domain_vs_split_iname():
     # Can't easily compare instructions because equivalent subscript
     # expressions may have different orders
 
+    lp.auto_test_vs_ref(proc_knl_split_iname, ctx_factory(), proc_knl_map_dom,
+        parameters={"nx": 128, "nt": 128, "ni": 128})
+
     # }}}
 
 # }}}
@@ -674,7 +701,7 @@ def test_map_domain_vs_split_iname():
 
 # {{{ test_map_domain_transform_map_validity_and_errors
 
-def test_map_domain_transform_map_validity_and_errors():
+def test_map_domain_transform_map_validity_and_errors(ctx_factory):
 
     # {{{ Make kernel
 
@@ -696,36 +723,38 @@ def test_map_domain_transform_map_validity_and_errors():
 
     # }}}
 
-    # Make sure map_domain works correctly when the mapping doesn't include
-    # all the dims in the domain.
+    # {{{ Make sure map_domain *succeeds* when map includes 2 of 4 dims in one
+    # domain.
 
-    # {{{ Apply domain change mapping
+    # {{{ Apply domain change mapping that splits t and renames y; (similar to
+    # split_iname test above, but doesn't hurt to test this slightly different
+    # scenario)
 
-    knl_map_dom = ref_knl  # loop priority goes away, deps stay
+    knl_map_dom = ref_knl
 
     # Create map_domain mapping that only includes t and y
     # (x and z should be unaffected)
     import islpy as isl
     transform_map = isl.BasicMap(
         "[nx,nt] -> {[t, y] -> [t_outer, t_inner, y_new]: "
-        "0 <= t_inner < 32 and "
-        "32*t_outer + t_inner = t and "
-        "0 <= 32*t_outer + t_inner < nt and "
+        "0 <= t_inner < 16 and "
+        "16*t_outer + t_inner = t and "
+        "0 <= 16*t_outer + t_inner < nt and "
         "y = y_new"
         "}")
 
-    # Call map_domain to transform kernel; this should not produce an error
+    # Call map_domain to transform kernel; this should *not* produce an error
     knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
 
-    # Prioritize loops (prio should eventually be updated in map_domain)
-    try:
-        # Use constrain_loop_nesting if it's available
-        desired_prio = "x, t_outer, t_inner, z, y_new"
-        knl_map_dom = lp.constrain_loop_nesting(knl_map_dom, desired_prio)
-    except AttributeError:
-        # For some reason, prioritize_loops can't handle the ordering above
-        # when linearizing knl_split_iname below
-        desired_prio = "z, y_new, x, t_outer, t_inner"
+    # Prioritize loops
+    desired_prio = "x, t_outer, t_inner, z, y_new"
+
+    # Use constrain_loop_nesting if it's available
+    cln_attr = getattr(lp, "constrain_loop_nesting", None)
+    if cln_attr is not None:
+        knl_map_dom = lp.constrain_loop_nesting(  # noqa pylint:disable=no-member
+            knl_map_dom, desired_prio)
+    else:
         knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
 
     # Get a linearization
@@ -735,10 +764,10 @@ def test_map_domain_transform_map_validity_and_errors():
 
     # }}}
 
-    # {{{ Split iname and see if we get the same result
+    # {{{ Use split_iname and rename_iname, and make sure we get the same result
 
     knl_split_iname = ref_knl
-    knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
+    knl_split_iname = lp.split_iname(knl_split_iname, "t", 16)
     knl_split_iname = lp.rename_iname(knl_split_iname, "y", "y_new")
     try:
         # Use constrain_loop_nesting if it's available
@@ -765,6 +794,11 @@ def test_map_domain_transform_map_validity_and_errors():
 
     # Can't easily compare instructions because equivalent subscript
     # expressions may have different orders
+
+    lp.auto_test_vs_ref(proc_knl_split_iname, ctx_factory(), proc_knl_map_dom,
+        parameters={"nx": 32, "nt": 32, "m": 32})
+
+    # }}}
 
     # }}}
 
@@ -844,7 +878,7 @@ def test_map_domain_transform_map_validity_and_errors():
     # {{{ Make sure we error when stmt.within_inames contains at least one but
     # not all mapped inames
 
-    # {{{ Make kernel
+    # {{{ Make potentially problematic kernel
 
     knl = lp.make_kernel(
         [
