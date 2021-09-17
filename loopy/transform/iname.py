@@ -278,7 +278,7 @@ def _split_iname_backend(kernel, iname_to_split,
     from loopy.schedule.checker.schedule import BEFORE_MARK
     from loopy.schedule.checker.utils import (
         convert_map_to_set,
-        remove_dim_by_name,
+        remove_dims_by_name,
     )
 
     def _split_iname_in_depender(dep):
@@ -304,8 +304,8 @@ def _split_iname_backend(kernel, iname_to_split,
             dim_type.out, 0, dim_type.in_, n_in_dims, n_out_dims+2)
 
         # Remove iname that was split:
-        map_from_set = remove_dim_by_name(
-            map_from_set, dim_type.out, iname_to_split)
+        map_from_set = remove_dims_by_name(
+            map_from_set, dim_type.out, [iname_to_split])
 
         return map_from_set
 
@@ -335,12 +335,11 @@ def _split_iname_backend(kernel, iname_to_split,
             dim_type.out, 0, dim_type.in_, n_in_dims, n_out_dims)
 
         # Remove iname that was split:
-        map_from_set = remove_dim_by_name(
-            map_from_set, dim_type.in_, iname_to_split_marked)
+        map_from_set = remove_dims_by_name(
+            map_from_set, dim_type.in_, [iname_to_split_marked])
 
         return map_from_set
 
-    # TODO figure out proper way to create false match condition
     false_id_match = "not id:*"
     kernel = map_dependency_maps(
         kernel, _split_iname_in_depender,
@@ -1006,7 +1005,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
 
         # {{{ *Rename* iname in dependencies
 
-        # TODO use find_and_rename_dim for simpler code
+        # TODO use find_and_rename_dims for simpler code
         # (see example in rename_iname)
         from loopy.transform.instruction import map_dependency_maps
         from loopy.schedule.checker.schedule import BEFORE_MARK
@@ -1027,7 +1026,6 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
                 dep = dep.set_dim_name(dim_type.in_, in_idx, new_iname_p)
             return dep
 
-        # TODO figure out proper way to match none
         # TODO figure out match vs stack_match
         false_id_match = "not id:*"
         kernel = map_dependency_maps(
@@ -1319,7 +1317,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
         from loopy.transform.instruction import map_dependency_maps
         from loopy.schedule.checker.schedule import BEFORE_MARK
-        from loopy.isl_helpers import find_and_rename_dim
+        from loopy.isl_helpers import find_and_rename_dims
         old_iname_p = old_iname+BEFORE_MARK
         new_iname_p = new_iname+BEFORE_MARK
 
@@ -1328,18 +1326,17 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
             # For now, dim should definitely exist because this will only
             # be called on dependers
-            return find_and_rename_dim(
-                dep, dim_type.out, old_iname, new_iname)
+            return find_and_rename_dims(
+                dep, dim_type.out, {old_iname: new_iname})
 
         def _rename_iname_in_dim_in(dep):
             # Update iname in in-dim (dependee dim).
 
             # For now, dim should definitely exist because this will only
             # be called on dependees
-            return find_and_rename_dim(
-                dep, dim_type.in_, old_iname_p, new_iname_p)
+            return find_and_rename_dims(
+                dep, dim_type.in_, {old_iname_p: new_iname_p})
 
-        # TODO figure out proper way to match none
         # TODO figure out match vs stack_match
         false_id_match = "not id:*"
         kernel = map_dependency_maps(
@@ -2266,7 +2263,7 @@ def map_domain(kernel, transform_map):
 
     # {{{ Function to apply mapping to one set
 
-    from loopy.isl_helpers import find_and_rename_dim
+    from loopy.isl_helpers import find_and_rename_dims
 
     def process_set(s):
         """Return the transformed set. Assume that map is applicable to this
@@ -2331,10 +2328,9 @@ def map_domain(kernel, transform_map):
         new_s = aligned_map.intersect_domain(s).range()
 
         # Now rename any proxy dims back to their original names
-
-        for real_iname, proxy_iname in proxy_name_pairs:
-            new_s = find_and_rename_dim(
-                new_s, dim_type.set, proxy_iname, real_iname)
+        new_s = find_and_rename_dims(
+            new_s, dim_type.set,
+            dict([pair[::-1] for pair in proxy_name_pairs]))  # (reverse pair order)
 
         return new_s
 
@@ -2453,9 +2449,9 @@ def map_domain(kernel, transform_map):
             new_dep_map = dep_map.apply_range(augmented_trans_map_aligned)
 
             # Now rename the proxy dims back to their original names
-            for real_iname, proxy_iname in proxy_name_pairs:
-                new_dep_map = find_and_rename_dim(
-                    new_dep_map, dim_type.out, proxy_iname, real_iname)
+            new_dep_map = find_and_rename_dims(
+                new_dep_map, dim_type.out,
+                dict([pair[::-1] for pair in proxy_name_pairs]))  # (reverse order)
 
             # Statement var may have moved, so put it back at the beginning
             new_dep_map = move_dim_to_index(
@@ -2512,9 +2508,9 @@ def map_domain(kernel, transform_map):
             new_dep_map = dep_map.apply_domain(augmented_trans_map_aligned)
 
             # Now rename the proxy dims back to their original names
-            for real_iname, proxy_iname in proxy_name_pairs:
-                new_dep_map = find_and_rename_dim(
-                    new_dep_map, dim_type.in_, proxy_iname, real_iname)
+            new_dep_map = find_and_rename_dims(
+                new_dep_map, dim_type.in_,
+                dict([pair[::-1] for pair in proxy_name_pairs]))  # (reverse order)
 
             # Statement var may have moved, so put it back at the beginning
             new_dep_map = move_dim_to_index(
@@ -2525,7 +2521,6 @@ def map_domain(kernel, transform_map):
             # Transform map inames are not present in dependee, don't change dep_map
             return dep_map
 
-    # TODO figure out proper way to create false/true match conditions
     false_id_match = "not id:*"
     true_id_match = "id:*"
     kernel = map_dependency_maps(

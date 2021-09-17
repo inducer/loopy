@@ -81,7 +81,7 @@ from loopy.transform.iname import (
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
         set_instruction_priority,
-        add_dependency, add_dependency_v2,
+        add_dependency,
         remove_instructions,
         replace_instruction_ids,
         tag_instructions,
@@ -216,7 +216,7 @@ __all__ = [
 
         "find_instructions", "map_instructions",
         "set_instruction_priority",
-        "add_dependency", "add_dependency_v2",
+        "add_dependency",
         "remove_instructions",
         "replace_instruction_ids",
         "tag_instructions",

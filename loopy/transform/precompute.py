@@ -1077,7 +1077,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         from loopy.schedule.checker.utils import (
             make_dep_map,
             append_mark_to_strings,
-            remove_dim_by_name,
+            remove_dims_by_name,
             add_and_name_isl_dims,
             insert_and_name_isl_dims,
         )
@@ -1126,8 +1126,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                 non_shared_inames = set(usage_inames) - shared_inames
                 # Remove inames from old out dims that won't appear in new out dims
                 for non_shared_iname in non_shared_inames:
-                    new_dep = remove_dim_by_name(
-                        new_dep, dim_type.out, non_shared_iname)
+                    new_dep = remove_dims_by_name(
+                        new_dep, dim_type.out, [non_shared_iname])
 
                 # These new out inames will take on full domain values
                 assert (
@@ -1152,8 +1152,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                 # {{{ Old dep might have been self-dep, set stmt var correctly
 
                 # add and remove stmt dim
-                new_dep = remove_dim_by_name(
-                    new_dep, dim_type.out, STATEMENT_VAR_NAME)
+                new_dep = remove_dims_by_name(
+                    new_dep, dim_type.out, [STATEMENT_VAR_NAME])
                 new_dep = insert_and_name_isl_dims(
                     new_dep, dim_type.out, [STATEMENT_VAR_NAME], 0)
                 # set stmt dim value
@@ -1165,14 +1165,16 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                 # }}}
 
                 # Add this dep: dependee->fetch : dep
-                kernel = lp.add_dependency_v2(
-                    kernel, fetch_stmt_id, dependee_id, new_dep)
+                kernel = lp.add_dependency(
+                    kernel, "id:%s" % (fetch_stmt_id),
+                    ("id:%s" % (dependee_id), new_dep))
 
                 # }}}
 
         # Add other new dep from above: fetch->usage
-        kernel = lp.add_dependency_v2(
-            kernel, usage_stmt_id, fetch_stmt_id, dep_usage_on_fetch)
+        kernel = lp.add_dependency(
+            kernel, "id:%s" % (usage_stmt_id),
+            ("id:%s" % (fetch_stmt_id), dep_usage_on_fetch))
 
     """
     # }}}

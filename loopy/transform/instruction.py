@@ -98,11 +98,24 @@ def set_instruction_priority(kernel, insn_match, priority):
 
 @for_each_kernel
 def add_dependency(kernel, insn_match, depends_on):
-    """Add the instruction dependency *dependency* to the instructions matched
+    """Add dependency contained in *depends_on* to the instructions matched
     by *insn_match*.
 
-    *insn_match* and *depends_on* may be any instruction id match understood by
-    :func:`loopy.match.parse_match`.
+    :arg kernel: A :class:`loopy.kernel.LoopKernel`.
+
+    :arg insn_match: An instruction id match understood by
+        :func:`loopy.match.parse_match` identifying the statement to which the
+        dependency will be added.
+
+    :arg depends_on: A two-tuple containing an instruction id match understood by
+        :func:`loopy.match.parse_match` identifying the dependee statement(s),
+        and an class:`islpy.Map` from each instance of the dependee
+        statement(s) to all instances of the depender statement(s) that must occur
+        later. For backward compatability, *depends_on* may also be an
+        instruction id match identifying dependee statement ids to be added to
+        `stmt.depends_on` for any stmt matching *insn_match*.
+
+    :returns: The updated :class:`loopy.kernel.LoopKernel` with the new dependency.
 
     .. versionchanged:: 2016.3
 
@@ -110,28 +123,44 @@ def add_dependency(kernel, insn_match, depends_on):
         be not just ID but also match expression.
     """
 
-    if isinstance(depends_on, str) and depends_on in kernel.id_to_insn:
-        added_deps = frozenset([depends_on])
+    # Determine whether we received legacy or contemporary dependency
+    if isinstance(depends_on, tuple):
+        dep_map = depends_on[1]
+        depends_on = depends_on[0]
     else:
-        added_deps = frozenset(
-                dep.id for dep in find_instructions_in_single_kernel(kernel,
-                    depends_on))
+        dep_map = None
 
-    if not added_deps:
+    if isinstance(depends_on, str) and depends_on in kernel.id_to_insn:
+        dependee_ids = frozenset([depends_on])
+    else:
+        dependee_ids = frozenset(
+                dependee.id for dependee in find_instructions_in_single_kernel(
+                    kernel, depends_on))
+
+    if not dependee_ids:
         raise LoopyError("no instructions found matching '%s' "
                 "(to add as dependencies)" % depends_on)
 
     matched = [False]
 
-    def add_dep(insn):
-        new_deps = insn.depends_on
-        matched[0] = True
-        if new_deps is None:
-            new_deps = added_deps
-        else:
-            new_deps = new_deps | added_deps
-
-        return insn.copy(depends_on=new_deps)
+    if dep_map is None:
+        # Handle legacy dependencies
+        def add_dep(insn):
+            new_deps = insn.depends_on  # Set of dependee ids
+            matched[0] = True
+            if new_deps is None:
+                new_deps = dependee_ids
+            else:
+                new_deps = new_deps | dependee_ids
+            return insn.copy(depends_on=new_deps)
+    else:
+        # Handle contemporary dependencies
+        def add_dep(stmt):
+            new_deps_dict = stmt.dependencies  # Mapping of dependee ids to dep maps
+            matched[0] = True
+            for dependee_id in dependee_ids:
+                new_deps_dict.setdefault(dependee_id, []).append(dep_map)
+            return stmt.copy(dependencies=new_deps_dict)
 
     result = map_instructions(kernel, insn_match, add_dep)
 
@@ -144,7 +173,7 @@ def add_dependency(kernel, insn_match, depends_on):
 # }}}
 
 
-# {{{ add/map dependencies v2
+# {{{ map dependencies v2
 
 # Terminiology:
 # stmtX.dependencies:  # <- "stmt dependencies" = full dict of deps
@@ -263,58 +292,6 @@ def map_stmt_dependencies(kernel, stmt_match, f):
         return stmt.copy(dependencies=new_deps)
 
     return map_instructions(kernel, stmt_match, _update_deps)
-
-# }}}
-
-
-# {{{ add_dependency_v2
-
-@for_each_kernel
-def add_dependency_v2(
-        kernel, stmt_id, depends_on_id, new_dependency):
-    """Add the statement-instance dependency *new_dependency* to the statement with
-    id `stmt_id`.
-
-    :arg kernel: A :class:`loopy.kernel.LoopKernel`.
-
-    :arg stmt_id: The :class:`str` statement identifier of the statement to
-        which the dependency will be added.
-
-    :arg depends_on_id: The :class:`str` identifier of the statement that is
-        depended on, i.e., the statement with statement instances that must
-        happen before those of `stmt_id`.
-
-    :arg new_dependency: An class:`islpy.Map` from each instance of the first
-        statement to all instances of the second statement that must occur
-        later.
-
-    :returns: The updated :class:`loopy.kernel.LoopKernel` with the new dependency.
-
-    """
-
-    # FIXME Make this allow multiple deps and/or multiple stmts so that
-    # these can all be in one pass through the instructions
-
-    if stmt_id not in kernel.id_to_insn:
-        raise LoopyError("No instructions found matching '%s',"
-                "cannot add dependency %s->%s"
-                % (stmt_id, depends_on_id, stmt_id))
-    if depends_on_id not in kernel.id_to_insn:
-        raise LoopyError("No instructions found matching '%s',"
-                "cannot add dependency %s->%s"
-                % (depends_on_id, depends_on_id, stmt_id))
-
-    # Create func used to update stmt.dependencies
-    # (func to pass to map_stmt_dependencies)
-    def _add_dep_to_dict(stmt_deps, stmt):
-        # stmt_deps: dict mapping depends-on ids to dep maps
-        # (expected func takes stmt param but in this case we don't need it)
-        stmt_deps.setdefault(depends_on_id, []).append(new_dependency)
-        return stmt_deps
-
-    result = map_stmt_dependencies(kernel, "id:%s" % (stmt_id), _add_dep_to_dict)
-
-    return result
 
 # }}}
 

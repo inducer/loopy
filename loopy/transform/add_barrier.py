@@ -118,8 +118,8 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
         dep_v2 = make_dep_map(
             f"{{ [{in_space_str}] -> [{out_space_str}] : {constraint_str} }}",
             knl_with_domains=new_kernel)
-        from loopy import add_dependency_v2
-        new_kernel = add_dependency_v2(new_kernel, id, insn_before_id, dep_v2)
+        new_kernel = add_dependency(
+            new_kernel, "id:"+id, ("id:"+insn_before_id, dep_v2))
 
     return new_kernel
 

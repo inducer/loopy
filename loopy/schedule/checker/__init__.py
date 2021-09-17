@@ -27,6 +27,7 @@ def get_pairwise_statement_orderings(
         knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=False,
         ):
     r"""For each statement pair in a subset of all statement pairs found in a
     linearized kernel, determine the (relative) order in which the statement
@@ -108,17 +109,22 @@ def get_pairwise_statement_orderings(
     # {{{ Find any EnterLoop inames that are tagged as concurrent
     # so that get_pairwise_statement_orderings_inner() knows to ignore them
     # (In the future, this should only include inames tagged with 'vec'.)
+
+    # FIXME Consider just putting this ilp/vec logic inside
+    # get_pairwise_statement_orderings_inner; passing these in as
+    # 'loops_to_ignore' made more sense when we were just dealing with the
+    # intra-thread case.
     from loopy.schedule.checker.utils import (
         partition_inames_by_concurrency,
         get_EnterLoop_inames,
     )
     conc_inames, _ = partition_inames_by_concurrency(knl)
     enterloop_inames = get_EnterLoop_inames(lin_items)
-    conc_loop_inames = conc_inames & enterloop_inames
+    ilp_and_vec_inames = conc_inames & enterloop_inames
 
     # The only concurrent EnterLoop inames should be Vec and ILP
     from loopy.kernel.data import (VectorizeTag, IlpBaseTag)
-    for conc_iname in conc_loop_inames:
+    for conc_iname in ilp_and_vec_inames:
         # Assert that there exists an ilp or vectorize tag (out of the
         # potentially multiple other tags on this concurrent iname).
         assert any(
@@ -136,7 +142,8 @@ def get_pairwise_statement_orderings(
         knl,
         lin_items,
         stmt_id_pairs,
-        loops_to_ignore=conc_loop_inames,
+        ilp_and_vec_inames=ilp_and_vec_inames,
+        perform_closure_checks=perform_closure_checks,
         )
 
     # }}}
@@ -149,6 +156,7 @@ def get_pairwise_statement_orderings(
 def find_unsatisfied_dependencies(
         knl,
         lin_items=None,
+        stop_on_first_violation=True,
         ):
     """For each statement (:class:`loopy.InstructionBase`) found in a
     preprocessed kernel, determine which dependencies, if any, have been
@@ -165,6 +173,9 @@ def find_unsatisfied_dependencies(
         this routine during linearization, a truncated (i.e. partial)
         linearization may be passed through this argument. If not provided,
         `knl.linearization` will be used.
+
+    :arg stop_on_first_violation: A :class:`bool` determining whether to stop
+        checking dependencies once the first unsatisfied dependency is found.
 
     :returns: A list of unsatisfied dependencies, each represented as a
         :class:`collections.namedtuple` containing the following:
@@ -195,7 +206,7 @@ def find_unsatisfied_dependencies(
 
     # {{{ Create map from before->after statement id pairs to dependency maps
 
-    # To minimize time complexity, all pairwise SIOs will be created
+    # For efficiency, all pairwise SIOs will be created
     # in one pass, which first requires finding all pairs of statements that
     # are connected by at least one dependency.
     # We will also later need to collect all deps for each statement pair,
@@ -265,17 +276,23 @@ def find_unsatisfied_dependencies(
             # }}}
 
             # Check dependency
-            if not aligned_dep_map.is_subset(
+            if not aligned_dep_map <= (
                     pworder.sio_intra_thread |
                     pworder.sio_intra_group |
                     pworder.sio_global
                     ):
+                # FIXME This could be done by computing (via intersection)
+                # intra-thread, intra-group, and global parts of aligned_dep_map
+                # and demanding that each is a subset of the corresponding sio.
+                # Determine whether this would be more efficient, and if so, do
+                # it.
 
                 unsatisfied_deps.append(UnsatisfiedDependencyInfo(
                     stmt_id_pair, aligned_dep_map, pworder))
 
-                # Could break here if we only care about correctness and don't
-                # need to find all unsatisfied deps
+                # Break here if stop_on_first_violation==True
+                if stop_on_first_violation:
+                    break
 
     # }}}
 
