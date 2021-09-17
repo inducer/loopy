@@ -326,7 +326,7 @@ def _gather_blex_ordering_info(
     blex ordering map defining the blex ordering for all statement pairs,
     rather than separate (smaller) lex ordering maps for each pair
 
-    :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
+    :arg knl: A preprocessed :class:`loopy.LoopKernel` containing the
         linearization items that will be used to create the SIOs. This
         kernel will be used to get the domains associated with the inames
         used in the statements.
@@ -953,7 +953,7 @@ def get_pairwise_statement_orderings_inner(
       if the two statement instances in a given before-after pair are executed
       within different work-groups.
 
-    :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
+    :arg knl: A preprocessed :class:`loopy.LoopKernel` containing the
         linearization items that will be used to create the SIOs. This
         kernel will be used to get the domains associated with the inames
         used in the statements, and to determine which inames have been
