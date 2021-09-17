@@ -1,6 +1,8 @@
 """
 .. autofunction:: get_pairwise_statement_orderings
 
+.. autofunction:: find_unsatisfied_dependencies
+
 .. automodule:: loopy.schedule.checker.schedule
 """
 
