@@ -26,8 +26,17 @@ Automatic Testing
 
 .. autofunction:: auto_test_vs_ref
 
+Checking Dependencies at the Statement-Instance Level
+-----------------------------------------------------
+
+See also :func:`~loopy.add_dependency` for how to add dependencies.
+
+.. automodule:: loopy.schedule.checker
+
 Troubleshooting
 ---------------
+
+.. currentmodule:: loopy
 
 Printing :class:`LoopKernel` objects
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
