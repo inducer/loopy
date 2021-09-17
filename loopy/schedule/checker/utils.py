@@ -197,7 +197,6 @@ def append_mark_to_isl_map_var_names(old_isl_map, dt, mark):
 
 
 def append_mark_to_strings(strings, mark):
-    assert isinstance(strings, list)
     return [s+mark for s in strings]
 
 
@@ -338,6 +337,21 @@ def sorted_union_of_names_in_isl_sets(
 
     # Sorting is not necessary, but keeps results consistent between runs
     return sorted(inames)
+
+
+def convert_map_to_set(isl_map):
+    # (also works for spaces)
+    n_in_dims = len(isl_map.get_var_names(dim_type.in_))
+    n_out_dims = len(isl_map.get_var_names(dim_type.out))
+    return isl_map.move_dims(
+        dim_type.in_, n_in_dims, dim_type.out, 0, n_out_dims
+        ).domain(), n_in_dims, n_out_dims
+
+
+def convert_set_back_to_map(isl_set, n_old_in_dims, n_old_out_dims):
+    return isl.Map.from_domain(
+        isl_set).move_dims(
+            dim_type.out, 0, dim_type.in_, n_old_in_dims, n_old_out_dims)
 
 
 def create_symbolic_map_from_tuples(

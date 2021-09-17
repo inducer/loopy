@@ -253,57 +253,100 @@ def find_loop_nest_around_map(kernel):
     return result
 
 
-def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
+def find_loop_insn_dep_map(
+        kernel, loop_nest_with_map, loop_nest_around_map,
+        simplified_depends_on_graph):
     """Returns a dictionary mapping inames to other instruction ids that need to
     be scheduled before the iname should be eligible for scheduling.
+
+    :arg loop_nest_with_map: Dictionary mapping iname1 to a set containing
+        iname2 iff either iname1 nests around iname2 or iname2 nests around
+        iname1
+
+    :arg loop_nest_around_map: Dictionary mapping iname1 to a set containing
+        iname2 iff iname2 nests around iname1
+
+    :arg simplified_depends_on_graph: Dictionary mapping depender statement IDs
+        to sets of dependee statement IDs, as produced by
+        `loopy.schedule.checker.dependency.filter_deps_by_intersection_with_SAME`,
+        which will be used to acquire depndee statement ids if
+        `kernel.options.use_dependencies_v2` is 'True' (otherwise old
+        dependencies in insn.depends_on will be used).
+
     """
 
     result = {}
 
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag
+    # For each insn, examine its inames (`iname`) and its dependees' inames
+    # (`dep_iname`) to determine which instructions must be scheduled before
+    # entering the iname loop.
+    # Create result dict, which maps iname to instructions that must be
+    # scheduled prior to entering iname.
+
+    # For each insn, loop over its non-concurrent inames (`iname`)
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
+
+            # (Ignore concurrent inames)
             if kernel.iname_tags_of_type(iname, ConcurrentTag):
                 continue
-
+            # Let iname_dep be the set of ids associated with result[iname]
+            # (if iname is not already in result, add iname as a key)
             iname_dep = result.setdefault(iname, set())
 
-            for dep_insn_id in insn.depends_on:
+            # Loop over instructions on which insn depends (dep_insn)
+            # and determine whether dep_insn must be schedued before
+            # iname, in which case add its id to iname_dep (result[iname])
+            if kernel.options.use_dependencies_v2:
+                dependee_ids = simplified_depends_on_graph.get(insn.id, set())
+            else:
+                dependee_ids = insn.depends_on
+
+            for dep_insn_id in dependee_ids:
                 if dep_insn_id in iname_dep:
                     # already depending, nothing to check
                     continue
 
-                dep_insn = kernel.id_to_insn[dep_insn_id]
-                dep_insn_inames = dep_insn.within_inames
+                dep_insn = kernel.id_to_insn[dep_insn_id]  # Dependee
+                dep_insn_inames = dep_insn.within_inames  # Dependee inames
 
+                # Check whether insn's iname is also in dependee inames
                 if iname in dep_insn_inames:
-                    # Nothing to be learned, dependency is in loop over iname
+                    # Nothing to be learned, dependee is inside loop over iname
                     # already.
                     continue
 
                 # To make sure dep_insn belongs outside of iname, we must prove
-                # that all inames that dep_insn will be executed in nest
+                # that all inames in which dep_insn will be executed nest
                 # outside of the loop over *iname*. (i.e. nested around, or
                 # before).
 
+                # Loop over each of the dependee's inames (dep_insn_iname)
                 may_add_to_loop_dep_map = True
                 for dep_insn_iname in dep_insn_inames:
+
+                    # If loop_nest_around_map says dep_insn_iname nests around
+                    # iname, dep_insn_iname is guaranteed to nest outside of
+                    # iname, we're safe, so continue
                     if dep_insn_iname in loop_nest_around_map[iname]:
-                        # dep_insn_iname is guaranteed to nest outside of iname
-                        # -> safe.
                         continue
 
+                    # If dep_insn_iname is concurrent, continue
+                    # (parallel tags don't really nest, so disregard them here)
                     if kernel.iname_tags_of_type(dep_insn_iname,
                                 (ConcurrentTag, IlpBaseTag)):
-                        # Parallel tags don't really nest, so we'll disregard
-                        # them here.
                         continue
 
+                    # If loop_nest_with_map says dep_insn_iname does not nest
+                    # inside or around iname, it must be nested separately;
+                    # we're safe, so continue
                     if dep_insn_iname not in loop_nest_with_map.get(iname, []):
-                        # dep_insn_iname does not nest with iname, so its nest
-                        # must occur outside.
                         continue
 
+                    # If none of the three cases above succeeds for any
+                    # dep_insn_iname in dep_insn_inames, we cannot add dep_insn
+                    # to iname's set of insns in result dict.
                     may_add_to_loop_dep_map = False
                     break
 
@@ -318,6 +361,9 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                             dep_insn=dep_insn_id,
                             insn=insn.id))
 
+                # If at least one of the three cases above succeeds for every
+                # dep_insn_iname, we can add dep_insn to iname's set of insns
+                # in result dict.
                 iname_dep.add(dep_insn_id)
 
     return result
@@ -333,16 +379,24 @@ def group_insn_counts(kernel):
     return result
 
 
-def gen_dependencies_except(kernel, insn_id, except_insn_ids):
-    insn = kernel.id_to_insn[insn_id]
-    for dep_id in insn.depends_on:
+def gen_dependencies_except(
+        kernel, insn_id, except_insn_ids, simplified_depends_on_graph):
+
+    # Get dependee IDs
+    if kernel.options.use_dependencies_v2:
+        dependee_ids = simplified_depends_on_graph.get(insn_id, set())
+    else:
+        dependee_ids = kernel.id_to_insn[insn_id].depends_on
+
+    for dep_id in dependee_ids:
 
         if dep_id in except_insn_ids:
             continue
 
         yield dep_id
 
-        yield from gen_dependencies_except(kernel, dep_id, except_insn_ids)
+        yield from gen_dependencies_except(
+            kernel, dep_id, except_insn_ids, simplified_depends_on_graph)
 
 
 def get_priority_tiers(wanted, priorities):
@@ -630,6 +684,7 @@ class SchedulerState(ImmutableRecord):
         A list of loopy :class:`Instruction` objects in topologically sorted
         order with instruction priorities as tie breaker.
     """
+    # TODO document simplified_depends_on_graph
 
     @property
     def last_entered_loop(self):
@@ -641,12 +696,20 @@ class SchedulerState(ImmutableRecord):
 # }}}
 
 
-def get_insns_in_topologically_sorted_order(kernel):
+def get_insns_in_topologically_sorted_order(
+        kernel, simplified_depends_on_graph):
     from pytools.graph import compute_topological_order
 
     rev_dep_map = {insn.id: set() for insn in kernel.instructions}
     for insn in kernel.instructions:
-        for dep in insn.depends_on:
+
+        if kernel.options.use_dependencies_v2:
+            dependee_ids = simplified_depends_on_graph.get(
+                insn.id, set())
+        else:
+            dependee_ids = insn.depends_on
+
+        for dep in dependee_ids:
             rev_dep_map[dep].add(insn.id)
 
     # For breaking ties, we compare the features of an intruction
@@ -680,7 +743,8 @@ def get_insns_in_topologically_sorted_order(kernel):
 
 # {{{ schedule_as_many_run_insns_as_possible
 
-def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
+def schedule_as_many_run_insns_as_possible(
+        sched_state, template_insn, use_dependencies_v2):
     """
     Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
     all reachable instructions that are similar to *template_insn*. We define
@@ -748,7 +812,13 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
 
         if is_similar_to_template(insn):
             # check reachability
-            if not (insn.depends_on & ignored_unscheduled_insn_ids):
+            if use_dependencies_v2:
+                dependee_ids = sched_state.simplified_depends_on_graph.get(
+                    insn.id, set())
+            else:
+                dependee_ids = insn.depends_on
+
+            if not (dependee_ids & ignored_unscheduled_insn_ids):
                 if insn.id in sched_state.prescheduled_insn_ids:
                     if next_preschedule_insn_id() == insn.id:
                         preschedule.pop(0)
@@ -937,7 +1007,14 @@ def generate_loop_schedules_internal(
     for insn_id in insn_ids_to_try:
         insn = kernel.id_to_insn[insn_id]
 
-        is_ready = insn.depends_on <= sched_state.scheduled_insn_ids
+        # make sure dependees have been scheduled
+        if kernel.options.use_dependencies_v2:
+            dependee_ids = sched_state.simplified_depends_on_graph.get(
+                insn.id, set())
+        else:
+            dependee_ids = insn.depends_on
+
+        is_ready = dependee_ids <= sched_state.scheduled_insn_ids
 
         if not is_ready:
             continue
@@ -1068,8 +1145,8 @@ def generate_loop_schedules_internal(
                     insns_in_topologically_sorted_order=new_toposorted_insns,
                     )
 
-            new_sched_state = schedule_as_many_run_insns_as_possible(new_sched_state,
-                    insn)
+            new_sched_state = schedule_as_many_run_insns_as_possible(
+                new_sched_state, insn, kernel.options.use_dependencies_v2)
 
             # Don't be eager about entering/leaving loops--if progress has been
             # made, revert to top of scheduler and see if more progress can be
@@ -1116,8 +1193,10 @@ def generate_loop_schedules_internal(
 
                         # check if there's a dependency of insn that needs to be
                         # outside of last_entered_loop.
-                        for subdep_id in gen_dependencies_except(kernel, insn_id,
-                                sched_state.scheduled_insn_ids):
+                        for subdep_id in gen_dependencies_except(
+                                kernel, insn_id,
+                                sched_state.scheduled_insn_ids,
+                                sched_state.simplified_depends_on_graph):
                             want = (kernel.insn_inames(subdep_id)
                                     - sched_state.parallel_inames)
                             if (
@@ -1754,10 +1833,10 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
     return insn_ids_alive_at_scope[-1]
 
 
-def append_barrier_or_raise_error(kernel_name, schedule, dep, verify_only):
+def append_barrier_or_raise_error(
+        kernel_name, schedule, dep, verify_only, use_dependencies_v2=False):
     if verify_only:
-        from loopy.diagnostic import MissingBarrierError
-        raise MissingBarrierError(
+        err_str = (
                 "%s: Dependency '%s' (for variable '%s') "
                 "requires synchronization "
                 "by a %s barrier (add a 'no_sync_with' "
@@ -1769,6 +1848,14 @@ def append_barrier_or_raise_error(kernel_name, schedule, dep, verify_only):
                         tgt=dep.target.id, src=dep.source.id),
                     dep.variable,
                     dep.var_kind))
+        # TODO need to update all this with v2 deps. For now, make this a warning.
+        # Do full fix for this later
+        if use_dependencies_v2:
+            from warnings import warn
+            warn(err_str)
+        else:
+            from loopy.diagnostic import MissingBarrierError
+            raise MissingBarrierError(err_str)
     else:
         comment = "for {} ({})".format(
                 dep.variable, dep.dep_descr.format(
@@ -1836,7 +1923,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
                         dep_tracker.gen_dependencies_with_target_at(insn)
                         for insn in loop_head):
                     append_barrier_or_raise_error(
-                            kernel.name, result, dep, verify_only)
+                            kernel.name, result, dep, verify_only,
+                            kernel.options.use_dependencies_v2)
                     # This barrier gets inserted outside the loop, hence it is
                     # executed unconditionally and so kills all sources before
                     # the loop.
@@ -1869,7 +1957,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
                 for dep in dep_tracker.gen_dependencies_with_target_at(
                         sched_item.insn_id):
                     append_barrier_or_raise_error(
-                            kernel.name, result, dep, verify_only)
+                            kernel.name, result, dep, verify_only,
+                            kernel.options.use_dependencies_v2)
                     dep_tracker.discard_all_sources()
                     break
                 result.append(sched_item)
@@ -1998,13 +2087,32 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
+
+    # {{{  Create simplified dependency graph with edge from *depender* to
+    # *dependee* iff intersection (SAME_map & DEP_map) is not empty
+
+    if kernel.options.use_dependencies_v2:
+        from loopy.schedule.checker.dependency import (
+            filter_deps_by_intersection_with_SAME,
+        )
+
+        # Get dep graph edges with edges FROM depender TO dependee
+        simplified_depends_on_graph = filter_deps_by_intersection_with_SAME(kernel)
+    else:
+        simplified_depends_on_graph = None
+
+    # }}}
+
     sched_state = SchedulerState(
             kernel=kernel,
             loop_nest_around_map=loop_nest_around_map,
             loop_insn_dep_map=find_loop_insn_dep_map(
                 kernel,
                 loop_nest_with_map=loop_nest_with_map,
-                loop_nest_around_map=loop_nest_around_map),
+                loop_nest_around_map=loop_nest_around_map,
+                simplified_depends_on_graph=simplified_depends_on_graph,
+                ),
+            simplified_depends_on_graph=simplified_depends_on_graph,
             breakable_inames=ilp_inames,
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
@@ -2034,7 +2142,8 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
             active_group_counts={},
 
             insns_in_topologically_sorted_order=(
-                get_insns_in_topologically_sorted_order(kernel)),
+                get_insns_in_topologically_sorted_order(
+                    kernel, simplified_depends_on_graph)),
     )
 
     schedule_gen_kwargs = {}

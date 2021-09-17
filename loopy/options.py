@@ -95,6 +95,13 @@ class Options(ImmutableRecord):
         Whether loopy should issue an error if a dependency
         expression does not match any instructions in the kernel.
 
+    .. attribute:: use_dependencies_v2
+
+        Whether loopy should take into account the new statement-instance-level
+        dependencies during linearization, rather than the old, statement-level
+        dependencies.  New dependencies are stored in the *dependencies*
+        attribute of each statement.
+
     .. rubric:: Invocation-related options
 
     .. attribute:: skip_arg_checks
@@ -242,6 +249,7 @@ class Options(ImmutableRecord):
                 disable_global_barriers=kwargs.get("disable_global_barriers",
                     False),
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
+                use_dependencies_v2=kwargs.get("use_dependencies_v2", False),
 
                 enforce_variable_access_ordered=kwargs.get(
                     "enforce_variable_access_ordered", True),
