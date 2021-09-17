@@ -114,8 +114,21 @@ class InstructionBase(ImmutableRecord, Taggable):
         statement), to lists (one list per key) of class:`islpy.Map`\ s that
         express dependency relationships by mapping each instance of the
         dependee statement to all instances of this statement that must occur
-        later. This dict expresses the new statement-instance-level
-        dependencies and will eventually replace :attr:`depends_on`.
+        later.
+
+        The `in_` space of a dependency map must contain one dimension per
+        iname in :attr:`within_inames` for the dependee, and the `out` space
+        must contain one dimension per iname in :attr:`within_inames` for this
+        statement. The dimension names should match the corresponding iname,
+        with those in the `in_` space suffixed by
+        :data:`loopy.schedule.checker.schedule.BEFORE_MARK`. Reduction inames
+        are not considered (for now). Only dependencies involving instances of
+        statements within the domain on either end of the map are expected to
+        be represented. Creation of these maps may be facilitated
+        with :func:`loopy.schedule.checker.utils.make_dep_map`.
+
+        This dict expresses the new statement-instance-level dependencies and
+        will eventually replace :attr:`depends_on`.
 
     .. attribute:: depends_on_is_final
 
