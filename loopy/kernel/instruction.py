@@ -108,7 +108,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     .. attribute:: dependencies
 
-        A :class:`dict` mapping :attr:`id` values of :class:`InstructionBase`
+        A :class:`dict` mapping :attr:`id` values
         instances, each referring to a dependee statement (i.e., a statement
         with statement instances that must be executed before instances of this
         statement), to lists (one list per key) of class:`islpy.Map`\ s that
