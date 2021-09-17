@@ -76,12 +76,12 @@ from loopy.transform.iname import (
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
         has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn, add_inames_for_unused_hw_axes)
+        add_inames_to_insn, add_inames_for_unused_hw_axes, map_domain)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
         set_instruction_priority,
-        add_dependency, add_dependency_v2,
+        add_dependency,
         remove_instructions,
         replace_instruction_ids,
         tag_instructions,
@@ -205,7 +205,7 @@ __all__ = [
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
         "has_schedulable_iname_nesting", "get_iname_duplication_options",
-        "add_inames_to_insn", "add_inames_for_unused_hw_axes",
+        "add_inames_to_insn", "add_inames_for_unused_hw_axes", "map_domain",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
@@ -216,7 +216,7 @@ __all__ = [
 
         "find_instructions", "map_instructions",
         "set_instruction_priority",
-        "add_dependency", "add_dependency_v2",
+        "add_dependency",
         "remove_instructions",
         "replace_instruction_ids",
         "tag_instructions",

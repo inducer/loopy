@@ -72,6 +72,8 @@ __doc__ = """
 
 .. autofunction:: add_inames_to_insn
 
+.. autofunction:: map_domain
+
 .. autofunction:: add_inames_for_unused_hw_axes
 
 """
@@ -1828,6 +1830,436 @@ def add_inames_to_insn(kernel, inames, insn_match):
             new_instructions.append(insn)
 
     return kernel.copy(instructions=new_instructions)
+
+# }}}
+
+
+# {{{ map_domain and associated functions
+
+# {{{ _MapDomainMapper
+
+class _MapDomainMapper(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, new_inames, substitutions):
+        super(_MapDomainMapper, self).__init__(rule_mapping_context)
+
+        self.old_inames = frozenset(substitutions)
+        self.new_inames = new_inames
+
+        self.substitutions = substitutions
+
+    def map_reduction(self, expr, expn_state):
+        red_overlap = frozenset(expr.inames) & self.old_inames
+        arg_ctx_overlap = frozenset(expn_state.arg_context) & self.old_inames
+        if red_overlap:
+            if len(red_overlap) != len(self.old_inames):
+                raise LoopyError("Reduction '%s' involves a part "
+                        "of the map domain inames. Reductions must "
+                        "either involve all or none of the map domain "
+                        "inames." % str(expr))
+
+            if arg_ctx_overlap:
+                if arg_ctx_overlap == red_overlap:
+                    # All variables are shadowed by context, that's OK.
+                    return super(_MapDomainMapper, self).map_reduction(
+                            expr, expn_state)
+                else:
+                    raise LoopyError("Reduction '%s' has"
+                            "some of the reduction variables affected "
+                            "by the map_domain shadowed by context. "
+                            "Either all or none must be shadowed."
+                            % str(expr))
+
+            new_inames = list(expr.inames)
+            for old_iname in self.old_inames:
+                new_inames.remove(old_iname)
+            new_inames.extend(self.new_inames)
+
+            from loopy.symbolic import Reduction
+            return Reduction(expr.operation, tuple(new_inames),
+                        self.rec(expr.expr, expn_state),
+                        expr.allow_simultaneous)
+        else:
+            return super(_MapDomainMapper, self).map_reduction(expr, expn_state)
+
+    def map_variable(self, expr, expn_state):
+        if (expr.name in self.old_inames
+                and expr.name not in expn_state.arg_context):
+            return self.substitutions[expr.name]
+        else:
+            return super(_MapDomainMapper, self).map_variable(expr, expn_state)
+
+# }}}
+
+
+# {{{ _find_aff_subst_from_map(iname, isl_map)
+
+def _find_aff_subst_from_map(iname, isl_map):
+    if not isinstance(isl_map, isl.BasicMap):
+        raise RuntimeError("isl_map must be a BasicMap")
+
+    dt, dim_idx = isl_map.get_var_dict()[iname]
+
+    assert dt == dim_type.in_
+
+    # Force isl to solve for only this iname on its side of the map, by
+    # projecting out all other "in" variables.
+    isl_map = isl_map.project_out(dt, dim_idx+1, isl_map.dim(dt)-(dim_idx+1))
+    isl_map = isl_map.project_out(dt, 0, dim_idx)
+    dim_idx = 0
+
+    # Convert map to set to avoid "domain of affine expression should be a set".
+    # The old "in" variable will be the last of the out_dims.
+    new_dim_idx = isl_map.dim(dim_type.out)
+    isl_map = isl_map.move_dims(
+            dim_type.out, isl_map.dim(dim_type.out),
+            dt, dim_idx, 1)
+    isl_map = isl_map.range()  # now a set
+    dt = dim_type.set
+    dim_idx = new_dim_idx
+    del new_dim_idx
+
+    for cns in isl_map.get_constraints():
+        if cns.is_equality() and cns.involves_dims(dt, dim_idx, 1):
+            coeff = cns.get_coefficient_val(dt, dim_idx)
+            cns_zeroed = cns.set_coefficient_val(dt, dim_idx, 0)
+            if cns_zeroed.involves_dims(dt, dim_idx, 1):
+                # not suitable, constraint still involves dim, perhaps in a div
+                continue
+
+            if coeff.is_one():
+                return -cns_zeroed.get_aff()
+            elif coeff.is_negone():
+                return cns_zeroed.get_aff()
+            else:
+                # not suitable, coefficient does not have unit coefficient
+                continue
+
+    raise LoopyError("No suitable equation for '%s' found" % iname)
+
+# }}}
+
+
+# {{{ _apply_identity_for_missing_map_dims(mapping, desired_dims)
+
+def _apply_identity_for_missing_map_dims(mapping, desired_dims):
+    """For every variable v in *desired_dims* that is not found in the
+    input space for *mapping*, add input dimension v, output dimension
+    v_'proxy'_, and constraint v = v_'proxy'_ to the mapping. Also return a
+    list of the (v, v_'proxy'_) pairs.
+
+    :arg mapping: An :class:`islpy.Map`.
+
+    :arg desired_dims: An iterable of :class:`str` specifying the names of the
+        desired map input dimensions.
+
+    :returns: A two-tuple containing the mapping with the new dimensions and
+        constraints added, and a list of two-tuples of :class:`str` values
+        specifying the (v, v_'proxy'_) pairs.
+
+    """
+
+    # If the transform map in map_domain (below) does not contain all the
+    # inames in the iname domain (set) to which it is applied, the missing
+    # inames must be added to the transform map so that intersect_domain()
+    # doesn't remove them from the iname domain when the map is applied.
+
+    # No two map dimension names can match, so we create a unique name for each
+    # new variable in the output dimension by appending _'proxy'_, and return a
+    # list of the (v, v_'proxy'_) pairs so that the proxy dims can be
+    # identified and replaced later.
+
+    # (Apostrophes are not allowed in inames, so this suffix
+    # will not match any existing inames. This function is also used on
+    # dependency maps, which may contain variable names consisting of an iname
+    # suffixed with a single apostrophe.)
+
+    from loopy.isl_helpers import (
+        add_and_name_dims, add_eq_constraint_from_names)
+
+    # {{{ Find any missing vars and add them to the input and output space
+
+    missing_dims = list(
+        set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
+    augmented_mapping = add_and_name_dims(
+        mapping, dim_type.in_, missing_dims)
+
+    missing_dims_proxies = [d+"_'prox'_" for d in missing_dims]
+    assert not set(missing_dims_proxies) & set(
+        augmented_mapping.get_var_dict().keys())
+
+    augmented_mapping = add_and_name_dims(
+        augmented_mapping, dim_type.out, missing_dims_proxies)
+
+    proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies))
+
+    # }}}
+
+    # {{{ Add identity constraint (v = v_'proxy'_) for each new pair of dims
+
+    for real_iname, proxy_iname in proxy_name_pairs:
+        augmented_mapping = add_eq_constraint_from_names(
+            augmented_mapping, proxy_iname, real_iname)
+
+    # }}}
+
+    return augmented_mapping, proxy_name_pairs
+
+# }}}
+
+
+# {{{ _error_if_any_iname_in_constraint
+
+def _error_if_any_iname_in_constraint(
+        inames, nest_constraints, constraint_descriptor_str):
+    """Raise informative error if any iname in *inames* is constrained by any
+    nest constraint in *nest_constraints*.
+    """
+    # (This function is only used when new machinery from
+    # new-loop-nest-constraints branch is detected.)
+
+    for constraint in nest_constraints:
+        for tier in constraint:
+            for iname in inames:
+                if tier.contains(iname):
+                    raise ValueError(
+                        "%s constraint %s contains iname(s) "
+                        "transformed by map in map_domain."
+                        % (constraint_descriptor_str, constraint))
+
+# }}}
+
+
+# {{{ map_domain
+
+@for_each_kernel
+def map_domain(kernel, transform_map):
+    """Transform an iname domain by applying a mapping from existing inames to
+    new inames.
+
+    :arg transform_map: A bijective :class:`islpy.Map` from existing inames to
+        new inames. To be applicable to a kernel domain, all input inames in
+        the map must be found in the domain. The map must be applicable to
+        exactly one domain found in *kernel.domains*.
+
+    """
+
+    # FIXME: Express _split_iname_backend in terms of this
+    #   Missing/deleted for now:
+    #     - slab processing
+    #     - priorities processing
+    # FIXME: Express affine_map_inames in terms of this, deprecate
+
+    # Make sure the map is bijective
+    if not transform_map.is_bijective():
+        raise LoopyError("transform_map must be bijective")
+
+    transform_map_out_dims = frozenset(transform_map.get_var_dict(dim_type.out))
+    transform_map_in_dims = frozenset(transform_map.get_var_dict(dim_type.in_))
+
+    # {{{ Make sure that none of the mapped inames are involved in loop priorities
+
+    # kernel.loop_priority is being replaced with kernel.loop_nest_constraints,
+    # handle both attributes.
+    if hasattr(kernel, "loop_priority") and kernel.loop_priority:
+        for prio in kernel.loop_priority:
+            if set(prio) & transform_map_in_dims:
+                raise ValueError(
+                    "Loop priority %s contains iname(s) transformed by "
+                    "map %s in map_domain." % (prio, transform_map))
+    if hasattr(kernel, "loop_nest_constraints") and kernel.loop_nest_constraints:
+        _error_if_any_iname_in_constraint(
+            transform_map_in_dims,
+            kernel.loop_nest_constraints.must_nest, "Must-nest")
+        _error_if_any_iname_in_constraint(
+            transform_map_in_dims,
+            kernel.loop_nest_constraints.must_not_nest, "Must-not-nest")
+
+    # }}}
+
+    # {{{ Solve for representation of old inames in terms of new
+
+    substitutions = {}
+    var_substitutions = {}
+    applied_iname_rewrites = kernel.applied_iname_rewrites[:]
+
+    from loopy.symbolic import aff_to_expr
+    from pymbolic import var
+    for iname in transform_map_in_dims:
+        subst_from_map = aff_to_expr(
+            _find_aff_subst_from_map(iname, transform_map))
+        substitutions[iname] = subst_from_map
+        var_substitutions[var(iname)] = subst_from_map
+
+    applied_iname_rewrites.append(var_substitutions)
+    del var_substitutions
+
+    # }}}
+
+    # {{{ Function to apply mapping to one set
+
+    def process_set(s):
+        """Return the transformed set. Assume that map is applicable to this
+        set."""
+
+        # {{{ Align dims of transform_map and s so that map can be applied
+
+        # Create a map whose input space matches the set
+        map_with_s_domain = isl.Map.from_domain(s)
+
+        # {{{ Check for missing map dims and add them
+
+        # For every iname v in the domain that is *not* found in the input
+        # space of the transform map, add input dimension v, output dimension
+        # v_'proxy'_, and constraint v = v_'proxy'_ to the transform map.
+        # Otherwise, v will be dropped from the domain when the map is applied.
+
+        augmented_transform_map, proxy_name_pairs = \
+            _apply_identity_for_missing_map_dims(
+                transform_map, s.get_var_names(dim_type.set))
+
+        # }}}
+
+        # {{{ Align transform map input dims with set dims
+
+        # FIXME: Make an exported/documented interface of this in islpy
+
+        dim_types = [dim_type.param, dim_type.in_, dim_type.out]
+        # Variables found in iname domain set
+        s_names = {
+                map_with_s_domain.get_dim_name(dt, i)
+                for dt in dim_types
+                for i in range(map_with_s_domain.dim(dt))
+                }
+        # Variables found in transform map
+        map_names = {
+                augmented_transform_map.get_dim_name(dt, i)
+                for dt in dim_types
+                for i in range(augmented_transform_map.dim(dt))
+                }
+        # (_align_dim_type uses these two sets to determine which names are in
+        # both the obj and template)
+
+        from islpy import _align_dim_type
+        aligned_map = _align_dim_type(
+                dim_type.param,
+                augmented_transform_map, map_with_s_domain, False,
+                map_names, s_names)
+        aligned_map = _align_dim_type(
+                dim_type.in_,
+                aligned_map, map_with_s_domain, False,
+                map_names, s_names)
+
+        # }}}
+
+        # }}}
+
+        # Apply the transform map to the domain
+        new_s = aligned_map.intersect_domain(s).range()
+
+        # Now rename any proxy dims back to their original names
+
+        from loopy.isl_helpers import find_and_rename_dims
+        new_s = find_and_rename_dims(
+            new_s, dim_type.set,
+            dict([pair[::-1] for pair in proxy_name_pairs]))  # (reverse pair order)
+
+        return new_s
+
+        # FIXME: Revive _project_out_only_if_all_instructions_in_within
+
+    # }}}
+
+    # {{{ Apply the transform map to exactly one domain
+
+    map_applied_to_one_dom = False
+    new_domains = []
+    transform_map_rules = (
+        "Transform map must be applicable to exactly one domain. "
+        "A transform map is applicable to a domain if its input "
+        "inames are a subset of the domain inames.")
+
+    for old_domain in kernel.domains:
+
+        # Make sure transform map is applicable to this set. Then transform.
+
+        if not transform_map_in_dims <= frozenset(old_domain.get_var_dict()):
+
+            # Map not applicable to this set because map transforms at least
+            # one iname that is not present in the set. Don't transform.
+            new_domains.append(old_domain)
+            continue
+
+        elif map_applied_to_one_dom:
+
+            # Map is applicable to this domain, but this map was
+            # already applied. Error.
+            raise LoopyError(
+                "Transform map %s was applicable to more than one domain. %s"
+                % (transform_map, transform_map_rules))
+
+        else:
+
+            # Map is applicable to this domain, and this map has not yet
+            # been applied. Transform.
+            new_domains.append(process_set(old_domain))
+            map_applied_to_one_dom = True
+
+    # If we get this far, either the map has been applied to 1 domain (good)
+    # or the map could not be applied to any domain, which should produce an error.
+    if not map_applied_to_one_dom:
+        raise LoopyError(
+            "Transform map %s was not applicable to any domain. %s"
+            % (transform_map, transform_map_rules))
+
+    # }}}
+
+    # {{{ Update within_inames for each statement
+
+    # If we get this far, we know that the map was applied to exactly one domain,
+    # and that all the inames in transform_map_in_dims were transformed to
+    # inames in transform_map_out_dims. However, it's still possible that for some
+    # statements, stmt.within_inames will contain at least one but not all of the
+    # transformed inames (transform_map_in_dims).
+    # In this case, it's not clear what within_inames should be. Therefore, we
+    # require that if any transformed inames are found in stmt.within_inames,
+    # ALL transformed inames must be found in stmt.within_inames.
+
+    new_stmts = []
+    for stmt in kernel.instructions:
+        overlap = transform_map_in_dims & stmt.within_inames
+        if overlap:
+            if len(overlap) != len(transform_map_in_dims):
+                raise LoopyError("Statement '%s' is within only a part "
+                    "of the mapped inames in transformation map %s. "
+                    "Statements must be within all or none of the mapped "
+                    "inames." % (stmt.id, transform_map))
+
+            stmt = stmt.copy(within_inames=(
+                stmt.within_inames - transform_map_in_dims) | transform_map_out_dims)
+        else:
+            # Leave stmt unmodified
+            pass
+
+        new_stmts.append(stmt)
+
+    # }}}
+
+    kernel = kernel.copy(
+            domains=new_domains,
+            instructions=new_stmts,
+            applied_iname_rewrites=applied_iname_rewrites)
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    ins = _MapDomainMapper(rule_mapping_context,
+            transform_map_out_dims, substitutions)
+
+    kernel = ins.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(kernel)
+
+    return kernel
+
+# }}}
 
 # }}}
 

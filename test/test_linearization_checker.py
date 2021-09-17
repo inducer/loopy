@@ -46,6 +46,10 @@ from loopy.schedule.checker.schedule import (
 from loopy.schedule.checker.utils import (
     ensure_dim_names_match_and_align,
     make_dep_map,
+    prettier_map_string,
+)
+from loopy.schedule.checker import (
+    get_pairwise_statement_orderings,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,7 +58,6 @@ logger = logging.getLogger(__name__)
 # {{{ Helper functions for map creation/handling
 
 def _align_and_compare_maps(maps):
-    from loopy.schedule.checker.utils import prettier_map_string
 
     for map1, map2 in maps:
         # Align maps and compare
@@ -212,6 +215,7 @@ def test_intra_thread_pairwise_schedule_creation():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -428,6 +432,7 @@ def test_pairwise_schedule_creation_with_hw_par_tags():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -569,6 +574,7 @@ def test_intra_thread_statement_instance_ordering():
         proc_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # {{{ Relationship between stmt_a and stmt_b
@@ -705,6 +711,7 @@ def test_statement_instance_ordering_with_hw_par_tags():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # Create string for representing parallel iname condition in sio
@@ -786,6 +793,7 @@ def test_statement_instance_ordering_of_barriers():
         lin_knl,
         lin_items,
         stmt_id_pairs,
+        perform_closure_checks=True,
         )
 
     # Create string for representing parallel iname SAME condition in sio
@@ -816,7 +824,6 @@ def test_statement_instance_ordering_of_barriers():
     # {{{ Relationship between gbar and stmt_a
 
     # intra-thread case
-
     sio_intra_thread_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
@@ -829,22 +836,22 @@ def test_statement_instance_ordering_of_barriers():
         )
 
     # intra-group case
-    # TODO figure out what this should be
-    """
+    # (this test also confirms that our SIO construction accounts for the fact
+    # that global barriers *also* syncronize across threads *within* a group,
+    # which is why the before->after condition below is *not*
+    # "and (ii > ii' or (ii = ii' and jj > 0))")
     sio_intra_group_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
         "0 <= i,ii,i',ii' < pi and 0 <= j,jj < pj "  # domains
         "and i = i' "  # GID inames must be same
-        "and (ii > ii' or (ii = ii' and jj = 0))"  # before->after condtion
+        "and ii >= ii'"  # before->after condtion
         "}}".format(
             STATEMENT_VAR_NAME,
             )
         )
-    """
 
     # global case
-
     sio_global_exp = _isl_map_with_marked_dims(
         "[pi, pj] -> {{ "
         "[{0}'=0, i', ii'] -> [{0}=1, i, ii, j, jj] : "
@@ -1044,7 +1051,7 @@ def test_sios_and_schedules_with_barriers():
 
     stmt_id_pairs = [("stmt_j1", "stmt_2"), ("stmt_1", "stmt_i0")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
 
     # {{{ Relationship between stmt_j1 and stmt_2
 
@@ -1062,6 +1069,9 @@ def test_sios_and_schedules_with_barriers():
 
     # {{{ Intra-group
 
+    # (this test also confirms that our sched/SIO construction accounts for the
+    # fact that global barriers *also* syncronize across threads *within* a
+    # group, which is why dim 2 below is asigned the value 3 instead of 2)
     sched_stmt_j1_intra_group_exp = isl.Map(
         "[ij_start, ij_end, lg_end] -> {"
         "[%s=0, i, j, l0, l1, g0] -> [%s] : "
@@ -1069,7 +1079,7 @@ def test_sios_and_schedules_with_barriers():
         % (
             STATEMENT_VAR_NAME,
             _lex_point_string(
-                ["2", "i", "2", "j", "1"],  # lex points
+                ["2", "i", "3", "j", "1"],  # lex points
                 lid_inames=["l0", "l1"], gid_inames=["g0"],
                 ),
             ij_bound_str,
@@ -1367,7 +1377,7 @@ def test_sios_and_schedules_with_vec_and_barriers():
 
     stmt_id_pairs = [("stmt_1", "stmt_2")]
     pworders = get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
 
     # {{{ Relationship between stmt_1 and stmt_2
 
@@ -1591,16 +1601,194 @@ def test_sios_with_matmul():
 
     # Generate pairwise ordering info for every pair
     get_pairwise_statement_orderings(
-        lin_knl, lin_items, stmt_id_pairs)
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+# }}}
+
+
+# {{{ test_blex_map_transitivity_with_triangular_domain
+
+def test_blex_map_transitivity_with_triangular_domain():
+
+    assumptions = "i_start + 1 <= ijk_end"
+    knl = lp.make_kernel(
+        [
+            "{[i,j,k]: i_start<=i<ijk_end and i<=j<ijk_end and i+j<=k<ijk_end}",
+        ],
+        """
+        for i
+            <>temp0 = 0  {id=stmt_i0}
+            ... lbarrier  {id=stmt_b0,dep=stmt_i0}
+            <>temp1 = 1  {id=stmt_i1,dep=stmt_b0}
+            for j
+                <>tempj0 = 0  {id=stmt_j0,dep=stmt_i1}
+                ... lbarrier {id=stmt_jb0,dep=stmt_j0}
+                ... gbarrier {id=stmt_jbb0,dep=stmt_j0}
+                <>tempj1 = 0  {id=stmt_j1,dep=stmt_jb0}
+                <>tempj2 = 0  {id=stmt_j2,dep=stmt_j1}
+                for k
+                    <>tempk0 = 0  {id=stmt_k0,dep=stmt_j2}
+                    ... lbarrier {id=stmt_kb0,dep=stmt_k0}
+                    <>tempk1 = 0  {id=stmt_k1,dep=stmt_kb0}
+                end
+            end
+            <>temp2 = 0  {id=stmt_i2,dep=stmt_j0}
+        end
+        """,
+        assumptions=assumptions,
+        lang_version=(2018, 2)
+        )
+
+    ref_knl = knl
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("stmt_i0", "stmt_i1"),
+        ("stmt_i1", "stmt_j0"),
+        ("stmt_j0", "stmt_j1"),
+        ("stmt_j1", "stmt_j2"),
+        ("stmt_j2", "stmt_k0"),
+        ("stmt_k0", "stmt_k1"),
+        ("stmt_k1", "stmt_i2"),
+        ]
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # Now try it with concurrent i loop
+    knl = lp.tag_inames(knl, "i:g.0")
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("stmt_i0", "stmt_i1"),
+        ("stmt_i1", "stmt_j0"),
+        ("stmt_j0", "stmt_j1"),
+        ("stmt_j1", "stmt_j2"),
+        ("stmt_j2", "stmt_k0"),
+        ("stmt_k0", "stmt_k1"),
+        ("stmt_k1", "stmt_i2"),
+        ]
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # Now try it with concurrent i and j loops
+    knl = lp.tag_inames(knl, "j:g.1")
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("stmt_i0", "stmt_i1"),
+        ("stmt_i1", "stmt_j0"),
+        ("stmt_j0", "stmt_j1"),
+        ("stmt_j1", "stmt_j2"),
+        ("stmt_j2", "stmt_k0"),
+        ("stmt_k0", "stmt_k1"),
+        ("stmt_k1", "stmt_i2"),
+        ]
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # Now try it with concurrent i and k loops
+    knl = ref_knl
+    knl = lp.tag_inames(knl, {"i": "g.0", "k": "g.1"})
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("stmt_i0", "stmt_i1"),
+        ("stmt_i1", "stmt_j0"),
+        ("stmt_j0", "stmt_j1"),
+        ("stmt_j1", "stmt_j2"),
+        ("stmt_j2", "stmt_k0"),
+        ("stmt_k0", "stmt_k1"),
+        ("stmt_k1", "stmt_i2"),
+        ]
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # FIXME create some expected sios and compare
+
+# }}}
+
+
+# {{{ test_blex_map_transitivity_with_duplicate_conc_inames
+
+def test_blex_map_transitivity_with_duplicate_conc_inames():
+
+    knl = lp.make_kernel(
+        [
+            "{[i,j,ii,jj]: 0 <= i,j,jj < n and i <= ii < n}",
+            "{[k, kk]: 0 <= k,kk < n}",
+        ],
+        """
+        for i
+            for ii
+                <> si = 0  {id=si}
+                ... lbarrier {id=bari, dep=si}
+            end
+        end
+        for j
+            for jj
+                <> sj = 0  {id=sj, dep=si}
+                ... lbarrier {id=barj, dep=sj}
+            end
+        end
+        for k
+            for kk
+                <> sk = 0  {id=sk, dep=sj}
+                ... lbarrier {id=bark, dep=sk}
+            end
+        end
+        """,
+        assumptions="0 < n",
+        lang_version=(2018, 2)
+        )
+
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.0", "k": "l.0"})
+
+    # Get a linearization
+    lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
+
+    stmt_id_pairs = [
+        ("si", "si"),
+        ("si", "sj"),
+        ("si", "sk"),
+        ("sj", "sj"),
+        ("sj", "sk"),
+        ("sk", "sk"),
+        ]
+
+    # Set perform_closure_checks=True and get the orderings
+    get_pairwise_statement_orderings(
+        lin_knl, lin_items, stmt_id_pairs, perform_closure_checks=True)
+
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_intra_thread))
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_intra_group))
+    # print(prettier_map_string(pw_sios[("si", "sj")].sio_global))
+
+    # FIXME create some expected sios and compare
 
 # }}}
 
 
 # {{{ Dependency tests
 
-# {{{ test_add_dependency_v2
+# {{{ test_add_dependency_with_new_deps
 
-def test_add_dependency_v2():
+def test_add_dependency_with_new_deps():
+    """Use add_dependency to add new deps to kernels and make sure that the
+    correct dep is being added to the correct instruction. Also make sure that
+    these deps can be succesfully checked for violation. Also, while we're
+    here, test to make sure make_dep_map() produces the correct result."""
 
     # Make kernel and use OLD deps to control linearization order for now
     i_range_str = "0 <= i < pi"
@@ -1626,6 +1814,16 @@ def test_add_dependency_v2():
         "[pi] -> {{ [i'] -> [i] : i > i' and {0} "
         "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
+    knl = lp.add_dependency(knl, "id:stmt_b", ("id:stmt_a", dep_b_on_a))
+
+    # Make sure knl instructions all have the expected deps
+    for stmt in knl["loopy_kernel"].instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, ],
+                }
+        else:
+            assert not stmt.dependencies
 
     # {{{ Test make_dep_map while we're here
 
@@ -1642,12 +1840,19 @@ def test_add_dependency_v2():
 
     # }}}
 
-    knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a)
+    # Add a second dependency to stmt_b
+    dep_b_on_a_2 = make_dep_map(
+        "[pi] -> {{ [i'] -> [i] : i = i' "
+        "and {0}"
+        "}}".format(assumptions_str),
+        knl_with_domains=knl["loopy_kernel"])
+    knl = lp.add_dependency(knl, "id:stmt_b", ("id:stmt_a", dep_b_on_a_2))
 
+    # Make sure knl instructions all have the expected deps
     for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
             assert stmt.dependencies == {
-                "stmt_a": [dep_b_on_a, ],
+                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
                 }
         else:
             assert not stmt.dependencies
@@ -1673,16 +1878,6 @@ def test_add_dependency_v2():
 
     # }}}
 
-    knl = lp.add_dependency_v2(knl, "stmt_b", "stmt_a", dep_b_on_a_2)
-
-    for stmt in knl["loopy_kernel"].instructions:
-        if stmt.id == "stmt_b":
-            assert stmt.dependencies == {
-                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
-                }
-        else:
-            assert not stmt.dependencies
-
     # Add dependencies to stmt_c
 
     dep_c_on_a = make_dep_map(
@@ -1695,9 +1890,10 @@ def test_add_dependency_v2():
         "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
 
-    knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_a", dep_c_on_a)
-    knl = lp.add_dependency_v2(knl, "stmt_c", "stmt_b", dep_c_on_b)
+    knl = lp.add_dependency(knl, "id:stmt_c", ("id:stmt_a", dep_c_on_a))
+    knl = lp.add_dependency(knl, "id:stmt_c", ("id:stmt_b", dep_c_on_b))
 
+    # Make sure knl instructions all have the expected deps
     for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
             assert stmt.dependencies == {
@@ -1711,7 +1907,8 @@ def test_add_dependency_v2():
         else:
             assert not stmt.dependencies
 
-    # Now make sure deps are satisfied
+    # {{{ Now make sure deps can be checked. These should be satisfied.
+
     lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
@@ -1719,10 +1916,13 @@ def test_add_dependency_v2():
 
     assert not unsatisfied_deps
 
-    # Make sure dep checking also works with just linearized kernel
+    # Make sure dep checking also works when only the linearized kernel is
+    # provided to find_unsatisfied_dependencies()
     unsatisfied_deps = lp.find_unsatisfied_dependencies(lin_knl)
 
     assert not unsatisfied_deps
+
+    # }}}
 
 # }}}
 
@@ -1730,9 +1930,9 @@ def test_add_dependency_v2():
 # {{{ test_make_dep_map
 
 def test_make_dep_map():
-    # This is also tested inside other test functions, but
-    # here we specifically test case where the statement inames
-    # don't match
+    """Make sure make_dep_map() produces the desired result. This is also
+    tested inside other test functions, but here we specifically test cases
+    where the statement inames don't match."""
 
     # Make kernel and use OLD deps to control linearization order for now
     i_range_str = "0 <= i < n"
@@ -1778,6 +1978,8 @@ def test_make_dep_map():
 # {{{ test_new_dependencies_finite_diff:
 
 def test_new_dependencies_finite_diff():
+    """Test find_unsatisfied_dependencies() using several variants of a finite
+    difference kernel, some of which violate dependencies."""
 
     # Define kernel
     knl = lp.make_kernel(
@@ -1787,33 +1989,27 @@ def test_new_dependencies_finite_diff():
     knl = lp.add_dtypes(
         knl, {"u": np.float32, "dx": np.float32, "dt": np.float32})
 
-    # Define dependency
-    xt_range_str = "0 <= x < nx and 0 <= t < nt"
-    xt_range_str_p = "0 <= x' < nx and 0 <= t' < nt"
+    # Define and add dependency
     dep = make_dep_map(
         "[nx,nt] -> { [x', t'] -> [x, t] : "
         "((x = x' and t = t'+2) or "
         " (x'-1 <= x <= x'+1 and t = t' + 1)) }",
         self_dep=True, knl_with_domains=knl["loopy_kernel"])
+    knl = lp.add_dependency(knl, "id:stmt", ("id:stmt", dep))
 
     # {{{ Test make_dep_map while we're here
 
     dep_test = make_dep_map(
-        "[nx,nt] -> {{ [x', t'] -> [x, t] : "
+        "[nx,nt] -> { [x', t'] -> [x, t] : "
         "((x = x' and t = t'+2) or "
         " (x'-1 <= x <= x'+1 and t = t' + 1)) and "
-        "{0} and {1} "
-        "}}".format(
-            xt_range_str,
-            xt_range_str_p,
-            ),
+        "0 <= x < nx and 0 <= t < nt and "
+        "0 <= x' < nx and 0 <= t' < nt }",
         self_dep=True)
 
     _align_and_compare_maps([(dep, dep_test)])
 
     # }}}
-
-    knl = lp.add_dependency_v2(knl, "stmt", "stmt", dep)
 
     ref_knl = knl
 
@@ -1847,7 +2043,7 @@ def test_new_dependencies_finite_diff():
     lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
+        proc_knl, lin_items, stop_on_first_violation=False)
 
     assert len(unsatisfied_deps) == 1
 
@@ -1870,7 +2066,7 @@ def test_new_dependencies_finite_diff():
         assert not isinstance(lin_item, Barrier)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
+        proc_knl, lin_items, stop_on_first_violation=False)
 
     assert len(unsatisfied_deps) == 1
 

@@ -108,14 +108,37 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     .. attribute:: dependencies
 
-        A :class:`dict` mapping :attr:`id` values of :class:`InstructionBase`
+        A :class:`dict` mapping :attr:`id` values
         instances, each referring to a dependee statement (i.e., a statement
         with statement instances that must be executed before instances of this
         statement), to lists (one list per key) of class:`islpy.Map`\ s that
         express dependency relationships by mapping each instance of the
         dependee statement to all instances of this statement that must occur
-        later. This dict expresses the new statement-instance-level
-        dependencies and will eventually replace the `depends_on` attribute.
+        later.
+
+        The name of the first dimension in the `in_` and `out` spaces must be
+        :data:`loopy.schedule.checker.schedule.STATEMENT_VAR_NAME`, suffixed by
+        :data:`loopy.schedule.checker.schedule.BEFORE_MARK` for the `in_`
+        dimension. This dimension in the `in_` space must be assigned the value
+        0, and in the `out` space it must be assigned 0 for self-dependencies
+        (dependencies describing instances of a statement that must happen
+        before other instances of the same statement) and 1 otherwise.
+
+        In addition to the statement dimension, the `in_` space of a dependency
+        map must contain one dimension per iname in :attr:`within_inames` for
+        the dependee, and the `out` space must contain one dimension per iname
+        in :attr:`within_inames` for this statement. The dimension names should
+        match the corresponding iname, with those in the `in_` space suffixed
+        by :data:`loopy.schedule.checker.schedule.BEFORE_MARK`. Reduction
+        inames are not considered (for now). Only dependencies involving
+        instances of statements within the domain on either end of the map are
+        expected to be represented.
+
+        Creation of these maps may be facilitated with
+        :func:`loopy.schedule.checker.utils.make_dep_map`.
+
+        This dict expresses the new statement-instance-level dependencies and
+        will eventually replace :attr:`depends_on`.
 
     .. attribute:: depends_on_is_final
 
@@ -479,7 +502,9 @@ class InstructionBase(ImmutableRecord, Taggable):
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
-        # FIXME Do something with self.dependencies?
+        self.dependencies = {
+            intern(dependee_id): deps
+            for dependee_id, deps in self.dependencies.items()}
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
