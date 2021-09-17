@@ -1,3 +1,44 @@
+"""
+.. data:: LIN_CHECK_IDENTIFIER_PREFIX
+
+    The :class:`str` prefix for identifiers involved in linearization
+    checking.
+
+.. data:: LEX_VAR_PREFIX
+
+    The :class:`str` prefix for the variables representing the
+    dimensions in the lexicographic ordering used in a pairwise schedule. E.g.,
+    a prefix of ``_lp_linchk_lex`` might yield lexicographic dimension
+    variables ``_lp_linchk_lex0``, ``_lp_linchk_lex1``, ``_lp_linchk_lex2``.
+    Cf.  :ref:`reserved-identifiers`.
+
+.. data:: STATEMENT_VAR_NAME
+
+    The :class:`str` name for the statement-identifying dimension of maps
+    representing schedules and statement instance orderings.
+
+.. data:: LTAG_VAR_NAMES
+
+    An array of :class:`str` names for map dimensions carrying values for local
+    (intra work-group) thread identifiers in maps representing schedules and
+    statement instance orderings.
+
+.. data:: GTAG_VAR_NAMES
+
+    An array of :class:`str` names for map dimensions carrying values for group
+    identifiers in maps representing schedules and statement instance orderings.
+
+.. data:: BEFORE_MARK
+
+    The :class:`str` identifier to be appended to input dimension names in
+    maps representing schedules and statement instance orderings.
+
+.. autoclass:: SpecialLexPointWRTLoop
+.. autoclass:: StatementOrdering
+.. autofunction:: get_pairwise_statement_orderings_inner
+"""
+
+
 __copyright__ = "Copyright (C) 2019 James Stevens"
 
 __license__ = """
@@ -39,44 +80,6 @@ dim_type = isl.dim_type
 
 
 # {{{ Constants
-
-__doc__ = """
-
-.. data:: LIN_CHECK_IDENTIFIER_PREFIX
-
-    The :class:`str` prefix for identifiers involved in linearization
-    checking.
-
-.. data:: LEX_VAR_PREFIX
-
-    The :class:`str` prefix for the variables representing the
-    dimensions in the lexicographic ordering used in a pairwise schedule. E.g.,
-    a prefix of ``_lp_linchk_lex`` might yield lexicographic dimension
-    variables ``_lp_linchk_lex0``, ``_lp_linchk_lex1``, ``_lp_linchk_lex2``.
-    Cf.  :ref:`reserved-identifiers`.
-
-.. data:: STATEMENT_VAR_NAME
-
-    The :class:`str` name for the statement-identifying dimension of maps
-    representing schedules and statement instance orderings.
-
-.. data:: LTAG_VAR_NAME
-
-    An array of :class:`str` names for map dimensions carrying values for local
-    (intra work-group) thread identifiers in maps representing schedules and
-    statement instance orderings.
-
-.. data:: GTAG_VAR_NAME
-
-    An array of :class:`str` names for map dimensions carrying values for group
-    identifiers in maps representing schedules and statement instance orderings.
-
-.. data:: BEFORE_MARK
-
-    The :class:`str` identifier to be appended to input dimension names in
-    maps representing schedules and statement instance orderings.
-
-"""
 
 LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
 LEX_VAR_PREFIX = "%slex" % (LIN_CHECK_IDENTIFIER_PREFIX)
@@ -315,13 +318,71 @@ def _gather_blex_ordering_info(
         conc_iname_constraint_dicts,
         perform_closure_checks=False,
         ):
-    """For the given sync_kind ("local" or "global"), create a mapping from
+    r"""For the given sync_kind ("local" or "global"), create a mapping from
     statement instances to blex space (dict), as well as a mapping
     defining the blex ordering (isl map from blex space -> blex space)
 
     Note that, unlike in the intra-thread case, there will be a single
     blex ordering map defining the blex ordering for all statement pairs,
     rather than separate (smaller) lex ordering maps for each pair
+
+    :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
+        linearization items that will be used to create the SIOs. This
+        kernel will be used to get the domains associated with the inames
+        used in the statements.
+
+    :sync_kind: A :class:`str` indicating whether we are creating the
+        intra-group blex ordering ("local") or the global blex ordering
+        ("global").
+
+    :arg lin_items: A list of :class:`loopy.schedule.ScheduleItem`
+        (to be renamed to `loopy.schedule.LinearizationItem`) containing
+        all linearization items for which SIOs will be
+        created. To allow usage of this routine during linearization, a
+        truncated (i.e. partial) linearization may be passed through this
+        argument
+
+    :arg seq_loops_with_barriers: A set of :class:`str` inames identifying the
+        non-concurrent loops that contain barriers whose scope affects this
+        blex ordering. I.e., global barriers affect the global blex ordering,
+        and both global *and* local barriers affect the intra-group blex
+        ordering.
+
+    :arg max_seq_loop_depth: A :class:`int` containing the maximum number of
+        nested non-concurrent loops among those found in
+        *seq_loops_with_barriers*.
+
+    :arg conc_inames: The set of all :class:`str` inames tagged with a
+        :class:`loopy.kernel.data.ConcurrentTag`.
+
+    :arg loop_bounds: A :class:`dict` mapping each non-concurrent iname to a
+        two-tuple containing two :class:`islpy.Set`\ s representing the lower
+        and upper bounds for the iname.
+
+    :arg all_stmt_ids: A set of all statement identifiers to include in the
+        mapping from statements to blex time.
+
+    :arg all_conc_lex_dim_names: A list containing the subset of the
+        :data:`LTAG_VAR_NAMES` and :data:`GTAG_VAR_NAMES` used in this kernel.
+
+    :arg gid_lex_dim_names: A list containing the subset of the
+        :data:`GTAG_VAR_NAMES` used in this kernel.
+
+    :arg conc_iname_constraint_dicts: A set of :class:`dict`\ s that will be
+        passed to :func:`islpy.Constratint.eq_from_names` to create constraints
+        that set each of the concurrent lex dimensions equal to its
+        corresponding iname.
+
+    :arg perform_closure_checks: A :class:`bool` specifying whether to perform
+        checks ensuring that the blex map that results after we subtract some
+        pairs from the full blex map is transitively closed.
+
+    :returns: A :class:`dict` mapping each statement id in :attr:`all_stmt_ids`
+        to a tuple representing its instances in blex time, an
+        :class:`islpy.Map` imposing an ordering on the points in blex time, and
+        a list of the blex dimension names corresponding to sequential
+        execution (i.e., not the :data:`LTAG_VAR_NAMES` and :data:`GTAG_VAR_NAMES`)
+
     """
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier, RunInstruction)
     from loopy.schedule.checker.lexicographic_order_map import (

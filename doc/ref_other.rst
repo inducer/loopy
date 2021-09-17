@@ -31,12 +31,14 @@ Checking Dependencies at the Statement-Instance Level
 
 .. autofunction:: add_dependency
 
-.. autofunction:: get_pairwise_statement_orderings
+.. automodule:: loopy.schedule.checker
 
 .. autofunction:: find_unsatisfied_dependencies
 
 Troubleshooting
 ---------------
+
+.. currentmodule:: loopy
 
 Printing :class:`LoopKernel` objects
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
