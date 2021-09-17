@@ -2024,7 +2024,7 @@ def test_new_dependencies_finite_diff():
     lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
+        proc_knl, lin_items, stop_on_first_violation=False)
 
     assert len(unsatisfied_deps) == 1
 
@@ -2047,7 +2047,7 @@ def test_new_dependencies_finite_diff():
         assert not isinstance(lin_item, Barrier)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
-        proc_knl, lin_items)
+        proc_knl, lin_items, stop_on_first_violation=False)
 
     assert len(unsatisfied_deps) == 1
 

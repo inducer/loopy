@@ -156,6 +156,7 @@ def get_pairwise_statement_orderings(
 def find_unsatisfied_dependencies(
         knl,
         lin_items=None,
+        stop_on_first_violation=True,
         ):
     """For each statement (:class:`loopy.InstructionBase`) found in a
     preprocessed kernel, determine which dependencies, if any, have been
@@ -172,6 +173,9 @@ def find_unsatisfied_dependencies(
         this routine during linearization, a truncated (i.e. partial)
         linearization may be passed through this argument. If not provided,
         `knl.linearization` will be used.
+
+    :arg stop_on_first_violation: A :class:`bool` determining whether to stop
+        checking dependencies once the first unsatisfied dependency is found.
 
     :returns: A list of unsatisfied dependencies, each represented as a
         :class:`collections.namedtuple` containing the following:
@@ -281,8 +285,9 @@ def find_unsatisfied_dependencies(
                 unsatisfied_deps.append(UnsatisfiedDependencyInfo(
                     stmt_id_pair, aligned_dep_map, pworder))
 
-                # Could break here if we only care about correctness and don't
-                # need to find all unsatisfied deps
+                # Break here if stop_on_first_violation==True
+                if stop_on_first_violation:
+                    break
 
     # }}}
 
