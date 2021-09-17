@@ -4,6 +4,7 @@
 .. autofunction:: find_unsatisfied_dependencies
 
 .. automodule:: loopy.schedule.checker.schedule
+.. automodule:: loopy.schedule.checker.utils
 """
 
 
@@ -188,15 +189,16 @@ def find_unsatisfied_dependencies(
         checking dependencies once the first unsatisfied dependency is found.
 
     :returns: A list of unsatisfied dependencies, each represented as a
-        :class:`collections.namedtuple` containing the following:
+        :func:`collections.namedtuple` containing the following:
 
         - `statement_pair`: The (before, after) pair of statement IDs involved
           in the dependency.
         - `dependency`: An class:`islpy.Map` from each instance of the first
           statement to all instances of the second statement that must occur
           later.
-        - `statement_ordering`: A :class:`StatementOrdering` resulting from
-          `lp.get_pairwise_statement_orderings` (defined above).
+        - `statement_ordering`: A
+          :class:`~loopy.schedule.checker.schedule.StatementOrdering`
+          resulting from :func:`get_pairwise_statement_orderings` (defined above).
 
     """
 

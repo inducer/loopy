@@ -1,3 +1,8 @@
+"""
+.. autofunction:: make_dep_map
+"""
+
+
 __copyright__ = "Copyright (C) 2019 James Stevens"
 
 __license__ = """
