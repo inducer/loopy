@@ -2146,21 +2146,21 @@ def test_filtering_deps_by_same():
 
     dep_s5_on_s2_1 = _dep_with_condition(5, 2, "i'= i")
 
-    knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_1)
-    knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_2)
+    knl = lp.add_dependency(knl, "id:s2", ("id:s1", dep_s2_on_s1_1))
+    knl = lp.add_dependency(knl, "id:s2", ("id:s1", dep_s2_on_s1_2))
 
-    knl = lp.add_dependency_v2(knl, "s2", "s2", dep_s2_on_s2_1)
-    knl = lp.add_dependency_v2(knl, "s2", "s2", dep_s2_on_s2_2)
+    knl = lp.add_dependency(knl, "id:s2", ("id:s2", dep_s2_on_s2_1))
+    knl = lp.add_dependency(knl, "id:s2", ("id:s2", dep_s2_on_s2_2))
 
-    knl = lp.add_dependency_v2(knl, "s3", "s2", dep_s3_on_s2_1)
-    knl = lp.add_dependency_v2(knl, "s3", "s2", dep_s3_on_s2_2)
+    knl = lp.add_dependency(knl, "id:s3", ("id:s2", dep_s3_on_s2_1))
+    knl = lp.add_dependency(knl, "id:s3", ("id:s2", dep_s3_on_s2_2))
 
-    knl = lp.add_dependency_v2(knl, "s4", "s3", dep_s4_on_s3_1)
-    knl = lp.add_dependency_v2(knl, "s4", "s3", dep_s4_on_s3_2)
+    knl = lp.add_dependency(knl, "id:s4", ("id:s3", dep_s4_on_s3_1))
+    knl = lp.add_dependency(knl, "id:s4", ("id:s3", dep_s4_on_s3_2))
 
-    knl = lp.add_dependency_v2(knl, "s5", "s4", dep_s5_on_s4_1)
+    knl = lp.add_dependency(knl, "id:s5", ("id:s4", dep_s5_on_s4_1))
 
-    knl = lp.add_dependency_v2(knl, "s5", "s2", dep_s5_on_s2_1)
+    knl = lp.add_dependency(knl, "id:s5", ("id:s2", dep_s5_on_s2_1))
 
     # Filter deps by intersection with SAME
 
@@ -2233,13 +2233,13 @@ def test_linearization_using_simplified_dep_graph():
     # Should create an edge:
     dep_s5_on_s4_1 = _dep_with_condition(5, 4, "i' =i and j' =j and k' =k and m'=m")
 
-    knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_1)
-    knl = lp.add_dependency_v2(knl, "s2", "s1", dep_s2_on_s1_2)
-    knl = lp.add_dependency_v2(knl, "s2", "s2", dep_s2_on_s2_1)
-    knl = lp.add_dependency_v2(knl, "s2", "s2", dep_s2_on_s2_2)
-    knl = lp.add_dependency_v2(knl, "s3", "s2", dep_s3_on_s2_1)
-    knl = lp.add_dependency_v2(knl, "s4", "s3", dep_s4_on_s3_1)
-    knl = lp.add_dependency_v2(knl, "s5", "s4", dep_s5_on_s4_1)
+    knl = lp.add_dependency(knl, "id:s2", ("id:s1", dep_s2_on_s1_1))
+    knl = lp.add_dependency(knl, "id:s2", ("id:s1", dep_s2_on_s1_2))
+    knl = lp.add_dependency(knl, "id:s2", ("id:s2", dep_s2_on_s2_1))
+    knl = lp.add_dependency(knl, "id:s2", ("id:s2", dep_s2_on_s2_2))
+    knl = lp.add_dependency(knl, "id:s3", ("id:s2", dep_s3_on_s2_1))
+    knl = lp.add_dependency(knl, "id:s4", ("id:s3", dep_s4_on_s3_1))
+    knl = lp.add_dependency(knl, "id:s5", ("id:s4", dep_s5_on_s4_1))
 
     # }}}
 
