@@ -101,7 +101,7 @@ def add_dependency(kernel, insn_match, depends_on):
     """Add dependency contained in *depends_on* to the instructions matched
     by *insn_match*.
 
-    :arg kernel: A :class:`loopy.kernel.LoopKernel`.
+    :arg kernel: A :class:`loopy.LoopKernel`.
 
     :arg insn_match: An instruction id match understood by
         :func:`loopy.match.parse_match` identifying the statement to which the
@@ -115,7 +115,7 @@ def add_dependency(kernel, insn_match, depends_on):
         instruction id match identifying dependee statement ids to be added to
         `stmt.depends_on` for any stmt matching *insn_match*.
 
-    :returns: The updated :class:`loopy.kernel.LoopKernel` with the new dependency.
+    :returns: The updated :class:`loopy.LoopKernel` with the new dependency.
 
     .. versionchanged:: 2016.3
 

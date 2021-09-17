@@ -265,7 +265,7 @@ def make_dep_map(s, self_dep=False, knl_with_domains=None):
         If not, the value for the *output* statement identifier dimension will
         be set to 1.
 
-    :arg knl_with_domains: A :class:`loopy.kernel.LoopKernel` containing iname
+    :arg knl_with_domains: A :class:`loopy.LoopKernel` containing iname
         domains that will be used to constrain the inames in the dependency map.
         If provided, the domains for the inames found in the dependency will be
         intersected with their domains expressed in the kernel.

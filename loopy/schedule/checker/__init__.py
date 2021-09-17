@@ -59,7 +59,7 @@ def get_pairwise_statement_orderings(
       if the two statement instances in a given before-after pair are executed
       within different work-groups.
 
-    :arg knl: A preprocessed :class:`loopy.kernel.LoopKernel` containing the
+    :arg knl: A preprocessed :class:`loopy.LoopKernel` containing the
         linearization items that will be used to create the SIOs.
 
     :arg lin_items: A list of :class:`loopy.schedule.ScheduleItem`
@@ -174,7 +174,7 @@ def find_unsatisfied_dependencies(
     violated by the linearization described by `lin_items`, and return these
     dependencies.
 
-    :arg knl: A preprocessed (or linearized) :class:`loopy.kernel.LoopKernel`
+    :arg knl: A preprocessed (or linearized) :class:`loopy.LoopKernel`
         containing the statements (:class:`loopy.InstructionBase`) whose
         dependencies will be checked against the linearization items.
 
