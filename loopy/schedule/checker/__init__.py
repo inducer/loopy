@@ -276,11 +276,16 @@ def find_unsatisfied_dependencies(
             # }}}
 
             # Check dependency
-            if not aligned_dep_map.is_subset(
+            if not aligned_dep_map <= (
                     pworder.sio_intra_thread |
                     pworder.sio_intra_group |
                     pworder.sio_global
                     ):
+                # FIXME This could be done by computing (via intersection)
+                # intra-thread, intra-group, and global parts of aligned_dep_map
+                # and demanding that each is a subset of the corresponding sio.
+                # Determine whether this would be more efficient, and if so, do
+                # it.
 
                 unsatisfied_deps.append(UnsatisfiedDependencyInfo(
                     stmt_id_pair, aligned_dep_map, pworder))
