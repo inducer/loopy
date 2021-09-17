@@ -1781,6 +1781,10 @@ def test_blex_map_transitivity_with_duplicate_conc_inames():
 # {{{ test_add_dependency_with_new_deps
 
 def test_add_dependency_with_new_deps():
+    """Use add_dependency to add new deps to kernels and make sure that the
+    correct dep is being added to the correct instruction. Also make sure that
+    these deps can be succesfully checked for violation. Also, while we're
+    here, test to make sure make_dep_map() produces the correct result."""
 
     # Make kernel and use OLD deps to control linearization order for now
     i_range_str = "0 <= i < pi"
@@ -1804,8 +1808,19 @@ def test_add_dependency_with_new_deps():
     # Add a dependency to stmt_b
     dep_b_on_a = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i > i' "
-        "and {0} }}".format(assumptions_str),
+        "and {0} "
+        "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
+    knl = lp.add_dependency(knl, "id:stmt_b", ("id:stmt_a", dep_b_on_a))
+
+    # Make sure knl instructions all have the expected deps
+    for stmt in knl["loopy_kernel"].instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, ],
+                }
+        else:
+            assert not stmt.dependencies
 
     # {{{ Test make_dep_map while we're here
 
@@ -1821,21 +1836,22 @@ def test_add_dependency_with_new_deps():
 
     # }}}
 
-    knl = lp.add_dependency(knl, "id:stmt_b", ("id:stmt_a", dep_b_on_a))
-
-    for stmt in knl["loopy_kernel"].instructions:
-        if stmt.id == "stmt_b":
-            assert stmt.dependencies == {
-                "stmt_a": [dep_b_on_a, ],
-                }
-        else:
-            assert not stmt.dependencies
-
     # Add a second dependency to stmt_b
     dep_b_on_a_2 = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i = i' "
-        "and {0}}}".format(assumptions_str),
+        "and {0}"
+        "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
+    knl = lp.add_dependency(knl, "id:stmt_b", ("id:stmt_a", dep_b_on_a_2))
+
+    # Make sure knl instructions all have the expected deps
+    for stmt in knl["loopy_kernel"].instructions:
+        if stmt.id == "stmt_b":
+            assert stmt.dependencies == {
+                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
+                }
+        else:
+            assert not stmt.dependencies
 
     # {{{ Test make_dep_map while we're here
 
@@ -1851,31 +1867,24 @@ def test_add_dependency_with_new_deps():
 
     # }}}
 
-    knl = lp.add_dependency(knl, "id:stmt_b", ("id:stmt_a", dep_b_on_a_2))
-
-    for stmt in knl["loopy_kernel"].instructions:
-        if stmt.id == "stmt_b":
-            assert stmt.dependencies == {
-                "stmt_a": [dep_b_on_a, dep_b_on_a_2],
-                }
-        else:
-            assert not stmt.dependencies
-
     # Add dependencies to stmt_c
 
     dep_c_on_a = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i >= i' "
-        "and {0} }}".format(assumptions_str),
+        "and {0} "
+        "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
 
     dep_c_on_b = make_dep_map(
         "[pi] -> {{ [i'] -> [i] : i >= i' "
-        "and {0} }}".format(assumptions_str),
+        "and {0} "
+        "}}".format(assumptions_str),
         knl_with_domains=knl["loopy_kernel"])
 
     knl = lp.add_dependency(knl, "id:stmt_c", ("id:stmt_a", dep_c_on_a))
     knl = lp.add_dependency(knl, "id:stmt_c", ("id:stmt_b", dep_c_on_b))
 
+    # Make sure knl instructions all have the expected deps
     for stmt in knl["loopy_kernel"].instructions:
         if stmt.id == "stmt_b":
             assert stmt.dependencies == {
@@ -1889,7 +1898,8 @@ def test_add_dependency_with_new_deps():
         else:
             assert not stmt.dependencies
 
-    # Now make sure deps are satisfied
+    # {{{ Now make sure deps can be checked. These should be satisfied.
+
     lin_items, proc_knl, lin_knl = _process_and_linearize(knl)
 
     unsatisfied_deps = lp.find_unsatisfied_dependencies(
@@ -1897,10 +1907,13 @@ def test_add_dependency_with_new_deps():
 
     assert not unsatisfied_deps
 
-    # Make sure dep checking also works with just linearized kernel
+    # Make sure dep checking also works when only the linearized kernel is
+    # provided to find_unsatisfied_dependencies()
     unsatisfied_deps = lp.find_unsatisfied_dependencies(lin_knl)
 
     assert not unsatisfied_deps
+
+    # }}}
 
 # }}}
 
@@ -1908,9 +1921,9 @@ def test_add_dependency_with_new_deps():
 # {{{ test_make_dep_map
 
 def test_make_dep_map():
-    # This is also tested inside other test functions, but
-    # here we specifically test case where the statement inames
-    # don't match
+    """Make sure make_dep_map() produces the desired result. This is also
+    tested inside other test functions, but here we specifically test cases
+    where the statement inames don't match."""
 
     # Make kernel and use OLD deps to control linearization order for now
     i_range_str = "0 <= i < n"
@@ -1956,6 +1969,8 @@ def test_make_dep_map():
 # {{{ test_new_dependencies_finite_diff:
 
 def test_new_dependencies_finite_diff():
+    """Test find_unsatisfied_dependencies() using several variants of a finite
+    difference kernel, some of which violate dependencies."""
 
     # Define kernel
     knl = lp.make_kernel(
@@ -1965,32 +1980,27 @@ def test_new_dependencies_finite_diff():
     knl = lp.add_dtypes(
         knl, {"u": np.float32, "dx": np.float32, "dt": np.float32})
 
-    # Define dependency
-    xt_range_str = "0 <= x < nx and 0 <= t < nt"
-    xt_range_str_p = "0 <= x' < nx and 0 <= t' < nt"
+    # Define and add dependency
     dep = make_dep_map(
         "[nx,nt] -> { [x', t'] -> [x, t] : "
         "((x = x' and t = t'+2) or "
         " (x'-1 <= x <= x'+1 and t = t' + 1)) }",
         self_dep=True, knl_with_domains=knl["loopy_kernel"])
+    knl = lp.add_dependency(knl, "id:stmt", ("id:stmt", dep))
 
     # {{{ Test make_dep_map while we're here
 
     dep_test = make_dep_map(
-        "[nx,nt] -> {{ [x', t'] -> [x, t] : "
+        "[nx,nt] -> { [x', t'] -> [x, t] : "
         "((x = x' and t = t'+2) or "
         " (x'-1 <= x <= x'+1 and t = t' + 1)) and "
-        "{0} and {1} }}".format(
-            xt_range_str,
-            xt_range_str_p,
-            ),
+        "0 <= x < nx and 0 <= t < nt and "
+        "0 <= x' < nx and 0 <= t' < nt }",
         self_dep=True)
 
     _align_and_compare_maps([(dep, dep_test)])
 
     # }}}
-
-    knl = lp.add_dependency(knl, "id:stmt", ("id:stmt", dep))
 
     ref_knl = knl
 
