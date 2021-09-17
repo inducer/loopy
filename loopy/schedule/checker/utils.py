@@ -91,6 +91,48 @@ def reorder_dims_by_name(
     return new_set
 
 
+def move_dim_to_index(
+        isl_map, dim_name, dt, destination_idx):
+    """Return an isl map with the specified dimension moved to
+    the specified index.
+
+    :arg isl_map: A :class:`islpy.Map`.
+
+    :arg dim_name: A :class:`str` specifying the name of the dimension
+        to be moved.
+
+    :arg dt: A :class:`islpy.dim_type`, i.e., an :class:`int`,
+        specifying the type of dimension to be reordered.
+
+    :arg destination_idx: A :class:`int` specifying the desired dimension
+        index of the dimention to be moved.
+
+    :returns: An :class:`islpy.Map` matching `isl_map` with the
+        specified dimension moved to the specified index.
+
+    """
+
+    assert dt != dim_type.param
+
+    layover_dt = dim_type.param
+    layover_dim_len = len(isl_map.get_var_names(layover_dt))
+
+    current_idx = isl_map.find_dim_by_name(dt, dim_name)
+    if current_idx == -1:
+        raise ValueError("Dimension name %s not found in dim type %s of %s"
+            % (dim_name, dt, isl_map))
+
+    if current_idx != destination_idx:
+        # First move to other dim because isl is stupid
+        new_map = isl_map.move_dims(
+            layover_dt, layover_dim_len, dt, current_idx, 1)
+        # Now move it where we actually want it
+        new_map = new_map.move_dims(
+            dt, destination_idx, layover_dt, layover_dim_len, 1)
+
+    return new_map
+
+
 def move_dims_by_name(
         isl_obj, dst_type, dst_pos_start, src_type, dim_names):
     dst_pos = dst_pos_start
@@ -197,7 +239,6 @@ def append_mark_to_isl_map_var_names(old_isl_map, dt, mark):
 
 
 def append_mark_to_strings(strings, mark):
-    assert isinstance(strings, list)
     return [s+mark for s in strings]
 
 
@@ -338,6 +379,14 @@ def sorted_union_of_names_in_isl_sets(
 
     # Sorting is not necessary, but keeps results consistent between runs
     return sorted(inames)
+
+
+def convert_map_to_set(isl_map):
+    n_in_dims = len(isl_map.get_var_names(dim_type.in_))
+    n_out_dims = len(isl_map.get_var_names(dim_type.out))
+    return isl_map.move_dims(
+        dim_type.in_, n_in_dims, dim_type.out, 0, n_out_dims
+        ).domain(), n_in_dims, n_out_dims
 
 
 def create_symbolic_map_from_tuples(

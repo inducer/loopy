@@ -320,6 +320,7 @@ def test_join_inames(ctx_factory):
 
     knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"], default_tag="l.auto")
     knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
+    # TODO why does this lead to inames key error for 'a_dim_1_and_a_dim_0' ??
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
 
@@ -574,7 +575,6 @@ def test_split_iname_only_if_in_within():
 
 def test_nested_substs_in_insns(ctx_factory):
     ctx = ctx_factory()
-    import loopy as lp
 
     ref_prg = lp.make_kernel(
         "{[i]: 0<=i<10}",
@@ -674,10 +674,13 @@ def test_map_domain_vs_split_iname(ctx_factory):
     lin_knl_split_iname = lp.get_one_linearized_kernel(
         proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
 
+    from loopy.schedule.checker.utils import (
+        ensure_dim_names_match_and_align,
+    )
     for d_map_domain, d_split_iname in zip(
             knl_map_dom["loopy_kernel"].domains,
             knl_split_iname["loopy_kernel"].domains):
-        d_map_domain_aligned = _ensure_dim_names_match_and_align(
+        d_map_domain_aligned = ensure_dim_names_match_and_align(
             d_map_domain, d_split_iname)
         assert d_map_domain_aligned == d_split_iname
 
@@ -775,10 +778,13 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     lin_knl_split_iname = lp.get_one_linearized_kernel(
         proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
 
+    from loopy.schedule.checker.utils import (
+        ensure_dim_names_match_and_align,
+    )
     for d_map_domain, d_split_iname in zip(
             knl_map_dom["loopy_kernel"].domains,
             knl_split_iname["loopy_kernel"].domains):
-        d_map_domain_aligned = _ensure_dim_names_match_and_align(
+        d_map_domain_aligned = ensure_dim_names_match_and_align(
             d_map_domain, d_split_iname)
         assert d_map_domain_aligned == d_split_iname
 

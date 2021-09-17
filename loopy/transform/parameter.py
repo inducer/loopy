@@ -91,6 +91,34 @@ def _fix_parameter(kernel, name, value, within=None):
 
     new_domains = [process_set(dom) for dom in kernel.domains]
 
+    # {{{ Fix parameter in deps
+
+    from loopy.transform.instruction import map_dependency_maps
+    from loopy.schedule.checker.utils import convert_map_to_set
+
+    def _fix_parameter_in_dep(dep):
+        # For efficiency: could check for param presence first
+        dim_type = isl.dim_type
+
+        # Temporarily convert map to set for processing
+        set_from_map, n_in_dims, n_out_dims = convert_map_to_set(dep)
+
+        # Fix param
+        set_from_map = process_set(set_from_map)
+
+        # Now set dims look like [inames' ..., inames ...]
+        # Convert set back to map
+        map_from_set = isl.Map.from_domain(set_from_map)
+        # Move original out dims back
+        map_from_set = map_from_set.move_dims(
+            dim_type.out, 0, dim_type.in_, n_in_dims, n_out_dims)
+
+        return map_from_set
+
+    kernel = map_dependency_maps(kernel, _fix_parameter_in_dep)
+
+    # }}}
+
     from pymbolic.mapper.substitutor import make_subst_func
     subst_func = make_subst_func({name: value})
 

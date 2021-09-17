@@ -234,9 +234,9 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
 
         self.definition_insn_id_to_subst_name = {}
 
-        self.saw_unmatched_usage_sites = {}
+        self.unmatched_usage_sites_found = {}
         for def_id in self.definition_insn_ids:
-            self.saw_unmatched_usage_sites[def_id] = False
+            self.unmatched_usage_sites_found[def_id] = set()
 
     def get_subst_name(self, def_insn_id):
         try:
@@ -278,7 +278,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
                 expn_state.kernel,
                 expn_state.instruction,
                 expn_state.stack):
-            self.saw_unmatched_usage_sites[my_def_id] = True
+            self.unmatched_usage_sites_found[my_def_id].add(my_insn_id)
             return None
 
         subst_name = self.get_subst_name(my_def_id)
@@ -362,6 +362,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         return def_id
 
     usage_to_definition = {}
+    definition_to_usage_ids = {}
 
     for insn in dep_kernel.instructions:
         if lhs_name not in insn.read_dependency_names():
@@ -374,11 +375,26 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
                     % (lhs_name, insn.id))
 
         usage_to_definition[insn.id] = def_id
+        definition_to_usage_ids.setdefault(def_id, set()).add(insn.id)
 
+    # these insns may be removed so can't get within_inames later
+    definition_to_within_inames = {}
+    for def_id in definition_to_usage_ids.keys():
+        definition_to_within_inames[def_id] = kernel.id_to_insn[def_id].within_inames
+
+    # Get deps for subst_def statements before any of them get removed
+    definition_id_to_deps = {}
+    from copy import deepcopy
     definition_insn_ids = set()
     for insn in kernel.instructions:
         if lhs_name in insn.write_dependency_names():
             definition_insn_ids.add(insn.id)
+            definition_id_to_deps[insn.id] = deepcopy(insn.dependencies)
+
+    # usage_to_definition maps each usage to the most recent assignment to the var,
+    # (most recent "definition"),
+    # so set(usage_to_definition.values()) is a subset of definition_insn_ids,
+    # which contains ALL the insns where the var is assigned
 
     # }}}
 
@@ -443,7 +459,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     new_args = kernel.args
 
     if lhs_name in kernel.temporary_variables:
-        if not any(tts.saw_unmatched_usage_sites.values()):
+        if not any(tts.unmatched_usage_sites_found.values()):
             # All usage sites matched--they're now substitution rules.
             # We can get rid of the variable.
 
@@ -451,7 +467,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
             del new_temp_vars[lhs_name]
 
     if lhs_name in kernel.arg_dict and not force_retain_argument:
-        if not any(tts.saw_unmatched_usage_sites.values()):
+        if not any(tts.unmatched_usage_sites_found.values()):
             # All usage sites matched--they're now substitution rules.
             # We can get rid of the argument
 
@@ -464,12 +480,89 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     # }}}
 
     import loopy as lp
+    # Remove defs if the subst expression is not still used anywhere
     kernel = lp.remove_instructions(
             kernel,
             {
                 insn_id
-                for insn_id, still_used in tts.saw_unmatched_usage_sites.items()
+                for insn_id, still_used in tts.unmatched_usage_sites_found.items()
                 if not still_used})
+
+    # {{{ update dependencies
+
+    from loopy.transform.instruction import map_stmt_dependencies
+
+    # Add dependencies from each subst_def to any statement where its
+    # LHS was found and the subst was performed
+    for subst_def_id, subst_usage_ids in definition_to_usage_ids.items():
+
+        unmatched_usage_ids = tts.unmatched_usage_sites_found[subst_def_id]
+        matched_usage_ids = subst_usage_ids - unmatched_usage_ids
+        if matched_usage_ids:
+            import islpy as isl
+            dim_type = isl.dim_type
+            # Create match condition string:
+            match_any_matched_usage_id = " or ".join(
+                ["id:%s" % (usage_id) for usage_id in matched_usage_ids])
+
+            subst_def_deps_dict = definition_id_to_deps[subst_def_id]
+            old_dep_out_inames = definition_to_within_inames[subst_def_id]
+
+            def _add_deps_to_stmt(old_dep_dict, stmt):
+                # old_dep_dict: prev dep dict for this stmt
+
+                # want to add old dep from def stmt to usage stmt,
+                # but if inames of def stmt don't match inames of usage stmt,
+                # need to get rid of unwanted inames in old dep out dims and add
+                # any missing inames (inames from usage stmt not present in def stmt)
+                new_dep_out_inames = stmt.within_inames
+                out_inames_to_project_out = old_dep_out_inames - new_dep_out_inames
+                out_inames_to_add = new_dep_out_inames - old_dep_out_inames
+                # inames_domain for new inames to add
+                dom_for_new_inames = kernel.get_inames_domain(
+                    out_inames_to_add
+                    ).project_out_except(out_inames_to_add, [dim_type.set])
+
+                # process and add the old deps
+                for depends_on_id, old_dep_list in subst_def_deps_dict.items():
+                    # pu.db
+
+                    new_dep_list = []
+                    for old_dep in old_dep_list:
+                        # TODO figure out when copies are necessary
+                        new_dep = deepcopy(old_dep)
+
+                        # project out inames from old dep (out dim) that don't apply
+                        # to this statement
+                        for old_iname in out_inames_to_project_out:
+                            idx_of_old_iname = old_dep.find_dim_by_name(
+                                dim_type.out, old_iname)
+                            assert idx_of_old_iname != -1
+                            new_dep = new_dep.project_out(
+                                dim_type.out, idx_of_old_iname, 1)
+
+                        # add inames from this stmt that were not present in old dep
+                        from loopy.schedule.checker.utils import (
+                            add_and_name_isl_dims,
+                        )
+                        new_dep = add_and_name_isl_dims(
+                            new_dep, dim_type.out, out_inames_to_add)
+
+                        # add inames domain for new inames
+                        dom_aligned = isl.align_spaces(
+                            dom_for_new_inames, new_dep.range())
+
+                        # Intersect domain with dep
+                        new_dep = new_dep.intersect_range(dom_aligned)
+                        new_dep_list.append(new_dep)
+
+                    old_dep_dict.setdefault(depends_on_id, []).extend(new_dep_list)
+                return old_dep_dict
+
+            kernel = map_stmt_dependencies(
+                kernel, match_any_matched_usage_id, _add_deps_to_stmt)
+
+    # }}}
 
     return kernel.copy(
             substitutions=new_substs,

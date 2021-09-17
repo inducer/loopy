@@ -156,6 +156,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         self.compute_read_variables = compute_read_variables
         self.compute_insn_depends_on = set()
 
+        # TODO determine whether there's a better strategy for this
+        self.things_replaced = set()
+
     def map_substitution(self, name, tag, arguments, expn_state):
         if not (
                 name == self.subst_name
@@ -235,6 +238,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                         depends_on=(
                             insn.depends_on
                             | frozenset([self.compute_dep_id])))
+
+                if hasattr(insn, "id"):
+                    self.things_replaced.add(insn.id)
 
                 for dep in insn.depends_on:
                     if dep in excluded_insn_ids:
@@ -1057,6 +1063,121 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
     if filter_iname_tags_by_type(new_iname_to_tag.values(), AutoFitLocalInameTag):
         from loopy.kernel.tools import assign_automatic_axes
         kernel = assign_automatic_axes(kernel, callables_table)
+
+    # {{{ update dependencies
+    # FIXME Handle deps in precompute
+    """
+    # Get some values that will be useful later
+    fetch_stmt_id = compute_insn_id
+    fetch_stmt = kernel.id_to_insn[compute_insn_id]
+    fetch_inames = fetch_stmt.within_inames
+
+    # Go through all stmts that now use the fetch stuff
+    for usage_stmt_id in invr.things_replaced:
+        from loopy.schedule.checker.utils import (
+            make_dep_map,
+            append_mark_to_strings,
+            remove_dims_by_name,
+            add_and_name_isl_dims,
+            insert_and_name_isl_dims,
+        )
+        from loopy.schedule.checker.schedule import (
+            BEFORE_MARK,
+            STATEMENT_VAR_NAME,
+        )
+        # Get some values that will be useful later
+        usage_stmt = kernel.id_to_insn[usage_stmt_id]
+        usage_inames = usage_stmt.within_inames
+        shared_inames = fetch_inames & usage_inames
+        # TODO understand why this isn't true:
+        # assert shared_inames == usage_stmt.within_inames - set(sweep_inames)
+        fetch_inames_not_shared = fetch_inames - shared_inames
+
+        # {{{ create dep fetch_stmt->usage_stmt : SAME(shared_inames)
+
+        dep_in_names = list(fetch_inames)  # want a copy anyway
+        dep_in_names_marked = append_mark_to_strings(dep_in_names, BEFORE_MARK)
+        dep_out_names = usage_inames
+
+        in_space_str = ", ".join(dep_in_names_marked)
+        out_space_str = ", ".join(dep_out_names)
+        constraint_str = " and ".join([
+            "{0}{1} = {0}".format(iname, BEFORE_MARK) for iname in shared_inames])
+        dep_usage_on_fetch = make_dep_map(
+            f"{{ [{in_space_str}] -> [{out_space_str}] : {constraint_str} }}",
+            knl_with_domains=kernel)
+        # (add this dep below after next step)
+
+        # }}}
+
+        from islpy import dim_type
+        for dependee_id, old_deps in usage_stmt.dependencies.items():
+            for old_dep in old_deps:
+                # old dep: dependee->usage_stmt
+                # {{{ create dep dependee->fetch_stmt
+
+                new_dep = old_dep.copy()
+
+                old_out_inames = old_dep.get_var_names(dim_type.out)
+                assert (
+                    set(old_out_inames) - set([STATEMENT_VAR_NAME, ]) ==
+                    set(usage_inames))
+
+                non_shared_inames = set(usage_inames) - shared_inames
+                # Remove inames from old out dims that won't appear in new out dims
+                for non_shared_iname in non_shared_inames:
+                    new_dep = remove_dims_by_name(
+                        new_dep, dim_type.out, [non_shared_iname])
+
+                # These new out inames will take on full domain values
+                assert (
+                    (set(usage_inames) - non_shared_inames) | fetch_inames_not_shared
+                    == fetch_inames)
+
+                # Add new_unconstrained_out_names to out dims
+                new_dep = add_and_name_isl_dims(
+                    new_dep, dim_type.out, fetch_inames_not_shared)
+
+                # Intersect dom for fetch_inames_not_shared
+                dom_to_intersect = kernel.get_inames_domain(
+                    fetch_inames_not_shared
+                    ).project_out_except(fetch_inames_not_shared, [dim_type.set])
+
+                dom_to_intersect_aligned = isl.align_spaces(
+                    dom_to_intersect, new_dep.range(),
+                    obj_bigger_ok=True)  # e.g., params might exist?
+
+                new_dep = new_dep.intersect_range(dom_to_intersect_aligned)
+
+                # {{{ Old dep might have been self-dep, set stmt var correctly
+
+                # add and remove stmt dim
+                new_dep = remove_dims_by_name(
+                    new_dep, dim_type.out, [STATEMENT_VAR_NAME])
+                new_dep = insert_and_name_isl_dims(
+                    new_dep, dim_type.out, [STATEMENT_VAR_NAME], 0)
+                # set stmt dim value
+                sid_out = 0 if fetch_stmt_id == dependee_id else 1
+                new_dep = new_dep.add_constraint(
+                    isl.Constraint.eq_from_names(
+                        new_dep.space,
+                        {1: sid_out, STATEMENT_VAR_NAME: -1}))
+                # }}}
+
+                # Add this dep: dependee->fetch : dep
+                kernel = lp.add_dependency(
+                    kernel, "id:%s" % (fetch_stmt_id),
+                    ("id:%s" % (dependee_id), new_dep))
+
+                # }}}
+
+        # Add other new dep from above: fetch->usage
+        kernel = lp.add_dependency(
+            kernel, "id:%s" % (usage_stmt_id),
+            ("id:%s" % (fetch_stmt_id), dep_usage_on_fetch))
+
+    """
+    # }}}
 
     return kernel
 

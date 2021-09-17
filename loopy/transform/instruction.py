@@ -173,6 +173,131 @@ def add_dependency(kernel, insn_match, depends_on):
 # }}}
 
 
+# {{{ map dependencies v2
+
+# Terminiology:
+# stmtX.dependencies:  # <- "stmt dependencies" = full dict of deps
+# {stmt0: [dep_map00, dep_map01, ...],  # <- "one dependency"
+#  stmt1: [dep_map10, dep_map11, ...],
+#  ...}
+# one dependency includes one "dependency list", which contains "dep maps"
+
+
+# {{{ _parse_match_if_necessary
+
+def _parse_match_if_necessary(match_candidate):
+    from loopy.match import (
+        MatchExpressionBase,
+        StackMatch,
+    )
+    if not isinstance(
+            match_candidate, (MatchExpressionBase, StackMatch)):
+        from loopy.match import parse_match
+        # TODO assumes StackMatches are already parsed
+        # TODO determine when to use parse_stack_match (AKQ)
+        return parse_match(match_candidate)
+    else:
+        return match_candidate
+
+# }}}
+
+
+# {{{ map_dependency_lists
+
+def map_dependency_lists(
+        kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
+    """Replace dependency_list with f(dependency_list) if conditions match.
+
+    Let dependency_list = depender_stmt.dependencies[dependee_stmt];
+
+    Set dependency_list = f(dependency_list) if:
+
+    - stmt_match_depender matches depender_stmt OR
+    - stmt_match_dependee matches dependee_stmt
+    - (but don't call f() twice if both depender and dependee match)
+
+    """
+    # TODO refactor this so that separate depender and dependee updating
+    # functions can be provided and used in a single pass
+    from loopy.match import (
+        StackMatch,
+    )
+
+    match_depender = _parse_match_if_necessary(stmt_match_depender)
+    match_dependee = _parse_match_if_necessary(stmt_match_dependee)
+
+    # TODO figure out right way to simultaneously handle
+    # both MatchExpressionBase and StackMatch
+    if isinstance(match_depender, StackMatch):
+        extra_match_depender_args = [()]
+    else:
+        extra_match_depender_args = []
+    if isinstance(match_dependee, StackMatch):
+        extra_match_dependee_args = [()]
+    else:
+        extra_match_dependee_args = []
+
+    new_stmts = []
+    for stmt in kernel.instructions:
+        new_deps = {}
+        if match_depender(kernel, stmt, *extra_match_depender_args):
+            # Stmt matches as depender
+            # Replace all deps
+            for dep_id, dep_maps in stmt.dependencies.items():
+                new_deps[dep_id] = f(dep_maps)
+        else:
+            # Stmt didn't match as a depender
+            # Replace deps matching dependees
+            for dep_id, dep_maps in stmt.dependencies.items():
+                if match_dependee(
+                        kernel, kernel.id_to_insn[dep_id],
+                        *extra_match_dependee_args):
+                    new_deps[dep_id] = f(dep_maps)
+                else:
+                    new_deps[dep_id] = dep_maps
+        new_stmts.append(stmt.copy(dependencies=new_deps))
+
+    return kernel.copy(instructions=new_stmts)
+
+# }}}
+
+
+# {{{ map_dependency_maps
+
+def map_dependency_maps(
+        kernel, f, stmt_match_depender="id:*", stmt_match_dependee="id:*"):
+    # Set dep_map = f(dep_map) for dep_map in:
+    # All dependencies of stmts matching stmt_match_depender
+    # All dependencies ON stmts matching stmt_match_dependee
+
+    def _update_dep_maps(dep_maps):
+        return [f(dep_map) for dep_map in dep_maps]
+
+    return map_dependency_lists(
+        kernel, _update_dep_maps, stmt_match_depender, stmt_match_dependee)
+
+# }}}
+
+
+# {{{ map_stmt_dependencies
+
+def map_stmt_dependencies(kernel, stmt_match, f):
+    """Set stmt.dependences = f(stmt.dependencies) for stmts matching stmt_match"""
+    # (Only modifies dependencies for depender;
+    # does not search for matching dependee statements)
+
+    def _update_deps(stmt):
+        # pass stmt to f because might need info
+        new_deps = f(stmt.dependencies, stmt)
+        return stmt.copy(dependencies=new_deps)
+
+    return map_instructions(kernel, stmt_match, _update_deps)
+
+# }}}
+
+# }}}
+
+
 # {{{ remove_instructions
 
 def _toposort_of_subset_of_insns(kernel, subset_insns):
@@ -263,13 +388,24 @@ def remove_instructions(kernel, insn_ids):
 
         assert (new_deps & insn_ids) == frozenset()
 
+        # {{{ Remove any new-world stmt inst dependencies on removed stmts
+
+        new_dependencies = insn.dependencies
+        for removed_id in insn_ids:
+            # TODO propagate these intelligently?
+            new_dependencies.pop(removed_id, None)
+
+        # }}}
+
         # update no_sync_with
         new_no_sync_with = frozenset((insn_id, scope)
                 for insn_id, scope in insn.no_sync_with
                 if insn_id not in insn_ids)
 
-        new_insns.append(
-                insn.copy(depends_on=new_deps, no_sync_with=new_no_sync_with))
+        new_insns.append(insn.copy(
+            depends_on=new_deps,
+            dependencies=new_dependencies,
+            no_sync_with=new_no_sync_with))
 
     return kernel.copy(
             instructions=new_insns)
