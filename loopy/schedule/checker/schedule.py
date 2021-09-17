@@ -1,3 +1,44 @@
+"""
+.. data:: LIN_CHECK_IDENTIFIER_PREFIX
+
+    The :class:`str` prefix for identifiers involved in linearization
+    checking.
+
+.. data:: LEX_VAR_PREFIX
+
+    The :class:`str` prefix for the variables representing the
+    dimensions in the lexicographic ordering used in a pairwise schedule. E.g.,
+    a prefix of ``_lp_linchk_lex`` might yield lexicographic dimension
+    variables ``_lp_linchk_lex0``, ``_lp_linchk_lex1``, ``_lp_linchk_lex2``.
+    Cf.  :ref:`reserved-identifiers`.
+
+.. data:: STATEMENT_VAR_NAME
+
+    The :class:`str` name for the statement-identifying dimension of maps
+    representing schedules and statement instance orderings.
+
+.. data:: LTAG_VAR_NAMES
+
+    An array of :class:`str` names for map dimensions carrying values for local
+    (intra work-group) thread identifiers in maps representing schedules and
+    statement instance orderings.
+
+.. data:: GTAG_VAR_NAMES
+
+    An array of :class:`str` names for map dimensions carrying values for group
+    identifiers in maps representing schedules and statement instance orderings.
+
+.. data:: BEFORE_MARK
+
+    The :class:`str` identifier to be appended to input dimension names in
+    maps representing schedules and statement instance orderings.
+
+.. autoclass:: SpecialLexPointWRTLoop
+.. autoclass:: StatementOrdering
+.. autofunction:: get_pairwise_statement_orderings_inner
+"""
+
+
 __copyright__ = "Copyright (C) 2019 James Stevens"
 
 __license__ = """
@@ -39,44 +80,6 @@ dim_type = isl.dim_type
 
 
 # {{{ Constants
-
-__doc__ = """
-
-.. data:: LIN_CHECK_IDENTIFIER_PREFIX
-
-    The :class:`str` prefix for identifiers involved in linearization
-    checking.
-
-.. data:: LEX_VAR_PREFIX
-
-    The :class:`str` prefix for the variables representing the
-    dimensions in the lexicographic ordering used in a pairwise schedule. E.g.,
-    a prefix of ``_lp_linchk_lex`` might yield lexicographic dimension
-    variables ``_lp_linchk_lex0``, ``_lp_linchk_lex1``, ``_lp_linchk_lex2``.
-    Cf.  :ref:`reserved-identifiers`.
-
-.. data:: STATEMENT_VAR_NAME
-
-    The :class:`str` name for the statement-identifying dimension of maps
-    representing schedules and statement instance orderings.
-
-.. data:: LTAG_VAR_NAMES
-
-    An array of :class:`str` names for map dimensions carrying values for local
-    (intra work-group) thread identifiers in maps representing schedules and
-    statement instance orderings.
-
-.. data:: GTAG_VAR_NAMES
-
-    An array of :class:`str` names for map dimensions carrying values for group
-    identifiers in maps representing schedules and statement instance orderings.
-
-.. data:: BEFORE_MARK
-
-    The :class:`str` identifier to be appended to input dimension names in
-    maps representing schedules and statement instance orderings.
-
-"""
 
 LIN_CHECK_IDENTIFIER_PREFIX = "_lp_linchk_"
 LEX_VAR_PREFIX = "%slex" % (LIN_CHECK_IDENTIFIER_PREFIX)

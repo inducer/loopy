@@ -1,3 +1,10 @@
+"""
+.. autofunction:: get_pairwise_statement_orderings
+
+.. automodule:: loopy.schedule.checker.schedule
+"""
+
+
 __copyright__ = "Copyright (C) 2019 James Stevens"
 
 __license__ = """
@@ -61,7 +68,8 @@ def get_pairwise_statement_orderings(
     :arg stmt_id_pairs: A sequence containing pairs of statement identifiers.
 
     :returns: A dictionary mapping each two-tuple of statement identifiers
-        provided in `stmt_id_pairs` to a :class:`StatementOrdering`, which
+        provided in `stmt_id_pairs` to a
+        :class:`~loopy.schedule.checker.schedule.StatementOrdering`, which
         contains the three SIOs described above.
 
     .. doctest:

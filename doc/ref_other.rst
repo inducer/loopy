@@ -29,10 +29,12 @@ Automatic Testing
 Checking Dependencies at the Statement-Instance Level
 -----------------------------------------------------
 
-.. autofunction:: get_pairwise_statement_orderings
+.. automodule:: loopy.schedule.checker
 
 Troubleshooting
 ---------------
+
+.. currentmodule:: loopy
 
 Printing :class:`LoopKernel` objects
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
