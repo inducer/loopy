@@ -1,3 +1,13 @@
+"""
+.. autofunction:: get_pairwise_statement_orderings
+
+.. autofunction:: find_unsatisfied_dependencies
+
+.. automodule:: loopy.schedule.checker.schedule
+.. automodule:: loopy.schedule.checker.utils
+"""
+
+
 __copyright__ = "Copyright (C) 2019 James Stevens"
 
 __license__ = """
@@ -61,7 +71,8 @@ def get_pairwise_statement_orderings(
     :arg stmt_id_pairs: A sequence containing pairs of statement identifiers.
 
     :returns: A dictionary mapping each two-tuple of statement identifiers
-        provided in `stmt_id_pairs` to a :class:`StatementOrdering`, which
+        provided in `stmt_id_pairs` to a
+        :class:`~loopy.schedule.checker.schedule.StatementOrdering`, which
         contains the three SIOs described above.
 
     .. doctest:
@@ -178,15 +189,16 @@ def find_unsatisfied_dependencies(
         checking dependencies once the first unsatisfied dependency is found.
 
     :returns: A list of unsatisfied dependencies, each represented as a
-        :class:`collections.namedtuple` containing the following:
+        :func:`collections.namedtuple` containing the following:
 
         - `statement_pair`: The (before, after) pair of statement IDs involved
           in the dependency.
         - `dependency`: An class:`islpy.Map` from each instance of the first
           statement to all instances of the second statement that must occur
           later.
-        - `statement_ordering`: A :class:`StatementOrdering` resulting from
-          `lp.get_pairwise_statement_orderings` (defined above).
+        - `statement_ordering`: A
+          :class:`~loopy.schedule.checker.schedule.StatementOrdering`
+          resulting from :func:`get_pairwise_statement_orderings` (defined above).
 
     """
 
