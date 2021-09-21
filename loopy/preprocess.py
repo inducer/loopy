@@ -879,6 +879,22 @@ class RealizeReductionCallbackMapper(ReductionCallbackMapper):
                 **kwargs)
         return result
 
+    def map_if(self, expr, callables_table, guarding_predicates, nresults=1):
+        import pymbolic.primitives as prim
+        return prim.If(self.rec(expr.condition, callables_table=callables_table,
+                                guarding_predicates=guarding_predicates,
+                                nresults=nresults),
+                       self.rec(expr.then, callables_table=callables_table,
+                                guarding_predicates=(
+                                    guarding_predicates
+                                    | frozenset([expr.condition])),
+                                nresults=nresults),
+                       self.rec(expr.else_, callables_table=callables_table,
+                                guarding_predicates=(
+                                    guarding_predicates
+                                    | frozenset([prim.LogicalNot(expr.condition)])),
+                                nresults=nresults))
+
 
 # @remove_any_newly_unused_inames
 def realize_reduction_for_single_kernel(kernel, callables_table,
@@ -1004,7 +1020,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
     # {{{ sequential
 
     def map_reduction_seq(expr, rec, callables_table, nresults, arg_dtypes,
-            reduction_dtypes):
+                          reduction_dtypes, guarding_predicates):
         outer_insn_inames = insn.within_inames
 
         from loopy.kernel.data import AddressSpace
@@ -1081,7 +1097,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                     depends_on=insn.depends_on,
                     within_inames=update_insn_iname_deps,
                     within_inames_is_final=insn.within_inames_is_final,
-                    predicates=insn.predicates,
+                    predicates=guarding_predicates,
                     )
 
             reduction_insn_depends_on.add(get_args_insn_id)
@@ -1102,7 +1118,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                 depends_on=frozenset(reduction_insn_depends_on) | insn.depends_on,
                 within_inames=update_insn_iname_deps,
                 within_inames_is_final=insn.within_inames_is_final,
-                predicates=insn.predicates,)
+                predicates=guarding_predicates,)
 
         generated_insns.append(reduction_insn)
 
@@ -1145,7 +1161,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         return bs
 
     def map_reduction_local(expr, rec, callables_table, nresults, arg_dtypes,
-            reduction_dtypes):
+                            reduction_dtypes, guarding_predicates):
         red_iname, = expr.inames
 
         size = _get_int_iname_size(red_iname)
@@ -1226,7 +1242,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                 within_inames=base_iname_deps | frozenset([base_exec_iname]),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset(),
-                predicates=insn.predicates,
+                predicates=guarding_predicates,
                 )
         generated_insns.append(init_neutral_insn)
 
@@ -1248,7 +1264,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                         (outer_insn_inames - frozenset(expr.inames))
                         | frozenset([red_iname])),
                     within_inames_is_final=insn.within_inames_is_final,
-                    predicates=insn.predicates,
+                    predicates=guarding_predicates,
                     )
 
             transfer_depends_on.add(get_args_insn_id)
@@ -1403,8 +1419,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
     # {{{ sequential scan
 
     def map_scan_seq(expr, rec, callables_table, nresults, arg_dtypes,
-            reduction_dtypes, sweep_iname, scan_iname, sweep_min_value,
-            scan_min_value, stride):
+                     reduction_dtypes, sweep_iname, scan_iname, sweep_min_value,
+                     scan_min_value, stride, guarding_predicates):
         outer_insn_inames = insn.within_inames
         inames_to_remove.add(scan_iname)
 
@@ -1490,7 +1506,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                 within_inames=update_insn_iname_deps,
                 no_sync_with=insn.no_sync_with,
                 within_inames_is_final=insn.within_inames_is_final,
-                predicates=insn.predicates,
+                predicates=guarding_predicates,
                 )
 
         generated_insns.append(scan_insn)
@@ -1509,7 +1525,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
     def map_scan_local(expr, rec, callables_table, nresults, arg_dtypes,
             reduction_dtypes, sweep_iname, scan_iname, sweep_min_value,
-            scan_min_value, stride):
+            scan_min_value, stride, guarding_predicates):
 
         scan_size = _get_int_iname_size(sweep_iname)
 
@@ -1517,7 +1533,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
         if scan_size == 1:
             return map_reduction_seq(expr, rec, callables_table,
-                    nresults, arg_dtypes, reduction_dtypes)
+                                     nresults, arg_dtypes, reduction_dtypes,
+                                     guarding_predicates)
 
         outer_insn_inames = insn.within_inames
 
@@ -1731,7 +1748,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
     # {{{ seq/par dispatch
 
-    def map_reduction(expr, rec, callables_table, nresults=1):
+    def map_reduction(expr, rec, callables_table,
+                      guarding_predicates, nresults=1):
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
@@ -1853,7 +1871,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                             sweep_iname, scan_param.scan_iname,
                             scan_param.sweep_lower_bound,
                             scan_param.scan_lower_bound,
-                            scan_param.stride)
+                            scan_param.stride,
+                            guarding_predicates)
                 elif sequential:
                     return map_scan_seq(
                             expr, rec, callables_table, nresults,
@@ -1861,7 +1880,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                             scan_param.scan_iname,
                             scan_param.sweep_lower_bound,
                             scan_param.scan_lower_bound,
-                            scan_param.stride)
+                            scan_param.stride,
+                            guarding_predicates)
 
                 # fallthrough to reduction implementation
 
@@ -1878,12 +1898,13 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         if n_sequential:
             assert n_local_par == 0
             return map_reduction_seq(expr, rec, callables_table,
-                    nresults, arg_dtypes, reduction_dtypes)
+                                     nresults, arg_dtypes, reduction_dtypes,
+                                     guarding_predicates)
         else:
             assert n_local_par > 0
             return map_reduction_local(
                     expr, rec, callables_table, nresults, arg_dtypes,
-                    reduction_dtypes)
+                    reduction_dtypes, guarding_predicates)
 
     # }}}
 
@@ -1918,10 +1939,12 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         if isinstance(insn.expression, Reduction) and nresults > 1:
             new_expressions = cb_mapper(insn.expression,
                     callables_table=cb_mapper.callables_table,
+                    guarding_predicates=insn.predicates,
                     nresults=nresults)
         else:
             new_expressions = cb_mapper(insn.expression,
-                    callables_table=cb_mapper.callables_table),
+                                        callables_table=cb_mapper.callables_table,
+                                        guarding_predicates=insn.predicates),
 
         if generated_insns:
             # An expansion happened, so insert the generated stuff plus
