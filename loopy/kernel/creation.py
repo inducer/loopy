@@ -1483,8 +1483,7 @@ def create_temporaries(knl, default_order):
                         address_space=lp.auto,
                         base_indices=lp.auto,
                         shape=lp.auto,
-                        order=default_order,
-                        target=knl.target)
+                        order=default_order)
 
             if isinstance(insn, Assignment):
                 insn = insn.copy(temp_var_type=Optional())
