@@ -532,7 +532,7 @@ class PyOpenCLTarget(OpenCLTarget):
 
 # {{{ host code: value arg setup
 
-def generate_value_arg_setup(kernel, devices, implemented_data_info):
+def generate_value_arg_setup(kernel, implemented_data_info):
     options = kernel.options
 
     import loopy as lp
@@ -779,7 +779,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
             generate_value_arg_setup(
                     codegen_state.kernel,
-                    [self.target.device],
                     all_args)
         arry_arg_code = generate_array_arg_setup(
             codegen_state.kernel,
