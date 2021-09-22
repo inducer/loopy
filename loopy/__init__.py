@@ -84,7 +84,8 @@ from loopy.transform.instruction import (
         remove_instructions,
         replace_instruction_ids,
         tag_instructions,
-        add_nosync)
+        add_nosync,
+        simplify_indices)
 
 from loopy.transform.data import (
         add_prefetch, change_arg_to_image,
@@ -217,6 +218,7 @@ __all__ = [
         "replace_instruction_ids",
         "tag_instructions",
         "add_nosync",
+        "simplify_indices",
 
         "extract_subst", "expand_subst", "assignment_to_subst",
         "find_rules_matching", "find_one_rule_matching",

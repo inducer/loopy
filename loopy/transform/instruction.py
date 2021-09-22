@@ -23,8 +23,8 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
-from loopy.translation_unit import (TranslationUnit,
-                                    for_each_kernel)
+from loopy.translation_unit import TranslationUnit, for_each_kernel
+from loopy.symbolic import RuleAwareIdentityMapper
 
 
 # {{{ find_instructions
@@ -446,5 +446,38 @@ def uniquify_instruction_ids(kernel):
 
 # }}}
 
+
+# {{{ simplify indices
+
+class IndexSimplifier(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, kernel):
+        super().__init__(rule_mapping_context)
+        self.kernel = kernel
+
+    def map_subscript(self, expr, expn_state):
+        from loopy.symbolic import simplify_using_aff
+        from pymbolic.primitives import Subscript
+
+        new_indices = tuple(simplify_using_aff(self.kernel,
+                                               self.rec(idx, expn_state))
+                            for idx in expr.index_tuple)
+
+        return Subscript(self.rec(expr.aggregate, expn_state),
+                         new_indices)
+
+
+@for_each_kernel
+def simplify_indices(kernel):
+    """
+    Returns a copy of *kernel* with the index-expressions simplified via
+    :func:`loopy.symbolic.simplify_using_aff`.
+    """
+    from loopy.symbolic import SubstitutionRuleMappingContext as SRMC
+    rule_mapping_context = SRMC(kernel.substitutions,
+                                kernel.get_var_name_generator())
+    idx_simplifier = IndexSimplifier(rule_mapping_context, kernel)
+    return rule_mapping_context.finish_kernel(idx_simplifier.map_kernel(kernel))
+
+# }}}
 
 # vim: foldmethod=marker

@@ -1260,6 +1260,50 @@ def test_privatize_with_nonzero_lbound(ctx_factory):
     np.testing.assert_allclose(out.get()[10:14], np.arange(10, 14))
 
 
+def test_simplify_indices(ctx_factory):
+    ctx = ctx_factory()
+    twice = lp.make_function(
+        "{[i, j]: 0<=i<10 and 0<=j<4}",
+        """
+        y[i,j] = 2*x[i,j]
+        """, name="zerozerozeroonezeroify")
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        Y[:,:] = zerozerozeroonezeroify(X[:,:])
+        """, [lp.GlobalArg("X,Y",
+                           shape=(10, 4),
+                           dtype=np.float64)])
+
+    class ContainsFloorDiv(lp.symbolic.CombineMapper):
+        def combine(self, values):
+            return any(values)
+
+        def map_floor_div(self, expr):
+            return True
+
+        def map_variable(self, expr):
+            return False
+
+        def map_constant(self, expr):
+            return False
+
+    knl = lp.merge([knl, twice])
+    knl = lp.inline_callable_kernel(knl, "zerozerozeroonezeroify")
+    simplified_knl = lp.simplify_indices(knl)
+    contains_floordiv = ContainsFloorDiv()
+
+    assert any(contains_floordiv(insn.expression)
+               for insn in knl.default_entrypoint.instructions
+               if isinstance(insn, lp.MultiAssignmentBase))
+    assert all(not contains_floordiv(insn.expression)
+               for insn in simplified_knl.default_entrypoint.instructions
+               if isinstance(insn, lp.MultiAssignmentBase))
+
+    lp.auto_test_vs_ref(knl, ctx, simplified_knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

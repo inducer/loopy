@@ -70,6 +70,9 @@ import numpy as np
 __doc__ = """
 .. currentmodule:: loopy.symbolic
 
+Loopy-specific expression types
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: Literal
 
 .. autoclass:: ArrayLiteral
@@ -95,6 +98,12 @@ __doc__ = """
 .. autoclass:: ResolvedFunction
 
 .. autoclass:: SubArrayRef
+
+
+Expression Manipulation Helpers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: simplify_using_aff
 """
 
 
@@ -1960,6 +1969,11 @@ def qpolynomial_from_expr(space, expr):
 
 @memoize_on_first_arg
 def simplify_using_aff(kernel, expr):
+    """
+    Simplifies *expr* on *kernel*'s domain.
+
+    :arg expr: An instance of :class:`pymbolic.primitives.Expression`.
+    """
     inames = get_dependencies(expr) & kernel.all_inames()
 
     # FIXME: Ideally, we should find out what inames are usable and allow
