@@ -703,7 +703,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             if tv.address_space == AddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
-    def get_temporary_decls(self, codegen_state, schedule_state):
+    def get_temporary_decls(self, codegen_state, schedule_index):
         from genpy import Assign, Comment, Line
         from collections import defaultdict
         from numbers import Number
