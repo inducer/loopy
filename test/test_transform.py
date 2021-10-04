@@ -594,6 +594,382 @@ def test_nested_substs_in_insns(ctx_factory):
     lp.auto_test_vs_ref(ref_prg, ctx, t_unit)
 
 
+# {{{ test_map_domain_vs_split_iname
+
+def _ensure_dim_names_match_and_align(obj_map, tgt_map):
+    # (This function is also defined in independent, unmerged branch
+    # new-dependency-and-nest-constraint-semantics-development, and used in
+    # child branches thereof. Once these branches are all merged, it may make
+    # sense to move this function to a location for more general-purpose
+    # machinery. In the other branches, this function's name excludes the
+    # leading underscore.)
+    from islpy import align_spaces
+    from islpy import dim_type as dt
+
+    # first make sure names match
+    if not all(
+            set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
+            for dt in
+            [dt.in_, dt.out, dt.param]):
+        raise ValueError(
+            "Cannot align spaces; names don't match:\n%s\n%s"
+            % (obj_map, tgt_map))
+
+    return align_spaces(obj_map, tgt_map)
+
+
+def test_map_domain_vs_split_iname(ctx_factory):
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        [
+            "[nx,nt] -> {[x, t]: 0 <= x < nx and 0 <= t < nt}",
+            "[ni] -> {[i]: 0 <= i < ni}",
+        ],
+        """
+        a[x,t] = b[x,t]  {id=stmta}
+        c[x,t] = d[x,t]  {id=stmtc}
+        e[i] = f[i]
+        """,
+        lang_version=(2018, 2),
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b,d,f": np.float32})
+    ref_knl = knl
+
+    # }}}
+
+    # {{{ Apply domain change mapping
+
+    knl_map_dom = ref_knl
+
+    # Create map_domain mapping:
+    import islpy as isl
+    transform_map = isl.BasicMap(
+        "[nt] -> {[t] -> [t_outer, t_inner]: "
+        "0 <= t_inner < 32 and "
+        "32*t_outer + t_inner = t and "
+        "0 <= 32*t_outer + t_inner < nt}")
+
+    # Call map_domain to transform kernel
+    knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+
+    # Prioritize loops (prio should eventually be updated in map_domain?)
+    loop_priority = "x, t_outer, t_inner"
+    knl_map_dom = lp.prioritize_loops(knl_map_dom, loop_priority)
+
+    # Get a linearization
+    proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
+    lin_knl_map_dom = lp.get_one_linearized_kernel(
+        proc_knl_map_dom["loopy_kernel"], proc_knl_map_dom.callables_table)
+
+    # }}}
+
+    # {{{ Split iname and see if we get the same result
+
+    knl_split_iname = ref_knl
+    knl_split_iname = lp.split_iname(knl_split_iname, "t", 32)
+    knl_split_iname = lp.prioritize_loops(knl_split_iname, loop_priority)
+    proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
+    lin_knl_split_iname = lp.get_one_linearized_kernel(
+        proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
+
+    for d_map_domain, d_split_iname in zip(
+            knl_map_dom["loopy_kernel"].domains,
+            knl_split_iname["loopy_kernel"].domains):
+        d_map_domain_aligned = _ensure_dim_names_match_and_align(
+            d_map_domain, d_split_iname)
+        assert d_map_domain_aligned == d_split_iname
+
+    for litem_map_domain, litem_split_iname in zip(
+            lin_knl_map_dom.linearization, lin_knl_split_iname.linearization):
+        assert litem_map_domain == litem_split_iname
+
+    # Can't easily compare instructions because equivalent subscript
+    # expressions may have different orders
+
+    lp.auto_test_vs_ref(proc_knl_split_iname, ctx_factory(), proc_knl_map_dom,
+        parameters={"nx": 128, "nt": 128, "ni": 128})
+
+    # }}}
+
+# }}}
+
+
+# {{{ test_map_domain_transform_map_validity_and_errors
+
+def test_map_domain_transform_map_validity_and_errors(ctx_factory):
+
+    # {{{ Make kernel
+
+    knl = lp.make_kernel(
+        [
+            "[nx,nt] -> {[x, y, z, t]: 0 <= x,y,z < nx and 0 <= t < nt}",
+            "[m] -> {[j]: 0 <= j < m}",
+        ],
+        """
+        a[y,x,t,z] = b[y,x,t,z]  {id=stmta}
+        for j
+            <>temp = j  {dep=stmta}
+        end
+        """,
+        lang_version=(2018, 2),
+        )
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32})
+    ref_knl = knl
+
+    # }}}
+
+    # {{{ Make sure map_domain *succeeds* when map includes 2 of 4 dims in one
+    # domain.
+
+    # {{{ Apply domain change mapping that splits t and renames y; (similar to
+    # split_iname test above, but doesn't hurt to test this slightly different
+    # scenario)
+
+    knl_map_dom = ref_knl
+
+    # Create map_domain mapping that only includes t and y
+    # (x and z should be unaffected)
+    import islpy as isl
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[t, y] -> [t_outer, t_inner, y_new]: "
+        "0 <= t_inner < 16 and "
+        "16*t_outer + t_inner = t and "
+        "0 <= 16*t_outer + t_inner < nt and "
+        "y = y_new"
+        "}")
+
+    # Call map_domain to transform kernel; this should *not* produce an error
+    knl_map_dom = lp.map_domain(knl_map_dom, transform_map)
+
+    # Prioritize loops
+    desired_prio = "x, t_outer, t_inner, z, y_new"
+
+    # Use constrain_loop_nesting if it's available
+    cln_attr = getattr(lp, "constrain_loop_nesting", None)
+    if cln_attr is not None:
+        knl_map_dom = lp.constrain_loop_nesting(  # noqa pylint:disable=no-member
+            knl_map_dom, desired_prio)
+    else:
+        knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
+
+    # Get a linearization
+    proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
+    lin_knl_map_dom = lp.get_one_linearized_kernel(
+        proc_knl_map_dom["loopy_kernel"], proc_knl_map_dom.callables_table)
+
+    # }}}
+
+    # {{{ Use split_iname and rename_iname, and make sure we get the same result
+
+    knl_split_iname = ref_knl
+    knl_split_iname = lp.split_iname(knl_split_iname, "t", 16)
+    knl_split_iname = lp.rename_iname(knl_split_iname, "y", "y_new")
+    try:
+        # Use constrain_loop_nesting if it's available
+        knl_split_iname = lp.constrain_loop_nesting(knl_split_iname, desired_prio)
+    except AttributeError:
+        knl_split_iname = lp.prioritize_loops(knl_split_iname, desired_prio)
+    proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
+    lin_knl_split_iname = lp.get_one_linearized_kernel(
+        proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
+
+    for d_map_domain, d_split_iname in zip(
+            knl_map_dom["loopy_kernel"].domains,
+            knl_split_iname["loopy_kernel"].domains):
+        d_map_domain_aligned = _ensure_dim_names_match_and_align(
+            d_map_domain, d_split_iname)
+        assert d_map_domain_aligned == d_split_iname
+
+    for litem_map_domain, litem_split_iname in zip(
+            lin_knl_map_dom.linearization, lin_knl_split_iname.linearization):
+        assert litem_map_domain == litem_split_iname
+
+    # Can't easily compare instructions because equivalent subscript
+    # expressions may have different orders
+
+    lp.auto_test_vs_ref(proc_knl_split_iname, ctx_factory(), proc_knl_map_dom,
+        parameters={"nx": 32, "nt": 32, "m": 32})
+
+    # }}}
+
+    # }}}
+
+    # {{{ Make sure we error on a map that is not bijective
+
+    # Not bijective
+    transform_map = isl.BasicMap(
+        "[nx,nt] -> {[t, y, rogue] -> [t_new, y_new]: "
+        "y = y_new and t = t_new"
+        "}")
+
+    from loopy.diagnostic import LoopyError
+    knl = ref_knl
+    try:
+        knl = lp.map_domain(knl, transform_map)
+        raise AssertionError()
+    except LoopyError as err:
+        assert "map must be bijective" in str(err)
+
+    # }}}
+
+    # {{{ Make sure there's an error if transform map does not apply to
+    # exactly one domain.
+
+    test_maps = [
+        # Map where some inames match exactly one domain but there's also a
+        # rogue dim
+        isl.BasicMap(
+            "[nx,nt] -> {[t, y, rogue] -> [t_new, y_new, rogue_new]: "
+            "y = y_new and t = t_new and rogue = rogue_new"
+            "}"),
+        # Map where all inames match exactly one domain but there's also a
+        # rogue dim
+        isl.BasicMap(
+            "[nx,nt] -> {[t, y, x, z, rogue] -> "
+            "[t_new, y_new, x_new, z_new, rogue_new]: "
+            "y = y_new and t = t_new and x = x_new and z = z_new "
+            "and rogue = rogue_new"
+            "}"),
+        # Map where no inames match any domain
+        isl.BasicMap(
+            "[nx,nt] -> {[rogue] -> [rogue_new]: "
+            "rogue = rogue_new"
+            "}"),
+        ]
+
+    for transform_map in test_maps:
+        try:
+            knl = lp.map_domain(knl, transform_map)
+            raise AssertionError()
+        except LoopyError as err:
+            assert (
+                "was not applicable to any domain. "
+                "Transform map must be applicable to exactly one domain."
+                in str(err))
+
+    # }}}
+
+    # {{{ Make sure there's an error if we try to map inames in priorities
+
+    knl = ref_knl
+    knl = lp.prioritize_loops(knl, "y, z")
+    knl = lp.prioritize_loops(knl, "x, z")
+    try:
+        transform_map = isl.BasicMap(
+            "[nx,nt] -> {[t, y] -> [t_new, y_new]: "
+            "y = y_new and t = t_new }")
+        knl = lp.map_domain(knl, transform_map)
+        raise AssertionError()
+    except ValueError as err:
+        assert (
+            "Loop priority ('y', 'z') contains iname(s) "
+            "transformed by map" in str(err))
+
+    # }}}
+
+    # {{{ Make sure we error when stmt.within_inames contains at least one but
+    # not all mapped inames
+
+    # {{{ Make potentially problematic kernel
+
+    knl = lp.make_kernel(
+        [
+            "[n, m] -> { [i, j]: 0 <= i < n and 0 <= j < m }",
+            "[ell] -> { [k]: 0 <= k < ell }",
+        ],
+        """
+        for i
+            <>t0 = i  {id=stmt0}
+            for j
+                <>t1 = j  {id=stmt1, dep=stmt0}
+            end
+            <>t2 = i + 1  {id=stmt2, dep=stmt1}
+        end
+        for k
+           <>t3 = k  {id=stmt3, dep=stmt2}
+        end
+        """,
+        lang_version=(2018, 2),
+        )
+
+    # }}}
+
+    # This should fail:
+    try:
+        transform_map = isl.BasicMap(
+            "[n, m] -> {[i, j] -> [i_new, j_new]: "
+            "i_new = i + j and j_new = 2 + i }")
+        knl = lp.map_domain(knl, transform_map)
+        raise AssertionError()
+    except LoopyError as err:
+        assert (
+            "Statements must be within all or none of the mapped inames"
+            in str(err))
+
+    # This should succeed:
+    transform_map = isl.BasicMap(
+        "[n, m] -> {[i] -> [i_new]: i_new = i + 2 }")
+    knl = lp.map_domain(knl, transform_map)
+
+    # }}}
+
+# }}}
+
+
+def test_diamond_tiling(ctx_factory, interactive=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    ref_knl = lp.make_kernel(
+        "[nx,nt] -> {[ix, it]: 1<=ix<nx-1 and 0<=it<nt}",
+        """
+        u[ix, it+2] = (
+            2*u[ix, it+1]
+            + dt**2/dx**2 * (u[ix+1, it+1] - 2*u[ix, it+1] + u[ix-1, it+1])
+            - u[ix, it])
+        """)
+
+    knl_for_transform = ref_knl
+
+    ref_knl = lp.prioritize_loops(ref_knl, "it, ix")
+
+    import islpy as isl
+    m = isl.BasicMap(
+        "[nx,nt] -> {[ix, it] -> [tx, tt, tparity, itt, itx]: "
+        "16*(tx - tt) + itx - itt = ix - it and "
+        "16*(tx + tt + tparity) + itt + itx = ix + it and "
+        "0<=tparity<2 and 0 <= itx - itt < 16 and 0 <= itt+itx < 16}")
+    knl = lp.map_domain(knl_for_transform, m)
+    knl = lp.prioritize_loops(knl, "tt,tparity,tx,itt,itx")
+
+    if interactive:
+        nx = 43
+        u = np.zeros((nx, 200))
+        x = np.linspace(-1, 1, nx)
+        dx = x[1] - x[0]
+        u[:, 0] = u[:, 1] = np.exp(-100*x**2)
+
+        u_dev = cl.array.to_device(queue, u)
+        knl(queue, u=u_dev, dx=dx, dt=dx)
+
+        u = u_dev.get()
+        import matplotlib.pyplot as plt
+        plt.imshow(u.T)
+        plt.show()
+    else:
+        types = {"dt,dx,u": np.float64}
+        knl = lp.add_and_infer_dtypes(knl, types)
+        ref_knl = lp.add_and_infer_dtypes(ref_knl, types)
+
+        lp.auto_test_vs_ref(ref_knl, ctx, knl,
+                parameters={
+                    "nx": 200, "nt": 300,
+                    "dx": 1, "dt": 1
+                    })
+
+
 def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
     knl = lp.make_kernel(
             "{[i, j, k]: 0<=i<100 and 0<=j,k<5}",
@@ -882,6 +1258,50 @@ def test_privatize_with_nonzero_lbound(ctx_factory):
     assert knl["arange_10_to_14"].temporary_variables["tmp"].shape == (4,)
     _, (out, ) = knl(queue)
     np.testing.assert_allclose(out.get()[10:14], np.arange(10, 14))
+
+
+def test_simplify_indices(ctx_factory):
+    ctx = ctx_factory()
+    twice = lp.make_function(
+        "{[i, j]: 0<=i<10 and 0<=j<4}",
+        """
+        y[i,j] = 2*x[i,j]
+        """, name="zerozerozeroonezeroify")
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        Y[:,:] = zerozerozeroonezeroify(X[:,:])
+        """, [lp.GlobalArg("X,Y",
+                           shape=(10, 4),
+                           dtype=np.float64)])
+
+    class ContainsFloorDiv(lp.symbolic.CombineMapper):
+        def combine(self, values):
+            return any(values)
+
+        def map_floor_div(self, expr):
+            return True
+
+        def map_variable(self, expr):
+            return False
+
+        def map_constant(self, expr):
+            return False
+
+    knl = lp.merge([knl, twice])
+    knl = lp.inline_callable_kernel(knl, "zerozerozeroonezeroify")
+    simplified_knl = lp.simplify_indices(knl)
+    contains_floordiv = ContainsFloorDiv()
+
+    assert any(contains_floordiv(insn.expression)
+               for insn in knl.default_entrypoint.instructions
+               if isinstance(insn, lp.MultiAssignmentBase))
+    assert all(not contains_floordiv(insn.expression)
+               for insn in simplified_knl.default_entrypoint.instructions
+               if isinstance(insn, lp.MultiAssignmentBase))
+
+    lp.auto_test_vs_ref(knl, ctx, simplified_knl)
 
 
 if __name__ == "__main__":

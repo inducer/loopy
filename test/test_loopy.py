@@ -3216,6 +3216,38 @@ def test_get_return_from_kernel_mapping():
     assert ret_from_knl_idx[9] == 10
 
 
+def test_zero_stride_array(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        ["{[i]: 0<=i<10}",
+         "{[j]: 1=0}"],
+        """
+        y[i, j] = 1
+        """, [lp.GlobalArg("y", shape=(10, 0))])
+
+    evt, (out,) = knl(cq)
+    assert out.shape == (10, 0)
+
+
+def test_predicated_redn(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/427
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        ["{[i]: 0<= i < 5}",
+         "{[j]: 0<= j < 10}",
+         "{[k]: 0<=k<10}"],
+        """
+        <> tmp[k] = k ** 2
+        y[j] = 0 if j < 5 else sum(i, tmp[i+j-5])
+        """, seq_dependencies=True)
+
+    # if predicates are added correctly, access checker does not raise
+    lp.auto_test_vs_ref(knl, ctx, knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

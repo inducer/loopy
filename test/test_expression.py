@@ -548,6 +548,25 @@ def test_complex_support(ctx_factory, target):
                                (0.5*n*(n-1) - 0.5*n*(n-1)*1j) ** 2)
 
 
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_real_with_real_argument(ctx_factory, dtype):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < nresult}",
+            "result[i] = real(ary[i])",
+            )
+
+    rng = np.random.default_rng()
+    ary = cl.array.to_device(queue, rng.random(128).astype(dtype))
+
+    _, (result,) = knl(queue, ary=ary)
+
+    assert result.dtype == ary.dtype
+    np.testing.assert_allclose(result.get(), np.real(ary.get()))
+
+
 def test_bool_type_context(ctx_factory):
     # Checks if a boolean type context is correctly handled in codegen phase.
     # See https://github.com/inducer/loopy/pull/258
