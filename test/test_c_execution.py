@@ -76,8 +76,7 @@ def test_c_target_strides():
     a_np = np.reshape(np.arange(16 * 16, dtype=np.float32), (16, -1),
                       order="C")
 
-    assert np.allclose(knl(a=a_np)[1],
-                2 * a_np)
+    assert np.allclose(knl(a=a_np)[1], 2 * a_np)
 
     # test with F-order
     knl = __get_kernel("F")
@@ -372,6 +371,19 @@ def test_scalar_global_args():
             target=lp.ExecutableCTarget())(n=n)
 
     assert out == (n*(n-1)/2)
+
+
+def test_zero_stride_array():
+    knl = lp.make_kernel([
+        "{[i, j]: 0 <= i < n0 and 0 <= j < m0}",
+        ],
+        """
+        y[i, j] = z[i, j] + 2
+        """,
+        target=lp.ExecutableCTarget())
+
+    evt, (out,) = knl(z=np.empty((18, 0)))
+    evt, (out,) = knl(z=np.empty((0, 18)))
 
 
 if __name__ == "__main__":

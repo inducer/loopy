@@ -3220,6 +3220,8 @@ def test_zero_stride_array(ctx_factory):
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
 
+    # {{{ fixed
+
     knl = lp.make_kernel(
         ["{[i]: 0<=i<10}",
          "{[j]: 1=0}"],
@@ -3229,6 +3231,29 @@ def test_zero_stride_array(ctx_factory):
 
     evt, (out,) = knl(cq)
     assert out.shape == (10, 0)
+
+    # }}}
+
+    # {{{ input from numpy
+
+    knl = lp.make_kernel([
+        "{[i, j]: 0 <= i < n0 and 0 <= j < m0}",
+        ],
+        """
+        y[i, j] = z[i, j] + 2
+        """,
+        )
+
+    z = cl.array.to_device(cq, np.empty((0, 18)))
+    evt, (out,) = knl(cq, z=z)
+
+    z = cl.array.to_device(cq, np.empty((18, 0)))
+    evt, (out,) = knl(cq, z=z)
+
+    y = cl.array.to_device(cq, np.empty((18, 0)))
+    evt, _ = knl(cq, y=y, z=z)
+
+    # }}}
 
 
 def test_predicated_redn(ctx_factory):

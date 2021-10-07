@@ -77,17 +77,17 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         itemsize = kernel_arg.dtype.numpy_dtype.itemsize
         for i in range(num_axes):
-            gen("_lpy_strides_%d = %s" % (i, strify(
-                itemsize*arg.unvec_strides[i])))
+            gen("_lpy_ustrides = %s" % strify(arg.unvec_strides[i]))
+            gen("_lpy_ustrides_%d = 1 if _lpy_ustrides == 0 else _lpy_ustrides" % i)
 
         if not skip_arg_checks:
             for i in range(num_axes):
-                gen("assert _lpy_strides_%d > 0, "
+                gen("assert _lpy_ustrides_%d > 0, "
                         "\"'%s' has negative stride in axis %d\""
                         % (i, arg.name, i))
 
         sym_strides = tuple(
-                var("_lpy_strides_%d" % i)
+                itemsize * var("_lpy_ustrides_%d" % i)
                 for i in range(num_axes))
 
         sym_shape = tuple(
@@ -95,16 +95,19 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 for i in range(num_axes))
 
         # find order of array
-        order = "'C'" if (arg.shape == () or arg.unvec_strides[-1] == 1) else "'F'"
+        if arg.shape == ():
+            gen("_lpy_order = 'C'")
+        else:
+            gen("_lpy_order = 'C' if _lpy_ustrides_%d == 1 else 'F'"
+                    % (num_axes - 1))
 
         gen("%(name)s = _lpy_np.empty(%(shape)s, "
-                "%(dtype)s, order=%(order)s)"
+                "%(dtype)s, order=_lpy_order)"
                 % dict(
                     name=arg.name,
                     shape=strify(sym_shape),
                     dtype=self.python_dtype_str(
-                        gen, kernel_arg.dtype.numpy_dtype),
-                    order=order))
+                        gen, kernel_arg.dtype.numpy_dtype)))
 
         expected_strides = tuple(
                 var("_lpy_expected_strides_%s" % i)
@@ -124,9 +127,13 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     dict(strides_check=strides_check_expr,
                          name=arg.name,
                          strides=strify(sym_strides)))
+
             for i in range(num_axes):
                 gen("del _lpy_shape_%d" % i)
-                gen("del _lpy_strides_%d" % i)
+                gen("del _lpy_ustrides_%d" % i)
+            gen("del _lpy_order")
+            if num_axes > 0:
+                gen("del _lpy_ustrides")
             gen("")
 
     # }}}
@@ -404,7 +411,7 @@ class CompiledCKernel:
             if hasattr(arg, "ctypes"):
                 if arg.size == 0:
                     # TODO eliminate unused arguments from kernel
-                    arg_ = arg_t(0.0)
+                    arg_ = arg_t(arg_t._type_(0.0))
                 else:
                     arg_ = arg.ctypes.data_as(arg_t)
             else:

@@ -100,8 +100,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         itemsize = kernel_arg.dtype.numpy_dtype.itemsize
         for i in range(num_axes):
-            gen("_lpy_ustrides_%d = %s" % (i, strify(
-                arg.unvec_strides[i])))
+            gen("_lpy_ustrides = %s" % strify(arg.unvec_strides[i]))
+            gen("_lpy_ustrides_%d = 1 if _lpy_ustrides == 0 else _lpy_ustrides" % i)
 
         if not skip_arg_checks:
             for i in range(num_axes):
@@ -119,8 +119,13 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         size_expr = (sum(astrd*(alen-1)
             for alen, astrd in zip(sym_shape, sym_ustrides))
             + 1)
-
         gen("_lpy_size = %s" % strify(size_expr))
+
+        if arg.shape != ():
+            from pymbolic.primitives import Product
+            gen("_lpy_size_unstrided = %s" % strify(Product(sym_shape)))
+            gen("_lpy_size = 0 if _lpy_size_unstrided == 0 else _lpy_size")
+
         sym_strides = tuple(itemsize*s_i for s_i in sym_ustrides)
 
         dtype_name = self.python_dtype_str(gen, kernel_arg.dtype.numpy_dtype)
@@ -134,6 +139,9 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         for i in range(num_axes):
             gen("del _lpy_ustrides_%d" % i)
         gen("del _lpy_size")
+        if num_axes > 0:
+            gen("del _lpy_ustrides")
+            gen("del _lpy_size_unstrided")
         gen("")
 
     # }}}

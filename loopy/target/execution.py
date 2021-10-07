@@ -530,8 +530,10 @@ class ExecutionWrapperGeneratorBase(ABC):
 
                     if arg.unvec_strides and kernel_arg.dim_tags:
                         itemsize = kernel_arg.dtype.numpy_dtype.itemsize
+                        from pymbolic.primitives import If, Comparison
                         sym_strides = tuple(
-                                itemsize*s_i for s_i in arg.unvec_strides)
+                                itemsize*If(Comparison(s_i, "==", 0), 1, s_i)
+                                for s_i in arg.unvec_strides)
 
                         ndim = len(arg.unvec_shape)
                         shape = ["_lpy_shape_%d" % i for i in range(ndim)]
