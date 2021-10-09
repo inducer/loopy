@@ -223,6 +223,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         new_insns = []
 
         excluded_insn_ids = {self.compute_insn_id, self.compute_dep_id}
+        # precomputed_in_insns: set of insn ids in which the subst rule was
+        # precomputed.
+        precomputed_in_insns = set()
 
         for insn in kernel.instructions:
             self.replaced_something = False
@@ -236,6 +239,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                             insn.depends_on
                             | frozenset([self.compute_dep_id])))
 
+                precomputed_in_insns.add(insn.id)
+
                 for dep in insn.depends_on:
                     if dep in excluded_insn_ids:
                         continue
@@ -247,6 +252,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                                 insn.depends_on - excluded_insn_ids)
 
             new_insns.append(insn)
+
+        # compute_insn cannot depend on its users.
+        self.compute_insn_depends_on -= precomputed_in_insns
 
         return kernel.copy(instructions=new_insns)
 
