@@ -1561,8 +1561,6 @@ def find_shapes_of_vars(knl, var_names, feed_expression):
 
 
 def determine_shapes_of_temporaries(knl):
-    new_temp_vars = knl.temporary_variables.copy()
-
     import loopy as lp
 
     vars_needing_shape_inference = set()
