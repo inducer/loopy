@@ -1016,6 +1016,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         """Return a copy of self with all expressions replaced with what *mapper*
         transformed them into.
         """
+        changed = False
         kwargs = {}
         import loopy as lp
 
@@ -1026,15 +1027,24 @@ class ArrayBase(ImmutableRecord, Taggable):
                 else:
                     return mapper(s)
 
-            kwargs["shape"] = tuple(none_pass_mapper(s) for s in self.shape)
+            new_shape = tuple(none_pass_mapper(s) for s in self.shape)
+            kwargs["shape"] = new_shape
+            if new_shape != self.shape:
+                changed = True
 
         if self.dim_tags is not None:
-            kwargs["dim_tags"] = [dim_tag.map_expr(mapper)
+            new_dim_tags = [dim_tag.map_expr(mapper)
                     for dim_tag in self.dim_tags]
+            kwargs["dim_tags"] = new_dim_tags
+            if new_dim_tags != self.dim_tags:
+                changed = True
 
         # offset is not an expression, do not map.
+        if changed:
+            return self.copy(**kwargs)
+        else:
+            return self
 
-        return self.copy(**kwargs)
 
     def vector_size(self, target):
         """Return the size of the vector type used for the array
