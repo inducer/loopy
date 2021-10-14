@@ -699,23 +699,32 @@ def parse_instructions(instructions, defines):
             continue
 
         elif isinstance(insn, InstructionBase):
+            changed = False
+
+            def checked_intern(s):
+                interned_s = intern(s)
+                if id(interned_s) != id(s):
+                    changed = True
+
             def intern_if_str(s):
                 if isinstance(s, str):
-                    return intern(s)
+                    return checked_intern(s)
                 else:
                     return s
 
-            new_instructions.append(
-                    insn.copy(
-                        id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
-                        depends_on=frozenset(intern_if_str(dep)
-                            for dep in insn.depends_on),
-                        groups=frozenset(intern(grp) for grp in insn.groups),
-                        conflicts_with_groups=frozenset(
-                            intern(grp) for grp in insn.conflicts_with_groups),
-                        within_inames=frozenset(
-                            intern(iname) for iname in insn.within_inames),
-                        ))
+            copy_args = {
+                "id": intern_if_str(insn.id),
+                "depends_on": frozenset(intern_if_str(dep)
+                    for dep in insn.depends_on),
+                "groups": frozenset(checked_intern(grp) for grp in insn.groups),
+                "conflicts_with_groups": frozenset(
+                    checked_intern(grp) for grp in insn.conflicts_with_groups),
+                "within_inames": frozenset(
+                    checked_intern(iname) for iname in insn.within_inames),
+            }
+            if changed:
+                insn = insn.copy(**copy_args)
+            new_instructions.append(insn)
             continue
 
         elif not isinstance(insn, str):
