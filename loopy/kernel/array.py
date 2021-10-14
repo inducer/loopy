@@ -1045,7 +1045,6 @@ class ArrayBase(ImmutableRecord, Taggable):
         else:
             return self
 
-
     def vector_size(self, target):
         """Return the size of the vector type used for the array
         divided by the basic data type.
