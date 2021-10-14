@@ -432,17 +432,23 @@ def uniquify_instruction_ids(kernel):
 
     new_instructions = []
 
+    changed = False
     for insn in kernel.instructions:
         if insn.id is None:
             new_instructions.append(
                     insn.copy(id=insn_id_gen("insn")))
+            changed = True
         elif isinstance(insn.id, UniqueName):
             new_instructions.append(
                     insn.copy(id=insn_id_gen(insn.id.name)))
+            changed = True
         else:
             new_instructions.append(insn)
 
-    return kernel.copy(instructions=new_instructions)
+    if changed:
+        return kernel.copy(instructions=new_instructions)
+    else:
+        return kernel
 
 # }}}
 
