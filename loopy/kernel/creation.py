@@ -165,6 +165,9 @@ def expand_defines(insn, defines, single_valued=True):
 
 
 def expand_defines_in_expr(expr, defines):
+    if not defines:
+        return expr
+
     from pymbolic.primitives import Variable
     from loopy.symbolic import parse
 
@@ -1641,6 +1644,9 @@ def determine_shapes_of_temporaries(knl):
 # {{{ expand defines in shapes
 
 def expand_defines_in_shapes(kernel, defines):
+    if not defines:
+        return kernel
+
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.creation import expand_defines_in_expr
 
