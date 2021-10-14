@@ -702,6 +702,7 @@ def parse_instructions(instructions, defines):
             changed = False
 
             def checked_intern(s):
+                nonlocal changed
                 interned_s = intern(s)
                 if id(interned_s) != id(s):
                     changed = True
