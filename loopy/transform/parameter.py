@@ -126,7 +126,8 @@ def _fix_parameter(kernel, name, value, within=None):
             rule_mapping_context, subst_func, within=within)
     return (
             rule_mapping_context.finish_kernel(
-                esubst_map.map_kernel(kernel, within=within))
+                esubst_map.map_kernel(kernel, within=within,
+                    map_tvs=False, map_args=False))
             .copy(
                 domains=new_domains,
                 args=new_args,
