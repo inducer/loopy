@@ -706,6 +706,7 @@ def parse_instructions(instructions, defines):
                 interned_s = intern(s)
                 if id(interned_s) != id(s):
                     changed = True
+                 return interned_s
 
             def intern_if_str(s):
                 if isinstance(s, str):
