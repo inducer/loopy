@@ -1842,9 +1842,14 @@ def add_inferred_inames(knl):
     from loopy.kernel.tools import find_all_insn_inames
     insn_inames = find_all_insn_inames(knl)
 
-    return knl.copy(instructions=[
-            insn.copy(within_inames=insn_inames[insn.id])
-            for insn in knl.instructions])
+    instructions = []
+    for insn in knl.instructions:
+        new_within_inames = insn_inames[insn.id]
+        if new_within_inames != insn.within_inames:
+            insn = insn.copy(within_inames=new_within_inames)
+        instructions.append(insn)
+
+    return knl.copy(instructions=instructions)
 
 # }}}
 
