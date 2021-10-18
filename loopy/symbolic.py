@@ -1844,6 +1844,10 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         raise TypeError("literal '%s' not supported "
                         "for as-pwaff evaluation" % expr)
 
+    def map_reduction(self, expr):
+        raise TypeError("reduction in '%s' not supported "
+                "for as-pwaff evaluation" % expr)
+
 
 def aff_from_expr(space, expr, vars_to_zero=None):
     if vars_to_zero is None:
@@ -2070,6 +2074,10 @@ class ConditionExpressionToBooleanOpsExpression(IdentityMapper):
     map_call = _get_expr_neq_0
     map_power = _get_expr_neq_0
     map_power = _get_expr_neq_0
+
+    def map_reduction(self, expr):
+        raise ExpressionToAffineConversionError("cannot (yet) convert reduction "
+                "to affine")
 
 
 class AffineConditionToISLSetMapper(IdentityMapper):
