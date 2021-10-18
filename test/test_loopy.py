@@ -3248,6 +3248,21 @@ def test_predicated_redn(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl)
 
 
+def test_redn_in_predicate(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        ["{[i]: 0<= i < 5}",
+         "{[j]: 0<= j < 10}",
+         "{[k]: 0<=k<10}"],
+        """
+        y[j] = sum(i, i**3) if (sum(k, k**2) < 2) else (10 - j)
+        """,
+        seq_dependencies=True)
+
+    lp.auto_test_vs_ref(knl, ctx, knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
