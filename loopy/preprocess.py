@@ -881,18 +881,19 @@ class RealizeReductionCallbackMapper(ReductionCallbackMapper):
 
     def map_if(self, expr, callables_table, guarding_predicates, nresults=1):
         import pymbolic.primitives as prim
-        return prim.If(self.rec(expr.condition, callables_table=callables_table,
+        rec_cond = self.rec(expr.condition, callables_table=callables_table,
                                 guarding_predicates=guarding_predicates,
-                                nresults=nresults),
+                                nresults=nresults)
+        return prim.If(rec_cond,
                        self.rec(expr.then, callables_table=callables_table,
                                 guarding_predicates=(
                                     guarding_predicates
-                                    | frozenset([expr.condition])),
+                                    | frozenset([rec_cond])),
                                 nresults=nresults),
                        self.rec(expr.else_, callables_table=callables_table,
                                 guarding_predicates=(
                                     guarding_predicates
-                                    | frozenset([prim.LogicalNot(expr.condition)])),
+                                    | frozenset([prim.LogicalNot(rec_cond)])),
                                 nresults=nresults))
 
 
