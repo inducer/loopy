@@ -1304,6 +1304,26 @@ def test_simplify_indices(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, simplified_knl)
 
 
+def test_precompute_does_not_lead_to_dep_cycle(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/498
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        <> tmp0[i] = 2 * i
+        <> tmp1[i] = 2 * tmp0[i]
+        <> tmp2[i] = 3 * tmp1[i]
+        out[i] = 2*tmp1[i] + 3*tmp2[i]
+        """)
+    ref_knl = knl
+
+    knl = lp.assignment_to_subst(knl, "tmp1")
+    knl = lp.precompute(knl, "tmp1_subst")
+
+    lp.auto_test_vs_ref(knl, ctx, ref_knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
