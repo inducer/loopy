@@ -631,6 +631,16 @@ class CMathCallable(ScalarCallable):
                         callables_table)
 
             dtype = arg_id_to_dtype[0].numpy_dtype
+
+            if dtype.kind == "f":
+                pass
+            elif dtype == np.int32:
+                name = "isnani32"
+            elif dtype == np.int64:
+                name = "isnani64"
+            else:
+                raise LoopyTypeError(f"'isnan' does not support type {dtype}.")
+
             return (
                     self.copy(
                         name_in_target=name,
@@ -655,6 +665,15 @@ class CMathCallable(ScalarCallable):
             yield ("40_lpy_min", f"""
             static inline {ctype} {self.name_in_target}({ctype} a, {ctype} b) {{
               return (a < b ? a : b);
+            }}""")
+
+        if self.name == "isnan" and self.name_in_target in {"isnani32",
+                                                            "isnani64"}:
+            dtype = self.arg_id_to_dtype[0]
+            ctype = target.dtype_to_typename(dtype)
+            yield(f"08_c_{self.name_in_target}", f"""
+            inline static int {self.name_in_target}({ctype} x) {{
+              return 0;
             }}""")
 
 
