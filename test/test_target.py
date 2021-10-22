@@ -424,7 +424,9 @@ def test_nan_support(ctx_factory):
         "{:}",
         [lp.Assignment(parse("a"), np.nan),
          lp.Assignment(parse("b"), parse("isnan(a)")),
-         lp.Assignment(parse("c"), parse("isnan(3.14)"))],
+         lp.Assignment(parse("c"), parse("isnan(3.14)")),
+         lp.Assignment(parse("d"), parse("isnan(0)")),
+         ],
         [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
         seq_dependencies=True)
 
@@ -434,6 +436,7 @@ def test_nan_support(ctx_factory):
     assert np.isnan(out_dict["a"].get())
     assert out_dict["b"] == 1
     assert out_dict["c"] == 0
+    assert out_dict["d"] == 0
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
