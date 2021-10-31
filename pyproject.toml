@@ -214,10 +214,11 @@ exclude = [
 
 [[tool.basedpyright.executionEnvironments]]
 root = "test"
-reportUnknownArgumentType = "hint"
-reportUnknownVariableType = "hint"
+reportUnknownArgumentType = "none"
+reportUnknownVariableType = "none"
+reportUnknownMemberType = "hint"
+reportUnknownParameterType = "none"
 reportMissingParameterType = "none"
 reportAttributeAccessIssue = "none"
 reportMissingImports = "none"
 reportArgumentType = "hint"
-reportUnknownMemberType = "hint"
