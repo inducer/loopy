@@ -240,7 +240,10 @@ exclude = [
 root = "test"
 reportUnknownArgumentType = "none"
 reportUnknownVariableType = "none"
+reportUnknownMemberType = "none"
+reportUnknownParameterType = "none"
 reportMissingParameterType = "none"
 reportAttributeAccessIssue = "none"
 reportMissingImports = "none"
+reportMissingTypeStubs = "none"
 
