@@ -2167,4 +2167,58 @@ def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
                                        constants_only=False)
     return lower_bound
 
+
+# {{{ get access map from an instruction
+
+class _IndexCollector(CombineMapper):
+    def __init__(self, var):
+        self.var = var
+        super().__init__()
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_subscript(self, expr):
+        if expr.aggregate.name == self.var:
+            return (super().map_subscript(expr) | frozenset([expr.index_tuple]))
+        else:
+            return super().map_subscript(expr)
+
+    def map_algebraic_leaf(self, expr):
+        return frozenset()
+
+    map_constant = map_algebraic_leaf
+
+
+def _union_amaps(amaps):
+    import islpy as isl
+    return reduce(isl.Map.union, amaps[1:], amaps[0])
+
+
+def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
+    from loopy.match import Id
+    from loopy.symbolic import get_access_map
+    from loopy.transform.subst import expand_subst
+
+    insn = kernel.id_to_insn[insn_id]
+
+    kernel = expand_subst(kernel, within=Id(insn_id))
+    indices = tuple(
+        _IndexCollector(var)(
+            (insn.expression, insn.assignees, tuple(insn.predicates))
+        )
+    )
+
+    amaps = [
+        get_access_map(
+            kernel.get_inames_domain(insn.within_inames), idx, kernel.assumptions
+        )
+        for idx in indices
+    ]
+
+    return _union_amaps(amaps)
+
+# }}}
+
 # vim: foldmethod=marker
