@@ -23,9 +23,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+
+
+import dataclasses
 import itertools
 import logging
 import sys
+from collections.abc import Set
 from functools import reduce
 from sys import intern
 from typing import (
@@ -37,10 +41,12 @@ from typing import (
 )
 
 import numpy as np
-from typing_extensions import deprecated
+from typing_extensions import deprecated, override
 
 import islpy as isl
+import pymbolic.primitives as p
 from islpy import dim_type
+from pymbolic import Expression
 from pytools import memoize_on_first_arg, natsorted
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
@@ -62,7 +68,7 @@ from loopy.translation_unit import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Mapping, Sequence, Set
+    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence, Set
 
     import pymbolic.primitives as p
     from pymbolic import ArithmeticExpression, Expression
@@ -2223,5 +2229,74 @@ def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
     lower_bound = static_min_of_pw_aff(bounds.lower_bound_pw_aff,
                                        constants_only=False)
     return lower_bound
+
+
+# {{{ get access map from an instruction
+
+@dataclasses.dataclass
+class _IndexCollector(CombineMapper[Set[tuple[Expression, ...]], []]):
+    var: str
+
+    def __post_init__(self) -> None:
+        super().__init__()
+
+    @override
+    def combine(self,
+                values: Iterable[Set[tuple[Expression, ...]]]
+            ) -> Set[tuple[Expression, ...]]:
+        import operator
+        from functools import reduce
+        return reduce(operator.or_, values, set())
+
+    @override
+    def map_subscript(self, expr: p.Subscript) -> Set[tuple[Expression, ...]]:
+        assert isinstance(expr.aggregate, p.Variable)
+        if expr.aggregate.name == self.var:
+            return (super().map_subscript(expr) | frozenset([expr.index_tuple]))
+        else:
+            return super().map_subscript(expr)
+
+    @override
+    def map_algebraic_leaf(
+                    self, expr: p.AlgebraicLeaf,
+                ) -> frozenset[tuple[Expression, ...]]:
+        return frozenset()
+
+    @override
+    def map_constant(
+                    self, expr: object
+                ) -> frozenset[tuple[Expression, ...]]:
+        return frozenset()
+
+
+def _union_amaps(amaps):
+    import islpy as isl
+    return reduce(isl.Map.union, amaps[1:], amaps[0])
+
+
+def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
+    from loopy.match import Id
+    from loopy.symbolic import get_access_map
+    from loopy.transform.subst import expand_subst
+
+    insn = kernel.id_to_insn[insn_id]
+
+    kernel = expand_subst(kernel, within=Id(insn_id))
+    indices = tuple(
+        _IndexCollector(var)(
+            (insn.expression, insn.assignees, tuple(insn.predicates))
+        )
+    )
+
+    amaps = [
+        get_access_map(
+            kernel.get_inames_domain(insn.within_inames), idx, kernel.assumptions
+        )
+        for idx in indices
+    ]
+
+    return _union_amaps(amaps)
+
+# }}}
 
 # vim: foldmethod=marker
