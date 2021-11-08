@@ -69,7 +69,8 @@ from loopy.library.reduction import register_reduction_parser
 from loopy.version import VERSION, MOST_RECENT_LANGUAGE_VERSION
 
 from loopy.transform.iname import (
-        set_loop_priority, prioritize_loops, untag_inames,
+        set_loop_priority, prioritize_loops, constrain_loop_nesting,
+        untag_inames,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
         rename_iname, remove_unused_inames,
         split_reduction_inward, split_reduction_outward,
@@ -195,7 +196,8 @@ __all__ = [
 
         # {{{ transforms
 
-        "set_loop_priority", "prioritize_loops", "untag_inames",
+        "set_loop_priority", "prioritize_loops", "constrain_loop_nesting",
+        "untag_inames",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
         "rename_iname", "remove_unused_inames",
