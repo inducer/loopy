@@ -1357,7 +1357,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         if "tags" in what:
             lines.extend(sep)
             if show_labels:
-                lines.append("INAME IMPLEMENTATION TAGS:")
+                lines.append("INAME TAGS:")
             for iname in natsorted(kernel.all_inames()):
                 tags = kernel.iname_tags(iname)
 

@@ -119,7 +119,7 @@ always see loopy's view of a kernel by printing it.
     DOMAINS:
     [n] -> { [i] : 0 <= i < n }
     ---------------------------------------------------------------------------
-    INAME IMPLEMENTATION TAGS:
+    INAME TAGS:
     i: None
     ---------------------------------------------------------------------------
     INSTRUCTIONS:
@@ -702,7 +702,7 @@ Iname implementation tags are also printed along with the entire kernel:
     >>> print(knl)
     ---------------------------------------------------------------------------
     ...
-    INAME IMPLEMENTATION TAGS:
+    INAME TAGS:
     i_inner: unr
     i_outer: None
     ---------------------------------------------------------------------------
