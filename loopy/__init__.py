@@ -71,7 +71,7 @@ from loopy.version import VERSION, MOST_RECENT_LANGUAGE_VERSION
 from loopy.transform.iname import (
         set_loop_priority, prioritize_loops, untag_inames,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
-        rename_iname, remove_unused_inames,
+        rename_iname, rename_inames, remove_unused_inames,
         split_reduction_inward, split_reduction_outward,
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
@@ -198,7 +198,7 @@ __all__ = [
         "set_loop_priority", "prioritize_loops", "untag_inames",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
-        "rename_iname", "remove_unused_inames",
+        "rename_iname", "rename_inames", "remove_unused_inames",
         "split_reduction_inward", "split_reduction_outward",
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
