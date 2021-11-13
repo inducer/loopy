@@ -1337,6 +1337,35 @@ def test_rename_inames_redn():
     assert "ifused" in t_unit.default_entrypoint.all_inames()
 
 
+def test_rename_inames(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i1, i2]: 0<=i1, i2<10}",
+        """
+        y1[i1] = 2
+        y2[i2] = 3
+        """)
+    ref_knl = knl
+    knl = lp.rename_inames(knl, ["i1", "i2"], "ifused")
+    lp.auto_test_vs_ref(knl, ctx, ref_knl)
+
+
+def test_rename_inames_existing_ok(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i1, i2, i3]: 0<=i1, i2, i3<10}",
+        """
+        y1[i1] = 2
+        y2[i2] = 3
+        y3[i3] = 4
+        """)
+    ref_knl = knl
+    knl = lp.rename_inames(knl, ["i1", "i2"], "i3", existing_ok=True)
+    lp.auto_test_vs_ref(knl, ctx, ref_knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
