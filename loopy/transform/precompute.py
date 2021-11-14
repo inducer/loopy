@@ -263,8 +263,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     dep_insn = kernel.id_to_insn[dep]
                     if (frozenset(dep_insn.assignee_var_names())
                             & self.compute_read_variables):
-                        self.compute_insn_depends_on.update(
-                                insn.depends_on - excluded_insn_ids)
+                        self.compute_insn_depends_on.add(dep)
 
             new_insns.append(insn)
 
