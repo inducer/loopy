@@ -395,7 +395,13 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
             lhs_name, definition_insn_ids,
             usage_to_definition, extra_arguments, within)
 
-    kernel = rule_mapping_context.finish_kernel(tts.map_kernel(kernel))
+    def _accesses_lhs(kernel, insn, *args):
+        return lhs_name in insn.dependency_names()
+
+    kernel = rule_mapping_context.finish_kernel(
+        tts.map_kernel(kernel,
+                       within=_accesses_lhs,
+                       map_tvs=False, map_args=False))
 
     from loopy.kernel.data import SubstitutionRule
 
