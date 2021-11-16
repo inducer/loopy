@@ -1442,8 +1442,8 @@ def test_stats_on_callable_kernel():
             y[:]  = matvec20x20(A[:,:], x[:])
             """,
             [
-                lp.GlobalArg("x,y", shape=(20,), dtype=np.float),
-                lp.GlobalArg("A", shape=(20, 20), dtype=np.float),
+                lp.GlobalArg("x,y", shape=(20,), dtype=np.float64),
+                lp.GlobalArg("A", shape=(20, 20), dtype=np.float64),
                 ],
             name="matvec")
     caller = lp.merge([caller, callee])
@@ -1467,8 +1467,8 @@ def test_stats_on_callable_kernel_within_loop():
             y[i, :]  = matvec20x20(A[:,:], x[i, :])
             """,
             [
-                lp.GlobalArg("x,y", shape=(20, 20), dtype=np.float),
-                lp.GlobalArg("A", shape=(20, 20), dtype=np.float),
+                lp.GlobalArg("x,y", shape=(20, 20), dtype=np.float64),
+                lp.GlobalArg("A", shape=(20, 20), dtype=np.float64),
                 ],
             name="matmat")
     caller = lp.merge([caller, callee])
@@ -1495,8 +1495,8 @@ def test_callable_kernel_with_substitution():
             y[i, :]  = matvec(20, A[:,:], x[i, :])
             """,
             [
-                lp.GlobalArg("x,y", shape=(20, 20), dtype=np.float),
-                lp.GlobalArg("A", shape=(20, 20), dtype=np.float),
+                lp.GlobalArg("x,y", shape=(20, 20), dtype=np.float64),
+                lp.GlobalArg("A", shape=(20, 20), dtype=np.float64),
                 ],
             name="matmat")
     caller = lp.merge([caller, callee])
@@ -1518,7 +1518,7 @@ def test_no_loop_ops():
         d = 2*c + a + b
         """)
 
-    knl = lp.add_dtypes(knl, {"a": np.float, "b": np.float})
+    knl = lp.add_dtypes(knl, {"a": np.float64, "b": np.float64})
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
