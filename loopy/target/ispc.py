@@ -133,7 +133,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 # {{{ type registry
 
 def fill_registry_with_ispc_types(reg, respect_windows, include_bool=True):
-    reg.get_or_register_dtype("bool", np.bool)
+    reg.get_or_register_dtype("bool", bool)
 
     reg.get_or_register_dtype(["int8", "signed char", "char"], np.int8)
     reg.get_or_register_dtype(["uint8", "unsigned char"], np.uint8)
