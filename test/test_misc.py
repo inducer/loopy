@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 import pytest
+import loopy as lp
 
 import sys
 
@@ -277,6 +278,58 @@ def test_Optional():  # noqa
     kb(Optional(None))
 
     # }}}
+
+
+@lp.memoize_on_disk
+def very_costly_transform(knl, iname):
+    from time import sleep
+    sleep(5)
+    return lp.split_iname(knl, iname, 4)
+
+
+def test_memoize_on_disk():
+    if not lp.CACHING_ENABLED:
+        # if caching is disabled => don't test the caching behavior
+        pytest.skip("cannot test memoization if caching disabled")
+
+    knl = lp.make_kernel("{[i]: 0<=i<10}",
+                         """
+                         y[i] = i
+                         """)
+
+    from time import time
+    uncached_knl = very_costly_transform(knl, "i")
+
+    start = time()
+    cached_knl = very_costly_transform(knl, "i")
+    end = time()
+    assert (end - start) < 4
+    assert cached_knl == uncached_knl
+
+
+@lp.memoize_on_disk
+def get_twice_of_pym_expr(expr):
+    from time import sleep
+    sleep(2)
+    return 2 * expr
+
+
+def test_memoize_on_disk_with_pym_expr():
+    if not lp.CACHING_ENABLED:
+        # if caching is disabled => don't test the caching behavior
+        pytest.skip("cannot test memoization if caching disabled")
+
+    from pymbolic import parse
+    expr = parse("a[i] + b[i]")
+
+    from time import time
+    uncached_result = get_twice_of_pym_expr(expr)
+
+    start = time()
+    cached_result = get_twice_of_pym_expr(expr)
+    end = time()
+    assert (end - start) < 1.5
+    assert cached_result == uncached_result
 
 
 if __name__ == "__main__":
