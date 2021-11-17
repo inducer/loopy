@@ -992,6 +992,11 @@ class Assignment(MultiAssignmentBase):
     def assignees(self):
         return (self.assignee,)
 
+    @memoize_method
+    def sub_array_ref_inames(self):
+        assert super().sub_array_ref_inames() == frozenset()
+        return frozenset()
+
     # }}}
 
 
