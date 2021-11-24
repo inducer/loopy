@@ -934,11 +934,11 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             old_to_new=dict(list(zip(inames, new_inames))),
             within=within)
 
-    def _access_old_inames(kernel, insn, *args):
-        return len(frozenset(inames) & insn.dependency_names())
+    def _does_access_old_inames(kernel, insn, *args):
+        return bool(frozenset(inames) & insn.dependency_names())
 
     kernel = rule_mapping_context.finish_kernel(
-            indup.map_kernel(kernel, within=_access_old_inames,
+            indup.map_kernel(kernel, within=_does_access_old_inames,
                              map_tvs=False, map_args=False))
 
     # }}}
