@@ -772,7 +772,7 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
             % for tv in kernel.temporary_variables.values():
             lp.TemporaryVariable(
                 name="${tv.name}",
-                dtype=${'np.'+tv.dtype.numpy_dtype.name if arg.dtype else 'lp.auto'},
+                dtype=${'np.'+tv.dtype.numpy_dtype.name if tv.dtype else 'lp.auto'},
                 shape=${tv.shape}, for_atomic=${tv.for_atomic},
                 address_space=${tv_scope[tv.address_space]},
                 read_only=${tv.read_only},

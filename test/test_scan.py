@@ -324,7 +324,7 @@ def test_scan_library(ctx_factory, op_name, np_op):
             assumptions="n>=1")
 
     a = np.random.randn(20)
-    knl = lp.add_dtypes(knl, dict(a=np.float))
+    knl = lp.add_dtypes(knl, dict(a=np.float64))
     knl = lp.realize_reduction(knl, force_scan=True)
     evt, (res,) = knl(queue, a=a)
 
