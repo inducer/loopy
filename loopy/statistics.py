@@ -1731,7 +1731,7 @@ def _get_op_map_for_single_kernel(knl, callables_table,
     return op_map
 
 
-def get_op_map(program, numpy_types=True, count_redundant_work=False,
+def get_op_map(program, count_redundant_work=False,
                count_within_subscripts=True, subgroup_size=None,
                entrypoint=None):
 
@@ -1803,11 +1803,6 @@ def get_op_map(program, numpy_types=True, count_redundant_work=False,
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
     program = infer_unknown_types(program, expect_completion=True)
-
-    if numpy_types is not None:
-        from warnings import warn
-        warn("numpy_types is being ignored and will be removed in 2020.",
-                DeprecationWarning, stacklevel=2)
 
     return _get_op_map_for_single_kernel(
             program[entrypoint], program.callables_table,
@@ -1924,7 +1919,7 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
     return access_map
 
 
-def get_mem_access_map(program, numpy_types=None, count_redundant_work=False,
+def get_mem_access_map(program, count_redundant_work=False,
                        subgroup_size=None, entrypoint=None):
     """Count the number of memory accesses in a loopy kernel.
 
@@ -2021,11 +2016,6 @@ def get_mem_access_map(program, numpy_types=None, count_redundant_work=False,
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
     program = infer_unknown_types(program, expect_completion=True)
-
-    if numpy_types is not None:
-        from warnings import warn
-        warn("numpy_types is being ignored and will be removed in 2020.",
-                DeprecationWarning, stacklevel=2)
 
     return _get_mem_access_map_for_single_kernel(
             program[entrypoint], program.callables_table,
