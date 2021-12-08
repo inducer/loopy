@@ -28,10 +28,7 @@ from loopy.diagnostic import (
         LoopyAdvisory)
 import islpy as isl
 
-from pytools.persistent_dict import WriteOncePersistentDict
-
-from loopy.tools import LoopyKeyBuilder
-from loopy.version import DATA_MODEL_VERSION
+from loopy.tools import memoize_on_disk
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 from loopy.kernel.tools import kernel_has_global_barriers
 # for the benefit of loopy.statistics, for now
@@ -2360,11 +2357,6 @@ def filter_reachable_callables(t_unit):
     return t_unit.copy(callables_table=new_callables)
 
 
-preprocess_cache = WriteOncePersistentDict(
-        "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder())
-
-
 def _preprocess_single_kernel(kernel, callables_table, device=None):
     from loopy.kernel import KernelState
 
@@ -2413,23 +2405,8 @@ def _preprocess_single_kernel(kernel, callables_table, device=None):
     return kernel
 
 
+@memoize_on_disk
 def preprocess_program(program, device=None):
-
-    # {{{ cache retrieval
-
-    from loopy import CACHING_ENABLED
-    if CACHING_ENABLED:
-        input_program = program
-
-        try:
-            result = preprocess_cache[program]
-            logger.debug(f"program with entrypoints: {program.entrypoints}"
-                    " preprocess cache hit")
-            return result
-        except KeyError:
-            pass
-
-    # }}}
 
     from loopy.kernel import KernelState
     if program.state >= KernelState.PREPROCESSED:
@@ -2518,9 +2495,6 @@ def preprocess_program(program, device=None):
     # this target information.
 
     # }}}
-
-    if CACHING_ENABLED:
-        preprocess_cache.store_if_not_present(input_program, program)
 
     return program
 

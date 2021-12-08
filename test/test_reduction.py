@@ -51,7 +51,6 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_nonsense_reduction(ctx_factory):
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
@@ -63,7 +62,7 @@ def test_nonsense_reduction(ctx_factory):
 
     import pytest
     with pytest.raises(RuntimeError):
-        knl = lp.preprocess_kernel(knl, ctx.devices[0])
+        knl = lp.preprocess_kernel(knl)
 
 
 def test_empty_reduction(ctx_factory):
