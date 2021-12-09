@@ -935,7 +935,8 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             within=within)
 
     def _does_access_old_inames(kernel, insn, *args):
-        return bool(frozenset(inames) & insn.dependency_names())
+        return bool(frozenset(inames) & (insn.dependency_names()
+                                         | insn.reduction_inames()))
 
     kernel = rule_mapping_context.finish_kernel(
             indup.map_kernel(kernel, within=_does_access_old_inames,
