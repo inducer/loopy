@@ -1751,6 +1751,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
     def map_reduction(expr, rec, callables_table,
                       guarding_predicates, nresults=1):
+        nonlocal insn_changed
+
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
@@ -1827,6 +1829,10 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                        ", ".join(str(kernel.iname_tags(iname))
                                  for iname in bad_inames)))
 
+        # }}}
+
+        insn_changed = True
+
         if n_local_par == 0 and n_sequential == 0:
             from loopy.diagnostic import warn_with_kernel
             warn_with_kernel(kernel, "empty_reduction",
@@ -1839,8 +1845,6 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
             # numpy.)
 
             return expr.expr, callables_table
-
-        # }}}
 
         if may_be_implemented_as_scan:
             assert force_scan or automagic_scans_ok
@@ -1916,7 +1920,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
     domains = kernel.domains[:]
 
     temp_kernel = kernel
-    changed = False
+    kernel_changed = False
 
     import loopy as lp
     while insn_queue:
@@ -1925,6 +1929,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
         new_insn_add_within_inames = set()
 
         generated_insns = []
+        insn_changed = False
 
         insn = insn_queue.pop(0)
 
@@ -1947,7 +1952,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                                         callables_table=cb_mapper.callables_table,
                                         guarding_predicates=insn.predicates),
 
-        if generated_insns:
+        if insn_changed:
             # An expansion happened, so insert the generated stuff plus
             # ourselves back into the queue.
 
@@ -2010,14 +2015,14 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                     domains=domains)
             temp_kernel = lp.replace_instruction_ids(
                     temp_kernel, insn_id_replacements)
-            changed = True
+            kernel_changed = True
         else:
             # nothing happened, we're done with insn
             assert not new_insn_add_depends_on
 
             new_insns.append(insn)
 
-    if changed:
+    if kernel_changed:
         kernel = kernel.copy(
             instructions=new_insns,
             temporary_variables=new_temporary_variables,
