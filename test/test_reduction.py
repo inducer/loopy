@@ -460,6 +460,27 @@ def test_any_all(ctx_factory):
     assert not out_dict["out2"].get()
 
 
+def test_reduction_without_inames(ctx_factory):
+    """Ensure that reductions with no inames get rewritten to the element
+    being reduced over. This was sometimes erroneously eliminated because
+    reduction realization used the generation of new statements as a criterion
+    for whether work was done.
+    """
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{:}",
+            """
+            out = reduce(any, [], 5)
+            """)
+    knl = lp.set_options(knl, return_dict=True)
+
+    _, out_dict = knl(cq)
+
+    assert out_dict["out"].get() == 5
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
