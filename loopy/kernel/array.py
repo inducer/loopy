@@ -892,6 +892,11 @@ class ArrayBase(ImmutableRecord, Taggable):
                 tags=tags,
                 **kwargs)
 
+    # Without this __hash__ is set to None because this class overrides __eq__.
+    # Source: https://docs.python.org/3/reference/datamodel.html#object.__hash__
+    def __hash__(self):
+        return super().__hash__()
+
     def __eq__(self, other):
         from loopy.symbolic import (
                 is_tuple_of_expressions_equal as istoee,

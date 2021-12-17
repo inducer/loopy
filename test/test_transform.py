@@ -1324,6 +1324,19 @@ def test_precompute_does_not_lead_to_dep_cycle(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, ref_knl)
 
 
+def test_rename_inames_redn():
+    t_unit = lp.make_kernel(
+        "{[i, j0, j1]: 0<=i, j0, j1<10}",
+        """
+        y0[i] = sum(j0, sum([j1], 2*A[i, j0, j1]))
+        """)
+
+    t_unit = lp.rename_iname(t_unit, "j1", "ifused")
+
+    assert "j1" not in t_unit.default_entrypoint.all_inames()
+    assert "ifused" in t_unit.default_entrypoint.all_inames()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
