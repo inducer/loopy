@@ -154,7 +154,7 @@ from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
 from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
-from loopy.tools import Optional, t_unit_to_python
+from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
 
 
 __all__ = [
@@ -299,7 +299,7 @@ __all__ = [
         "NumbaTarget", "NumbaCudaTarget",
         "ASTBuilderBase",
 
-        "Optional",
+        "Optional", "memoize_on_disk",
 
         # {{{ from this file
 
