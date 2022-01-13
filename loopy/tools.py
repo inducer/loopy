@@ -501,6 +501,12 @@ class LazilyUnpicklingList(abc.MutableSequence):
     def __getstate__(self):
         return {"_list": [_PickledObject(val) for val in self._list]}
 
+    def __add__(self, other):
+        return self._list + other
+
+    def __mul__(self, other):
+        return self._list * other
+
 
 class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
     """A list which lazily unpickles its values, and supports equality comparison
