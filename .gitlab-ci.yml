@@ -114,12 +114,12 @@ Pytest POCL Examples:
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
 
-    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
-    . ./ci-support.sh
+    curl -L -O -k https://tiker.net/ci-support-v0
+    . ./ci-support-v0
+
     build_py_project_in_venv
 
-    curl -L "https://ci.appveyor.com/api/projects/ispc/ispc/artifacts/build%2Fispc-trunk-linux.tar.gz?job=Environment%3A%20APPVEYOR_BUILD_WORKER_IMAGE%3DUbuntu1604%2C%20LLVM_VERSION%3Dlatest" | tar xfz -
-    export PATH="$(pwd)/ispc-trunk-linux/bin:$PATH"
+    install_ispc
 
     . ./build-py-project-and-run-examples.sh
     run_py_examples
