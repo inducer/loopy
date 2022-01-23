@@ -8,7 +8,7 @@ Pytest POCL:
   - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3
@@ -26,7 +26,7 @@ Pytest Nvidia Titan V:
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
   - source /opt/enable-intel-cl.sh
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3
@@ -44,7 +44,7 @@ Pytest POCL without arg check:
   - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
   - export _LOOPY_SKIP_ARG_CHECKS=1
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3
@@ -63,7 +63,7 @@ Pytest Intel:
   - export LOOPY_NO_CACHE=1
   - export LOOPY_INTEL_CL_OK_FOR_TEST_REF=1
   - source /opt/enable-intel-cl.sh
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3
@@ -80,7 +80,7 @@ Pytest POCL Twice With Cache:
   script: |
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako"
-    curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
+    curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
     . ./ci-support.sh
     build_py_project_in_venv
     ( test_py_project )
@@ -100,7 +100,7 @@ Pytest POCL Twice With Cache:
 #   - export PY_EXE=pypy
 #   - export PYOPENCL_TEST=portable:pthread
 #   - export EXTRA_INSTALL="pybind11 numpy mako"
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+#   - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
 #   - ". ./build-and-test-py-project.sh"
 #   tags:
 #   - pypy
@@ -114,7 +114,7 @@ Pytest POCL Examples:
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
 
-    curl -L -O -k https://tiker.net/ci-support-v0
+    curl -L -O https://tiker.net/ci-support-v0
     . ./ci-support-v0
 
     build_py_project_in_venv
@@ -140,7 +140,7 @@ Pylint:
   # Needed to avoid name shadowing issues when running from source directory.
   - PROJECT_INSTALL_FLAGS="--editable"
   - EXTRA_INSTALL="pybind11 numpy mako matplotlib ipykernel ply fparser"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
   - . ./prepare-and-run-pylint.sh "$CI_PROJECT_NAME" test/test_*.py
   tags:
   - python3
@@ -152,7 +152,7 @@ Documentation:
   script:
   - PROJECT=loopy
   - EXTRA_INSTALL="pybind11 numpy"
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-docs.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-docs.sh
   - ". ./build-docs.sh"
   tags:
   - python3
@@ -160,7 +160,7 @@ Documentation:
 Flake8:
   stage: test
   script:
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
   - . ./prepare-and-run-flake8.sh "$CI_PROJECT_NAME" test examples
   tags:
   - python3
@@ -175,7 +175,7 @@ Benchmarks:
   - PYOPENCL_TEST=portable:pthread
   - export LOOPY_NO_CACHE=1
   - export ASV_FACTOR=1.5
-  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-benchmark-py-project.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-benchmark-py-project.sh
   - ". ./build-and-benchmark-py-project.sh"
   tags:
   - linux
