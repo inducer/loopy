@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 
+import numpy as np
 from pytools import memoize_method
 from pytools.py_codegen import Indentation
 from loopy.target.execution import (
@@ -51,9 +52,12 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def python_dtype_str_inner(self, dtype):
         import pyopencl.tools as cl_tools
-        if dtype.isbuiltin:
+        # Test for types built into numpy. dtype.isbuiltin does not work:
+        # https://github.com/numpy/numpy/issues/4317
+        # Guided by https://numpy.org/doc/stable/reference/arrays.scalars.html
+        if issubclass(dtype.type, (np.bool_, np.number)):
             name = dtype.name
-            if dtype.name == "bool":
+            if dtype.type == np.bool_:
                 name = "bool8"
             return f"_lpy_np.dtype(_lpy_np.{name})"
         else:
