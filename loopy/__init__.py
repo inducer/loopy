@@ -122,10 +122,12 @@ from loopy.transform.callable import (register_callable,
         merge, inline_callable_kernel, rename_callable)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
+from loopy.transform.realize_reduction import realize_reduction
+
 # }}}
 
 from loopy.type_inference import infer_unknown_types
-from loopy.preprocess import (preprocess_kernel, realize_reduction,
+from loopy.preprocess import (preprocess_kernel,
         preprocess_program, infer_arg_descr)
 from loopy.schedule import (
     generate_loop_schedules, get_one_scheduled_kernel,
