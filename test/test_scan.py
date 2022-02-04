@@ -221,11 +221,7 @@ def test_local_parallel_scan(ctx_factory, n):
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    knl = lp.realize_reduction(knl)
-
     knl = lp.add_dtypes(knl, dict(a=int))
-
-    print(knl)
 
     evt, (a,) = knl(queue, a=np.arange(n))
     assert (a == np.cumsum(np.arange(n)**2)).all()
@@ -246,7 +242,6 @@ def test_local_parallel_scan_with_nonzero_lower_bounds(ctx_factory):
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.realize_reduction(knl, force_scan=True)
-    knl = lp.realize_reduction(knl)
 
     knl = lp.add_dtypes(knl, dict(a=int))
     evt, (out,) = knl(queue, a=np.arange(1, 17))
