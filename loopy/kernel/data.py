@@ -48,8 +48,6 @@ from loopy.kernel.instruction import (  # noqa
 from warnings import warn
 
 __doc__ = """
-.. currentmodule:: loopy.kernel.data
-
 .. autofunction:: filter_iname_tags_by_type
 
 .. autoclass:: InameImplementationTag
