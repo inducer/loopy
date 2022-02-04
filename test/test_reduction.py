@@ -480,6 +480,26 @@ def test_reduction_without_inames(ctx_factory):
     assert out_dict["out"].get() == 5
 
 
+def test_reduction_in_conditional(ctx_factory):
+    # https://github.com/inducer/loopy/issues/533#issuecomment-1028472366
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i, j, k]: 0<=i,j,k<10}",
+        """
+        y[i] = 1729 if (sum(j, j) == 0) else sum(k, k)
+        """)
+
+    knl = lp.set_options(knl, write_cl=True)
+
+    knl = lp.preprocess_program(knl)
+
+    evt, (out,) = knl(cq)
+
+    assert (out == 45).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
