@@ -444,7 +444,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
                 index_dtype.numpy_dtype.type(-1)), callables_table
 
     def __str__(self):
-        return self.which
+        return "arg" + self.which
 
     def __hash__(self):
         return hash(type(self))
