@@ -54,7 +54,8 @@ else:
 
 
 def main():
-    with open("tasksys.cpp") as ts_file:
+    this_dir = os.path.dirname(__file__)
+    with open(os.path.join(this_dir, "tasksys.cpp")) as ts_file:
         tasksys_source = ts_file.read()
 
     def make_knl(name, insn, vars):
