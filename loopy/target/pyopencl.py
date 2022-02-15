@@ -247,7 +247,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
             complex_sum = binary_tree_add(0, len(c_applied))
 
-            if real_sum:
+            if reals:
                 return p.Variable("%s_radd" % tgt_name)(real_sum, complex_sum)
             else:
                 return complex_sum
