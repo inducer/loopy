@@ -29,6 +29,8 @@ from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 from loopy.translation_unit import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.tools import (kernel_has_global_barriers,
+                                find_most_recent_global_barrier)
 import numpy as np
 
 from pymbolic import var
@@ -216,6 +218,18 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         # by rule_mapping_context.
 
         self.replaced_something = True
+
+        # {{{ add gbarriers that the replaced insn depends-on to compute insn's deps
+
+        if (kernel_has_global_barriers(expn_state.kernel)
+                and (find_most_recent_global_barrier(expn_state.kernel,
+                                                     expn_state.instruction.id
+                                                     ) is not None)):
+            self.compute_insn_depends_on.add(
+                find_most_recent_global_barrier(expn_state.kernel,
+                                                expn_state.instruction.id))
+
+        # }}}
 
         return new_outer_expr
 
