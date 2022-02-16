@@ -293,7 +293,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
             complex_prd = binary_tree_mul(0, len(complexes))
 
-            if real_prd:
+            if reals:
                 return p.Variable("%s_rmul" % tgt_name)(real_prd, complex_prd)
             else:
                 return complex_prd
