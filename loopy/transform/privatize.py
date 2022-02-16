@@ -122,6 +122,16 @@ def privatize_temporaries_with_inames(
                 s.strip()
                 for s in only_var_names.split(","))
 
+    # {{{ sanity checks
+
+    if (only_var_names is not None
+            and privatizing_inames <= kernel.all_inames()
+            and not (frozenset(only_var_names) <= kernel.all_variable_names())):
+        raise LoopyError(f"Some variables in '{only_var_names}'"
+                         f" not used in kernel '{kernel.name}'.")
+
+    # }}}
+
     wmap = kernel.writer_map()
 
     var_to_new_priv_axis_iname = {}
