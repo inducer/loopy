@@ -1351,6 +1351,30 @@ def test_rename_inames(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, ref_knl)
 
 
+def test_buffer_array_preserves_rev_deps(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/546
+    ctx = ctx_factory()
+    knl = lp.make_kernel(
+        ["{[i0, j0]: 0<=i0<100 and 0<=j0<10}",
+         "{[i1, j1]: 0<=i1<100 and 0<=j1<10}"],
+        """
+        out0[i0] = sum(j0, A[i0] * x[j0])
+        ... gbarrier {id=gbarrier}
+        out1[i1] = sum(j1, A[i1] * x[j1])
+        """, seq_dependencies=True)
+    knl = lp.add_dtypes(knl, {"A": np.float64,
+                              "x": np.float64})
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "j0", 2)
+    knl = lp.split_iname(knl, "i0", 2, outer_tag="g.0")
+    knl = lp.buffer_array(knl, "out0",
+                          buffer_inames=["i0_inner"],
+                          init_expression="0")
+    assert "store_out0" in knl.default_entrypoint.id_to_insn["gbarrier"].depends_on
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
 def test_rename_inames_existing_ok(ctx_factory):
     ctx = ctx_factory()
 

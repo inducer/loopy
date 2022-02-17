@@ -499,14 +499,23 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     new_insns.append(init_instruction)
     if did_write:
-        new_insns.append(store_instruction)
+        # new_insns_with_redirected_deps: if an insn depends on a modified
+        # insn, then it should also depend on the store insn.
+        new_insns_with_redirected_deps = [
+            insn.copy(depends_on=(insn.depends_on | {store_instruction.id}))
+            if insn.depends_on & aar.modified_insn_ids
+            else insn
+            for insn in new_insns
+        ] + [store_instruction]
     else:
         for iname in store_inames:
             del new_iname_to_tag[iname]
 
+        new_insns_with_redirected_deps = new_insns
+
     kernel = kernel.copy(
             domains=new_kernel_domains,
-            instructions=new_insns,
+            instructions=new_insns_with_redirected_deps,
             temporary_variables=new_temporary_variables)
 
     from loopy import tag_inames
