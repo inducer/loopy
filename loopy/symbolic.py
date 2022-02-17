@@ -1875,23 +1875,23 @@ def with_aff_conversion_guard(f, space, expr, *args):
     from loopy.diagnostic import ExpressionNotAffineError
 
     err = None
-    with isl.SuppressedWarnings(space.get_ctx()):
-        try:
-            return f(space, expr, *args)
-        except TypeError as e:
-            err = e
-        except isl.Error as e:
-            err = e
-        except UnknownVariableError as e:
-            err = e
-        except ExpressionNotAffineError as e:
-            err = e
 
-        assert err is not None
-        from loopy.diagnostic import ExpressionToAffineConversionError
-        raise ExpressionToAffineConversionError(
-                "could not convert expression '%s' to affine representation: "
-                "%s: %s" % (expr, type(err).__name__, str(err)))
+    try:
+        return f(space, expr, *args)
+    except TypeError as e:
+        err = e
+    except isl.Error as e:
+        err = e
+    except UnknownVariableError as e:
+        err = e
+    except ExpressionNotAffineError as e:
+        err = e
+
+    assert err is not None
+    from loopy.diagnostic import ExpressionToAffineConversionError
+    raise ExpressionToAffineConversionError(
+            "could not convert expression '%s' to affine representation: "
+            "%s: %s" % (expr, type(err).__name__, str(err)))
 
 
 def guarded_aff_from_expr(space, expr, vars_to_zero=None):

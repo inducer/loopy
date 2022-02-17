@@ -469,10 +469,9 @@ def _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname, within_ina
             within_inames | kernel.non_iname_variable_names(), (isl.dim_type.param,))
 
     try:
-        with isl.SuppressedWarnings(domain.get_ctx()):
-            sweep_lower_bound = domain.dim_min(sweep_idx)
-            sweep_upper_bound = domain.dim_max(sweep_idx)
-            scan_lower_bound = domain.dim_min(scan_idx)
+        sweep_lower_bound = domain.dim_min(sweep_idx)
+        sweep_upper_bound = domain.dim_max(sweep_idx)
+        scan_lower_bound = domain.dim_min(scan_idx)
     except isl.Error as e:
         raise ValueError("isl error: %s" % e)
 
@@ -499,11 +498,10 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
     # Should be equal to k * sweep_iname, where k is the stride.
 
     try:
-        with isl.SuppressedWarnings(domain_with_sweep_param.get_ctx()):
-            scan_iname_range = (
-                    domain_with_sweep_param.dim_max(scan_iname_idx)
-                    - domain_with_sweep_param.dim_min(scan_iname_idx)
-                    ).gist(domain_with_sweep_param.params())
+        scan_iname_range = (
+                domain_with_sweep_param.dim_max(scan_iname_idx)
+                - domain_with_sweep_param.dim_min(scan_iname_idx)
+                ).gist(domain_with_sweep_param.params())
     except isl.Error as e:
         raise ValueError("isl error: '%s'" % e)
 

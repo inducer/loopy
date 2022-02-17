@@ -818,8 +818,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         If *axis* is None, find a suitable axis automatically.
         """
         try:
-            with isl.SuppressedWarnings(kernel.isl_context):
-                desired_length = kernel.get_constant_iname_length(iname)
+            desired_length = kernel.get_constant_iname_length(iname)
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
@@ -947,8 +946,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
 
             def get_iname_length(iname):
                 try:
-                    with isl.SuppressedWarnings(kernel.isl_context):
-                        return kernel.get_constant_iname_length(iname)
+                    return kernel.get_constant_iname_length(iname)
                 except isl.Error:
                     return -1
             # assign longest auto axis inames first
