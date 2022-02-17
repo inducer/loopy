@@ -349,8 +349,7 @@ def is_nonnegative(expr, over_set):
     space = over_set.get_space()
     from loopy.symbolic import aff_from_expr
     try:
-        with isl.SuppressedWarnings(space.get_ctx()):
-            aff = aff_from_expr(space, -expr-1)
+        aff = aff_from_expr(space, -expr-1)
     except Exception:
         return None
     expr_neg_set = isl.BasicSet.universe(space).add_constraint(
