@@ -24,115 +24,15 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
-dim_type = isl.dim_type
 from loopy.codegen import UnvectorizableError
-from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError
 from pymbolic.mapper.stringifier import PREC_NONE
-from pytools import memoize_on_first_arg
 
 
-@memoize_on_first_arg
-def _get_new_implemented_domain(kernel, chk_domain, implemented_domain):
-
-    chk_domain, implemented_domain = isl.align_two(
-            chk_domain, implemented_domain)
-    chk_domain = chk_domain.gist(implemented_domain)
-
-    new_implemented_domain = implemented_domain & chk_domain
-    return chk_domain, new_implemented_domain
-
-
-def to_codegen_result(
-        codegen_state, insn_id, domain, check_inames, required_preds, ast):
-    chk_domain = isl.Set.from_basic_set(domain)
-    chk_domain = chk_domain.remove_redundancies()
-    chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
-            check_inames, (dim_type.set,))
-
-    chk_domain, new_implemented_domain = _get_new_implemented_domain(
-            codegen_state.kernel, chk_domain, codegen_state.implemented_domain)
-
-    if chk_domain.is_empty():
-        return None
-
-    condition_exprs = []
-    if not chk_domain.plain_is_universe():
-        from loopy.symbolic import set_to_cond_expr
-        condition_exprs.append(set_to_cond_expr(chk_domain))
-
-    condition_exprs.extend(
-            required_preds - codegen_state.implemented_predicates)
-
-    if condition_exprs:
-        from pymbolic.primitives import LogicalAnd
-        from pymbolic.mapper.stringifier import PREC_NONE
-        ast = codegen_state.ast_builder.emit_if(
-                codegen_state.expression_to_code_mapper(
-                    LogicalAnd(tuple(condition_exprs)), PREC_NONE),
-                ast)
-
-    return CodeGenerationResult.new(
-            codegen_state, insn_id, ast, new_implemented_domain)
-
-
-def generate_instruction_code(codegen_state, insn):
-    kernel = codegen_state.kernel
-
-    from loopy.kernel.instruction import (
-        Assignment, CallInstruction, CInstruction, NoOpInstruction
-    )
-
-    if isinstance(insn, Assignment):
-        ast = generate_assignment_instruction_code(codegen_state, insn)
-    elif isinstance(insn, CallInstruction):
-        ast = generate_call_code(codegen_state, insn)
-    elif isinstance(insn, CInstruction):
-        ast = generate_c_instruction_code(codegen_state, insn)
-    elif isinstance(insn, NoOpInstruction):
-        ast = generate_nop_instruction_code(codegen_state, insn)
-    else:
-        raise RuntimeError("unexpected instruction type")
-
-    insn_inames = insn.within_inames
-
-    return to_codegen_result(
-            codegen_state,
-            insn.id,
-            kernel.get_inames_domain(insn_inames), insn_inames,
-            insn.predicates,
-            ast)
-
-
-def generate_assignment_instruction_code(codegen_state, insn):
-    kernel = codegen_state.kernel
-
-    ecm = codegen_state.expression_to_code_mapper
-
-    from loopy.expression import VectorizabilityChecker
-
-    # {{{ vectorization handling
-
-    if codegen_state.vectorization_info:
-        if insn.atomicity:
-            raise UnvectorizableError("atomic operation")
-
-        vinfo = codegen_state.vectorization_info
-        vcheck = VectorizabilityChecker(
-                kernel, vinfo.iname, vinfo.length)
-        lhs_is_vector = vcheck(insn.assignee)
-        rhs_is_vector = vcheck(insn.expression)
-
-        if not lhs_is_vector and rhs_is_vector:
-            raise UnvectorizableError(
-                    "LHS is scalar, RHS is vector, cannot assign")
-
-        is_vector = lhs_is_vector
-
-        del lhs_is_vector
-        del rhs_is_vector
-
-    # }}}
+def generate_assignment_instruction_code(kernel, callables_table, insn,
+                                         ast_builder, hw_inames_expr, vinfo):
+    ecm = ast_builder.get_expression_to_code_mapper(kernel, callables_table,
+                                                    hw_inames_expr, vinfo)
 
     from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript
@@ -158,34 +58,36 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
     del lhs
 
-    result = codegen_state.ast_builder.emit_assignment(codegen_state, insn)
+    result = ast_builder.emit_assignment(kernel, callables_table, insn,
+                                         hw_inames_expr, vinfo)
 
     # {{{ tracing
 
-    lhs_dtype = codegen_state.kernel.get_var_descriptor(assignee_var_name).dtype
+    lhs_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
-        if codegen_state.vectorization_info and is_vector:
-            raise UnvectorizableError("tracing does not support vectorization")
+        if vinfo:
+            raise LoopyError("tracing does not support vectorization")
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        lhs_code = codegen_state.expression_to_code_mapper(insn.assignee, PREC_NONE)
+        lhs_code = ecm(insn.assignee, PREC_NONE)
 
         from cgen import Statement as S  # noqa
 
-        gs, ls = kernel.get_grid_size_upper_bounds(codegen_state.callables_table)
+        gs, ls = kernel.get_grid_size_upper_bounds(callables_table,
+                                                   return_dict=True)
 
         printf_format = "{}.{}[{}][{}]: {}".format(
                 kernel.name,
                 insn.id,
-                ", ".join("gid%d=%%d" % i for i in range(len(gs))),
-                ", ".join("lid%d=%%d" % i for i in range(len(ls))),
+                ", ".join("gid%d=%%d" % i for i in gs),
+                ", ".join("lid%d=%%d" % i for i in ls),
                 assignee_var_name)
 
         printf_args = (
-                ["gid(%d)" % i for i in range(len(gs))]
+                ["gid(%d)" % i for i in gs]
                 +
-                ["lid(%d)" % i for i in range(len(ls))]
+                ["lid(%d)" % i for i in ls]
                 )
 
         if assignee_indices:
@@ -227,19 +129,18 @@ def generate_assignment_instruction_code(codegen_state, insn):
     return result
 
 
-def generate_call_code(codegen_state, insn):
-    kernel = codegen_state.kernel
+def generate_call_code(kernel, callables_table, insn, ast_builder,
+                       hw_inames_expr, vinfo):
+    result = ast_builder.emit_multiple_assignment(kernel, callables_table,
+                                                  insn, hw_inames_expr, vinfo)
 
     # {{{ vectorization handling
 
-    if codegen_state.vectorization_info:
+    if vinfo:
         if insn.atomicity:
             raise UnvectorizableError("atomic operation")
 
     # }}}
-
-    result = codegen_state.ast_builder.emit_multiple_assignment(
-            codegen_state, insn)
 
     # {{{ tracing
 
@@ -251,11 +152,12 @@ def generate_call_code(codegen_state, insn):
     return result
 
 
-def generate_c_instruction_code(codegen_state, insn):
-    kernel = codegen_state.kernel
+def generate_c_instruction_code(kernel, callables_table, insn, ast_builder,
+                                hw_inames_expr, vinfo):
+    ecm = ast_builder.get_expression_to_code_mapper(kernel, callables_table,
+                                                    hw_inames_expr, vinfo)
 
-    if codegen_state.vectorization_info is not None:
-        raise UnvectorizableError("C instructions cannot be vectorized")
+    assert vinfo is None
 
     body = []
 
@@ -265,15 +167,14 @@ def generate_c_instruction_code(codegen_state, insn):
     from pymbolic.primitives import Variable
     for name, iname_expr in insn.iname_exprs:
         if (isinstance(iname_expr, Variable)
-                and name not in codegen_state.var_subst_map):
+                and name not in hw_inames_expr):
             # No need, the bare symbol will work
             continue
 
         body.append(
                 Initializer(
-                    POD(codegen_state.ast_builder, kernel.index_dtype, name),
-                    codegen_state.expression_to_code_mapper(
-                        iname_expr, prec=PREC_NONE, type_context="i")))
+                    POD(ast_builder, kernel.index_dtype, name),
+                    ecm(iname_expr, prec=PREC_NONE, type_context="i")))
 
     if body:
         body.append(Line())
@@ -283,10 +184,9 @@ def generate_c_instruction_code(codegen_state, insn):
     return Block(body)
 
 
-def generate_nop_instruction_code(codegen_state, insn):
-    if codegen_state.vectorization_info is not None:
-        raise UnvectorizableError("C instructions cannot be vectorized")
-    return codegen_state.ast_builder.emit_comment(
-        "no-op (insn=%s)" % (insn.id))
+def generate_nop_instruction_code(kernel, callables_table, insn, ast_builder,
+                                  hw_inames_expr, vinfo):
+    assert vinfo is None
+    return ast_builder.emit_comment("no-op (insn=%s)" % (insn.id))
 
 # vim: foldmethod=marker

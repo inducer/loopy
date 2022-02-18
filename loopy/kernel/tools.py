@@ -475,11 +475,11 @@ class DomainChanger:
         return self.kernel.domains[self.leaf_domain_index]
 
     def get_domains_with(self, replacement):
-        result = self.kernel.domains[:]
+        result = self.kernel.domains
         if self.leaf_domain_index is not None:
-            result[self.leaf_domain_index] = replacement
+            result = result.swap(self.leaf_domain_index, replacement)
         else:
-            result.append(replacement)
+            result = result.append(replacement)
 
         return result
 
@@ -822,11 +822,12 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
-            new_inames = kernel.inames.copy()
-            new_inames[iname] = kernel.inames[iname].copy(
-                    tags=frozenset(tag
-                        for tag in kernel.inames[iname].tags
-                        if not isinstance(tag, AutoLocalInameTagBase)))
+            new_inames = kernel.inames
+            new_inames = kernel.inames.set(iname,
+                kernel.inames[iname].copy(tags=frozenset(
+                    tag
+                    for tag in kernel.inames[iname].tags
+                    if not isinstance(tag, AutoLocalInameTagBase))))
             return assign_automatic_axes(
                     kernel.copy(inames=new_inames),
                     callables_table,
@@ -895,8 +896,8 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
                 frozenset(tag for tag in kernel.inames[iname].tags
                     if not isinstance(tag, AutoLocalInameTagBase))
                 | new_tag_set)
-        new_inames = kernel.inames.copy()
-        new_inames[iname] = kernel.inames[iname].copy(tags=new_tags)
+        new_inames = kernel.inames
+        new_inames = new_inames.set(iname, kernel.inames[iname].copy(tags=new_tags))
         return assign_automatic_axes(kernel.copy(inames=new_inames),
                 callables_table, axis=recursion_axis, local_size=local_size)
 
@@ -2057,16 +2058,18 @@ def get_outer_params(domains):
 
     :arg domains: An instance of :class:`list` of :class:`isl.BasicSet`.
     """
-    all_inames = set()
-    all_params = set()
-    for dom in domains:
-        all_inames.update(dom.get_var_names(dim_type.set))
-        all_params.update(dom.get_var_names(dim_type.param))
-
     from loopy.tools import intern_frozenset_of_ids
-    return intern_frozenset_of_ids(all_params-all_inames)
+    return intern_frozenset_of_ids(domains.param_dims - domains.set_dims)
 
 # }}}
 
+
+@memoize_on_first_arg
+def has_complex_dtyped_var(kernel):
+    """
+    Returns *True* if any variable in *kernel* is complex dtyped.
+    """
+    return any(var.dtype.involves_complex()
+               for var in kernel.args + list(kernel.temporary_variables.values()))
 
 # vim: foldmethod=marker

@@ -1,10 +1,11 @@
 ! straight from gNUMA, do not modify in loopy
 
 subroutine strongVolumeKernelR(elements, &
-     volumeGeometricFactors, D, Q, gradQ, rhsQ)
+     volumeGeometricFactors, D, Q, gradQ, rhsQ, Nq)
   implicit none
 
   integer*4 elements
+  integer*4 Nq
   integer*4 e,i,j,k,n
   datafloat volumeGeometricFactors(Nq, Nq, Nq, 11, elements)
   datafloat D(Nq,Nq)
@@ -75,10 +76,11 @@ subroutine strongVolumeKernelR(elements, &
 end subroutine strongVolumeKernelR
 
 subroutine strongVolumeKernelS(elements, &
-     volumeGeometricFactors, D, Q, gradQ, rhsQ)
+     volumeGeometricFactors, D, Q, gradQ, rhsQ, Nq)
   implicit none
 
   integer*4 elements
+  integer*4 Nq
   integer*4 e,i,j,k,n
   datafloat volumeGeometricFactors(Nq, Nq, Nq, 11, elements)
   datafloat D(Nq,Nq)
@@ -149,10 +151,11 @@ subroutine strongVolumeKernelS(elements, &
 end subroutine strongVolumeKernelS
 
 subroutine strongVolumeKernelT(elements, &
-      volumeGeometricFactors, D, Q, gradQ, rhsQ)
+      volumeGeometricFactors, D, Q, gradQ, rhsQ, Nq)
   implicit none
 
   integer*4 elements
+  integer*4 Nq
   datafloat volumeGeometricFactors(Nq, Nq, Nq, 11, elements)
   datafloat D(Nq,Nq)
   datafloat Q(Nq, Nq, Nq, 8, elements)
@@ -216,4 +219,3 @@ subroutine strongVolumeKernelT(elements, &
     end do
   end do
 end subroutine strongVolumeKernelT
-

@@ -78,10 +78,6 @@ class LoopyIndexError(LoopyError):
     pass
 
 
-class CannotBranchDomainTree(LoopyError):
-    pass
-
-
 class TypeInferenceFailure(LoopyError):
     pass
 

@@ -359,7 +359,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
-    new_domains = new_kernel.domains[:]
+    new_domains = new_kernel.domains
 
     for iname in inames_to_be_removed:
         home_domain_index = kernel.get_home_domain_index(iname)
@@ -367,8 +367,8 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
 
         dt, idx = domain.get_var_dict()[iname]
         assert dt == dim_type.set
-
-        new_domains[home_domain_index] = domain.project_out(dt, idx, 1)
+        new_domains = new_domains.swap(home_domain_index,
+                                       domain.project_out(dt, idx, 1))
 
     new_kernel = new_kernel.copy(domains=new_domains)
 
@@ -728,10 +728,9 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 
         return dom
 
-    new_domains = []
-    for dom in kernel.domains:
-        dom = rename_arg_in_basic_set(dom)
-        new_domains.append(dom)
+    new_domains = kernel.domains
+    for idom, dom in enumerate(kernel.domains):
+        new_domains = new_domains.swap(idom, rename_arg_in_basic_set(dom))
 
     new_assumptions = rename_arg_in_basic_set(kernel.assumptions)
 

@@ -114,16 +114,15 @@ def merge_loop_domains(kernel):
 
                 # }}}
 
-                new_domains = kernel.domains[:]
+                new_domains = kernel.domains
                 min_idx = min(inner_domain_idx, outer_domain_idx)
                 max_idx = max(inner_domain_idx, outer_domain_idx)
 
-                del new_domains[max_idx]
-                del new_domains[min_idx]
+                new_domains = new_domains.delete(max_idx)
 
                 outer_dom, inner_dom = isl.align_two(outer_dom, inner_dom)
 
-                new_domains.insert(min_idx, inner_dom & outer_dom)
+                new_domains = new_domains.swap(min_idx, inner_dom & outer_dom)
                 break
 
             if new_domains:

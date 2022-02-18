@@ -355,11 +355,7 @@ class ArrayToBufferMap:
             arg_inames.update(get_dependencies(arg))
         arg_inames = frozenset(arg_inames & self.kernel.all_inames())
 
-        from loopy.kernel import CannotBranchDomainTree
-        try:
-            usage_domain = self.kernel.get_inames_domain(arg_inames)
-        except CannotBranchDomainTree:
-            return False
+        usage_domain = self.kernel.get_inames_domain(arg_inames)
 
         for i in range(usage_domain.dim(dim_type.set)):
             iname = usage_domain.get_dim_name(dim_type.set, i)

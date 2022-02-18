@@ -189,6 +189,11 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         else:
             raise RuntimeError
 
+    @property
+    def allow_complex(self):
+        from loopy.kernel.tools import has_complex_dtyped_var
+        return has_complex_dtyped_var(self.kernel)
+
     def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
         if needed_dtype.is_complex():
             return self.wrap_in_typecast(actual_type_func(), needed_dtype, s)
@@ -661,18 +666,18 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     # {{{ code generation guts
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index, function_decl, function_body):
+    def get_function_definition(self, kernel, name, implemented_data_info,
+                                function_decl, function_body):
         from loopy.kernel.data import TemporaryVariable
         args = (
                 ["_lpy_cl_kernels", "queue"]
-                + [idi.name for idi in codegen_state.implemented_data_info
+                + [idi.name for idi in implemented_data_info
                     if not issubclass(idi.arg_class, TemporaryVariable)]
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Return, Line, Statement as S)
         return Function(
-                codegen_result.current_program(codegen_state).name,
+                name,
                 args,
                 Suite([
                     Line(),
@@ -684,26 +689,28 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                         For("_tv", "_global_temporaries",
                             # free global temporaries
                             S("_tv.release()"))
-                        ] if self._get_global_temporaries(codegen_state) else []
+                        ] if self._get_global_temporaries(kernel) else []
                     ) + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code,
+                                 is_entrypoint):
         # no such thing in Python
         return None
 
-    def _get_global_temporaries(self, codegen_state):
+    def _get_global_temporaries(self, kernel):
         from loopy.kernel.data import AddressSpace
 
         return sorted(
-            (tv for tv in codegen_state.kernel.temporary_variables.values()
+            (tv for tv in kernel.temporary_variables.values()
             if tv.address_space == AddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    def get_temporary_decls(self, kernel, callables_table, subkernel_name):
         from genpy import Assign, Comment, Line
         from collections import defaultdict
         from numbers import Number
@@ -715,9 +722,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        ecm = self.get_expression_to_code_mapper(codegen_state)
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map={},
+                                                 vectorization_info=None)
 
-        global_temporaries = self._get_global_temporaries(codegen_state)
+        global_temporaries = self._get_global_temporaries(kernel)
         if not global_temporaries:
             return []
 
@@ -766,22 +775,29 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         return code_lines
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
-        ecm = self.get_expression_to_code_mapper(codegen_state)
+    def get_kernel_call(self, kernel, callables_table, name,
+                        implemented_data_info, extra_args):
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map={},
+                                                 vectorization_info=None)
+
+        from loopy.schedule.tree import get_insns_in_function
+        gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+            get_insns_in_function(kernel, name), callables_table)
 
         if not gsize:
             gsize = (1,)
         if not lsize:
             lsize = (1,)
 
-        all_args = codegen_state.implemented_data_info + extra_args
+        all_args = implemented_data_info + extra_args
 
         value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
             generate_value_arg_setup(
-                    codegen_state.kernel,
+                    kernel,
                     all_args)
         arry_arg_code = generate_array_arg_setup(
-            codegen_state.kernel,
+            kernel,
             all_args,
             arg_idx_to_cl_arg_idx)
 
@@ -854,20 +870,28 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     # }}}
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExpressionToPyOpenCLCExpressionMapper(codegen_state)
-
-
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
+                                              vectorization_info):
+        return ExpressionToPyOpenCLCExpressionMapper(kernel, callables_table,
+                                                     self, var_subst_map,
+                                                     vectorization_info)
 # }}}
 
 
 # {{{ volatile mem acccess target
 
 class VolatileMemPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
-    def get_expression_to_c_expression_mapper(self, codegen_state):
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
+                                              vectorization_info):
         from loopy.target.opencl import \
                 VolatileMemExpressionToOpenCLCExpressionMapper
-        return VolatileMemExpressionToOpenCLCExpressionMapper(codegen_state)
+        return VolatileMemExpressionToOpenCLCExpressionMapper(kernel,
+                                                              callables_table,
+                                                              self,
+                                                              var_subst_map,
+                                                              vectorization_info)
 
 
 class VolatileMemPyOpenCLTarget(PyOpenCLTarget):

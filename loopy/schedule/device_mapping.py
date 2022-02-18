@@ -39,12 +39,13 @@ def map_schedule_onto_host_or_device(kernel):
                 + kernel.target.device_program_name_suffix)
 
     if not kernel.target.split_kernel_at_global_barriers():
+        new_name = device_prog_name_gen()
         new_schedule = (
-            [CallKernel(kernel_name=device_prog_name_gen(),
+            [CallKernel(kernel_name=new_name,
                         extra_args=[],
                         extra_inames=[])] +
             list(kernel.linearization) +
-            [ReturnFromKernel(kernel_name=kernel.name)])
+            [ReturnFromKernel(kernel_name=new_name)])
         kernel = kernel.copy(linearization=new_schedule)
     else:
         kernel = map_schedule_onto_host_or_device_impl(

@@ -269,10 +269,12 @@ def _split_iname_backend(kernel, iname_to_split,
     if inner_iname is None:
         inner_iname = vng(iname_to_split+"_inner")
 
-    new_domains = [
-            _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
-                fixed_length, fixed_length_is_inner)
-            for dom in kernel.domains]
+    new_domains = kernel.domains
+    for idom, dom in enumerate(kernel.domains):
+        if iname_to_split in dom.get_var_dict():
+            new_domains = new_domains.swap(idom, _split_iname_in_set(
+                dom, iname_to_split, inner_iname, outer_iname, fixed_length,
+                fixed_length_is_inner))
 
     from pymbolic import var
     inner = var(inner_iname)
@@ -681,8 +683,10 @@ def untag_inames(kernel, iname_to_untag, tag_type):
     tags_to_remove = filter_iname_tags_by_type(
             kernel.inames[iname_to_untag].tags, tag_type)
     new_inames = kernel.inames.copy()
-    new_inames[iname_to_untag] = kernel.inames[iname_to_untag].without_tags(
-            tags_to_remove, verify_existence=False)
+    new_inames = new_inames.set(iname_to_untag,
+                                kernel.inames[iname_to_untag]
+                                .without_tags(tags_to_remove,
+                                              verify_existence=False))
 
     return kernel.copy(inames=new_inames)
 
@@ -795,7 +799,6 @@ def tag_inames(kernel, iname_to_tag, force=False,
 
     # }}}
 
-    knl_inames = kernel.inames.copy()
     for name, new_tag in iname_to_tag.items():
         if not new_tag:
             continue
@@ -803,9 +806,9 @@ def tag_inames(kernel, iname_to_tag, force=False,
         if name not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % name)
 
-        knl_inames[name] = knl_inames[name].tagged(new_tag)
+        kernel = kernel.with_iname(kernel.inames[name].tagged(new_tag))
 
-    return kernel.copy(inames=knl_inames)
+    return kernel
 
 # }}}
 
@@ -1170,18 +1173,28 @@ def remove_unused_inames(kernel, inames=None):
 
     domains = kernel.domains
     for iname in unused_inames:
-        new_domains = []
 
-        for dom in domains:
+        # {{{ easy update: iname is only a set dim
+
+        if iname not in domains.param_dims:
+            idom = domains.home_domain_map[iname]
+            dom = domains[idom]
+            dt, idx = dom.get_var_dict()[iname]
+            dom = dom.project_out(dt, idx, 1)
+            domains = domains.swap(idom, dom)
+            continue
+
+        # }}}
+
+        for idom, dom in enumerate(domains):
             try:
                 dt, idx = dom.get_var_dict()[iname]
             except KeyError:
                 pass
             else:
                 dom = dom.project_out(dt, idx, 1)
-            new_domains.append(dom)
 
-        domains = new_domains
+            domains = domains.swap(idom, dom)
 
     kernel = kernel.copy(domains=domains)
 
@@ -1430,7 +1443,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     new_inames_set = frozenset(new_inames)
     old_inames_set = frozenset(old_inames)
 
-    new_domains = []
+    new_domains = kernel.domains
     for idom, dom in enumerate(kernel.domains):
         dom_var_dict = dom.get_var_dict()
         old_iname_overlap = [
@@ -1439,7 +1452,6 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
                 if iname in dom_var_dict]
 
         if not old_iname_overlap:
-            new_domains.append(dom)
             continue
 
         from loopy.symbolic import get_dependencies
@@ -1510,7 +1522,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
             dt, idx = dom.get_var_dict()[iname]
             dom = dom.project_out(dt, idx, 1)
 
-        new_domains.append(dom)
+        new_domains = new_domains.swap(idom, dom)
 
     # }}}
 

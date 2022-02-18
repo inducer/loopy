@@ -1050,6 +1050,31 @@ class ArrayBase(ImmutableRecord, Taggable):
         else:
             return self
 
+    def depends_on(self):
+        import loopy as lp
+        from functools import reduce
+        from loopy.symbolic import get_dependencies
+
+        if self.shape is not None and self.shape is not lp.auto:
+            shape_deps = reduce(frozenset.union,
+                                (get_dependencies(s) for s in self.shape
+                                 if s is not None),
+                                frozenset())
+        else:
+            shape_deps = frozenset()
+
+        if self.dim_tags is not None:
+            stride_deps = reduce(frozenset.union,
+                                 (dim_tag.depends_on()
+                                  for dim_tag in self.dim_tags),
+                                 frozenset())
+        else:
+            stride_deps = frozenset()
+
+        # offset is not an expression, do not map.
+
+        return shape_deps | stride_deps
+
     def vector_size(self, target):
         """Return the size of the vector type used for the array
         divided by the basic data type.

@@ -158,6 +158,10 @@ class ASTBuilderBase:
     def __init__(self, target):
         self.target = target
 
+        self.seen_dtypes = set()
+        self.seen_functions = set()
+        self.seen_atomic_dtypes = set()
+
     # {{{ library
 
     @property
@@ -184,28 +188,43 @@ class ASTBuilderBase:
     def ast_module(self):
         raise NotImplementedError()
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index, function_decl, function_body):
+    def get_function_definition(self, kernel, name, implemented_data_info,
+                                function_decl, function_body):
         raise NotImplementedError
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code):
         raise NotImplementedError
 
-    def generate_top_of_body(self, codegen_state):
+    def generate_top_of_body(self, kernel):
         return []
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    def get_temporary_decls(self, kernel, callables_table, subkernel_name):
         raise NotImplementedError
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+    def get_kernel_call(self, kernel, callables_table, name,
+                        implemented_data_info, extra_args):
         raise NotImplementedError
+
+    @property
+    def ast_base_class(self):
+        raise NotImplementedError()
 
     @property
     def ast_block_class(self):
         raise NotImplementedError()
 
-    def get_expression_to_code_mapper(self, codegen_state):
+    @property
+    def ast_for_class(self):
+        raise NotImplementedError()
+
+    @property
+    def ast_if_class(self):
+        raise NotImplementedError()
+
+    def get_expression_to_code_mapper(self, kernel, var_subst_map,
+                                      vectorization_info):
         raise NotImplementedError()
 
     def add_vector_access(self, access_expr, index):
@@ -227,27 +246,33 @@ class ASTBuilderBase:
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
-    def emit_assignment(self, codegen_state, insn):
+    def emit_array_literal(self, kernel, callables_table, array, value):
+        """
+        :arg ary: An instance of :class:`loopy.kernel.array.ArrayBase`.
+        """
+        raise NotImplementedError
+
+    def emit_assignment(self, kernel, callables_table, insn, var_subst_map,
+                        vectorization_info):
         raise NotImplementedError()
 
-    def emit_multiple_assignment(self, codegen_state, insn):
+    def emit_multiple_assignment(self, kernel, callables_table, insn, var_subst_map,
+                                 vectorization_info):
         raise NotImplementedError()
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
+    def emit_sequential_loop(self, kernel, callables_table, iname, iname_dtype,
+                             lbound, ubound, inner):
         raise NotImplementedError()
 
     @property
     def can_implement_conditionals(self):
         return False
 
-    def emit_if(self, condition_str, ast):
+    def emit_if(self, kernel, callables_table, condition, ast, var_subst_map,
+                vectorization_info):
         raise NotImplementedError()
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
-        raise NotImplementedError()
-
-    def emit_declaration_scope(self, codegen_state, inner):
+    def emit_initializer(self, decl, val):
         raise NotImplementedError()
 
     def emit_blank_line(self):
@@ -255,6 +280,12 @@ class ASTBuilderBase:
 
     def emit_comment(self, s):
         raise NotImplementedError()
+
+    def emit_collection(self, asts):
+        """
+        :arg asts: A sequence of AST objects.
+        """
+        raise NotImplementedError
 
     # }}}
 
@@ -271,7 +302,11 @@ class _DummyExpressionToCodeMapper:
     __call__ = rec
 
 
-class _DummyASTBlock:
+class _DummyAST:
+    pass
+
+
+class _DummyASTBlock(_DummyAST):
     def __init__(self, arg):
         self.contents = []
 
@@ -280,22 +315,29 @@ class _DummyASTBlock:
 
 
 class DummyHostASTBuilder(ASTBuilderBase):
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index, function_decl, function_body):
+    def get_function_definition(self, kernel, name, implemented_data_info,
+                                function_decl, function_body):
         return function_body
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code, is_entrypoint):
         return None
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    def get_temporary_decls(self, kernel, callables_table, subkernel_name):
         return []
 
-    def get_expression_to_code_mapper(self, codegen_state):
+    def get_expression_to_code_mapper(self, kernel, var_subst_map,
+                                      vectorization_info):
         return _DummyExpressionToCodeMapper()
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
-        return None
+    def get_kernel_call(self, kernel, callables_table, name,
+                        implemented_data_info, extra_args):
+        return _DummyASTBlock([])
+
+    @property
+    def ast_base_class(self):
+        return _DummyAST
 
     @property
     def ast_block_class(self):

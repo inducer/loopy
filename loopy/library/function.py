@@ -72,8 +72,8 @@ class IndexOfCallable(ScalarCallable):
         from pymbolic import evaluate
         access_info = get_access_info(expression_to_code_mapper.kernel.target,
                 ary, arg.index, lambda expr: evaluate(expr,
-                    expression_to_code_mapper.codegen_state.var_subst_map),
-                expression_to_code_mapper.codegen_state.vectorization_info)
+                    expression_to_code_mapper.var_subst_map),
+                expression_to_code_mapper.vectorization_info)
 
         from loopy.kernel.data import ImageArg
         if isinstance(ary, ImageArg):

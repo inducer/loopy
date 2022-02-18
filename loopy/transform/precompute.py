@@ -698,6 +698,28 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         change_inames = expanding_inames | preexisting_precompute_inames
 
+        # {{{ combine domains containing *change_inames*
+
+        # Why combine?
+        # Downstream logic in DomainChanger requires the domain to be
+        # manipulated to be a single domain.
+
+        domain_indices = tuple(sorted({kernel.get_home_domain_index(i)
+                                       for i in change_inames}))
+
+        combined_domain = kernel.combine_domains(domain_indices)
+        domains_after_combining = [dom
+                                   for idom, dom in enumerate(kernel.domains)
+                                   if idom not in domain_indices]
+        domains_after_combining.insert(domain_indices[0], combined_domain)
+
+        from loopy.kernel import make_loop_kernel_domains
+        kernel = (kernel
+                  .copy(domains=(make_loop_kernel_domains(domains_after_combining)
+                                 .with_inames(kernel.inames))))
+
+        # }}}
+
         from loopy.kernel.tools import DomainChanger
         domch = DomainChanger(kernel, change_inames)
 
@@ -828,7 +850,50 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         # }}}
 
-        new_kernel_domains = domch.get_domains_with(mod_domain)
+        # {{{ splitting mod_domain
+
+        # Splitting 'mod_domain' into 2 parts
+        # 1. domain contribution from the preexisting_precompute_inames, and,
+        # 2. domain contribution arising from new precompute inames.
+        #
+        # We do so in order to have fine grained domains. Typically precompute
+        # inames are tagged with hardware inames. As concluded in
+        # https://github.com/inducer/loopy/issues/379, it is generally a better
+        # idea to decouple domains containing the same hw axes inames.
+
+        existing_inames_domain = mod_domain
+
+        for name, (dt, pos) in mod_domain.get_var_dict().items():
+            if name in non1_storage_axis_names:
+                existing_inames_domain = existing_inames_domain.eliminate(dt, pos, 1)
+
+        new_inames_domain = mod_domain.gist(existing_inames_domain)
+
+        for name in non1_storage_axis_names:
+            dt, pos = existing_inames_domain.get_var_dict()[name]
+            existing_inames_domain = existing_inames_domain.project_out(dt,
+                                                                        pos,
+                                                                        1)
+
+        for dim_name in new_inames_domain.get_var_names(isl.dim_type.set)[:]:
+            if dim_name in sweep_inames:
+                dt, pos = new_inames_domain.get_var_dict()[dim_name]
+                new_inames_domain = new_inames_domain.project_out(dt, pos, 1)
+                continue
+            if dim_name not in non1_storage_axis_names:
+                dt, pos = new_inames_domain.get_var_dict()[dim_name]
+                new_inames_domain = new_inames_domain.move_dims(isl.dim_type.param,
+                                                                new_inames_domain
+                                                                .dim(isl.dim_type
+                                                                     .param),
+                                                                dt, pos, 1)
+        new_kernel_domains = domch.get_domains_with(existing_inames_domain)
+        new_kernel_domains = new_kernel_domains + [new_inames_domain
+                                                   .drop_unused_params()]
+
+        new_domain_added_idx = len(new_kernel_domains) - 1
+
+        # }}}
 
     else:
         # leave kernel domains unchanged
@@ -836,6 +901,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         non1_storage_axis_names = []
         abm = NoOpArrayToBufferMap()
+        new_domain_added_idx = None
 
     kernel = kernel.copy(domains=new_kernel_domains)
 
@@ -982,7 +1048,23 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         precompute_outer_inames = precompute_outer_inames \
                 | frozenset(non1_storage_axis_names)
 
+    if new_domain_added_idx:
+        parent_domains = kernel.all_parents_per_domain()[new_domain_added_idx]
+        old_domain = kernel.combine_domains((new_domain_added_idx, )
+                                            + tuple(sorted(parent_domains,
+                                                           reverse=True)))
+
+        updated_added_domain = (old_domain
+                                .project_out_except(
+                                    types=[isl.dim_type.param, isl.dim_type.set],
+                                    names=(precompute_outer_inames
+                                           | kernel.get_unwritten_value_args())))
+        new_domains = kernel.domains.swap(new_domain_added_idx, updated_added_domain)
+    else:
+        new_domains = kernel.domains
+
     kernel = kernel.copy(
+            domains=new_domains,
             instructions=[
                 insn.copy(within_inames=precompute_outer_inames)
                 if insn.id == compute_insn_id

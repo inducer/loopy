@@ -56,31 +56,40 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     """
     Mapper that converts a loopy-semantic expression to a C-semantic expression
     with typecasts, appropriate arithmetic semantic mapping, etc.
+
+    .. attribute:: var_subst_map
+
+        A mapping from variable name to expression it is to be substituted
+        with. A caller might set this to map iname to hardware iname expressions.
     """
-    def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
-        self.kernel = codegen_state.kernel
-        self.codegen_state = codegen_state
+    def __init__(self, kernel, callables_table, ast_builder, var_subst_map,
+                 vectorization_info, fortran_abi=False, type_inf_mapper=None):
+        self.kernel = kernel
+        self.callables_table = callables_table
+        self.ast_builder = ast_builder
+        self.var_subst_map = var_subst_map
+        self.vectorization_info = vectorization_info
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeReader(self.kernel,
-                    self.codegen_state.callables_table)
+                                         callables_table)
+
         self.type_inf_mapper = type_inf_mapper
-
-        self.allow_complex = codegen_state.allow_complex
-
         self.fortran_abi = fortran_abi
 
     # {{{ helpers
 
     def with_assignments(self, names_to_vars):
         type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
-        return type(self)(self.codegen_state, self.fortran_abi, type_inf_mapper)
+        return type(self)(self.kernel, self.callables_table, self.ast_builder,
+                          self.var_subst_map, self.vectorization_info,
+                          self.fortran_abi, type_inf_mapper)
 
     def infer_type(self, expr):
         result = self.type_inf_mapper(expr)
         assert isinstance(result, LoopyType)
 
-        self.codegen_state.seen_dtypes.add(result)
+        self.ast_builder.seen_dtypes.add(result)
         return result
 
     def find_array(self, expr):
@@ -124,7 +133,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         assert prec == PREC_NONE
         return CExpression(
-                self.codegen_state.ast_builder.get_c_expression_to_code_mapper(),
+                self.ast_builder.get_c_expression_to_code_mapper(),
                 self.rec(expr, type_context, needed_dtype))
 
     # }}}
@@ -135,16 +144,16 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         def postproc(x):
             return x
 
-        if expr.name in self.codegen_state.var_subst_map:
+        if expr.name in self.var_subst_map:
             if self.kernel.options.annotate_inames:
                 return var(
                         "/* {} */ {}".format(
                             expr.name,
-                            self.rec(self.codegen_state.var_subst_map[expr.name],
-                                type_context)))
+                            self.rec(self.var_subst_map[expr.name],
+                                     type_context)))
             else:
-                return self.rec(self.codegen_state.var_subst_map[expr.name],
-                    type_context)
+                return self.rec(self.var_subst_map[expr.name],
+                                type_context)
         elif expr.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.name]
             from loopy.kernel.array import ArrayBase
@@ -176,7 +185,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     or temporary.address_space == AddressSpace.GLOBAL):
                 postproc = lambda x: x[0]  # noqa
 
-        result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
+        result = self.kernel.mangle_symbol(self.ast_builder, expr.name)
         if result is not None:
             _, c_name = result
             return postproc(var(c_name))
@@ -216,8 +225,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 simplify_using_aff(self.kernel, idx) for idx in expr.index_tuple)
 
         access_info = get_access_info(self.kernel.target, ary, index_tuple,
-                lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
-                self.codegen_state.vectorization_info)
+                                      lambda expr: evaluate(expr,
+                                                            self.var_subst_map),
+                                      self.vectorization_info)
 
         from loopy.kernel.data import (
                 ImageArg, ArrayArg, TemporaryVariable, ConstantArg)
@@ -278,7 +288,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                             self.kernel, self.rec(subscript, "i")))
 
             if access_info.vector_index is not None:
-                return self.codegen_state.ast_builder.add_vector_access(
+                return self.ast_builder.add_vector_access(
                     result, access_info.vector_index)
             else:
                 return result
@@ -341,7 +351,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         def seen_func(name):
             from loopy.codegen import SeenFunction
-            self.codegen_state.seen_functions.add(
+            self.ast_builder.seen_functions.add(
                     SeenFunction(
                         name, f"{name}_{suffix}",
                         (result_dtype, result_dtype),
@@ -398,7 +408,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     self.rec(expr.right, inner_type_context))
 
     def map_type_cast(self, expr, type_context):
-        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+        registry = self.ast_builder.target.get_dtype_registry()
         cast = var("(%s)" % registry.dtype_to_ctype(expr.type))
         return cast(self.rec(expr.child, type_context))
 
@@ -463,7 +473,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_call(self, expr, type_context):
         return (
-                self.codegen_state.callables_table[
+                self.callables_table[
                     expr.function.name].emit_call(
                         expression_to_code_mapper=self,
                     expression=expr,
@@ -511,7 +521,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             func_name = ("loopy_pow_"
                     f"{tgt_dtype.numpy_dtype}_{exponent_dtype.numpy_dtype}")
 
-            self.codegen_state.seen_functions.add(
+            self.ast_builder.seen_functions.add(
                     SeenFunction(
                         "int_pow", func_name,
                         (tgt_dtype, exponent_dtype),
@@ -521,10 +531,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                                   self.rec(expr.exponent, type_context))
         else:
             from loopy.codegen import SeenFunction
-            clbl = self.codegen_state.ast_builder.known_callables["pow"]
+            clbl = self.ast_builder.known_callables["pow"]
             clbl = clbl.with_types({0: tgt_dtype, 1: exponent_dtype},
-                    self.codegen_state.callables_table)[0]
-            self.codegen_state.seen_functions.add(
+                    self.callables_table)[0]
+            self.ast_builder.seen_functions.add(
                     SeenFunction(
                         clbl.name, clbl.name_in_target,
                         (base_dtype, exponent_dtype),

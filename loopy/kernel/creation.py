@@ -2404,7 +2404,8 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
         temporary_variables[tv.name] = tv
     del cse_temp_vars
 
-    domains = parse_domains(domains, defines)
+    from loopy.kernel import make_loop_kernel_domains
+    domains = make_loop_kernel_domains(parse_domains(domains, defines))
 
     # {{{ process assumptions
 
@@ -2430,11 +2431,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
             raise LoopyError("assumptions must be either 'str' or BasicSet")
 
     # }}}
-
-    from loopy.kernel.data import Iname
-    from loopy.kernel import _get_inames_from_domains
-    inames = {name: Iname(name, frozenset())
-              for name in _get_inames_from_domains(domains)}
+    from loopy.kernel import make_loop_kernel_domains
 
     arg_guesser = ArgumentGuesser(domains, instructions,
             temporary_variables, substitutions,
@@ -2455,7 +2452,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
             options=options,
             target=target,
             tags=tags,
-            inames=inames,
             assumptions=assumptions,
             **kwargs)
 

@@ -286,7 +286,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     for old_name, callee_iname in callee_knl.inames.items():
         new_name = name_map[old_name]
-        new_inames[new_name] = callee_iname.copy(name=new_name)
+        new_inames = new_inames.set(new_name, callee_iname.copy(name=new_name))
 
     # }}}
 
@@ -321,7 +321,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     # {{{ process domains/assumptions
 
     # rename inames
-    new_domains = callee_knl.domains.copy()
+    new_domains = callee_knl.domains
     for old_iname in callee_knl.all_inames():
         new_domains = [rename_iname(dom, old_iname, name_map[old_iname])
                        for dom in new_domains]

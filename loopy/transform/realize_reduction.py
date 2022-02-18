@@ -49,6 +49,7 @@ from loopy.kernel import LoopKernel
 from loopy.diagnostic import (
         LoopyError, warn_with_kernel, ReductionIsNotTriangularError)
 from loopy.transform.instruction import replace_instruction_ids_in_insn
+from loopy.kernel import make_loop_kernel_domains
 
 
 # {{{ reduction realization context
@@ -1750,7 +1751,10 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
 
 def map_reduction(expr, *, red_realize_ctx, nresults):
     kernel_with_updated_domains = red_realize_ctx.kernel.copy(
-            domains=red_realize_ctx.domains)
+            domains=make_loop_kernel_domains(
+                red_realize_ctx.domains,
+                red_realize_ctx.kernel.inames,
+            ))
 
     from loopy.type_inference import (
             infer_arg_and_reduction_dtypes_for_reduction_expression)
@@ -1916,7 +1920,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
     cb_mapper = RealizeReductionCallbackMapper(map_reduction)
 
     insn_queue = kernel.instructions[:]
-    domains = kernel.domains[:]
+    domains = list(kernel.domains)
 
     inames_added_for_scan = set()
 
@@ -2086,7 +2090,8 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
             kernel = kernel.copy(
                     instructions=finished_insns + insn_queue,
                     temporary_variables=new_temporary_variables,
-                    domains=domains)
+                    domains=make_loop_kernel_domains(
+                        domains, kernel.inames))
             from loopy.transform.iname import tag_inames
             kernel = tag_inames(kernel, red_realize_ctx.additional_iname_tags)
 

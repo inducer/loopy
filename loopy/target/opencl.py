@@ -27,7 +27,7 @@ import numpy as np
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from pytools import memoize_method
+from pytools import memoize_method, UniqueNameGenerator
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
@@ -575,6 +575,10 @@ class OpenCLTarget(CFamilyTarget):
 # {{{ ast builder
 
 class OpenCLCASTBuilder(CFamilyASTBuilder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.var_name_generator = UniqueNameGenerator()
+
     # {{{ library
 
     @property
@@ -599,14 +603,20 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        fdecl = super().get_function_declaration(
-                codegen_state, codegen_result, schedule_index)
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code, is_entrypoint):
+        assert is_generating_device_code
+
+        fdecl = super().get_function_declaration(kernel, callables_table,
+                                                 name,
+                                                 implemented_data_info,
+                                                 is_generating_device_code,
+                                                 is_entrypoint)
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
-        if not codegen_state.is_entrypoint:
+        if not is_entrypoint:
             # auxiliary kernels need not mention opencl speicific qualifiers
             # for a functions signature
             return fdecl
@@ -616,11 +626,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
         fdecl = CLKernel(fdecl)
 
-        from loopy.schedule import get_insn_ids_for_block_at
-        _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(
-                    codegen_state.kernel.linearization, schedule_index),
-                codegen_state.callables_table)
+        from loopy.schedule.tree import get_insns_in_function
+        _, local_sizes = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+            get_insns_in_function(kernel, name), callables_table)
 
         from loopy.symbolic import get_dependencies
         if not get_dependencies(local_sizes):
@@ -631,9 +639,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
         return FunctionDeclarationWrapper(fdecl)
 
-    def generate_top_of_body(self, codegen_state):
+    def generate_top_of_body(self, kernel):
         from loopy.kernel.data import ImageArg
-        if any(isinstance(arg, ImageArg) for arg in codegen_state.kernel.args):
+        if any(isinstance(arg, ImageArg) for arg in kernel.args):
             from cgen import Value, Const, Initializer
             return [
                     Initializer(Const(Value("sampler_t", "loopy_sampler")),
@@ -647,8 +655,12 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExpressionToOpenCLCExpressionMapper(codegen_state)
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
+                                              vectorization_info):
+        return ExpressionToOpenCLCExpressionMapper(kernel, callables_table,
+                                                   self, var_subst_map,
+                                                   vectorization_info)
 
     def add_vector_access(self, access_expr, index):
         # The 'int' avoids an 'L' suffix for long ints.
@@ -726,7 +738,8 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         from cgen import RestrictPointer, Const
         from cgen.opencl import CLConstant
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
+        arg_decl = RestrictPointer(POD(self.target.dtype_to_typename(dtype),
+                                       dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
@@ -735,21 +748,28 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{
 
-    def emit_atomic_init(self, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+    def emit_atomic_init(self, kernel, callables_table, var_subst_map,
+                         lhs_atomicity, lhs_var, lhs_expr, rhs_expr, lhs_dtype,
+                         rhs_type_context):
         # for the CL1 flavor, this is as simple as a regular update with whatever
         # the RHS value is...
 
-        return self.emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
+        return self.emit_atomic_update(kernel, callables_table, var_subst_map,
+                                       lhs_atomicity, lhs_var, lhs_expr,
+                                       rhs_expr, lhs_dtype, rhs_type_context)
 
     # }}}
 
     # {{{ code generation for atomic update
 
-    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+    def emit_atomic_update(self, kernel, callables_table, var_subst_map,
+                           lhs_atomicity, lhs_var, lhs_expr, rhs_expr,
+                           lhs_dtype, rhs_type_context):
         from pymbolic.mapper.stringifier import PREC_NONE
+
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map=var_subst_map,
+                                                 vectorization_info=None)
 
         # FIXME: Could detect operations, generate atomic_{add,...} when
         # appropriate.
@@ -758,11 +778,11 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 np.int32, np.int64, np.float32, np.float64]:
             from cgen import Block, DoWhile, Assign
             from loopy.target.c import POD
-            old_val_var = codegen_state.var_name_generator("loopy_old_val")
-            new_val_var = codegen_state.var_name_generator("loopy_new_val")
+            old_val_var = self.var_name_generator("_lp_old_val")
+            new_val_var = self.var_name_generator("_lp_new_val")
 
             from loopy.kernel.data import TemporaryVariable, AddressSpace
-            ecm = codegen_state.expression_to_code_mapper.with_assignments(
+            ecm = ecm.with_assignments(
                     {
                         old_val_var: TemporaryVariable(old_val_var, lhs_dtype,
                             shape=()),
@@ -829,11 +849,13 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 new_val = "*(%s *) &" % ctype + new_val
                 cast_str = f"({var_kind} {ctype} *) "
 
+            lhs_dtype = NumpyType(lhs_dtype.dtype)
+
             return Block([
-                POD(self, NumpyType(lhs_dtype.dtype),
-                    old_val_var),
-                POD(self, NumpyType(lhs_dtype.dtype),
-                    new_val_var),
+                POD(self.target.dtype_to_typename(lhs_dtype),
+                    lhs_dtype, old_val_var),
+                POD(self.target.dtype_to_typename(lhs_dtype),
+                    lhs_dtype, new_val_var),
                 DoWhile(
                     "%(func_name)s("
                     "%(cast_str)s&(%(lhs_expr)s), "
@@ -868,7 +890,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 class VolatileMemExpressionToOpenCLCExpressionMapper(
         ExpressionToOpenCLCExpressionMapper):
     def make_subscript(self, array, base_expr, subscript):
-        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+        registry = self.ast_builder.target.get_dtype_registry()
 
         from loopy.kernel.data import AddressSpace
         if array.address_space == AddressSpace.GLOBAL:
@@ -891,8 +913,14 @@ class VolatileMemExpressionToOpenCLCExpressionMapper(
 
 
 class VolatileMemOpenCLCASTBuilder(OpenCLCASTBuilder):
-    def get_expression_to_c_expression_mapper(self, codegen_state):
-        return VolatileMemExpressionToOpenCLCExpressionMapper(codegen_state)
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
+                                              vectorization_info):
+        return VolatileMemExpressionToOpenCLCExpressionMapper(kernel,
+                                                              callables_table,
+                                                              self,
+                                                              var_subst_map,
+                                                              vectorization_info)
 
 
 class VolatileMemOpenCLTarget(OpenCLTarget):

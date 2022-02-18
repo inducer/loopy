@@ -111,8 +111,8 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 from pymbolic import evaluate
 
                 access_info = get_access_info(self.kernel.target, ary, expr.index,
-                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
-                    self.codegen_state.vectorization_info)
+                    lambda expr: evaluate(expr, self.var_subst_map),
+                    self.vectorization_info)
 
                 subscript, = access_info.subscripts
                 result = var(access_info.array_name)[
@@ -201,12 +201,12 @@ class ISPCTarget(CFamilyTarget):
 
 
 class ISPCASTBuilder(CFamilyASTBuilder):
-    def _arg_names_and_decls(self, codegen_state):
-        implemented_data_info = codegen_state.implemented_data_info
+    def _arg_names_and_decls(self, kernel, implemented_data_info):
+        implemented_data_info = implemented_data_info
         arg_names = [iai.name for iai in implemented_data_info]
 
         arg_decls = [
-                self.idi_to_cgen_declarator(codegen_state.kernel, idi)
+                self.idi_to_cgen_declarator(kernel, idi)
                 for idi in implemented_data_info]
 
         # {{{ occa compatibility hackery
@@ -230,16 +230,16 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        name = codegen_result.current_program(codegen_state).name
-
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code, is_entrypoint):
         from cgen import (FunctionDeclaration, Value)
         from cgen.ispc import ISPCExport, ISPCTask
 
-        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+        arg_names, arg_decls = self._arg_names_and_decls(kernel,
+                                                         implemented_data_info)
 
-        if codegen_state.is_generating_device_code:
+        if is_generating_device_code:
             result = ISPCTask(
                         FunctionDeclaration(
                             Value("void", name),
@@ -255,19 +255,28 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # }}}
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
-        ecm = self.get_expression_to_code_mapper(codegen_state)
+    def get_kernel_call(self, kernel, callables_table, name,
+                        implemented_data_info, extra_args):
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map={},
+                                                 vectorization_info=None)
 
+        from loopy.schedule.tree import get_insns_in_function
         from pymbolic.mapper.stringifier import PREC_NONE
-        result = []
         from cgen import Statement as S, Block
+
+        gsize, lsize = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+            get_insns_in_function(kernel, name), callables_table)
+
+        result = []
         if lsize:
             result.append(
                     S(
                         "assert(programCount == (%s))"
                         % ecm(lsize[0], PREC_NONE)))
 
-        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+        arg_names, arg_decls = self._arg_names_and_decls(kernel,
+                                                         implemented_data_info)
 
         from cgen.ispc import ISPCLaunch
         result.append(
@@ -282,8 +291,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExprToISPCExprMapper(codegen_state)
+    def get_expression_to_c_expression_mapper(self, kernel, callables_table,
+                                              var_subst_map,
+                                              vectorization_info):
+        return ExprToISPCExprMapper(kernel, callables_table, self,
+                                    var_subst_map, vectorization_info)
 
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
@@ -302,9 +314,10 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def get_temporary_decl(self, codegen_state, sched_index, temp_var, decl_info):
+    def get_temporary_decl(self, kernel, callables_table, temp_var, decl_info):
         from loopy.target.c import POD  # uses the correct complex type
-        temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
+        temp_var_decl = POD(self.target.dtype_to_typename(decl_info.dtype),
+                            decl_info.dtype, decl_info.name)
 
         shape = decl_info.shape
 
@@ -312,12 +325,14 @@ class ISPCASTBuilder(CFamilyASTBuilder):
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # above in expr to code mapper)
-            _, lsize = codegen_state.kernel.get_grid_size_upper_bounds_as_exprs()
+            _, lsize = kernel.get_grid_size_upper_bounds_as_exprs()
             shape = lsize + shape
 
         if shape:
             from cgen import ArrayOf
-            ecm = self.get_expression_to_code_mapper(codegen_state)
+            ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                     var_subst_map={},
+                                                     vectorization_info=None)
             temp_var_decl = ArrayOf(
                     temp_var_decl,
                     ecm(p.flattened_product(shape),
@@ -334,7 +349,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen import Const
         from cgen.ispc import ISPCUniformPointer, ISPCUniform
 
-        arg_decl = ISPCUniformPointer(POD(self, dtype, name))
+        arg_decl = ISPCUniformPointer(POD(self.target.dtype_to_typename(dtype),
+                                          dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
@@ -369,13 +385,16 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(result)
 
-    def emit_assignment(self, codegen_state, insn):
-        kernel = codegen_state.kernel
-        ecm = codegen_state.expression_to_code_mapper
+    def emit_assignment(self, kernel, callables_table, insn, var_subst_map,
+                        vectorization_info):
+
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
+                                                 vectorization_info)
 
         assignee_var_name, = insn.assignee_var_names()
 
-        lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
+        lhs_var = kernel.get_var_descriptor(assignee_var_name)
         lhs_dtype = lhs_var.dtype
 
         if insn.atomicity:
@@ -405,8 +424,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                     simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
 
             access_info = get_access_info(kernel.target, ary, index_tuple,
-                    lambda expr: evaluate(expr, codegen_state.var_subst_map),
-                    codegen_state.vectorization_info)
+                    lambda expr: evaluate(expr, var_subst_map),
+                    vectorization_info)
 
             from loopy.kernel.data import ArrayArg, TemporaryVariable
 
@@ -485,20 +504,21 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen import Assign
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
-        ecm = codegen_state.expression_to_code_mapper
-
+    def emit_sequential_loop(self, kernel, callables_table, iname, iname_dtype,
+                             lbound, ubound, inner, var_subst_map):
         from loopy.target.c import POD
-
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
-
         from cgen.ispc import ISPCUniform
+
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
+                                                 vectorization_info=None)
 
         return For(
                 InlineInitializer(
-                    ISPCUniform(POD(self, iname_dtype, iname)),
+                    ISPCUniform(POD(self.target.dtype_to_typename(iname_dtype),
+                                    iname_dtype, iname)),
                     ecm(lbound, PREC_NONE, "i")),
                 ecm(
                     p.Comparison(var(iname), "<=", ubound),

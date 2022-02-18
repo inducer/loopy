@@ -29,20 +29,31 @@ from loopy.type_inference import TypeReader
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
-from genpy import Suite, Collection
+from genpy import Suite
 
 
 # {{{ expression to code
 
 class ExpressionToPythonMapper(StringifyMapper):
-    def __init__(self, codegen_state, type_inf_mapper=None):
-        self.kernel = codegen_state.kernel
-        self.codegen_state = codegen_state
+    def __init__(self, kernel, callables_table, ast_builder, var_subst_map,
+                 vectorization_info, type_inf_mapper=None):
+        self.kernel = kernel
+        self.callables_table = callables_table
+        self.ast_builder = ast_builder
+        self.var_subst_map = var_subst_map
+
+        if vectorization_info:
+            raise NotImplementedError("vectorization not implemented")
+
+        self.vectorization_info = vectorization_info
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeReader(self.kernel,
-                    self.codegen_state.callables_table)
+                    self.callables_table)
         self.type_inf_mapper = type_inf_mapper
+
+        self.seen_functions = set()
+        self.seen_dtypes = set()
 
     def handle_unsupported_expression(self, victim, enclosing_prec):
         return Mapper.handle_unsupported_expression(self, victim, enclosing_prec)
@@ -56,12 +67,6 @@ class ExpressionToPythonMapper(StringifyMapper):
         return repr(expr)
 
     def map_variable(self, expr, enclosing_prec):
-        if expr.name in self.codegen_state.var_subst_map:
-            # Unimplemented: annotate_inames
-            return str(self.rec(
-                self.codegen_state.var_subst_map[expr.name],
-                enclosing_prec))
-
         if expr.name in self.kernel.all_inames():
             return super().map_variable(
                     expr, enclosing_prec)
@@ -81,15 +86,13 @@ class ExpressionToPythonMapper(StringifyMapper):
     def map_call(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        identifier_name = self.codegen_state.callables_table[
-                expr.function.name].name
+        identifier_name = self.callables_table[expr.function.name].name
 
         if identifier_name in ["indexof", "indexof_vec"]:
             raise LoopyError(
                     "indexof, indexof_vec not yet supported in Python")
 
-        clbl = self.codegen_state.callables_table[
-                expr.function.name]
+        clbl = self.callables_table[expr.function.name]
 
         str_parameters = None
         number_of_assignees = len([key for key in
@@ -161,25 +164,26 @@ class PythonASTBuilderBase(ASTBuilderBase):
         import genpy
         return genpy
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(self, kernel, callables_table, name,
+                                 implemented_data_info,
+                                 is_generating_device_code, is_entrypoint):
         return None
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index,
-            function_decl, function_body):
+    def get_function_definition(self, kernel, name, implemented_data_info,
+                                function_decl, function_body):
 
         assert function_decl is None
 
         from genpy import Function
         return Function(
-                codegen_result.current_program(codegen_state).name,
-                [idi.name for idi in codegen_state.implemented_data_info],
+                name,
+                [idi.name for idi in implemented_data_info],
                 function_body)
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
-        kernel = codegen_state.kernel
-        ecm = codegen_state.expression_to_code_mapper
+    def get_temporary_decls(self, kernel, callables_table, subkernel_name):
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map={},
+                                                 vectorization_info=None)
 
         result = []
 
@@ -204,23 +208,40 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
         return result
 
-    def get_expression_to_code_mapper(self, codegen_state):
-        return ExpressionToPythonMapper(codegen_state)
+    def get_expression_to_code_mapper(self, kernel, callables_table,
+                                      var_subst_map, vectorization_info):
+        return ExpressionToPythonMapper(kernel, callables_table, self,
+                                        var_subst_map, vectorization_info)
+
+    @property
+    def ast_base_class(self):
+        from genpy import Generable
+        return Generable
 
     @property
     def ast_block_class(self):
         return Suite
 
     @property
+    def ast_for_class(self):
+        from genpy import For
+        return For
+
+    @property
+    def ast_if_class(self):
+        from genpy import If
+        return If
+
+    @property
     def ast_block_scope_class(self):
-        # Once a new version of genpy is released, switch to this:
-        # from genpy import Collection
-        # and delete the implementation above.
+        from genpy import Collection
         return Collection
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
-        ecm = codegen_state.expression_to_code_mapper
+    def emit_sequential_loop(self, kernel, callables_table, iname, iname_dtype,
+                             lbound, ubound, inner, var_subst_map):
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
+                                                 vectorization_info=None)
 
         from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
@@ -234,9 +255,9 @@ class PythonASTBuilderBase(ASTBuilderBase):
                     ),
                 inner)
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+    def emit_initializer(self, decl, val):
         from genpy import Assign
-        return Assign(name, val_str)
+        return Assign(decl, val)
 
     def emit_blank_line(self):
         from genpy import Line
@@ -246,22 +267,42 @@ class PythonASTBuilderBase(ASTBuilderBase):
         from genpy import Comment
         return Comment(s)
 
+    def emit_collection(self, asts):
+        """
+        :arg asts: A sequence of AST objects.
+        """
+        from genpy import Collection
+        return Collection(asts)
+
     @property
     def can_implement_conditionals(self):
         return True
 
-    def emit_if(self, condition_str, ast):
+    def emit_if(self, kernel, callables_table, condition, ast, var_subst_map,
+                vectorization_info):
+        assert vectorization_info is None
         from genpy import If
-        return If(condition_str, ast)
+        from pymbolic.mapper.stringifier import PREC_NONE
 
-    def emit_assignment(self, codegen_state, insn):
-        ecm = codegen_state.expression_to_code_mapper
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
+                                                 vectorization_info)
+        return If(ecm(condition, prec=PREC_NONE), ast)
 
+    def emit_assignment(self, kernel, callables_table, insn, var_subst_map,
+                        vectorization_info):
         if insn.atomicity:
             raise NotImplementedError("atomic ops in Python")
 
+        if vectorization_info:
+            raise NotImplementedError("vectorized assignments in Python")
+
         from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
+
+        ecm = self.get_expression_to_code_mapper(kernel, callables_table,
+                                                 var_subst_map,
+                                                 vectorization_info)
 
         return Assign(
                 ecm(insn.assignee, prec=PREC_NONE, type_context=None),
