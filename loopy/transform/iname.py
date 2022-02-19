@@ -1678,6 +1678,17 @@ def make_reduction_inames_unique(kernel, inames=None, within=None):
 
     # }}}
 
+    # {{{ copy metadata
+
+    inames = kernel.inames
+
+    for old_iname, new_iname in r_uniq.old_to_new:
+        inames[new_iname] = inames[old_iname].copy(name=new_iname)
+
+    kernel = kernel.copy(inames=inames)
+
+    # }}}
+
     return kernel
 
 # }}}
