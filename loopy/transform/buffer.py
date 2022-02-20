@@ -224,7 +224,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     access_descriptors = []
     for insn in kernel.instructions:
-        if not within(kernel, insn.id, ()):
+        if not within(kernel, insn, ()):
             continue
 
         from pymbolic.primitives import Variable, Subscript
