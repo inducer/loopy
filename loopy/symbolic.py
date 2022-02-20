@@ -1261,17 +1261,23 @@ class RuleAwareIdentityMapper(IdentityMapper):
             return self.map_substitution(name, tags, (), expn_state, *args,
                     **kwargs)
 
-    def map_call(self, expr, expn_state):
+    def map_call(self, expr, expn_state, *args, **kwargs):
         if not isinstance(expr.function, p.Variable):
-            return IdentityMapper.map_call(self, expr, expn_state)
+            return IdentityMapper.map_call(self, expr, expn_state,
+                                           *args, **kwargs)
 
         name, tags = parse_tagged_name(expr.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
-            return super().map_call(expr, expn_state)
+            return super().map_call(expr, expn_state, *args, **kwargs)
         else:
-            return self.map_substitution(name, tags, self.rec(
-                expr.parameters, expn_state), expn_state)
+            return self.map_substitution(name, tags,
+                                         self.rec(expr.parameters,
+                                                  expn_state,
+                                                  *args,
+                                                  **kwargs),
+                                         expn_state,
+                                         *args, **kwargs)
 
     @staticmethod
     def make_new_arg_context(rule_name, arg_names, arguments, arg_context):
@@ -1285,17 +1291,18 @@ class RuleAwareIdentityMapper(IdentityMapper):
                 formal_arg_name: arg_subst_map(arg_value)
                 for formal_arg_name, arg_value in zip(arg_names, arguments)}
 
-    def map_substitution(self, name, tags, arguments, expn_state):
+    def map_substitution(self, name, tags, arguments, expn_state,
+                         *args, **kwargs):
         rule = self.rule_mapping_context.old_subst_rules[name]
 
-        rec_arguments = self.rec(arguments, expn_state)
+        rec_arguments = self.rec(arguments, expn_state, *args, **kwargs)
 
         new_expn_state = expn_state.copy(
                 stack=expn_state.stack + ((name, tags),),
                 arg_context=self.make_new_arg_context(
                     name, rule.arguments, rec_arguments, expn_state.arg_context))
 
-        result = self.rec(rule.expression, new_expn_state)
+        result = self.rec(rule.expression, new_expn_state, *args, **kwargs)
 
         new_name = self.rule_mapping_context.register_subst_rule(
                 name, rule.arguments, result)
