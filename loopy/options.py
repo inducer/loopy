@@ -212,7 +212,10 @@ class Options(ImmutableRecord):
             allow_terminal_colors_def = True
 
         allow_terminal_colors_def = (
-                ALLOW_TERMINAL_COLORS and allow_terminal_colors_def)
+                ALLOW_TERMINAL_COLORS
+                and allow_terminal_colors_def
+                # https://no-color.org/
+                and "NO_COLOR" not in os.environ)
 
         import sys
         ImmutableRecord.__init__(
