@@ -677,6 +677,49 @@ class CMathCallable(ScalarCallable):
             }}""")
 
 
+class GNULibcCallable(ScalarCallable):
+    def with_types(self, arg_id_to_dtype, callables_table):
+        name = self.name
+
+        if name in ["bessel_jn", "bessel_yn"]:
+            # bessel functions
+            # https://www.gnu.org/software/libc/manual/html_node/Special-Functions.html
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 1:
+                    raise LoopyError(f"'{name}' can take exactly 2 arguments.")
+
+            if (not arg_id_to_dtype.get(0)) or (not arg_id_to_dtype.get(1)):
+                # the types provided aren't mature enough to specialize the
+                # callable
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        callables_table)
+
+            if not arg_id_to_dtype[0].is_integral():
+                raise LoopyTypeError(f"'{name}' needs order to be an int-type.")
+
+            if arg_id_to_dtype[1].numpy_dtype == np.float32:
+                name_in_target = name[-2:]+"f"
+            elif arg_id_to_dtype[1].numpy_dtype == np.float64:
+                name_in_target = name[-2:]
+            else:
+                raise LoopyTypeError("argument to bessel function must be f32,"
+                                     f"f64, got {arg_id_to_dtype[1].numpy_dtype}.")
+
+            return (
+                    self.copy(name_in_target=name_in_target,
+                              arg_id_to_dtype={-1: arg_id_to_dtype[1],
+                                               0: NumpyType(np.int32),
+                                               1: arg_id_to_dtype[1]}),
+                    callables_table)
+        else:
+            raise NotImplementedError(f"with_types for '{name}'")
+
+    def generate_preambles(self, target):
+        if self.name in ["bessel_yn", "bessel_jn"]:
+            yield("08_c_math", "#include <math.h>")
+
+
 def get_c_callables():
     """
     Returns an instance of :class:`InKernelCallable` if the function
@@ -689,6 +732,13 @@ def get_c_callables():
                  "conj"]
 
     return {id_: CMathCallable(id_) for id_ in cmath_ids}
+
+
+def get_gnu_libc_callables():
+    # Support special functions from
+    # https://www.gnu.org/software/libc/manual/html_node/Special-Functions.html
+    func_ids = ["bessel_jn", "bessel_yn"]
+    return {id_: GNULibcCallable(id_) for id_ in func_ids}
 
 # }}}
 
@@ -1314,6 +1364,28 @@ class ExecutableCTarget(CTarget):
     def get_host_ast_builder(self):
         # enable host code generation
         return CFamilyASTBuilder(self)
+
+# }}}
+
+
+# {{{ C99 (with GNULibc) callable target
+
+class CWithGNULibcTarget(CTarget):
+    def get_device_ast_builder(self):
+        return CWithGNULibcASTBuilder(self)
+
+
+class CWithGNULibcASTBuilder(CASTBuilder):
+    @property
+    def known_callables(self):
+        callables = super().known_callables
+        callables.update(get_gnu_libc_callables())
+        return callables
+
+
+class ExecutableCWithGNULibcTarget(ExecutableCTarget):
+    def get_device_ast_builder(self):
+        return CWithGNULibcASTBuilder(self)
 
 # }}}
 
