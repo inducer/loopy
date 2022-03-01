@@ -10,3 +10,6 @@ git+https://github.com/inducer/f2py#egg=f2py
 
 # Optional, needed for using the C preprocessor on Fortran
 ply>=3.6
+
+# Optional, for testing special math function
+scipy
