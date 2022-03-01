@@ -929,6 +929,9 @@ class Iname(Taggable):
 
         return type(self)(name=name, tags=tags)
 
+    def _with_new_tags(self, tags):
+        return self.copy(tags=tags)
+
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.

@@ -924,6 +924,9 @@ class ArrayBase(ImmutableRecord, Taggable):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def _with_new_tags(self, tags):
+        return self.copy(tags=tags)
+
     def stringify(self, include_typename):
         import loopy as lp
 

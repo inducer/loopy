@@ -1659,6 +1659,9 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
         return super().copy(**kwargs)
 
+    def _with_new_tags(self, tags):
+        return self.copy(tags=tags)
+
 # }}}
 
 # vim: foldmethod=marker
