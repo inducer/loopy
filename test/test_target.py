@@ -631,6 +631,38 @@ def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
                                              )
 
 
+@pytest.mark.parametrize("dtype", ["float32", "float64"])
+def test_glibc_bessel_functions(dtype):
+    pytest.importorskip("scipy.special")
+    from scipy.special import jn, yn  # pylint: disable=no-name-in-module
+    from loopy.target.c.c_execution import CCompiler
+    from numpy.random import default_rng
+
+    rng = default_rng(0)
+    compiler = CCompiler(cflags=["-O3"])
+
+    n = 2
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        first_kind_bessel[i]  = bessel_jn(n, x[i])
+        second_kind_bessel[i] = bessel_yn(n, x[i])
+        """, target=lp.ExecutableCWithGNULibcTarget(compiler))
+
+    if knl.target.compiler.toolchain.cc not in ["gcc", "g++"]:
+        pytest.skip("GNU-libc not found.")
+
+    knl = lp.fix_parameters(knl, n=2)
+    knl = lp.set_options(knl, return_dict=True)
+    knl = lp.set_options(knl, write_code=True)
+    x_in = np.abs(rng.random(10, dtype=dtype))
+    _, out_dict = knl(x=x_in)
+    np.testing.assert_allclose(jn(n, x_in), out_dict["first_kind_bessel"],
+                               rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(yn(n, x_in), out_dict["second_kind_bessel"],
+                               rtol=1e-6, atol=1e-6)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
