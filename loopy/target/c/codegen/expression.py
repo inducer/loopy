@@ -225,7 +225,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         if self.kernel.target.allows_non_constant_indexing_for_vec_types:
             access_info = get_access_info(self.kernel, ary, index_tuple,
-                    lambda expr: substitute(expr, self.codegen_state.var_subst_map),
+                    lambda expr: substitute(expr,
+                                            dict(self.codegen_state.var_subst_map)),
                     self.codegen_state.vectorization_info)
         else:
             access_info = get_access_info(self.kernel, ary, index_tuple,
