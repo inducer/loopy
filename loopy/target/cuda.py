@@ -265,6 +265,14 @@ class CudaTarget(CFamilyTarget):
 
     # }}}
 
+    @property
+    def allows_non_constant_indexing_for_vec_types(self):
+        return False
+
+    @property
+    def broadcasts_scalar_assignment_to_vec_types(self):
+        return True
+
 # }}}
 
 

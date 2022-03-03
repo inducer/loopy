@@ -127,6 +127,13 @@ def generate_assignment_instruction_code(codegen_state, insn):
             raise UnvectorizableError(
                     "LHS is scalar, RHS is vector, cannot assign")
 
+        if (lhs_is_vector
+                and (not rhs_is_vector)
+                and (not
+                     kernel.target.broadcasts_scalar_assignment_to_vec_types)):
+            raise UnvectorizableError(
+                    "LHS is vector, RHS is not vector, cannot assign")
+
         is_vector = lhs_is_vector
 
         del lhs_is_vector

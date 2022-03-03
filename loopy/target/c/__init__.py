@@ -1008,6 +1008,11 @@ class CFamilyASTBuilder(ASTBuilderBase):
         return Block
 
     @property
+    def ast_comment_class(self):
+        from cgen import Comment
+        return Comment
+
+    @property
     def ast_block_scope_class(self):
         return ScopingBlock
 
@@ -1249,6 +1254,10 @@ class CFamilyASTBuilder(ASTBuilderBase):
     def emit_comment(self, s):
         from cgen import Comment
         return Comment(s)
+
+    def emit_pragma(self, s):
+        from cgen import Pragma
+        return Pragma(s)
 
     @property
     def can_implement_conditionals(self):

@@ -1397,7 +1397,9 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
                 # We'll do absolutely nothing here, which will result
                 # in the vector being returned.
                 pass
-
+            elif (vectorization_info is None
+                    and target.allows_non_constant_indexing_for_vec_types):
+                vector_index = idx
             else:
                 idx = eval_expr_assert_integer_constant(i, idx)
 
