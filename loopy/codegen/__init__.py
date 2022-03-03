@@ -395,21 +395,48 @@ class CodeGenerationState:
             return self.unvectorize(func)
 
     def unvectorize(self, func):
+        from loopy.kernel.data import VectorizeTag, UnrollTag, OpenMPSIMDTag
+        from loopy.codegen.result import (merge_codegen_results,
+                                          CodeGenerationResult)
         vinf = self.vectorization_info
+        vec_tag, = self.kernel.inames[vinf.iname].tags_of_type(VectorizeTag)
         result = []
-        novec_self = self.copy(vectorization_info=False)
 
-        for i in range(vinf.length):
-            idx_aff = isl.Aff.zero_on_domain(vinf.space.params()) + i
-            new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
-            generated = func(new_codegen_state)
+        if isinstance(vec_tag.fallback_impl_tag, UnrollTag):
+            novec_self = self.copy(vectorization_info=False)
 
-            if isinstance(generated, list):
-                result.extend(generated)
+            for i in range(vinf.length):
+                idx_aff = isl.Aff.zero_on_domain(vinf.space.params()) + i
+                new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
+                generated = func(new_codegen_state)
+
+                if isinstance(generated, list):
+                    result.extend(generated)
+                else:
+                    result.append(generated)
+        elif isinstance(vec_tag.fallback_impl_tag, OpenMPSIMDTag):
+            novec_self = self.copy(vectorization_info=False)
+            astb = self.ast_builder
+            inner = func(novec_self)
+            if isinstance(inner, list):
+                inner = merge_codegen_results(novec_self, inner)
+            assert isinstance(inner, CodeGenerationResult)
+            if isinstance(inner.current_ast(novec_self),
+                          astb.ast_comment_class):
+                # loop body is a comment => do not emit the loop
+                loop_cgr = inner
             else:
-                result.append(generated)
+                result.append(astb.emit_pragma("omp simd"))
+                loop_cgr = inner.with_new_ast(
+                    novec_self,
+                    astb.emit_sequential_loop(
+                        novec_self, vinf.iname, self.kernel.index_dtype,
+                        0, vinf.length-1, inner.current_ast(novec_self)))
+            result.append(loop_cgr)
+        elif vec_tag.fallback_impl_tag is None:
+            raise RuntimeError("Could not vectorize all statements"
+                               f" in name {vinf.iname}")
 
-        from loopy.codegen.result import merge_codegen_results
         return merge_codegen_results(self, result)
 
     @property

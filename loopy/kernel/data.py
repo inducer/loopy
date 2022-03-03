@@ -203,7 +203,29 @@ class LoopedIlpTag(IlpBaseTag):
 # }}}
 
 
+class _NotProvided:
+    pass
+
+
 class VectorizeTag(UniqueInameTag, HardwareConcurrentTag):
+    """
+    .. attribute:: fallback_impl_tag
+
+        If the loop contains instructions that are not vectorizable, the code
+        generator will implement the loop as directed by `fallback_impl_tag`.
+        If *None*, then a :class:`RuntimeError` would be raised while
+        generating code for an unvectorizable instruction within the loop.
+    """
+    def __init__(self, fallback_impl_tag=_NotProvided):
+        if fallback_impl_tag is _NotProvided:
+            from warnings import warn
+            warn("`fallback_impl_tag` not provided to VectorizeTag."
+                 " This will be an error from 2023. To keep the current"
+                 " behavior, instantiate as `VectorizeTag(UnrollTag())`",
+                 DeprecationWarning, stacklevel=2)
+            fallback_impl_tag = UnrollTag()
+        super().__init__(fallback_impl_tag=fallback_impl_tag)
+
     def __str__(self):
         return "vec"
 
@@ -221,6 +243,15 @@ class ForceSequentialTag(InameImplementationTag):
 class InOrderSequentialSequentialTag(InameImplementationTag):
     def __str__(self):
         return "ord"
+
+
+class OpenMPSIMDTag(InameImplementationTag):
+    """
+    Directs the code generator to emit code with ``#pragma omp simd``
+    directive atop the loop.
+    """
+    def __str__(self):
+        return "omp.simd"
 
 
 def parse_tag(tag):
@@ -241,7 +272,7 @@ def parse_tag(tag):
     elif tag in ["unr"]:
         return UnrollTag()
     elif tag in ["vec"]:
-        return VectorizeTag()
+        return VectorizeTag(UnrollTag())
     elif tag in ["ilp", "ilp.unr"]:
         return UnrolledIlpTag()
     elif tag == "ilp.seq":

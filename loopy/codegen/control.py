@@ -108,6 +108,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
     elif isinstance(sched_item, EnterLoop):
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
                 ForceSequentialTag, LoopedIlpTag, VectorizeTag,
+                OpenMPSIMDTag,
                 InameImplementationTag,
                 InOrderSequentialSequentialTag, filter_iname_tags_by_type)
 
@@ -117,12 +118,15 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         from loopy.codegen.loop import (
                 generate_unroll_loop,
                 generate_vectorize_loop,
-                generate_sequential_loop_dim_code)
+                generate_sequential_loop_dim_code,
+                generate_openmp_simd_loop)
 
         if filter_iname_tags_by_type(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
         elif filter_iname_tags_by_type(tags, VectorizeTag):
             func = generate_vectorize_loop
+        elif filter_iname_tags_by_type(tags, OpenMPSIMDTag):
+            func = generate_openmp_simd_loop
         elif not tags or filter_iname_tags_by_type(tags, (LoopedIlpTag,
                     ForceSequentialTag, InOrderSequentialSequentialTag)):
             func = generate_sequential_loop_dim_code
