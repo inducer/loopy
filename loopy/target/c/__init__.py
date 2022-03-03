@@ -955,6 +955,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         return Block
 
     @property
+    def ast_comment_class(self):
+        from cgen import Comment
+        return Comment
+
+    @property
     def ast_block_scope_class(self):
         return ScopingBlock
 
@@ -1258,6 +1263,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         from cgen import Comment
         return Comment(s)
 
+    def emit_pragma(self, s):
+        from cgen import Pragma
+        return Pragma(s)
+
     @property
     def can_implement_conditionals(self):
         return True
@@ -1337,6 +1346,14 @@ class CTarget(CFamilyTarget):
 
     @property
     def is_executable(self) -> bool:
+        return False
+
+    @property
+    def allows_non_constant_indexing_for_vec_types(self):
+        return False
+
+    @property
+    def broadcasts_scalar_assignment_to_vec_types(self):
         return False
 
 

@@ -602,6 +602,14 @@ class OpenCLTarget(CFamilyTarget):
     def is_executable(self) -> bool:
         return False
 
+    @property
+    def allows_non_constant_indexing_for_vec_types(self):
+        return False
+
+    @property
+    def broadcasts_scalar_assignment_to_vec_types(self):
+        return True
+
 # }}}
 
 

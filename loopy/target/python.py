@@ -225,6 +225,11 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         # and delete the implementation above.
         return Collection
 
+    @property
+    def ast_comment_class(self):
+        from genpy import Comment
+        return Comment
+
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):
         ecm = codegen_state.expression_to_code_mapper
