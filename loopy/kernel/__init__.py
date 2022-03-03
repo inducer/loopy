@@ -93,56 +93,11 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
-class _deprecated_KernelState_SCHEDULED:  # noqa
-    def __init__(self, f):
-        self.f = f
-
-    def __get__(self, obj, klass):
-        warn(
-            "'KernelState.SCHEDULED' is deprecated. "
-            "Use 'KernelState.LINEARIZED'.",
-            DeprecationWarning, stacklevel=2)
-        return self.f()
-
 class KernelState:  # noqa
     INITIAL = 0
     CALLS_RESOLVED = 1
     PREPROCESSED = 2
     LINEARIZED = 3
-
-    @_deprecated_KernelState_SCHEDULED
-    def SCHEDULED():  # pylint:disable=no-method-argument
-        return KernelState.LINEARIZED
-
-# {{{ kernel_state, KernelState compataibility
-
-class _deperecated_kernel_state_class_method:  # noqa
-    def __init__(self, f):
-        self.f = f
-
-    def __get__(self, obj, klass):
-        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
-                DeprecationWarning, stacklevel=2)
-        return self.f()
-
-
-class kernel_state:  # noqa
-    """Deprecated. Use :class:`loopy.kernel.KernelState` instead.
-    """
-
-    @_deperecated_kernel_state_class_method
-    def INITIAL():  # pylint:disable=no-method-argument
-        return KernelState.INITIAL
-
-    @_deperecated_kernel_state_class_method
-    def PREPROCESSED():  # pylint:disable=no-method-argument
-        return KernelState.PREPROCESSED
-
-    @_deperecated_kernel_state_class_method
-    def SCHEDULED():  # pylint:disable=no-method-argument
-        return KernelState.SCHEDULED
-
-# }}}
 
 
 def _get_inames_from_domains(domains):

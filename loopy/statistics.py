@@ -571,18 +571,6 @@ def subst_into_to_count_map(space, tcm, subst_dict):
 # }}}
 
 
-def stringify_stats_mapping(m):
-
-    from warnings import warn
-    warn("stringify_stats_mapping is deprecated and will be removed in 2020."
-            " Use ToCountMap.__str__() instead.", DeprecationWarning, stacklevel=2)
-
-    result = ""
-    for key in sorted(m.keys(), key=lambda k: str(k)):
-        result += ("{} : {}\n".format(key, m[key]))
-    return result
-
-
 # {{{ CountGranularity
 
 class CountGranularity:
@@ -743,7 +731,7 @@ class MemAccess(ImmutableRecord):
 
     def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
                  direction=None, variable=None,
-                 *, variable_tags=None, variable_tag=None,
+                 *, variable_tags=None,
                  count_granularity=None, kernel_name=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
@@ -751,23 +739,8 @@ class MemAccess(ImmutableRecord):
                     "not allowed. count_granularity options: %s"
                     % (count_granularity, CountGranularity.ALL+[None]))
 
-        # {{{ normalize variable_tags
-
-        if variable_tags is not None and variable_tag is not None:
-            raise TypeError(
-                    "may not specify both 'variable_tags' and 'variable_tag'")
-        if variable_tag is not None:
-            from loopy.kernel.creation import _normalize_string_tag
-            variable_tags = frozenset({_normalize_string_tag(variable_tag)})
-
-            from warnings import warn
-            warn("Passing 'variable_tag' to MemAccess is deprecated and will "
-                    "stop working in 2022. Pass variable_tags instead.")
-
         if variable_tags is None:
             variable_tags = frozenset()
-
-        # }}}
 
         if dtype is not None:
             from loopy.types import to_loopy_type
@@ -779,20 +752,6 @@ class MemAccess(ImmutableRecord):
                             variable=variable, variable_tags=variable_tags,
                             count_granularity=count_granularity,
                             kernel_name=kernel_name)
-
-    @property
-    def variable_tag(self):
-        from warnings import warn
-        warn("Accessing MemAccess.variable_tag is deprecated and will stop working "
-                "in 2022. Use MemAccess.variable_tags instead.", DeprecationWarning,
-                stacklevel=2)
-
-        if len(self.variable_tags) != 1:
-            raise ValueError("cannot access MemAccess.variable_tag: access has "
-                    f"{len(self.variable_tags)} tags")
-
-        tag, = self.variable_tags
-        return tag
 
     def __hash__(self):
         # dicts in gid_strides and lid_strides aren't natively hashable
@@ -812,6 +771,7 @@ class MemAccess(ImmutableRecord):
             "None" if not self.variable_tags else str(self.variable_tags),
             self.count_granularity,
             repr(self.kernel_name))
+
 # }}}
 
 

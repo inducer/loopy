@@ -84,21 +84,6 @@ __doc__ = """
 # {{{ set loop priority
 
 @for_each_kernel
-def set_loop_priority(kernel, loop_priority):
-    from warnings import warn
-    warn("set_loop_priority is deprecated. Use prioritize_loops instead. "
-         "Attention: A call to set_loop_priority will overwrite any previously "
-         "set priorities!", DeprecationWarning, stacklevel=2)
-
-    if isinstance(loop_priority, str):
-        loop_priority = tuple(s.strip()
-                              for s in loop_priority.split(",") if s.strip())
-    loop_priority = tuple(loop_priority)
-
-    return kernel.copy(loop_priority=frozenset([loop_priority]))
-
-
-@for_each_kernel
 def prioritize_loops(kernel, loop_priority):
     """Indicates the textual order in which loops should be entered in the
     kernel code. Note that this priority has an advisory role only. If the
@@ -1032,7 +1017,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
     # If partitioning was empty, we have recursed successfully and yield nothing
 
 
-def get_iname_duplication_options(kernel, use_boostable_into=None):
+def get_iname_duplication_options(kernel):
     """List options for duplication of inames, if necessary for schedulability
 
     :returns: a generator listing all options to duplicate inames, if duplication
@@ -1068,15 +1053,6 @@ def get_iname_duplication_options(kernel, use_boostable_into=None):
             kernel = kernel[list(kernel.entrypoints)[0]]
 
     assert isinstance(kernel, LoopKernel)
-
-    if use_boostable_into:
-        raise LoopyError("'use_boostable_into=True' is no longer supported.")
-
-    if use_boostable_into is False:
-        from warnings import warn
-        warn("passing 'use_boostable_into=False' to 'get_iname_duplication_options'"
-                " is deprecated. The argument will go away in 2021.",
-                DeprecationWarning, stacklevel=2)
 
     from loopy.kernel.data import ConcurrentTag
 

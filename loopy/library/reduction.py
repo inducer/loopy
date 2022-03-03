@@ -108,7 +108,7 @@ class ScalarReductionOperation(ReductionOperation):
 
     def result_dtypes(self, arg_dtype):
         if arg_dtype is None:
-            return None
+            return (None,)
 
         return (arg_dtype,)
 

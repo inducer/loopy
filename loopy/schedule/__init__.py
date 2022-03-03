@@ -24,8 +24,7 @@ THE SOFTWARE.
 from pytools import ImmutableRecord
 import sys
 import islpy as isl
-from loopy.diagnostic import (warn_with_kernel, LoopyError,
-                              ScheduleDebugInputError)
+from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
 
 from pytools import MinRecursionLimit, ProcessLogger
 
@@ -415,7 +414,7 @@ def format_insn(kernel, insn_id):
     from loopy.kernel.instruction import (
             MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
     if isinstance(insn, MultiAssignmentBase):
-        return "{}{}{} = {}{}{}  {{id={}}}".format(
+        return "{}{}{} = {}{}{}  {{id={}}""}".format(
             Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
             format_insn_id(kernel, insn_id))
@@ -2133,7 +2132,7 @@ schedule_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
-def _get_one_scheduled_kernel_inner(kernel, callables_table):
+def _get_one_linearized_kernel_inner(kernel, callables_table):
     # This helper function exists to ensure that the generator chain is fully
     # out of scope after the function returns. This allows it to be
     # garbage-collected in the exit handler of the
@@ -2144,15 +2143,6 @@ def _get_one_scheduled_kernel_inner(kernel, callables_table):
     # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
 
     return next(iter(generate_loop_schedules(kernel, callables_table)))
-
-
-def get_one_scheduled_kernel(kernel, callables_table):
-    warn_with_kernel(
-        kernel, "get_one_scheduled_kernel_deprecated",
-        "get_one_scheduled_kernel is deprecated. "
-        "Use get_one_linearized_kernel instead.",
-        DeprecationWarning, stacklevel=2)
-    return get_one_linearized_kernel(kernel, callables_table)
 
 
 def get_one_linearized_kernel(kernel, callables_table):
@@ -2175,13 +2165,22 @@ def get_one_linearized_kernel(kernel, callables_table):
     if not from_cache:
         with ProcessLogger(logger, "%s: schedule" % kernel.name):
             with MinRecursionLimitForScheduling(kernel):
-                result = _get_one_scheduled_kernel_inner(kernel,
+                result = _get_one_linearized_kernel_inner(kernel,
                         callables_table)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)
 
     return result
+
+
+def get_one_scheduled_kernel(kernel, callables_table):
+    warn_with_kernel(
+        kernel, "get_one_scheduled_kernel_deprecated",
+        "get_one_scheduled_kernel is deprecated. "
+        "Use get_one_linearized_kernel instead.",
+        DeprecationWarning, stacklevel=2)
+    return get_one_linearized_kernel(kernel, callables_table)
 
 
 def linearize(t_unit):

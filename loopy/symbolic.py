@@ -673,20 +673,6 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
 
         Taggable.__init__(self, tags)
 
-    @property
-    def tag(self):
-        from warnings import warn
-        warn("Accessing TaggedVariable.tag is deprecated and will stop working "
-                "in 2022. Use TaggedVariable.tags instead.", DeprecationWarning,
-                stacklevel=2)
-
-        if len(self.tags) != 1:
-            raise ValueError("cannot access TaggedVariable.tag: variable has "
-                    f"{len(self.tags)} tags")
-
-        tag, = self.tags
-        return tag
-
     def __getinitargs__(self):
         return self.name, self.tags
 

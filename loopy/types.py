@@ -43,18 +43,6 @@ class LoopyType:
     Abstract class for dtypes of variables encountered in a
     :class:`loopy.LoopKernel`.
     """
-    def target(self):
-        warn("LoopyType.target is deprecated and will go away in 2022.",
-                DeprecationWarning, stacklevel=2)
-
-        return None
-
-    def with_target(self, target):
-        warn("LoopyType.with_target is deprecated and will go away in 2022.",
-                DeprecationWarning, stacklevel=2)
-
-        return self
-
     def is_integral(self):
         raise NotImplementedError()
 

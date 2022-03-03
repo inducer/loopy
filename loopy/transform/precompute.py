@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 
+import numpy as np
 import islpy as isl
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
@@ -31,7 +32,7 @@ from loopy.translation_unit import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.kernel.tools import (kernel_has_global_barriers,
                                 find_most_recent_global_barrier)
-import numpy as np
+from loopy.kernel.data import AddressSpace
 
 from pymbolic import var
 
@@ -388,26 +389,6 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
             precompute_inames, precompute_outer_inames, storage_axis_to_tag,
             default_tag, dtype, fetch_bounding_box, temporary_address_space,
             compute_insn_id, kernel.callables_table, **kwargs))
-
-    # {{{ unify temporary_address_space / temporary_scope
-
-    temporary_scope = kwargs.pop("temporary_scope", None)
-
-    from loopy.kernel.data import AddressSpace
-    if temporary_scope is not None:
-        from warnings import warn
-        warn("temporary_scope is deprecated. Use temporary_address_space instead",
-                DeprecationWarning, stacklevel=2)
-
-        if temporary_address_space is not None:
-            raise LoopyError("may not specify both temporary_address_space and "
-                    "temporary_scope")
-
-        temporary_address_space = temporary_scope
-
-    del temporary_scope
-
-    # }}}
 
     if kwargs:
         raise TypeError("unrecognized keyword arguments: %s"
@@ -1055,7 +1036,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
             pass
         else:
             raise LoopyError("Existing and new temporary '%s' do not "
-                    "have matching scopes (existing: %s, new: %s)"
+                    "have matching address spaces (existing: %s, new: %s)"
                     % (temporary_name,
                         AddressSpace.stringify(temp_var.address_space),
                         AddressSpace.stringify(temporary_address_space)))

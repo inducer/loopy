@@ -506,8 +506,8 @@ def test_add_nosync():
         tmp5[i] = 1 {id=insn6,conflicts=g1}
         """, name="nosync")
 
-    orig_prog = lp.set_temporary_scope(orig_prog, "tmp3", "local")
-    orig_prog = lp.set_temporary_scope(orig_prog, "tmp5", "local")
+    orig_prog = lp.set_temporary_address_space(orig_prog, "tmp3", "local")
+    orig_prog = lp.set_temporary_address_space(orig_prog, "tmp5", "local")
 
     # No dependency present - don't add nosync
     prog = lp.add_nosync(orig_prog, "any", "writes:tmp", "writes:tmp2",
