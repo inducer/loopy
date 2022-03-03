@@ -154,6 +154,8 @@ from loopy.target import TargetBase, ASTBuilderBase
 from loopy.target.c import (CFamilyTarget, CTarget, ExecutableCTarget,
                             generate_header, CWithGNULibcTarget,
                             ExecutableCWithGNULibcTarget)
+from loopy.target.c_vector_extensions import (CVectorExtensionsTarget,
+                                              ExecutableCVectorExtensionsTarget)
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
@@ -301,6 +303,7 @@ __all__ = [
         "TargetBase",
         "CFamilyTarget", "CTarget", "ExecutableCTarget", "generate_header",
         "CWithGNULibcTarget", "ExecutableCWithGNULibcTarget",
+        "CVectorExtensionsTarget", "ExecutableCVectorExtensionsTarget",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
