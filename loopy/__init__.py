@@ -43,7 +43,8 @@ from loopy.kernel.data import (
         AddressSpace,
         TemporaryVariable,
         SubstitutionRule,
-        CallMangleInfo)
+        CallMangleInfo,
+        VectorizeTag)
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.translation_unit import (
@@ -190,7 +191,7 @@ __all__ = [
         "AddressSpace",
         "TemporaryVariable",
         "SubstitutionRule",
-        "CallMangleInfo",
+        "CallMangleInfo", "VectorizeTag",
 
         "make_kernel", "UniqueName", "make_function",
 
