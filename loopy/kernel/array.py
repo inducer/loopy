@@ -688,7 +688,7 @@ class ArrayBase(ImmutableRecord, Taggable):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None, alignment=None, tags=None, **kwargs):
+            alignment=None, tags=None, **kwargs):
         """
         All of the following (except *name*) are optional.
         Specify either strides or shape.
@@ -741,12 +741,7 @@ class ArrayBase(ImmutableRecord, Taggable):
                 for_atomic=for_atomic)
 
         if dtype is lp.auto:
-            warn("Argument/temporary data type for '%s' should be None if "
-                    "unspecified, not auto. This usage will be disallowed in 2018."
-                    % name,
-                    DeprecationWarning, stacklevel=2)
-
-            dtype = None
+            raise ValueError("dtype may not be lp.auto")
 
         strides_known = strides is not None and strides is not lp.auto
         shape_known = shape is not None and shape is not lp.auto
@@ -875,10 +870,6 @@ class ArrayBase(ImmutableRecord, Taggable):
         if tags is None:
             tags = frozenset()
 
-        if target is not None:
-            warn("Passing target is deprecated and will stop working in 2022.",
-                    DeprecationWarning, stacklevel=2)
-
         ImmutableRecord.__init__(self,
                 name=name,
                 dtype=dtype,
@@ -914,12 +905,6 @@ class ArrayBase(ImmutableRecord, Taggable):
                 and self.for_atomic == other.for_atomic
                 and self.tags == other.tags
                 )
-
-    def target(self):
-        warn("Array.target is deprecated and will go away in 2022.",
-                DeprecationWarning, stacklevel=2)
-
-        return None
 
     def __ne__(self, other):
         return not self.__eq__(other)

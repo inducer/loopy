@@ -100,7 +100,7 @@ Modifying Arguments
 
 .. autofunction:: rename_argument
 
-.. autofunction:: set_temporary_scope
+.. autofunction:: set_temporary_address_space
 
 Creating Batches of Operations
 ------------------------------

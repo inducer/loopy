@@ -301,7 +301,6 @@ class InKernelCallable(ImmutableRecord):
     .. automethod:: __init__
     .. automethod:: with_types
     .. automethod:: with_descrs
-    .. automethod:: with_target
     .. automethod:: generate_preambles
     .. automethod:: emit_call
     .. automethod:: emit_call_insn
@@ -389,21 +388,7 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def with_target(self, target):
-        """
-        Returns a copy of *self* with all the ``dtypes`` in
-        ``in_knl_callable.arg_id_to_dtype`` associated with the *target*.
-
-        :arg target: An instance of :class:`loopy.target.TargetBase`.
-        """
-        from warnings import warn
-        warn("InKernelCallable.with_target is deprecated, will be removed in "
-             "2022.", DeprecationWarning, stacklevel=2)
-
-        return self
-
     def is_ready_for_codegen(self):
-
         return (self.arg_id_to_dtype is not None and
                 self.arg_id_to_descr is not None)
 

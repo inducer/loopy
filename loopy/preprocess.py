@@ -42,19 +42,6 @@ from pytools import ProcessLogger
 from functools import partial
 
 
-# {{{ prepare for caching
-
-def prepare_for_caching(program):
-    from warnings import warn
-    warn("prepare_for_caching is deprecated and no longer needed. "
-            "It will stop working in 2022.",
-            DeprecationWarning, stacklevel=2)
-
-    return program
-
-# }}}
-
-
 # {{{ check for writes to predicates
 
 def check_for_writes_to_predicates(kernel):
@@ -547,7 +534,7 @@ def filter_reachable_callables(t_unit):
     return t_unit.copy(callables_table=new_callables)
 
 
-def _preprocess_single_kernel(kernel, callables_table, device=None):
+def _preprocess_single_kernel(kernel, callables_table):
     from loopy.kernel import KernelState
 
     prepro_logger = ProcessLogger(logger, "%s: preprocess" % kernel.name)
@@ -596,7 +583,7 @@ def _preprocess_single_kernel(kernel, callables_table, device=None):
 
 
 @memoize_on_disk
-def preprocess_program(program, device=None):
+def preprocess_program(program):
 
     from loopy.kernel import KernelState
     if program.state >= KernelState.PREPROCESSED:
@@ -615,12 +602,6 @@ def preprocess_program(program, device=None):
     program = resolve_callables(program)
 
     program = filter_reachable_callables(program)
-
-    if device is not None:
-        # FIXME: Time to remove this? (Git blame shows 5 years ago)
-        from warnings import warn
-        warn("passing 'device' to preprocess_kernel() is deprecated",
-                DeprecationWarning, stacklevel=2)
 
     program = infer_unknown_types(program, expect_completion=False)
 
@@ -655,8 +636,7 @@ def preprocess_program(program, device=None):
     for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = _preprocess_single_kernel(
-                    in_knl_callable.subkernel, program.callables_table,
-                    device)
+                    in_knl_callable.subkernel, program.callables_table)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
         elif isinstance(in_knl_callable, ScalarCallable):

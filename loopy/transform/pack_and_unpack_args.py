@@ -177,7 +177,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                 pack_name = vng(arg + "_pack")
 
                 from loopy.kernel.data import (TemporaryVariable,
-                        temp_var_scope)
+                        AddressSpace)
 
                 if arg in kernel.arg_dict:
                     arg_in_caller = kernel.arg_dict[arg]
@@ -189,7 +189,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                     dtype=arg_in_caller.dtype,
                     dim_tags=in_knl_callable.arg_id_to_descr[arg_id].dim_tags,
                     shape=in_knl_callable.arg_id_to_descr[arg_id].shape,
-                    scope=temp_var_scope.PRIVATE,
+                    address_space=AddressSpace.PRIVATE,
                 )
 
                 new_tmps[pack_name] = pack_tmp

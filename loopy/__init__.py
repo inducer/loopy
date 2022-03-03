@@ -30,26 +30,26 @@ from loopy.translation_unit import for_each_kernel
 
 from loopy.kernel.instruction import (
         LegacyStringInstructionTag, UseStreamingStoreTag,
-        MemoryOrdering, memory_ordering,
-        MemoryScope, memory_scope,
+        MemoryOrdering,
+        MemoryScope,
         VarAtomicity, OrderedAtomic, AtomicInit, AtomicUpdate,
         InstructionBase,
-        MultiAssignmentBase, Assignment, ExpressionInstruction,
+        MultiAssignmentBase, Assignment,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
 from loopy.kernel.data import (
         auto,
         KernelArgument,
         ValueArg, ArrayArg, GlobalArg, ConstantArg, ImageArg,
-        AddressSpace, temp_var_scope,
+        AddressSpace,
         TemporaryVariable,
         SubstitutionRule,
         CallMangleInfo)
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.translation_unit import (
-        TranslationUnit, Program,  make_program)
+        TranslationUnit, make_program)
 
-from loopy.kernel import LoopKernel, KernelState, kernel_state
+from loopy.kernel import LoopKernel, KernelState
 from loopy.kernel.tools import (
         get_dot_dependency_graph,
         show_dependency_graph,
@@ -69,7 +69,7 @@ from loopy.library.reduction import register_reduction_parser
 from loopy.version import VERSION, MOST_RECENT_LANGUAGE_VERSION
 
 from loopy.transform.iname import (
-        set_loop_priority, prioritize_loops, untag_inames,
+        prioritize_loops, untag_inames,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
         rename_iname, rename_inames, remove_unused_inames,
         split_reduction_inward, split_reduction_outward,
@@ -94,7 +94,8 @@ from loopy.transform.data import (
         remove_unused_arguments,
         alias_temporaries, set_argument_order,
         rename_argument,
-        set_temporary_scope)
+        set_temporary_scope,
+        set_temporary_address_space)
 
 from loopy.transform.subst import (extract_subst,
         assignment_to_subst, expand_subst, find_rules_matching,
@@ -133,7 +134,7 @@ from loopy.schedule import (
     generate_loop_schedules, get_one_scheduled_kernel,
     get_one_linearized_kernel, linearize)
 from loopy.statistics import (ToCountMap, ToCountPolynomialMap, CountGranularity,
-        stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
+        Op, MemAccess, get_op_map, get_mem_access_map,
         get_synchronization_map, gather_access_footprints,
         gather_access_footprint_bytes, Sync)
 from loopy.codegen import (
@@ -167,26 +168,26 @@ __all__ = [
         "auto",
 
         "LoopKernel",
-        "KernelState", "kernel_state",  # lower case is deprecated
+        "KernelState",
 
         "LegacyStringInstructionTag", "UseStreamingStoreTag",
-        "MemoryOrdering", "memory_ordering",  # lower case is deprecated
-        "MemoryScope", "memory_scope",  # lower case is deprecated
+        "MemoryOrdering",
+        "MemoryScope",
 
         "VarAtomicity",
         "OrderedAtomic", "AtomicInit", "AtomicUpdate",
         "InstructionBase",
-        "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
+        "MultiAssignmentBase", "Assignment",
         "CallInstruction", "CInstruction", "NoOpInstruction",
         "BarrierInstruction",
 
         "ScalarCallable", "CallableKernel",
 
-        "TranslationUnit", "make_program", "Program",
+        "TranslationUnit", "make_program",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
-        "AddressSpace", "temp_var_scope",   # temp_var_scope is deprecated
+        "AddressSpace",
         "TemporaryVariable",
         "SubstitutionRule",
         "CallMangleInfo",
@@ -199,7 +200,7 @@ __all__ = [
 
         # {{{ transforms
 
-        "set_loop_priority", "prioritize_loops", "untag_inames",
+        "prioritize_loops", "untag_inames",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
         "rename_iname", "rename_inames", "remove_unused_inames",
@@ -214,7 +215,7 @@ __all__ = [
         "set_array_axis_names", "set_array_dim_names",
         "remove_unused_arguments",
         "alias_temporaries", "set_argument_order",
-        "rename_argument", "set_temporary_scope",
+        "rename_argument", "set_temporary_scope", "set_temporary_address_space",
 
         "find_instructions", "map_instructions",
         "set_instruction_priority", "add_dependency",
@@ -280,7 +281,7 @@ __all__ = [
         "generate_code", "generate_code_v2", "generate_body",
 
         "ToCountMap", "ToCountPolynomialMap", "CountGranularity",
-        "stringify_stats_mapping", "Op", "MemAccess", "get_op_map",
+        "Op", "MemAccess", "get_op_map",
         "get_mem_access_map", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
         "Sync",

@@ -1056,7 +1056,6 @@ def infer_unknown_types(program, expect_completion=False):
 def infer_arg_and_reduction_dtypes_for_reduction_expression(
         kernel, expr, callables_table, unknown_types_ok):
     type_inf_mapper = TypeReader(kernel, callables_table)
-    import loopy as lp
 
     if expr.is_tuple_typed:
         arg_dtypes_result = type_inf_mapper(
@@ -1066,7 +1065,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
             arg_dtypes = arg_dtypes_result[0]
         else:
             if unknown_types_ok:
-                arg_dtypes = [lp.auto] * expr.operation.arg_count
+                arg_dtypes = [None] * expr.operation.arg_count
             else:
                 raise LoopyError("failed to determine types of accumulators for "
                         "reduction '%s'" % expr)
@@ -1075,18 +1074,14 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
             arg_dtypes = [type_inf_mapper(expr)]
         except DependencyTypeInferenceFailure:
             if unknown_types_ok:
-                arg_dtypes = [lp.auto]
+                arg_dtypes = [None]
             else:
                 raise LoopyError("failed to determine type of accumulator for "
                         "reduction '%s'" % expr)
 
     reduction_dtypes = expr.operation.result_dtypes(*arg_dtypes)
-    reduction_dtypes = tuple(
-            dt
-            if dt is not lp.auto else dt
-            for dt in reduction_dtypes)
 
-    return tuple(arg_dtypes), reduction_dtypes
+    return tuple(arg_dtypes), tuple(reduction_dtypes)
 
 # }}}
 

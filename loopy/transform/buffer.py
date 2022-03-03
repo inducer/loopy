@@ -125,7 +125,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
 def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         buffer_inames, init_expression=None, store_expression=None,
         within=None, default_tag="l.auto", temporary_scope=None,
-        temporary_is_local=None, fetch_bounding_box=False):
+        fetch_bounding_box=False):
     """Replace accesses to *var_name* with ones to a temporary, which is
     created and acts as a buffer. To perform this transformation, the access
     footprint to *var_name* is determined and a temporary of a suitable
@@ -170,31 +170,10 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
         return kernel.with_kernel(buffer_array(kernel[kernel_names[0]],
             var_name, buffer_inames, init_expression, store_expression, within,
-            default_tag, temporary_scope, temporary_is_local,
+            default_tag, temporary_scope,
             fetch_bounding_box, kernel.callables_table))
 
     assert isinstance(kernel, LoopKernel)
-
-    # {{{ unify temporary_scope / temporary_is_local
-
-    from loopy.kernel.data import AddressSpace
-    if temporary_is_local is not None:
-        from warnings import warn
-        warn("temporary_is_local is deprecated. Use temporary_scope instead",
-                DeprecationWarning, stacklevel=2)
-
-        if temporary_scope is not None:
-            raise LoopyError("may not specify both temporary_is_local and "
-                    "temporary_scope")
-
-        if temporary_is_local:
-            temporary_scope = AddressSpace.LOCAL
-        else:
-            temporary_scope = AddressSpace.PRIVATE
-
-    del temporary_is_local
-
-    # }}}
 
     # {{{ process arguments
 

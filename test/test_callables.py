@@ -554,7 +554,7 @@ def test_callees_with_gbarriers_are_inlined(ctx_factory):
             "{ : }",
             """
             y[:] = ones_and_zeros()
-            """, [lp.GlobalArg("y", shape=6, dtype=lp.auto)])
+            """, [lp.GlobalArg("y", shape=6, dtype=None)])
 
     t_unit = lp.merge([t_unit, ones_and_zeros])
     evt, (out,) = t_unit(queue)
@@ -589,7 +589,7 @@ def test_callees_with_gbarriers_are_inlined_with_nested_calls(ctx_factory):
             "{ : }",
             """
             y[:] = dummy_ones_and_zeros()
-            """, [lp.GlobalArg("y", shape=6, dtype=lp.auto)])
+            """, [lp.GlobalArg("y", shape=6, dtype=None)])
 
     t_unit = lp.merge([t_unit, dummy_ones_and_zeros, ones_and_zeros])
     evt, (out,) = t_unit(queue)
@@ -617,7 +617,7 @@ def test_inlining_with_indirections(ctx_factory):
             "{ : }",
             """
             y[:] = ones_and_zeros(mymap[:])
-            """, [lp.GlobalArg("y", shape=6, dtype=lp.auto),
+            """, [lp.GlobalArg("y", shape=6, dtype=None),
                   lp.GlobalArg("mymap", dtype=np.int32, shape=3)])
 
     t_unit = lp.merge([t_unit, ones_and_zeros])

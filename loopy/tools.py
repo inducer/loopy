@@ -656,6 +656,8 @@ def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
 
 
+# {{{ t_unit_to_python
+
 def _is_generated_t_unit_the_same(python_code, var_name, ref_t_unit):
     """
     Helper for :func:`kernel_to_python`. Returns *True* only if the variable
@@ -743,7 +745,7 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
     python_code = r"""
     <%! import loopy as lp %>
 
-    <%! tv_scope = {0: 'lp.AddressSpace.PRIVATE', 1: 'lp.AddressSpace.LOCAL',
+    <%! tv_aspace = {0: 'lp.AddressSpace.PRIVATE', 1: 'lp.AddressSpace.LOCAL',
     2: 'lp.AddressSpace.GLOBAL', lp.auto: 'lp.auto' } %>
     ${var_name} = lp.${make_kernel}(
         [
@@ -770,11 +772,11 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
             lp.ValueArg(
                 name="${arg.name}",
                 dtype=${('np.'+arg.dtype.numpy_dtype.name
-                            if arg.dtype else 'lp.auto')}),
+                            if arg.dtype else 'None')}),
             % else:
             lp.GlobalArg(
                 name="${arg.name}", dtype=${('np.'+arg.dtype.numpy_dtype.name
-                                                if arg.dtype else 'lp.auto')},
+                                                if arg.dtype else 'None')},
                 shape=${arg.shape}, for_atomic=${arg.for_atomic}),
             % endif
             % endfor
@@ -783,7 +785,7 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
                 name="${tv.name}",
                 dtype=${'np.'+tv.dtype.numpy_dtype.name if tv.dtype else 'lp.auto'},
                 shape=${tv.shape}, for_atomic=${tv.for_atomic},
-                address_space=${tv_scope[tv.address_space]},
+                address_space=${tv_aspace[tv.address_space]},
                 read_only=${tv.read_only},
                 % if tv.initializer is not None:
                 initializer=${"np."+repr(tv.initializer)},
@@ -871,6 +873,10 @@ def t_unit_to_python(t_unit, var_name="t_unit",
     else:
         return python_code
 
+# }}}
+
+
+# {{{ memoize_on_disk
 
 def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     from loopy.version import DATA_MODEL_VERSION
@@ -927,5 +933,7 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
             return result
 
     return wrapper
+
+# }}}
 
 # vim: fdm=marker

@@ -552,51 +552,6 @@ class MemoryOrdering:  # noqa
         raise ValueError("Unknown value of MemoryOrdering")
 
 
-# {{{ memory_ordering, MemoryOrdering compatibility
-
-class _deprecated_memory_ordering_class_method:  # noqa
-    def __init__(self, f):
-        self.f = f
-
-    def __get__(self, obj, klass):
-        warn("'memory_ordering' is deprecated. Use 'MemoryOrdering'.",
-                DeprecationWarning, stacklevel=2)
-        return self.f()
-
-
-class memory_ordering:  # noqa
-    """Deprecated. Use :class:`MemoryOrdering` instead.
-    """
-
-    @_deprecated_memory_ordering_class_method
-    def RELAXED():  # pylint:disable=no-method-argument
-        return MemoryOrdering.RELAXED
-
-    @_deprecated_memory_ordering_class_method
-    def ACQUIRE():  # pylint:disable=no-method-argument
-        return MemoryOrdering.ACQUIRE
-
-    @_deprecated_memory_ordering_class_method
-    def RELEASE():  # pylint:disable=no-method-argument
-        return MemoryOrdering.RELEASE
-
-    @_deprecated_memory_ordering_class_method
-    def ACQ_REL():  # pylint:disable=no-method-argument
-        return MemoryOrdering.ACQ_REL
-
-    @_deprecated_memory_ordering_class_method
-    def SEQ_CST():  # pylint:disable=no-method-argument
-        return MemoryOrdering.SEQ_CST
-
-    @staticmethod
-    def to_string(v):
-        warn("'memory_ordering' is deprecated. Use 'MemoryOrdering'.",
-                DeprecationWarning, stacklevel=2)
-        return MemoryOrdering.to_string(v)
-
-# }}}
-
-
 class MemoryScope:  # noqa
     """Scope of atomicity, defined as in OpenCL.
 
@@ -627,51 +582,6 @@ class MemoryScope:  # noqa
                 return i
 
         raise ValueError("Unknown value of MemoryScope")
-
-
-# {{{ memory_scope, MemoryScope compatiability
-
-class _deprecated_memory_scope_class_method:  # noqa
-    def __init__(self, f):
-        self.f = f
-
-    def __get__(self, obj, klass):
-        warn("'memory_scope' is deprecated. Use 'MemoryScope'.",
-                DeprecationWarning, stacklevel=2)
-        return self.f()
-
-
-class memory_scope:  # noqa
-    """Deprecated. Use :class:`MemoryScope` instead.
-    """
-
-    @_deprecated_memory_scope_class_method
-    def WORK_ITEM():  # pylint:disable=no-method-argument
-        return MemoryScope.WORK_ITEM
-
-    @_deprecated_memory_scope_class_method
-    def WORK_GROUP():  # pylint:disable=no-method-argument
-        return MemoryScope.WORK_GROUP
-
-    @_deprecated_memory_scope_class_method
-    def DEVICE():  # pylint:disable=no-method-argument
-        return MemoryScope.DEVICE
-
-    @_deprecated_memory_scope_class_method
-    def ALL_SVM_DEVICES():  # pylint:disable=no-method-argument
-        return MemoryScope.ALL_SVM_DEVICES
-
-    @_deprecated_memory_scope_class_method
-    def auto():  # pylint:disable=no-method-argument
-        return MemoryScope.auto
-
-    @staticmethod
-    def to_string(v):
-        warn("'memory_scope' is deprecated. Use 'MemoryScope'.",
-                DeprecationWarning, stacklevel=2)
-        return MemoryScope.to_string(v)
-
-# }}}
 
 
 class VarAtomicity:
@@ -998,14 +908,6 @@ class Assignment(MultiAssignmentBase):
         return frozenset()
 
     # }}}
-
-
-class ExpressionInstruction(Assignment):
-    def __init__(self, *args, **kwargs):
-        warn("ExpressionInstruction is deprecated. Use Assignment instead",
-                DeprecationWarning, stacklevel=2)
-
-        super().__init__(*args, **kwargs)
 
 # }}}
 
@@ -1600,13 +1502,6 @@ class BarrierInstruction(_DataObliviousInstruction):
             first_line += " {%s}" % (": ".join(options))
 
         return first_line
-
-    @property
-    def kind(self):
-        from warnings import warn
-        warn("BarrierInstruction.kind is deprecated, use synchronization_kind "
-             "instead", DeprecationWarning, stacklevel=2)
-        return self.synchronization_kind
 
 # }}}
 
