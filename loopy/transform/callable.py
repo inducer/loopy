@@ -29,6 +29,7 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         Assignment, CInstruction, _DataObliviousInstruction)
 from loopy.symbolic import (
+        simplify_using_aff,
         RuleAwareIdentityMapper,
         RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext)
 from loopy.kernel.function_interface import (
@@ -121,13 +122,16 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
                  callee_knl, callee_arg_to_call_param):
         super().__init__(rule_mapping_context)
         self.caller_knl = caller_knl
+
+        # CAUTION: This kernel has post-substitution domains!
         self.callee_knl = callee_knl
+
         self.callee_arg_to_call_param = callee_arg_to_call_param
 
     def map_subscript(self, expr, expn_state):
         if expr.aggregate.name in self.callee_knl.arg_dict:
             from loopy.symbolic import get_start_subscript_from_sar
-            from loopy.isl_helpers import simplify_via_aff
+            from loopy.symbolic import simplify_via_aff
             from pymbolic.primitives import Subscript, Variable
 
             sar = self.callee_arg_to_call_param[expr.aggregate.name]  # SubArrayRef
@@ -157,7 +161,8 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
                 flatten_index -= (dim_tag.stride * ind)
                 new_indices.append(ind)
 
-            new_indices = tuple(simplify_via_aff(i) for i in new_indices)
+            new_indices = tuple(simplify_using_aff(
+                self.callee_knl, i) for i in new_indices)
 
             return Subscript(Variable(sar.subscript.aggregate.name), new_indices)
         else:
@@ -364,8 +369,18 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     rule_mapping_context = SubstitutionRuleMappingContext(callee_knl.substitutions,
                                                           vng)
-    smap = KernelArgumentSubstitutor(rule_mapping_context, caller_knl,
-                                     callee_knl, arg_map)
+    smap = KernelArgumentSubstitutor(
+            rule_mapping_context, caller_knl,
+
+            # HACK: The kernel returned by this copy doesn't make sense:
+            # It uses caller inames in its domain. The domains are/should be
+            # only used for expression simplification. Ideally, we'd pass
+            # the domains for this separately.
+            # Other than that, the kernel is used for looking up argument
+            # definitions, which is OK.
+            callee_knl.copy(domains=new_domains),
+
+            arg_map)
 
     callee_knl = rule_mapping_context.finish_kernel(smap.map_kernel(callee_knl))
 

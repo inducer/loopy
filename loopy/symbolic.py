@@ -1969,7 +1969,8 @@ def simplify_using_aff(kernel, expr):
 
     :arg expr: An instance of :class:`pymbolic.primitives.Expression`.
     """
-    inames = get_dependencies(expr) & kernel.all_inames()
+    deps = get_dependencies(expr)
+    inames = deps & kernel.all_inames()
 
     # FIXME: Ideally, we should find out what inames are usable and allow
     # the simplification to use all of those. For now, fall back to making
@@ -1978,6 +1979,15 @@ def simplify_using_aff(kernel, expr):
             kernel
             .get_inames_domain(inames)
             .project_out_except(inames, [dim_type.set]))
+
+    non_inames = deps - set(domain.get_var_dict().keys())
+    non_inames = set([name for name in set(non_inames) if name.isidentifier()])
+    if non_inames:
+        cur_dim = domain.dim(isl.dim_type.set)
+        domain = domain.insert_dims(isl.dim_type.set, cur_dim, len(non_inames))
+        for non_iname in non_inames:
+            domain.set_dim_name(isl.dim_type.set, cur_dim, non_iname)
+            cur_dim += 1
 
     try:
         aff = guarded_aff_from_expr(domain.space, expr)
