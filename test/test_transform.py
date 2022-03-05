@@ -1262,18 +1262,12 @@ def test_privatize_with_nonzero_lbound(ctx_factory):
 
 def test_simplify_indices(ctx_factory):
     ctx = ctx_factory()
-    twice = lp.make_function(
-        "{[i, j]: 0<=i<10 and 0<=j<4}",
-        """
-        y[i,j] = 2*x[i,j]
-        """, name="zerozerozeroonezeroify")
-
     knl = lp.make_kernel(
-        "{:}",
+        "{[i]: 0<=i<10}",
         """
-        Y[:,:] = zerozerozeroonezeroify(X[:,:])
+        Y[i] = X[10*(i//10) + i]
         """, [lp.GlobalArg("X,Y",
-                           shape=(10, 4),
+                           shape=(10,),
                            dtype=np.float64)])
 
     class ContainsFloorDiv(lp.symbolic.CombineMapper):
@@ -1289,8 +1283,6 @@ def test_simplify_indices(ctx_factory):
         def map_constant(self, expr):
             return False
 
-    knl = lp.merge([knl, twice])
-    knl = lp.inline_callable_kernel(knl, "zerozerozeroonezeroify")
     simplified_knl = lp.simplify_indices(knl)
     contains_floordiv = ContainsFloorDiv()
 
