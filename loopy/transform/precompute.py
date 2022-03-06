@@ -206,7 +206,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                 # an iname
                 ax_index = var(sax_source)
 
-            from loopy.isl_helpers import simplify_via_aff
+            from loopy.symbolic import simplify_via_aff
             ax_index = simplify_via_aff(ax_index - sax_base_idx)
             stor_subscript.append(ax_index)
 

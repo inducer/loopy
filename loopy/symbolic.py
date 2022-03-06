@@ -1962,6 +1962,19 @@ def qpolynomial_from_expr(space, expr):
 
 # {{{ simplify using aff
 
+def simplify_via_aff(expr):
+    from loopy.symbolic import aff_to_expr, guarded_aff_from_expr, get_dependencies
+    from loopy.diagnostic import ExpressionToAffineConversionError
+
+    deps = sorted(get_dependencies(expr))
+    try:
+        return aff_to_expr(guarded_aff_from_expr(
+            isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
+            expr))
+    except ExpressionToAffineConversionError:
+        return expr
+
+
 @memoize_on_first_arg
 def simplify_using_aff(kernel, expr):
     """
@@ -1970,6 +1983,7 @@ def simplify_using_aff(kernel, expr):
     :arg expr: An instance of :class:`pymbolic.primitives.Expression`.
     """
     deps = get_dependencies(expr)
+
     inames = deps & kernel.all_inames()
 
     # FIXME: Ideally, we should find out what inames are usable and allow
@@ -1981,7 +1995,7 @@ def simplify_using_aff(kernel, expr):
             .project_out_except(inames, [dim_type.set]))
 
     non_inames = deps - set(domain.get_var_dict().keys())
-    non_inames = set([name for name in set(non_inames) if name.isidentifier()])
+    non_inames = {name for name in set(non_inames) if name.isidentifier()}
     if non_inames:
         cur_dim = domain.dim(isl.dim_type.set)
         domain = domain.insert_dims(isl.dim_type.set, cur_dim, len(non_inames))

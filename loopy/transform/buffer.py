@@ -102,7 +102,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
                 continue
 
             ax_index = index[i]
-            from loopy.isl_helpers import simplify_via_aff
+            from loopy.symbolic import simplify_via_aff
             ax_index = simplify_via_aff(
                     ax_index - abm.storage_base_indices[i])
 
