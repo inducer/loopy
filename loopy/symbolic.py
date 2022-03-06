@@ -1835,6 +1835,7 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
                 "for as-pwaff evaluation" % expr)
 
     def map_call(self, expr):
+        # FIXME: There are some things here that we could handle, e.g. "abs".
         raise TypeError(f"call in '{expr}' not supported "
                 "for as-pwaff evaluation")
 

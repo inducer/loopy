@@ -91,7 +91,12 @@ class CallableResolver(RuleAwareIdentityMapper):
         from loopy.symbolic import parse_tagged_name
 
         if not _is_a_reduction_op(expr.function):
+            # FIXME: We should have never used parse_tagged_name here.
             name, tag = parse_tagged_name(expr.function)
+
+            if tag:
+                raise LoopyError(f"tagged name in call: {expr.function}")
+
         else:
             if isinstance(expr.function, ResolvedFunction):
                 name = expr.function.function
