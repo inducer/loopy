@@ -591,7 +591,7 @@ class CallablesInferenceContext(ImmutableRecord):
 
         # }}}
 
-        # AIM: Preserve the entrypoints of *program*
+        # {{{ preserve the entrypoints of *program*
 
         # If there are any callees having old entrypoint names => mark them for
         # renaming
@@ -609,7 +609,9 @@ class CallablesInferenceContext(ImmutableRecord):
             todo_renames[e] = history[e]
             assert todo_renames[e] in program.entrypoints
 
-        # try to rollback the names as much as possible
+        # }}}
+
+        # try to roll back the names as much as possible
         for new_id in new_callable_ids:
             old_func_id = history[new_id]
             if (isinstance(old_func_id, str)
