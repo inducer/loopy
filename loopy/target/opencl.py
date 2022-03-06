@@ -189,7 +189,33 @@ class OpenCLCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, callables_table):
         name = self.name
 
-        # unary functions
+        # {{{ unary functions
+        if name == "abs":
+            for id in arg_id_to_dtype:
+                if not -1 <= id <= 0:
+                    raise LoopyError(f"'{name}' can take only one argument.")
+
+            if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
+                return (
+                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        callables_table)
+
+            dtype = arg_id_to_dtype[0].numpy_dtype
+
+            if dtype.kind in ("u", "i"):
+                # OpenCL C 2.2, Section 6.13.3: abs returns *u*gentype
+                from loopy.types import to_unsigned_dtype
+                return (self.copy(name_in_target=name,
+                            arg_id_to_dtype={
+                                0: NumpyType(dtype),
+                                -1: NumpyType(to_unsigned_dtype(dtype))}),
+                        callables_table)
+            elif dtype.kind == "f":
+                name = "fabs"
+            else:
+                raise LoopyTypeError(f"'{name}' does not support type {dtype}")
+
+        # deliberately not elif: abs branch above may end up taking this.
         if name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                     "tan", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor",
                     "erf", "erfc"]:
@@ -199,8 +225,6 @@ class OpenCLCallable(ScalarCallable):
                     raise LoopyError(f"'{name}' can take only one argument.")
 
             if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
-                # the types provided aren't mature enough to specialize the
-                # callable
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
@@ -219,28 +243,9 @@ class OpenCLCallable(ScalarCallable):
                         arg_id_to_dtype={0: NumpyType(dtype), -1:
                             NumpyType(dtype)}),
                     callables_table)
-        elif name == "abs":
-            for id in arg_id_to_dtype:
-                if not -1 <= id <= 0:
-                    raise LoopyError(f"'{name}' can take only one argument.")
 
-            if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
-                # the types provided aren't mature enough to specialize the
-                # callable
-                return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                        callables_table)
+        # }}}
 
-            dtype = arg_id_to_dtype[0].numpy_dtype
-
-            if dtype.kind not in ("u", "i"):
-                raise LoopyTypeError(f"{name} does not support type {dtype}")
-
-            return (
-                    self.copy(name_in_target=name,
-                        arg_id_to_dtype={0: NumpyType(dtype), -1:
-                            NumpyType(dtype)}),
-                    callables_table)
         # binary functions
         elif name in ["fmax", "fmin", "atan2", "copysign"]:
 
@@ -253,8 +258,6 @@ class OpenCLCallable(ScalarCallable):
 
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
-                # the types provided aren't mature enough to specialize the
-                # callable
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
