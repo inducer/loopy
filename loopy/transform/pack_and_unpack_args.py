@@ -202,7 +202,8 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 
                 # {{{ getting the lhs for packing and rhs for unpacking
 
-                from loopy.isl_helpers import simplify_via_aff, make_slab
+                from loopy.symbolic import simplify_via_aff
+                from loopy.isl_helpers import make_slab
 
                 flatten_index = simplify_via_aff(
                         sum(dim_tag.stride*idx for dim_tag, idx in

@@ -1453,7 +1453,7 @@ def _are_sub_array_refs_equivalent(sar1, sar2, caller):
 
     from loopy.symbolic import SubstitutionMapper
     from pymbolic.mapper.substitutor import make_subst_func
-    from loopy.isl_helpers import simplify_via_aff
+    from loopy.symbolic import simplify_via_aff
     subst_func = make_subst_func({iname1.name:  iname2
                                   for iname1, iname2 in zip(sar1.swept_inames,
                                                             sar2.swept_inames)

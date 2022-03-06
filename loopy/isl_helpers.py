@@ -1,6 +1,5 @@
 """isl helpers"""
 
-
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -28,6 +27,7 @@ from loopy.diagnostic import StaticValueFindingError, LoopyError
 
 import islpy as isl
 from islpy import dim_type
+from warnings import warn
 
 
 def pw_aff_to_aff(pw_aff):
@@ -448,19 +448,6 @@ def boxify(cache_manager, domain, box_inames, context):
 # }}}
 
 
-def simplify_via_aff(expr):
-    from loopy.symbolic import aff_to_expr, guarded_aff_from_expr, get_dependencies
-    from loopy.diagnostic import ExpressionToAffineConversionError
-
-    deps = sorted(get_dependencies(expr))
-    try:
-        return aff_to_expr(guarded_aff_from_expr(
-            isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
-            expr))
-    except ExpressionToAffineConversionError:
-        return expr
-
-
 def project_out(set, inames):
     for iname in inames:
         var_dict = set.get_var_dict()
@@ -848,5 +835,12 @@ def find_and_rename_dim(isl_obj, dt, old_name, new_name):
 
 # }}}
 
+
+def simplify_via_aff(expr):
+    warn("simplify_via_aff has moved to loopy.symbolic. "
+            "Importing it from loopy.isl_helpers will stop working in July 2022.",
+            DeprecationWarning, stacklevel=2)
+    from loopy.symbolic import simplify_via_aff
+    return simplify_via_aff(expr)
 
 # vim: foldmethod=marker
