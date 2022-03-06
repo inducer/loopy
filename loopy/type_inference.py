@@ -405,7 +405,6 @@ class TypeInferenceMapper(CombineMapper):
         return self.rec(expr.aggregate)
 
     def map_call(self, expr, return_tuple=False):
-
         from pymbolic.primitives import Variable
 
         identifier = expr.function
@@ -772,7 +771,7 @@ class _DictUnionView:
 def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     """Infer types on temporaries and arguments."""
 
-    logger.debug("%s: infer types" % kernel.name)
+    logger.debug("%s: infer types", kernel.name)
 
     from functools import partial
     debug = partial(_debug, kernel)
