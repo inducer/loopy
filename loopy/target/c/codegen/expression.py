@@ -332,9 +332,13 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         assumptions, domain = isl.align_two(assumption_non_param, domain)
         domain = domain & assumptions
 
+        num_type = self.infer_type(expr.numerator)
+        den_type = self.infer_type(expr.denominator)
         from loopy.isl_helpers import is_nonnegative
-        num_nonneg = is_nonnegative(expr.numerator, domain)
-        den_nonneg = is_nonnegative(expr.denominator, domain)
+        num_nonneg = is_nonnegative(expr.numerator, domain) \
+            or num_type.numpy_dtype.kind == "u"
+        den_nonneg = is_nonnegative(expr.denominator, domain) \
+            or den_type.numpy_dtype.kind == "u"
 
         result_dtype = self.infer_type(expr)
         suffix = result_dtype.numpy_dtype.type.__name__
