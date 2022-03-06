@@ -1834,6 +1834,10 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         raise TypeError("reduction in '%s' not supported "
                 "for as-pwaff evaluation" % expr)
 
+    def map_call(self, expr):
+        raise TypeError(f"call in '{expr}' not supported "
+                "for as-pwaff evaluation")
+
 
 def aff_from_expr(space, expr, vars_to_zero=None):
     if vars_to_zero is None:
