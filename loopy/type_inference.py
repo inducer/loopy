@@ -399,6 +399,10 @@ class TypeInferenceMapper(CombineMapper):
         return [expr.type]
 
     def map_subscript(self, expr):
+        # The subscript may contain function calls, and we won't type-specialize
+        # them if we don't see them.
+        self.rec(expr.index)
+
         return self.rec(expr.aggregate)
 
     def map_linear_subscript(self, expr):
