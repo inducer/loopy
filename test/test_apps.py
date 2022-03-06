@@ -700,12 +700,11 @@ def test_prefetch_through_indirect_access():
 def test_unsigned_types_to_mod():
     knl = lp.make_kernel("{[i]: 0<=i<10}",
         """
-            c = b[i] {id=init,dup=i}
+            <> c = b[i] {id=init,dup=i}
             a[i] = i % c {dep=init}
         """,
-        [lp.GlobalArg("a", shape=(10,), dtype=np.int32),
-         lp.GlobalArg("b", shape=(10,), dtype=np.int32),
-         lp.TemporaryVariable("c", shape=(1,), dtype=np.uint32)]
+        [lp.GlobalArg("a", shape=(10,), dtype=np.uint32),
+         lp.GlobalArg("b", shape=(10,), dtype=np.uint32)]
     )
     assert "loopy_mod" not in lp.generate_code_v2(knl).device_code()
 
