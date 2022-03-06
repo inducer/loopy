@@ -709,6 +709,19 @@ def test_unsigned_types_to_mod():
     assert "loopy_mod" not in lp.generate_code_v2(knl).device_code()
 
 
+def test_abs_as_index():
+    knl = lp.make_kernel(
+        ["{[i]: 0<=i<10}"],
+        """
+        b[i] = a[abs(5-i)]
+        """,
+        [
+            lp.GlobalArg("a", np.float32),
+            ...
+            ])
+    print(lp.generate_code_v2(knl).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

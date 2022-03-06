@@ -91,7 +91,12 @@ class CallableResolver(RuleAwareIdentityMapper):
         from loopy.symbolic import parse_tagged_name
 
         if not _is_a_reduction_op(expr.function):
+            # FIXME: We should have never used parse_tagged_name here.
             name, tag = parse_tagged_name(expr.function)
+
+            if tag:
+                raise LoopyError(f"tagged name in call: {expr.function}")
+
         else:
             if isinstance(expr.function, ResolvedFunction):
                 name = expr.function.function
@@ -586,7 +591,7 @@ class CallablesInferenceContext(ImmutableRecord):
 
         # }}}
 
-        # AIM: Preserve the entrypoints of *program*
+        # {{{ preserve the entrypoints of *program*
 
         # If there are any callees having old entrypoint names => mark them for
         # renaming
@@ -604,7 +609,9 @@ class CallablesInferenceContext(ImmutableRecord):
             todo_renames[e] = history[e]
             assert todo_renames[e] in program.entrypoints
 
-        # try to rollback the names as much as possible
+        # }}}
+
+        # try to roll back the names as much as possible
         for new_id in new_callable_ids:
             old_func_id = history[new_id]
             if (isinstance(old_func_id, str)
