@@ -355,6 +355,8 @@ class TypeInferenceMapper(CombineMapper):
             return self.combine([n_dtype_set, d_dtype_set])
 
     def map_constant(self, expr):
+        if isinstance(expr, np.generic):
+            return [NumpyType(np.dtype(type(expr)))]
         if is_integer(expr):
             for tp in [np.int32, np.int64]:
                 iinfo = np.iinfo(tp)
