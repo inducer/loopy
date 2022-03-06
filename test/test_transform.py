@@ -52,6 +52,24 @@ __all__ = [
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
+# {{{ ContainsFloorDiv
+
+class ContainsFloorDiv(lp.symbolic.CombineMapper):
+    def combine(self, values):
+        return any(values)
+
+    def map_floor_div(self, expr):
+        return True
+
+    def map_variable(self, expr):
+        return False
+
+    def map_constant(self, expr):
+        return False
+
+# }}}
+
+
 @pytest.mark.parametrize("fix_parameters", (True, False))
 def test_chunk_iname(ctx_factory, fix_parameters):
     ctx = ctx_factory()
@@ -1260,6 +1278,35 @@ def test_privatize_with_nonzero_lbound(ctx_factory):
     np.testing.assert_allclose(out.get()[10:14], np.arange(10, 14))
 
 
+def test_simplify_indices_when_inlining(ctx_factory):
+    ctx = ctx_factory()
+    twice = lp.make_function(
+        "{[i, j]: 0<=i<10 and 0<=j<4}",
+        """
+        y[i,j] = 2*x[i,j]
+        """, name="zerozerozeroonezeroify")
+
+    knl = lp.make_kernel(
+        "{:}",
+        """
+        Y[:,:] = zerozerozeroonezeroify(X[:,:])
+        """, [lp.GlobalArg("X,Y",
+                           shape=(10, 4),
+                           dtype=np.float64)])
+
+    knl = lp.merge([knl, twice])
+    inlined_knl = lp.inline_callable_kernel(knl, "zerozerozeroonezeroify")
+    contains_floordiv = ContainsFloorDiv()
+
+    print(inlined_knl)
+
+    assert all(not contains_floordiv(insn.expression)
+               for insn in inlined_knl.default_entrypoint.instructions
+               if isinstance(insn, lp.MultiAssignmentBase))
+
+    lp.auto_test_vs_ref(knl, ctx, inlined_knl)
+
+
 def test_simplify_indices(ctx_factory):
     ctx = ctx_factory()
     knl = lp.make_kernel(
@@ -1269,19 +1316,6 @@ def test_simplify_indices(ctx_factory):
         """, [lp.GlobalArg("X,Y",
                            shape=(10,),
                            dtype=np.float64)])
-
-    class ContainsFloorDiv(lp.symbolic.CombineMapper):
-        def combine(self, values):
-            return any(values)
-
-        def map_floor_div(self, expr):
-            return True
-
-        def map_variable(self, expr):
-            return False
-
-        def map_constant(self, expr):
-            return False
 
     simplified_knl = lp.simplify_indices(knl)
     contains_floordiv = ContainsFloorDiv()
