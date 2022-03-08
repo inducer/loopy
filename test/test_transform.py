@@ -1310,12 +1310,13 @@ def test_simplify_indices_when_inlining(ctx_factory):
 def test_simplify_indices(ctx_factory):
     ctx = ctx_factory()
     knl = lp.make_kernel(
-        "{[i]: 0<=i<10}",
+        "{[j]: 0<=j<10}",
         """
-        Y[i] = X[10*(i//10) + i]
-        """, [lp.GlobalArg("X,Y",
+        <> b = Z[0]  {id=b}
+        Y[j] = X[10*(j//10 + b) + j - 10*b]  {dep=b}
+        """, [lp.GlobalArg("X,Y,Z",
                            shape=(10,),
-                           dtype=np.float64)])
+                           dtype=np.int32)])
 
     simplified_knl = lp.simplify_indices(knl)
     contains_floordiv = ContainsFloorDiv()
