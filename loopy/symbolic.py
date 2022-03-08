@@ -2000,7 +2000,7 @@ def simplify_using_aff(kernel, expr):
         cur_dim = domain.dim(isl.dim_type.set)
         domain = domain.insert_dims(isl.dim_type.set, cur_dim, len(non_inames))
         for non_iname in non_inames:
-            domain.set_dim_name(isl.dim_type.set, cur_dim, non_iname)
+            domain = domain.set_dim_name(isl.dim_type.set, cur_dim, non_iname)
             cur_dim += 1
 
     try:
