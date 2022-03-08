@@ -922,7 +922,8 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
             if args and isinstance(args[0], LoopKernel):
                 proc_log_str = f"{func.__name__} on '{args[0].name}'"
             elif args and isinstance(args[0], TranslationUnit):
-                proc_log_str = f"{func.__name__} on '{args[0].entrypoints}'"
+                entrypoints_str = ", ".join(args[0].entrypoints)
+                proc_log_str = f"{func.__name__} on '{entrypoints_str}'"
             else:
                 proc_log_str = f"{func.__name__}"
 
