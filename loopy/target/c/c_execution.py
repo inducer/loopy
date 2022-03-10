@@ -446,6 +446,7 @@ class CKernelExecutor(KernelExecutorBase):
                 entrypoint, arg_to_dtype_set)
 
         from loopy.codegen import generate_code_v2
+        from loopy.schedule.tools import get_callkernel_dependencies
         codegen_result = generate_code_v2(program)
 
         dev_code = codegen_result.device_code()
@@ -472,9 +473,14 @@ class CKernelExecutor(KernelExecutorBase):
         c_kernels = []
 
         for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(dp,
-                codegen_result.implemented_data_infos[entrypoint], all_code,
-                self.program.target, self.compiler))
+            all_args = [
+                arg
+                for arg in codegen_result.implemented_data_infos[entrypoint]
+                if arg.name in get_callkernel_dependencies(program[entrypoint],
+                                                           dp.name)]
+            c_kernels.append(CompiledCKernel(dp, all_args, all_code,
+                                             self.program.target,
+                                             self.compiler))
 
         return _KernelInfo(
                 program=program,
