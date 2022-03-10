@@ -3263,6 +3263,20 @@ def test_redn_in_predicate(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl)
 
 
+def test_obj_tagged_is_persistent_hashable():
+    from loopy.tools import LoopyKeyBuilder
+    from pytools.tag import tag_dataclass, Tag
+    from loopy.match import ObjTagged
+
+    lkb = LoopyKeyBuilder()
+
+    @tag_dataclass
+    class MyTag(Tag):
+        pass
+
+    assert lkb(ObjTagged(MyTag())) == lkb(ObjTagged(MyTag()))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
