@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import islpy as isl
 from loopy.kernel.data import AddressSpace
 import islpy as isl
 import enum
@@ -58,10 +59,18 @@ def get_block_boundaries(schedule):
 def temporaries_read_in_subkernel(kernel, subkernel):
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
-    return frozenset(tv
-            for insn_id in insn_ids
-            for tv in kernel.id_to_insn[insn_id].read_dependency_names()
-            if tv in kernel.temporary_variables)
+    inames = frozenset().union(*(kernel.insn_inames(insn_id)
+                                 for insn_id in insn_ids))
+    domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
+    params = frozenset().union(*(
+        kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
+        for dom_idx in domain_idxs))
+
+    return (frozenset(tv
+                      for insn_id in insn_ids
+                      for tv in kernel.id_to_insn[insn_id].read_dependency_names()
+                      if tv in kernel.temporary_variables)
+            | (params & frozenset(kernel.temporary_variables)))
 
 
 def temporaries_written_in_subkernel(kernel, subkernel):
@@ -71,6 +80,62 @@ def temporaries_written_in_subkernel(kernel, subkernel):
             for insn_id in insn_ids
             for tv in kernel.id_to_insn[insn_id].write_dependency_names()
             if tv in kernel.temporary_variables)
+
+
+def args_read_in_subkernel(kernel, subkernel):
+    from loopy.kernel.tools import get_subkernel_to_insn_id_map
+    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
+    inames = frozenset().union(*(kernel.insn_inames(insn_id)
+                                 for insn_id in insn_ids))
+    domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
+    params = frozenset().union(*(
+        kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
+        for dom_idx in domain_idxs))
+    return (frozenset(arg
+                      for insn_id in insn_ids
+                      for arg in kernel.id_to_insn[insn_id].read_dependency_names()
+                      if arg in kernel.arg_dict)
+            | (params & frozenset(kernel.arg_dict)))
+
+
+def args_written_in_subkernel(kernel, subkernel):
+    from loopy.kernel.tools import get_subkernel_to_insn_id_map
+    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
+    return frozenset(arg
+                     for insn_id in insn_ids
+                     for arg in kernel.id_to_insn[insn_id].write_dependency_names()
+                     if arg in kernel.arg_dict)
+
+
+def get_callkernel_dependencies(kernel, subkernel):
+    """
+    Returns variable names referenced by :class:`~loopy.schedule.CallKernel`
+    named *subkernel*.
+    """
+    from loopy.symbolic import IdentityMapper
+    from loopy.kernel.array import ArrayBase
+
+    class VariableNoter(IdentityMapper):
+        def __init__(self):
+            self.deps = set()
+
+        def map_variable(self, expr):
+            self.deps.add(expr.name)
+            return super().map_variable(expr)
+
+    var_names = (temporaries_read_in_subkernel(kernel, subkernel)
+                 | temporaries_written_in_subkernel(kernel, subkernel)
+                 | args_read_in_subkernel(kernel, subkernel)
+                 | args_written_in_subkernel(kernel, subkernel))
+
+    noter = VariableNoter()
+
+    for var_name in var_names:
+        var = kernel.arg_dict.get(var_name, kernel.temporary_variables.get(var_name))
+        if isinstance(var, ArrayBase):
+            var.map_exprs(noter)
+
+    return var_names | frozenset(noter.deps)
 
 # }}}
 

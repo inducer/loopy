@@ -766,6 +766,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         return code_lines
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        from loopy.schedule.tools import get_callkernel_dependencies
+        from loopy.kernel.data import InameArg
+        name2idi = {idi.name: idi for idi in (codegen_state.implemented_data_info
+                                              + extra_args)}
+        subknl_deps = get_callkernel_dependencies(codegen_state.kernel, name)
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
         if not gsize:
@@ -773,7 +778,17 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not lsize:
             lsize = (1,)
 
-        all_args = codegen_state.implemented_data_info + extra_args
+        all_args = [arg
+                    for arg in (codegen_state.implemented_data_info + extra_args)
+                    if (arg.name in subknl_deps
+                        or arg.arg_class is InameArg
+                        or arg.base_name in subknl_deps
+                        or (arg.offset_for_name is not None
+                            and (name2idi[arg.offset_for_name].base_name
+                                 in subknl_deps))
+                        or arg.offset_for_name in subknl_deps
+                        or (arg.stride_for_name_and_axis is not None
+                            and arg.stride_for_name_and_axis[0] in subknl_deps))]
 
         value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
             generate_value_arg_setup(
