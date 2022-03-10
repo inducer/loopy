@@ -161,6 +161,9 @@ from loopy.target.ispc import ISPCTarget
 
 from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
 
+from loopy.transform.loop_fusion import (get_kennedy_unweighted_fusion_candidates,
+                                         rename_inames_in_batch)
+
 
 __all__ = [
         "TaggedVariable", "Reduction", "LinearSubscript", "TypeCast",
@@ -254,6 +257,9 @@ __all__ = [
 
         "pack_and_unpack_args_for_call",
 
+        "rename_inames_in_batch",
+        "get_kennedy_unweighted_fusion_candidates",
+
         # }}}
 
         "get_dot_dependency_graph",
@@ -319,6 +325,15 @@ __all__ = [
 
         # }}}
         ]
+
+
+try:
+    import loopy.relations as relations
+except ImportError:
+    # catching ImportErrors to avoid making minikanren a hard-dep
+    pass
+else:
+    __all__ += ["relations"]
 
 # }}}
 
