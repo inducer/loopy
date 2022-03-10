@@ -1443,6 +1443,21 @@ def test_precompute_with_gbarrier(ctx_factory):
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
+def test_buffer_array_with_within(ctx_factory):
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        out[i] = 2 * x[i] {id=insn}
+        """)
+
+    t_unit = lp.add_dtypes(t_unit, {"x": "float64"})
+    ref_t_unit = t_unit
+    t_unit = lp.buffer_array(t_unit, "out", buffer_inames=[], within="id:insn")
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
