@@ -1515,7 +1515,7 @@ def test_finite_difference_expr_subst(ctx_factory):
             gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
             default_tag="l.auto")
 
-    precomp_knl = lp.tag_inames(precomp_knl, {"j_outer": "unr"})
+    precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
     evt, _ = precomp_knl(queue, u=u, h=h)
 
