@@ -973,7 +973,7 @@ def test_diamond_tiling(ctx_factory, interactive=False):
         knl(queue, u=u_dev, dx=dx, dt=dx)
 
         u = u_dev.get()
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt  # pylint: disable=import-error
         plt.imshow(u.T)
         plt.show()
     else:
