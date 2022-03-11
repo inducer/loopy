@@ -118,7 +118,10 @@ Pytest POCL Examples:
     . ./ci-support-v0
 
     build_py_project_in_venv
-    pip install matplotlib ipykernel nbconvert
+
+    # ipython_genutils for https://github.com/jupyter/nbconvert/issues/1725
+    pip install matplotlib ipykernel nbconvert ipython_genutils
+
     install_ispc
 
     . ./.ci/examples-funcs.sh
