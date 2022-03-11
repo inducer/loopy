@@ -176,18 +176,16 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
     for (map_, insn) in [
             (map_a, insn_a),
             (map_b, insn_b)]:
-        for iname in ((set(map_.get_var_dict().keys()) & knl.all_inames())
-                      - insn.within_inames):
-            # project out all inames in the map's domain that aren't part of the
-            # insn's domain
-            dt, pos = map_.get_var_dict()[iname]
-            map_ = map_.project_out(dt, pos, 1)
-
-        for iname in insn.within_inames:
-            if not filter_iname_tags_by_type(knl.inames[iname].tags,
-                                             HardwareConcurrentTag):
-                dt, pos = map_.get_var_dict()[iname]
-                map_ = map_.project_out(dt, pos, 1)
+        dims_not_to_project_out = ({iname
+                                    for iname in insn.within_inames
+                                    if knl.iname_tags_of_type(
+                                        iname, HardwareConcurrentTag)}
+                                   | knl.all_params())
+        map_ = map_.project_out_except(sorted(dims_not_to_project_out),
+                                       [isl.dim_type.in_,
+                                        isl.dim_type.param,
+                                        isl.dim_type.div,
+                                        isl.dim_type.cst])
 
         for name, (dt, pos) in map_.get_var_dict().items():
             if dt == isl.dim_type.in_:
