@@ -151,7 +151,7 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
 
     .. note::
 
-        The accesses map_a, map_b lead to write races iff there exists 2
+        The accesses ``map_a``, ``map_b`` lead to write races iff there exists 2
         *unequal* global ids that access the same address.
     """
     import pymbolic.primitives as p
