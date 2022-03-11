@@ -2592,6 +2592,7 @@ def test_check_for_variable_access_ordering_with_aliasing():
         [
             ("2*i", False),
             ("2*i+1", False),
+            ("2*i+2", True),
             ])
 def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
     prog = lp.make_kernel(
