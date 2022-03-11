@@ -180,7 +180,8 @@ class VectorizabilityChecker(RecursiveMapper):
         raise UnvectorizableError()
 
     def map_if(self, expr):
-        raise UnvectorizableError()
+        raise UnvectorizableError("Emitting vector instructions with masks not"
+                                  " (yet) supported.")
     
 
 # }}}
