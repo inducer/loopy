@@ -23,6 +23,7 @@ THE SOFTWARE.
 from loopy.kernel.data import AddressSpace
 from pytools import memoize_method
 import islpy as isl
+import enum
 
 
 # {{{ block boundary finder
@@ -270,6 +271,17 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
     return not (set_a & set_b & unequal_global_id_set).is_empty()
 
 
+class AccessMapDescriptor(enum.Enum):
+    """
+    Special access map values.
+
+    :attr DOES_NOT_ACCESS: Describes an unaccessed variable.
+    :attr NON_AFFINE_ACCESS: Describes a non-quasi-affine access into an array.
+    """
+    DOES_NOT_ACCESS = enum.auto()
+    NON_AFFINE_ACCESS = enum.auto()
+
+
 class WriteRaceChecker:
     """Used for checking for overlap between access ranges of instructions."""
 
@@ -295,7 +307,7 @@ class WriteRaceChecker:
             exprs.append(insn.expression)
             exprs.extend(insn.predicates)
 
-        access_maps = defaultdict(lambda: False)
+        access_maps = defaultdict(lambda: AccessMapDescriptor.DOES_NOT_ACCESS)
 
         arm = BatchedAccessMapMapper(self.kernel, self.vars, overestimate=True)
 
@@ -304,7 +316,7 @@ class WriteRaceChecker:
 
         for name in arm.access_maps:
             if arm.bad_subscripts[name]:
-                access_maps[name] = True
+                access_maps[name] = AccessMapDescriptor.NON_AFFINE_ACCESS
                 continue
             access_maps[name] = arm.access_maps[name][insn.within_inames]
 
@@ -342,9 +354,11 @@ class WriteRaceChecker:
         insn1_amap = self._get_access_map_for_var(insn1, insn1_dir, var_name)
         insn2_amap = self._get_access_map_for_var(insn2, insn2_dir, var_name)
 
-        if insn1_amap is False or insn2_amap is False:
+        if (insn1_amap is AccessMapDescriptor.DOES_NOT_ACCESS
+                or insn2_amap is AccessMapDescriptor.DOES_NOT_ACCESS):
             return False
-        if insn1_amap is True or insn2_amap is True:
+        if (insn1_amap is AccessMapDescriptor.NON_AFFINE_ACCESS
+                or insn2_amap is AccessMapDescriptor.NON_AFFINE_ACCESS):
             return True
 
         return _check_for_access_races(insn1_amap, self.kernel.id_to_insn[insn1],
