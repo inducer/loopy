@@ -25,19 +25,83 @@ import numpy as np
 import islpy as isl
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
-        SubstitutionRuleMappingContext)
+        SubstitutionRuleMappingContext, CombineMapper)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 from loopy.translation_unit import TranslationUnit
+from loopy.kernel.instruction import MultiAssignmentBase
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.kernel.tools import (kernel_has_global_barriers,
                                 find_most_recent_global_barrier)
 from loopy.kernel.data import AddressSpace
 
 from pymbolic import var
+from pytools import memoize_on_first_arg
 
 from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
+
+
+# {{{ contains_subst_rule_invocation
+
+class FunctionNameCollector(CombineMapper):
+    def combine(self, values):
+        from functools import reduce
+        return reduce(frozenset.union, values, frozenset())
+
+    def map_call(self, expr):
+        return self.combine([frozenset([expr.function.name])]
+                            + [self.rec(arg) for arg in expr.parameters])
+
+    def map_call_with_kwargs(self, expr):
+        return self.combine([frozenset([expr.function.name])]
+                            + [self.rec(arg) for arg in expr.parameters]
+                            + [self.rec(arg) for arg in expr.kw_parameters.values()])
+
+    def map_algebraic_leaf(self, expr):
+        return frozenset()
+
+    def map_constant(self, expr):
+        return frozenset()
+
+
+@memoize_on_first_arg
+def _get_calls_in_expr(expr):
+    return FunctionNameCollector()(expr)
+
+
+@memoize_on_first_arg
+def _get_called_names(insn):
+    assert isinstance(insn, MultiAssignmentBase)
+    from pymbolic.primitives import Expression
+    from functools import reduce
+    return ((_get_calls_in_expr(insn.expression)
+             if isinstance(insn.expression, Expression)
+             else frozenset())
+            # indices of assignees might call the subst rules
+            | reduce(frozenset.union,
+                     (_get_calls_in_expr(assignee)
+                      for assignee in insn.assignees),
+                     frozenset())
+            | reduce(frozenset.union,
+                     (_get_calls_in_expr(pred)
+                      for pred in insn.predicates
+                      if isinstance(pred, Expression)),
+                     frozenset())
+            )
+
+
+@memoize_on_first_arg
+def _get_all_substs(kernel):
+    return frozenset(kernel.substitutions)
+
+
+def contains_a_subst_rule_invocation(kernel, insn):
+    all_substs = _get_all_substs(kernel)
+    return ((all_substs & _get_called_names(insn))
+            or (all_substs & insn.read_dependency_names()))
+
+# }}}
 
 
 class RuleAccessDescriptor(AccessDescriptor):
@@ -244,6 +308,12 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
         for insn in kernel.instructions:
             self.replaced_something = False
+
+            if (isinstance(insn, MultiAssignmentBase)
+                    and not contains_a_subst_rule_invocation(kernel, insn)):
+                # 'insn' does not call a subst => do not process
+                new_insns.append(insn)
+                continue
 
             insn = insn.with_transformed_expressions(
                     lambda expr: self(expr, kernel, insn))  # noqa: B023
@@ -540,7 +610,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         import loopy as lp
         for insn in kernel.instructions:
-            if isinstance(insn, lp.MultiAssignmentBase):
+            if (isinstance(insn, lp.MultiAssignmentBase)
+                    and contains_a_subst_rule_invocation(kernel, insn)):
                 for assignee in insn.assignees:
                     invg(assignee, kernel, insn)
                 invg(insn.expression, kernel, insn)
