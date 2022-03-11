@@ -176,6 +176,10 @@ class VectorizabilityChecker(RecursiveMapper):
         # FIXME: Do this more carefully
         raise UnvectorizableError()
 
+    def map_if(self, expr):
+        raise UnvectorizableError()
+    
+
 # }}}
 
 # vim: fdm=marker
