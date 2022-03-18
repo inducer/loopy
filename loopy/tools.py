@@ -107,21 +107,6 @@ class LoopyKeyBuilder(KeyBuilderBase):
 
     update_for_Map = update_for_BasicSet  # noqa
 
-    def update_for_type(self, key_hash, key):
-        try:
-            method = getattr(self, "update_for_type_"+key.__name__)
-        except AttributeError:
-            pass
-        else:
-            method(key_hash, key)
-            return
-
-        raise TypeError("unsupported type for persistent hash keying: %s"
-                % type(key))
-
-    def update_for_type_auto(self, key_hash, key):
-        key_hash.update(b"auto")
-
     def update_for_pymbolic_expression(self, key_hash, key):
         if key is None:
             self.update_for_NoneType(key_hash, key)
