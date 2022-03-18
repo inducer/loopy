@@ -951,6 +951,10 @@ class ArrayBase(ImmutableRecord, Taggable):
         if self.offset:
             info_entries.append("offset: %s" % self.offset)
 
+        if self.tags:
+            info_entries.append(
+                    "tags: {%s}" % (", ".join(str(tag) for tag in self.tags)))
+
         return "{}: {}".format(self.name, ", ".join(info_entries))
 
     def __str__(self):
