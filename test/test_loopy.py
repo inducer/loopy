@@ -64,7 +64,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             """,
             [
                 lp.TemporaryVariable(
-                    "cnst", initializer=cnst, scope=lp.AddressSpace.GLOBAL,
+                    "cnst", initializer=cnst, address_space=lp.AddressSpace.GLOBAL,
                     read_only=True),
                 lp.GlobalArg("out", is_input=False, shape=lp.auto),
                 "..."])
@@ -1137,7 +1137,7 @@ def test_save_of_private_array(ctx_factory, debug=False):
         end
         """, seq_dependencies=True)
 
-    knl = lp.set_temporary_scope(knl, "t", "private")
+    knl = lp.set_temporary_address_space(knl, "t", "private")
     save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
 
 
@@ -1160,7 +1160,7 @@ def test_save_of_private_array_in_hw_loop(ctx_factory, debug=False):
         """, seq_dependencies=True)
 
     knl = lp.tag_inames(knl, dict(i="g.0"))
-    knl = lp.set_temporary_scope(knl, "t", "private")
+    knl = lp.set_temporary_address_space(knl, "t", "private")
 
     save_and_reload_temporaries_test(
         queue, knl, np.vstack(8 * (np.arange(8),)), debug)
@@ -1184,7 +1184,7 @@ def test_save_of_private_multidim_array(ctx_factory, debug=False):
         end
         """, seq_dependencies=True)
 
-    knl = lp.set_temporary_scope(knl, "t", "private")
+    knl = lp.set_temporary_address_space(knl, "t", "private")
 
     result = np.array([np.vstack(8 * (np.arange(8),)) for i in range(8)])
     save_and_reload_temporaries_test(queue, knl, result, debug)
@@ -1208,7 +1208,7 @@ def test_save_of_private_multidim_array_in_hw_loop(ctx_factory, debug=False):
         end
         """, seq_dependencies=True)
 
-    knl = lp.set_temporary_scope(knl, "t", "private")
+    knl = lp.set_temporary_address_space(knl, "t", "private")
     knl = lp.tag_inames(knl, dict(i="g.0"))
 
     result = np.array([np.vstack(8 * (np.arange(8),)) for i in range(8)])
@@ -1240,7 +1240,7 @@ def test_save_of_multiple_private_temporaries(ctx_factory, hw_loop, debug=False)
             end
             """, seq_dependencies=True)
 
-    knl = lp.set_temporary_scope(knl, "t_arr", "private")
+    knl = lp.set_temporary_address_space(knl, "t_arr", "private")
     if hw_loop:
         knl = lp.tag_inames(knl, dict(i="g.0"))
 
@@ -1264,7 +1264,7 @@ def test_save_of_local_array(ctx_factory, debug=False):
         end
         """, seq_dependencies=True)
 
-    knl = lp.set_temporary_scope(knl, "t", "local")
+    knl = lp.set_temporary_address_space(knl, "t", "local")
     knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
 
     save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
@@ -1286,7 +1286,7 @@ def test_save_of_local_array_with_explicit_local_barrier(ctx_factory, debug=Fals
         end
         """, seq_dependencies=True)
 
-    knl = lp.set_temporary_scope(knl, "t", "local")
+    knl = lp.set_temporary_address_space(knl, "t", "local")
     knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
 
     save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
@@ -1307,7 +1307,7 @@ def test_save_local_multidim_array(ctx_factory, debug=False):
             end
             """, seq_dependencies=True)
 
-    knl = lp.set_temporary_scope(knl, "t_local", "local")
+    knl = lp.set_temporary_address_space(knl, "t_local", "local")
     knl = lp.tag_inames(knl, dict(j="l.0", i="g.0"))
 
     save_and_reload_temporaries_test(queue, knl, 1, debug)
@@ -1329,8 +1329,8 @@ def test_save_with_base_storage(ctx_factory, debug=False):
             seq_dependencies=True)
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
-    knl = lp.set_temporary_scope(knl, "a", "local")
-    knl = lp.set_temporary_scope(knl, "b", "local")
+    knl = lp.set_temporary_address_space(knl, "a", "local")
+    knl = lp.set_temporary_address_space(knl, "b", "local")
 
     knl = lp.alias_temporaries(knl, ["a", "b"],
             synchronize_for_exclusive_use=False)
@@ -1350,7 +1350,7 @@ def test_save_ambiguous_storage_requirements():
 
     knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
     knl = lp.duplicate_inames(knl, "j", within="writes:out", tags={"j": "l.0"})
-    knl = lp.set_temporary_scope(knl, "a", "local")
+    knl = lp.set_temporary_address_space(knl, "a", "local")
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
@@ -1427,7 +1427,7 @@ def test_global_temporary(ctx_factory):
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
-    knl = lp.set_temporary_scope(knl, "c", "global")
+    knl = lp.set_temporary_address_space(knl, "c", "global")
 
     ref_knl = knl
 
@@ -1515,7 +1515,7 @@ def test_finite_difference_expr_subst(ctx_factory):
             gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
             default_tag="l.auto")
 
-    precomp_knl = lp.tag_inames(precomp_knl, {"j_outer": "unr"})
+    precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
     evt, _ = precomp_knl(queue, u=u, h=h)
 
@@ -1679,8 +1679,8 @@ def test_global_barrier(ctx_factory):
     knl = lp.add_and_infer_dtypes(knl, {"z": np.float64})
 
     ref_knl = knl
-    ref_knl = lp.set_temporary_scope(ref_knl, "z", "global")
-    ref_knl = lp.set_temporary_scope(ref_knl, "v", "global")
+    ref_knl = lp.set_temporary_address_space(ref_knl, "z", "global")
+    ref_knl = lp.set_temporary_address_space(ref_knl, "v", "global")
 
     knl = lp.split_iname(knl, "i", 256, outer_tag="g.0", inner_tag="l.0")
     print(knl)
@@ -1712,7 +1712,7 @@ def test_missing_global_barrier():
             end
             """)
 
-    knl = lp.set_temporary_scope(knl, "z", "global")
+    knl = lp.set_temporary_address_space(knl, "z", "global")
     knl = lp.split_iname(knl, "i", 256, outer_tag="g.0")
     knl = lp.add_dtypes(knl, {"z": np.float32, "v": np.float32})
     knl = lp.preprocess_kernel(knl)
@@ -2222,8 +2222,8 @@ def test_barrier_insertion_near_top_of_loop():
         seq_dependencies=True)
 
     prog = lp.tag_inames(prog, dict(i="l.0"))
-    prog = lp.set_temporary_scope(prog, "a", "local")
-    prog = lp.set_temporary_scope(prog, "b", "local")
+    prog = lp.set_temporary_address_space(prog, "a", "local")
+    prog = lp.set_temporary_address_space(prog, "b", "local")
     prog = lp.preprocess_kernel(prog)
     knl = lp.get_one_linearized_kernel(prog["loopy_kernel"], prog.callables_table)
 
@@ -2250,8 +2250,8 @@ def test_barrier_insertion_near_bottom_of_loop():
         """,
         seq_dependencies=True)
     prog = lp.tag_inames(prog, dict(i="l.0"))
-    prog = lp.set_temporary_scope(prog, "a", "local")
-    prog = lp.set_temporary_scope(prog, "b", "local")
+    prog = lp.set_temporary_address_space(prog, "a", "local")
+    prog = lp.set_temporary_address_space(prog, "b", "local")
     prog = lp.preprocess_kernel(prog)
     knl = lp.get_one_linearized_kernel(prog["loopy_kernel"], prog.callables_table)
 
@@ -3286,6 +3286,20 @@ def test_redn_in_predicate(ctx_factory):
         seq_dependencies=True)
 
     lp.auto_test_vs_ref(knl, ctx, knl)
+
+
+def test_obj_tagged_is_persistent_hashable():
+    from loopy.tools import LoopyKeyBuilder
+    from pytools.tag import tag_dataclass, Tag
+    from loopy.match import ObjTagged
+
+    lkb = LoopyKeyBuilder()
+
+    @tag_dataclass
+    class MyTag(Tag):
+        pass
+
+    assert lkb(ObjTagged(MyTag())) == lkb(ObjTagged(MyTag()))
 
 
 if __name__ == "__main__":

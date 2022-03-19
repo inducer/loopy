@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Any
 from warnings import warn
 import numpy as np
 
@@ -43,18 +44,6 @@ class LoopyType:
     Abstract class for dtypes of variables encountered in a
     :class:`loopy.LoopKernel`.
     """
-    def target(self):
-        warn("LoopyType.target is deprecated and will go away in 2022.",
-                DeprecationWarning, stacklevel=2)
-
-        return None
-
-    def with_target(self, target):
-        warn("LoopyType.with_target is deprecated and will go away in 2022.",
-                DeprecationWarning, stacklevel=2)
-
-        return self
-
     def is_integral(self):
         raise NotImplementedError()
 
@@ -256,5 +245,23 @@ def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
     else:
         raise TypeError("dtype must be a LoopyType, or convertible to one, "
                 "found '%s' instead" % type(dtype))
+
+
+_TO_UNSIGNED_MAPPING = {
+        np.int8: np.uint8,
+        np.int16: np.uint16,
+        np.int32: np.uint32,
+        np.int64: np.uint64,
+        }
+
+
+def to_unsigned_dtype(dtype: "np.dtype[Any]") -> "np.dtype[Any]":
+    if dtype.kind == "u":
+        return dtype
+    if dtype.kind != "i":
+        raise ValueError("can only convert integer types to unsigned")
+
+    return _TO_UNSIGNED_MAPPING[dtype.type]
+
 
 # vim: foldmethod=marker

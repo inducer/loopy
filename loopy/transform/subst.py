@@ -386,11 +386,15 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         raise LoopyError("no assignments to variable '%s' found"
                 % lhs_name)
 
+    from loopy.symbolic import SubstitutionMapper
+    from pymbolic.mapper.substitutor import make_subst_func
     from loopy.match import parse_stack_match
+
     within = parse_stack_match(within)
+    vng = kernel.get_var_name_generator()
 
     rule_mapping_context = SubstitutionRuleMappingContext(
-            kernel.substitutions, kernel.get_var_name_generator())
+            kernel.substitutions, vng)
     tts = AssignmentToSubstChanger(rule_mapping_context,
             lhs_name, definition_insn_ids,
             usage_to_definition, extra_arguments, within)
@@ -435,10 +439,25 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
             arguments.append(i.name)
 
+        # {{{ rename subst arguments
+
+        old_arguments = tuple(arguments) + extra_arguments
+
+        old_arg_to_new_arg = {old_name: vng(old_name)
+                              for old_name in old_arguments}
+
+        renamed_arguments = tuple(old_arg_to_new_arg[arg]
+                                  for arg in old_arguments)
+
+        renamed_expression = SubstitutionMapper(make_subst_func(
+            {k: var(v) for k, v in old_arg_to_new_arg.items()}))(def_insn.expression)
+
+        # }}}
+
         new_substs[subst_name] = SubstitutionRule(
                 name=subst_name,
-                arguments=tuple(arguments) + extra_arguments,
-                expression=def_insn.expression)
+                arguments=renamed_arguments,
+                expression=renamed_expression)
 
     # }}}
 

@@ -947,7 +947,7 @@ def test_mem_access_counter_global_temps():
 
     # Change temporary b address space
     knl = lp.privatize_temporaries_with_inames(knl, "i,j", "b")
-    knl = lp.set_temporary_scope(knl, "b", "global")
+    knl = lp.set_temporary_address_space(knl, "b", "global")
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                     subgroup_size="guess")
@@ -1020,8 +1020,8 @@ def test_barrier_counter_barriers():
             e[i,j,k] = c[i,j,k+1]+c[i,j,k-1] {dep=first}
             """
             ], [
-                lp.TemporaryVariable("c", lp.auto, shape=(50, 10, 99)),
-                "..."
+                lp.TemporaryVariable("c", shape=(50, 10, 99)),
+                ...
             ],
             name="weird2",
             )
@@ -1235,37 +1235,40 @@ def test_mem_access_tagged_variables():
     mem_access_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                            subgroup_size=SGS)
 
-    f32s1lb = mem_access_map[lp.MemAccess("global", np.float32,
-                             lid_strides={0: 1},
-                             gid_strides={1: bsize},
-                             direction="load", variable="b",
-                             variable_tag="mmbload",
-                             count_granularity=CG.WORKITEM,
-                             kernel_name="matmul")
-                             ].eval_with_dict(params)
-    f32s1la = mem_access_map[lp.MemAccess("global", np.float32,
-                             lid_strides={1: Variable("m")},
-                             gid_strides={0: Variable("m")*bsize},
-                             direction="load",
-                             variable="a",
-                             variable_tag="mmaload",
-                             count_granularity=CG.SUBGROUP,
-                             kernel_name="matmul")
-                             ].eval_with_dict(params)
+    f32s1lb = mem_access_map[
+            lp.MemAccess("global", np.float32,
+                lid_strides={0: 1},
+                gid_strides={1: bsize},
+                direction="load", variable="b",
+                variable_tags=frozenset([lp.LegacyStringInstructionTag("mmbload")]),
+                count_granularity=CG.WORKITEM,
+                kernel_name="matmul")
+            ].eval_with_dict(params)
+    f32s1la = mem_access_map[
+            lp.MemAccess("global", np.float32,
+                lid_strides={1: Variable("m")},
+                gid_strides={0: Variable("m")*bsize},
+                direction="load",
+                variable="a",
+                variable_tags=frozenset([lp.LegacyStringInstructionTag("mmaload")]),
+                count_granularity=CG.SUBGROUP,
+                kernel_name="matmul")
+            ].eval_with_dict(params)
 
     assert f32s1lb == n*m*ell
 
     # uniform: (count-per-sub-group)*n_subgroups
     assert f32s1la == m*n_subgroups
 
-    f32coal = mem_access_map[lp.MemAccess("global", np.float32,
-                             lid_strides={0: 1, 1: Variable("ell")},
-                             gid_strides={0: Variable("ell")*bsize, 1: bsize},
-                             direction="store", variable="c",
-                             variable_tag="mmresult",
-                             count_granularity=CG.WORKITEM,
-                             kernel_name="matmul")
-                             ].eval_with_dict(params)
+    f32coal = mem_access_map[
+            lp.MemAccess("global", np.float32,
+                lid_strides={0: 1, 1: Variable("ell")},
+                gid_strides={0: Variable("ell")*bsize, 1: bsize},
+                direction="store", variable="c",
+                variable_tags=frozenset([lp.LegacyStringInstructionTag("mmresult")]),
+                count_granularity=CG.WORKITEM,
+                kernel_name="matmul")
+            ].eval_with_dict(params)
 
     assert f32coal == n*ell
 

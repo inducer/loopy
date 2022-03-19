@@ -89,8 +89,7 @@ def test_subst_into_pwaff():
 
 def test_simplify_via_aff_reproducibility():
     # See https://github.com/inducer/loopy/pull/349
-    from loopy.symbolic import parse
-    from loopy.isl_helpers import simplify_via_aff
+    from loopy.symbolic import parse, simplify_via_aff
 
     expr = parse("i+i_0")
 

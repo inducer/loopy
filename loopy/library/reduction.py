@@ -108,7 +108,7 @@ class ScalarReductionOperation(ReductionOperation):
 
     def result_dtypes(self, arg_dtype):
         if arg_dtype is None:
-            return None
+            return (None,)
 
         return (arg_dtype,)
 
@@ -188,8 +188,15 @@ def get_le_neutral(dtype):
         elif dtype.numpy_dtype.itemsize == 8:
             # 64 bit integer
             return var("LONG_MAX")
-    else:
-        raise NotImplementedError("less")
+    elif dtype.numpy_dtype.kind == "u":
+        if dtype.numpy_dtype.itemsize == 4:
+            # 32 bit integer
+            return var("UINT_MAX")
+        elif dtype.numpy_dtype.itemsize == 8:
+            # 64 bit integer
+            return var("ULONG_MAX")
+
+    raise NotImplementedError(f"neutral element for <= and {dtype}")
 
 
 def get_ge_neutral(dtype):
@@ -211,8 +218,10 @@ def get_ge_neutral(dtype):
         elif dtype.numpy_dtype.itemsize == 8:
             # 64 bit integer
             return var("LONG_MIN")
-    else:
-        raise NotImplementedError("less")
+    elif dtype.numpy_dtype.kind == "u":
+        return 0
+
+    raise NotImplementedError(f"neutral element for >= and {dtype}")
 
 
 class MaxReductionOperation(ScalarReductionOperation):

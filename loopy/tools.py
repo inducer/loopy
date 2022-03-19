@@ -107,21 +107,6 @@ class LoopyKeyBuilder(KeyBuilderBase):
 
     update_for_Map = update_for_BasicSet  # noqa
 
-    def update_for_type(self, key_hash, key):
-        try:
-            method = getattr(self, "update_for_type_"+key.__name__)
-        except AttributeError:
-            pass
-        else:
-            method(key_hash, key)
-            return
-
-        raise TypeError("unsupported type for persistent hash keying: %s"
-                % type(key))
-
-    def update_for_type_auto(self, key_hash, key):
-        key_hash.update(b"auto")
-
     def update_for_pymbolic_expression(self, key_hash, key):
         if key is None:
             self.update_for_NoneType(key_hash, key)
@@ -656,6 +641,8 @@ def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
 
 
+# {{{ t_unit_to_python
+
 def _is_generated_t_unit_the_same(python_code, var_name, ref_t_unit):
     """
     Helper for :func:`kernel_to_python`. Returns *True* only if the variable
@@ -743,7 +730,7 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
     python_code = r"""
     <%! import loopy as lp %>
 
-    <%! tv_scope = {0: 'lp.AddressSpace.PRIVATE', 1: 'lp.AddressSpace.LOCAL',
+    <%! tv_aspace = {0: 'lp.AddressSpace.PRIVATE', 1: 'lp.AddressSpace.LOCAL',
     2: 'lp.AddressSpace.GLOBAL', lp.auto: 'lp.auto' } %>
     ${var_name} = lp.${make_kernel}(
         [
@@ -770,11 +757,11 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
             lp.ValueArg(
                 name="${arg.name}",
                 dtype=${('np.'+arg.dtype.numpy_dtype.name
-                            if arg.dtype else 'lp.auto')}),
+                            if arg.dtype else 'None')}),
             % else:
             lp.GlobalArg(
                 name="${arg.name}", dtype=${('np.'+arg.dtype.numpy_dtype.name
-                                                if arg.dtype else 'lp.auto')},
+                                                if arg.dtype else 'None')},
                 shape=${arg.shape}, for_atomic=${arg.for_atomic}),
             % endif
             % endfor
@@ -783,7 +770,7 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
                 name="${tv.name}",
                 dtype=${'np.'+tv.dtype.numpy_dtype.name if tv.dtype else 'lp.auto'},
                 shape=${tv.shape}, for_atomic=${tv.for_atomic},
-                address_space=${tv_scope[tv.address_space]},
+                address_space=${tv_aspace[tv.address_space]},
                 read_only=${tv.read_only},
                 % if tv.initializer is not None:
                 initializer=${"np."+repr(tv.initializer)},
@@ -871,6 +858,10 @@ def t_unit_to_python(t_unit, var_name="t_unit",
     else:
         return python_code
 
+# }}}
+
+
+# {{{ memoize_on_disk
 
 def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     from loopy.version import DATA_MODEL_VERSION
@@ -916,7 +907,8 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
             if args and isinstance(args[0], LoopKernel):
                 proc_log_str = f"{func.__name__} on '{args[0].name}'"
             elif args and isinstance(args[0], TranslationUnit):
-                proc_log_str = f"{func.__name__} on '{args[0].entrypoints}'"
+                entrypoints_str = ", ".join(args[0].entrypoints)
+                proc_log_str = f"{func.__name__} on '{entrypoints_str}'"
             else:
                 proc_log_str = f"{func.__name__}"
 
@@ -927,5 +919,7 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
             return result
 
     return wrapper
+
+# }}}
 
 # vim: fdm=marker

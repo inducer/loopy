@@ -750,8 +750,9 @@ def generate_code_v2(program):
     from loopy.type_inference import infer_unknown_types
     program = infer_unknown_types(program, expect_completion=True)
 
-    from loopy.schedule import linearize
-    program = linearize(program)
+    if program.state < KernelState.LINEARIZED:
+        from loopy.schedule import linearize
+        program = linearize(program)
 
     # Why diverge? Generated code for a non-entrypoint kernel and an entrypoint
     # kernel isn't same for a general loopy target. For example in OpenCL, a

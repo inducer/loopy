@@ -355,6 +355,8 @@ class TypeInferenceMapper(CombineMapper):
             return self.combine([n_dtype_set, d_dtype_set])
 
     def map_constant(self, expr):
+        if isinstance(expr, np.generic):
+            return [NumpyType(np.dtype(type(expr)))]
         if is_integer(expr):
             for tp in [np.int32, np.int64]:
                 iinfo = np.iinfo(tp)
@@ -399,13 +401,16 @@ class TypeInferenceMapper(CombineMapper):
         return [expr.type]
 
     def map_subscript(self, expr):
+        # The subscript may contain function calls, and we won't type-specialize
+        # them if we don't see them.
+        self.rec(expr.index)
+
         return self.rec(expr.aggregate)
 
     def map_linear_subscript(self, expr):
         return self.rec(expr.aggregate)
 
     def map_call(self, expr, return_tuple=False):
-
         from pymbolic.primitives import Variable
 
         identifier = expr.function
@@ -772,7 +777,7 @@ class _DictUnionView:
 def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     """Infer types on temporaries and arguments."""
 
-    logger.debug("%s: infer types" % kernel.name)
+    logger.debug("%s: infer types", kernel.name)
 
     from functools import partial
     debug = partial(_debug, kernel)
@@ -1056,7 +1061,6 @@ def infer_unknown_types(program, expect_completion=False):
 def infer_arg_and_reduction_dtypes_for_reduction_expression(
         kernel, expr, callables_table, unknown_types_ok):
     type_inf_mapper = TypeReader(kernel, callables_table)
-    import loopy as lp
 
     if expr.is_tuple_typed:
         arg_dtypes_result = type_inf_mapper(
@@ -1066,7 +1070,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
             arg_dtypes = arg_dtypes_result[0]
         else:
             if unknown_types_ok:
-                arg_dtypes = [lp.auto] * expr.operation.arg_count
+                arg_dtypes = [None] * expr.operation.arg_count
             else:
                 raise LoopyError("failed to determine types of accumulators for "
                         "reduction '%s'" % expr)
@@ -1075,18 +1079,14 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
             arg_dtypes = [type_inf_mapper(expr)]
         except DependencyTypeInferenceFailure:
             if unknown_types_ok:
-                arg_dtypes = [lp.auto]
+                arg_dtypes = [None]
             else:
                 raise LoopyError("failed to determine type of accumulator for "
                         "reduction '%s'" % expr)
 
     reduction_dtypes = expr.operation.result_dtypes(*arg_dtypes)
-    reduction_dtypes = tuple(
-            dt
-            if dt is not lp.auto else dt
-            for dt in reduction_dtypes)
 
-    return tuple(arg_dtypes), reduction_dtypes
+    return tuple(arg_dtypes), tuple(reduction_dtypes)
 
 # }}}
 

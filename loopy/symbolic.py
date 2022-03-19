@@ -673,20 +673,6 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
 
         Taggable.__init__(self, tags)
 
-    @property
-    def tag(self):
-        from warnings import warn
-        warn("Accessing TaggedVariable.tag is deprecated and will stop working "
-                "in 2022. Use TaggedVariable.tags instead.", DeprecationWarning,
-                stacklevel=2)
-
-        if len(self.tags) != 1:
-            raise ValueError("cannot access TaggedVariable.tag: variable has "
-                    f"{len(self.tags)} tags")
-
-        tag, = self.tags
-        return tag
-
     def __getinitargs__(self):
         return self.name, self.tags
 
@@ -1275,17 +1261,23 @@ class RuleAwareIdentityMapper(IdentityMapper):
             return self.map_substitution(name, tags, (), expn_state, *args,
                     **kwargs)
 
-    def map_call(self, expr, expn_state):
+    def map_call(self, expr, expn_state, *args, **kwargs):
         if not isinstance(expr.function, p.Variable):
-            return IdentityMapper.map_call(self, expr, expn_state)
+            return IdentityMapper.map_call(self, expr, expn_state,
+                                           *args, **kwargs)
 
         name, tags = parse_tagged_name(expr.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
-            return super().map_call(expr, expn_state)
+            return super().map_call(expr, expn_state, *args, **kwargs)
         else:
-            return self.map_substitution(name, tags, self.rec(
-                expr.parameters, expn_state), expn_state)
+            return self.map_substitution(name, tags,
+                                         self.rec(expr.parameters,
+                                                  expn_state,
+                                                  *args,
+                                                  **kwargs),
+                                         expn_state,
+                                         *args, **kwargs)
 
     @staticmethod
     def make_new_arg_context(rule_name, arg_names, arguments, arg_context):
@@ -1299,17 +1291,18 @@ class RuleAwareIdentityMapper(IdentityMapper):
                 formal_arg_name: arg_subst_map(arg_value)
                 for formal_arg_name, arg_value in zip(arg_names, arguments)}
 
-    def map_substitution(self, name, tags, arguments, expn_state):
+    def map_substitution(self, name, tags, arguments, expn_state,
+                         *args, **kwargs):
         rule = self.rule_mapping_context.old_subst_rules[name]
 
-        rec_arguments = self.rec(arguments, expn_state)
+        rec_arguments = self.rec(arguments, expn_state, *args, **kwargs)
 
         new_expn_state = expn_state.copy(
                 stack=expn_state.stack + ((name, tags),),
                 arg_context=self.make_new_arg_context(
                     name, rule.arguments, rec_arguments, expn_state.arg_context))
 
-        result = self.rec(rule.expression, new_expn_state)
+        result = self.rec(rule.expression, new_expn_state, *args, **kwargs)
 
         new_name = self.rule_mapping_context.register_subst_rule(
                 name, rule.arguments, result)
@@ -1848,6 +1841,11 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         raise TypeError("reduction in '%s' not supported "
                 "for as-pwaff evaluation" % expr)
 
+    def map_call(self, expr):
+        # FIXME: There are some things here that we could handle, e.g. "abs".
+        raise TypeError(f"call in '{expr}' not supported "
+                "for as-pwaff evaluation")
+
 
 def aff_from_expr(space, expr, vars_to_zero=None):
     if vars_to_zero is None:
@@ -1971,6 +1969,19 @@ def qpolynomial_from_expr(space, expr):
 
 # {{{ simplify using aff
 
+def simplify_via_aff(expr):
+    from loopy.symbolic import aff_to_expr, guarded_aff_from_expr, get_dependencies
+    from loopy.diagnostic import ExpressionToAffineConversionError
+
+    deps = sorted(get_dependencies(expr))
+    try:
+        return aff_to_expr(guarded_aff_from_expr(
+            isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
+            expr))
+    except ExpressionToAffineConversionError:
+        return expr
+
+
 @memoize_on_first_arg
 def simplify_using_aff(kernel, expr):
     """
@@ -1978,7 +1989,9 @@ def simplify_using_aff(kernel, expr):
 
     :arg expr: An instance of :class:`pymbolic.primitives.Expression`.
     """
-    inames = get_dependencies(expr) & kernel.all_inames()
+    deps = get_dependencies(expr)
+
+    inames = deps & kernel.all_inames()
 
     # FIXME: Ideally, we should find out what inames are usable and allow
     # the simplification to use all of those. For now, fall back to making
@@ -1987,6 +2000,15 @@ def simplify_using_aff(kernel, expr):
             kernel
             .get_inames_domain(inames)
             .project_out_except(inames, [dim_type.set]))
+
+    non_inames = deps - set(domain.get_var_dict().keys())
+    non_inames = {name for name in set(non_inames) if name.isidentifier()}
+    if non_inames:
+        cur_dim = domain.dim(isl.dim_type.set)
+        domain = domain.insert_dims(isl.dim_type.set, cur_dim, len(non_inames))
+        for non_iname in sorted(non_inames):
+            domain = domain.set_dim_name(isl.dim_type.set, cur_dim, non_iname)
+            cur_dim += 1
 
     try:
         aff = guarded_aff_from_expr(domain.space, expr)

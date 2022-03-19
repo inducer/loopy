@@ -228,6 +228,10 @@ class ObjTagged(MatchExpressionBase):
     def __call__(self, kernel, matchable):
         return self.tag in matchable.tags
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, type(self).__name__)
+        key_builder.rec(key_hash, self.tag)
+
 
 class GlobMatchExpressionBase(MatchExpressionBase):
     def __init__(self, glob):

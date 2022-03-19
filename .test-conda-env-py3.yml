@@ -11,8 +11,3 @@ dependencies:
 - mako
 - pyopencl
 - islpy
-
-# Only needed to make pylint succeed
-- matplotlib-base
-- ipykernel
-- ply

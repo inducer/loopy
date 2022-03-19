@@ -352,7 +352,6 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
             temporary_address_space=temporary_address_space,
-            temporary_scope=temporary_scope,
             precompute_outer_inames=fetch_outer_inames,
             compute_insn_id=prefetch_insn_id,
             within=within)
@@ -743,15 +742,15 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
 # }}}
 
 
-# {{{ set temporary scope
+# {{{ set temporary address space
 
 @for_each_kernel
-def set_temporary_scope(kernel, temp_var_names, scope):
+def set_temporary_address_space(kernel, temp_var_names, address_space):
     """
     :arg temp_var_names: a container with membership checking,
         or a comma-separated string of variables for which the
-        scope is to be set.
-    :arg scope: One of the values from :class:`loopy.AddressSpace`, or one
+        address space is to be set.
+    :arg address_space: One of the values from :class:`loopy.AddressSpace`, or one
         of the strings ``"private"``, ``"local"``, or ``"global"``.
     """
 
@@ -759,17 +758,17 @@ def set_temporary_scope(kernel, temp_var_names, scope):
         temp_var_names = [s.strip() for s in temp_var_names.split(",")]
 
     from loopy.kernel.data import AddressSpace
-    if isinstance(scope, str):
+    if isinstance(address_space, str):
         try:
-            scope = getattr(AddressSpace, scope.upper())
+            address_space = getattr(AddressSpace, address_space.upper())
         except AttributeError:
-            raise LoopyError("scope '%s' unknown" % scope)
+            raise LoopyError("address_space '%s' unknown" % address_space)
 
-    if not isinstance(scope, int) or scope not in [
+    if not isinstance(address_space, int) or address_space not in [
             AddressSpace.PRIVATE,
             AddressSpace.LOCAL,
             AddressSpace.GLOBAL]:
-        raise LoopyError("invalid scope '%s'" % scope)
+        raise LoopyError("invalid address_space '%s'" % address_space)
 
     new_temp_vars = kernel.temporary_variables.copy()
     for tv_name in temp_var_names:
@@ -778,9 +777,18 @@ def set_temporary_scope(kernel, temp_var_names, scope):
         except KeyError:
             raise LoopyError("temporary '%s' not found" % tv_name)
 
-        new_temp_vars[tv_name] = tv.copy(address_space=scope)
+        new_temp_vars[tv_name] = tv.copy(address_space=address_space)
 
     return kernel.copy(temporary_variables=new_temp_vars)
+
+
+def set_temporary_scope(kernel, temp_var_names, address_space):
+    from warnings import warn
+    warn("set_temporary_scope is deprecated and will stop working in "
+            "July 2022. Use set_temporary_address_space instead.",
+            DeprecationWarning, stacklevel=2)
+
+    return set_temporary_address_space(kernel, temp_var_names, address_space)
 
 # }}}
 

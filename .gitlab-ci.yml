@@ -112,16 +112,19 @@ Pytest POCL Examples:
   stage: test
   script: |
     export PYOPENCL_TEST=portable:pthread
-    export EXTRA_INSTALL="pybind11 numpy mako pyvisfile matplotlib ipykernel nbconvert"
+    export EXTRA_INSTALL="pybind11 numpy mako"
 
     curl -L -O https://tiker.net/ci-support-v0
     . ./ci-support-v0
 
     build_py_project_in_venv
 
+    # ipython_genutils for https://github.com/jupyter/nbconvert/issues/1725
+    pip install matplotlib ipykernel nbconvert ipython_genutils
+
     install_ispc
 
-    . ./build-py-project-and-run-examples.sh
+    . ./.ci/examples-funcs.sh
     run_py_examples
     run_ipynb_examples
     run_floopy_examples

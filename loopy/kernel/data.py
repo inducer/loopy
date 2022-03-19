@@ -24,7 +24,6 @@ THE SOFTWARE.
 """
 
 
-import sys
 from sys import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
@@ -41,11 +40,9 @@ from loopy.kernel.instruction import (  # noqa
         AtomicUpdate,
         MultiAssignmentBase,
         Assignment,
-        ExpressionInstruction,
         CallInstruction,
         make_assignment,
         CInstruction)
-from warnings import warn
 
 __doc__ = """
 .. autofunction:: filter_iname_tags_by_type
@@ -143,11 +140,6 @@ class ConcurrentTag(InameImplementationTag):
 
 class HardwareConcurrentTag(ConcurrentTag):
     pass
-
-
-# deprecated aliases
-ParallelTag = ConcurrentTag
-HardwareParallelTag = HardwareConcurrentTag
 
 
 class UniqueInameTag(InameImplementationTag):
@@ -296,39 +288,6 @@ class AddressSpace:
         else:
             raise ValueError("unexpected value of AddressSpace")
 
-
-class _deprecated_temp_var_scope_class_method:  # noqa
-    def __init__(self, f):
-        self.f = f
-
-    def __get__(self, obj, klass):
-        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
-                DeprecationWarning, stacklevel=2)
-        return self.f()
-
-
-class temp_var_scope:  # noqa
-    """Deprecated. Use :class:`loopy.AddressSpace` instead.
-    """
-
-    @_deprecated_temp_var_scope_class_method
-    def PRIVATE():  # pylint:disable=no-method-argument
-        return AddressSpace.PRIVATE
-
-    @_deprecated_temp_var_scope_class_method
-    def LOCAL():  # pylint:disable=no-method-argument
-        return AddressSpace.LOCAL
-
-    @_deprecated_temp_var_scope_class_method
-    def GLOBAL():  # pylint:disable=no-method-argument
-        return AddressSpace.GLOBAL
-
-    @classmethod
-    def stringify(cls, val):
-        warn("'temp_var_scope' is deprecated. Use 'AddressSpace'.",
-                DeprecationWarning, stacklevel=2)
-        return AddressSpace.stringify(val)
-
 # }}}
 
 
@@ -356,12 +315,8 @@ class KernelArgument(ImmutableRecord):
 
         import loopy as lp
         if dtype is lp.auto:
-            warn("Argument/temporary data type for '%s' should be None if "
-                   "unspecified, not auto. This usage will be disallowed in 2018."
-                    % kwargs["name"],
-                    DeprecationWarning, stacklevel=2)
+            raise TypeError("dtype may not be lp.auto")
 
-            dtype = None
         kwargs["dtype"] = dtype
         kwargs["is_output"] = kwargs.pop("is_output", None)
         kwargs["is_input"] = kwargs.pop("is_input", None)
@@ -400,15 +355,8 @@ class ArrayArg(ArrayBase, KernelArgument):
         if "address_space" not in kwargs:
             raise TypeError("'address_space' must be specified")
 
-        is_output_only = kwargs.pop("is_output_only", None)
-        if is_output_only is not None:
-            warn("'is_output_only' is deprecated. Use 'is_output', 'is_input'"
-                    " instead.", DeprecationWarning, stacklevel=2)
-            kwargs["is_output"] = is_output_only
-            kwargs["is_input"] = not is_output_only
-        else:
-            kwargs["is_output"] = kwargs.pop("is_output", None)
-            kwargs["is_input"] = kwargs.pop("is_input", None)
+        kwargs["is_output"] = kwargs.pop("is_output", None)
+        kwargs["is_input"] = kwargs.pop("is_input", None)
 
         super().__init__(*args, **kwargs)
 
@@ -623,19 +571,6 @@ class TemporaryVariable(ArrayBase):
         :arg base_indices: :class:`loopy.auto` or a tuple of base indices
         """
 
-        scope = kwargs.pop("scope", None)
-        if scope is not None:
-            warn("Passing 'scope' is deprecated. Use 'address_space' instead.",
-                    DeprecationWarning, stacklevel=2)
-
-            if address_space is not None:
-                raise ValueError("only one of 'scope' and 'address_space' "
-                        "may be specified")
-            else:
-                address_space = scope
-
-        del scope
-
         if address_space is None:
             address_space = auto
 
@@ -718,29 +653,8 @@ class TemporaryVariable(ArrayBase):
                     _base_storage_access_may_be_aliasing),
                 **kwargs)
 
-    @property
-    def scope(self):
-        warn("Use of 'TemporaryVariable.scope' is deprecated, "
-                "use 'TemporaryVariable.address_space' instead.",
-                DeprecationWarning, stacklevel=2)
-
-        return self.address_space
-
     def copy(self, **kwargs):
         address_space = kwargs.pop("address_space", None)
-        scope = kwargs.pop("scope", None)
-
-        if scope is not None:
-            warn("Passing 'scope' is deprecated. Use 'address_space' instead.",
-                    DeprecationWarning, stacklevel=2)
-
-            if address_space is not None:
-                raise ValueError("only one of 'scope' and 'address_space' "
-                        "may be specified")
-            else:
-                address_space = scope
-
-        del scope
 
         if address_space is not None:
             kwargs["address_space"] = address_space
@@ -771,14 +685,14 @@ class TemporaryVariable(ArrayBase):
 
     def __str__(self):
         if self.address_space is auto:
-            scope_str = "auto"
+            aspace_str = "auto"
         else:
-            scope_str = AddressSpace.stringify(self.address_space)
+            aspace_str = AddressSpace.stringify(self.address_space)
 
         return (
                 self.stringify(include_typename=False)
                 +
-                " scope:%s" % scope_str)
+                " aspace:%s" % aspace_str)
 
     def __eq__(self, other):
         return (
@@ -816,17 +730,6 @@ class TemporaryVariable(ArrayBase):
         key_builder.rec(key_hash, self._base_storage_access_may_be_aliasing)
 
 # }}}
-
-
-def iname_tag_to_temp_var_scope(iname_tag):
-    iname_tag = parse_tag(iname_tag)
-
-    if isinstance(iname_tag, GroupInameTag):
-        return AddressSpace.GLOBAL
-    elif isinstance(iname_tag, LocalInameTag):
-        return AddressSpace.LOCAL
-    else:
-        return AddressSpace.PRIVATE
 
 
 # {{{ substitution rule
@@ -929,6 +832,9 @@ class Iname(Taggable):
 
         return type(self)(name=name, tags=tags)
 
+    def _with_new_tags(self, tags):
+        return self.copy(tags=tags)
+
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
@@ -945,38 +851,5 @@ class Iname(Taggable):
 
 # }}}
 
-
-# {{{ deprecation helpers
-
-_old_to_new = {
-        "IndexTag": "InameImplementationTag",
-        "GroupIndexTag": "GroupInameTag",
-        "LocalIndexTagBase": "LocalInameTagBase",
-        "LocalIndexTag": "LocalInameTag",
-        "UniqueTag": "UniqueInameTag",
-        }
-
-if sys.version_info < (3, 7):
-    _glb = globals()
-    for _old, _new in _old_to_new.items():
-        _glb[_old] = _glb[_new]
-
-    del _old
-    del _new
-    del _glb
-else:
-    def __getattr__(name):
-        new_name = _old_to_new.get(name)
-        if new_name is None:
-            raise AttributeError(name)
-        else:
-            from warnings import warn
-            warn(f"loopy.kernel.data.{name} is deprecated. "
-                    f"Use loopy.kernel.data.{new_name} instead. "
-                    "The old name will stop working in 2022.",
-                    DeprecationWarning, stacklevel=2)
-            return globals()[new_name]
-
-# }}}
 
 # vim: foldmethod=marker

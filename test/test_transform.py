@@ -52,6 +52,24 @@ __all__ = [
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
+# {{{ ContainsFloorDiv
+
+class ContainsFloorDiv(lp.symbolic.CombineMapper):
+    def combine(self, values):
+        return any(values)
+
+    def map_floor_div(self, expr):
+        return True
+
+    def map_variable(self, expr):
+        return False
+
+    def map_constant(self, expr):
+        return False
+
+# }}}
+
+
 @pytest.mark.parametrize("fix_parameters", (True, False))
 def test_chunk_iname(ctx_factory, fix_parameters):
     ctx = ctx_factory()
@@ -506,8 +524,8 @@ def test_add_nosync():
         tmp5[i] = 1 {id=insn6,conflicts=g1}
         """, name="nosync")
 
-    orig_prog = lp.set_temporary_scope(orig_prog, "tmp3", "local")
-    orig_prog = lp.set_temporary_scope(orig_prog, "tmp5", "local")
+    orig_prog = lp.set_temporary_address_space(orig_prog, "tmp3", "local")
+    orig_prog = lp.set_temporary_address_space(orig_prog, "tmp5", "local")
 
     # No dependency present - don't add nosync
     prog = lp.add_nosync(orig_prog, "any", "writes:tmp", "writes:tmp2",
@@ -955,7 +973,7 @@ def test_diamond_tiling(ctx_factory, interactive=False):
         knl(queue, u=u_dev, dx=dx, dt=dx)
 
         u = u_dev.get()
-        import matplotlib.pyplot as plt
+        import matplotlib.pyplot as plt  # pylint: disable=import-error
         plt.imshow(u.T)
         plt.show()
     else:
@@ -1260,7 +1278,7 @@ def test_privatize_with_nonzero_lbound(ctx_factory):
     np.testing.assert_allclose(out.get()[10:14], np.arange(10, 14))
 
 
-def test_simplify_indices(ctx_factory):
+def test_simplify_indices_when_inlining(ctx_factory):
     ctx = ctx_factory()
     twice = lp.make_function(
         "{[i, j]: 0<=i<10 and 0<=j<4}",
@@ -1276,21 +1294,30 @@ def test_simplify_indices(ctx_factory):
                            shape=(10, 4),
                            dtype=np.float64)])
 
-    class ContainsFloorDiv(lp.symbolic.CombineMapper):
-        def combine(self, values):
-            return any(values)
-
-        def map_floor_div(self, expr):
-            return True
-
-        def map_variable(self, expr):
-            return False
-
-        def map_constant(self, expr):
-            return False
-
     knl = lp.merge([knl, twice])
-    knl = lp.inline_callable_kernel(knl, "zerozerozeroonezeroify")
+    inlined_knl = lp.inline_callable_kernel(knl, "zerozerozeroonezeroify")
+    contains_floordiv = ContainsFloorDiv()
+
+    print(inlined_knl)
+
+    assert all(not contains_floordiv(insn.expression)
+               for insn in inlined_knl.default_entrypoint.instructions
+               if isinstance(insn, lp.MultiAssignmentBase))
+
+    lp.auto_test_vs_ref(knl, ctx, inlined_knl)
+
+
+def test_simplify_indices(ctx_factory):
+    ctx = ctx_factory()
+    knl = lp.make_kernel(
+        "{[j]: 0<=j<10}",
+        """
+        <> b = Z[0]  {id=b}
+        Y[j] = X[10*(j//10 + b) + j - 10*b]  {dep=b}
+        """, [lp.GlobalArg("X,Y,Z",
+                           shape=(10,),
+                           dtype=np.int32)])
+
     simplified_knl = lp.simplify_indices(knl)
     contains_floordiv = ContainsFloorDiv()
 
@@ -1413,6 +1440,21 @@ def test_precompute_with_gbarrier(ctx_factory):
                              prefetch_insn_id="x_fetch")
     assert "gbarrier" in t_unit.default_entrypoint.id_to_insn["x_fetch"].depends_on
 
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+def test_buffer_array_with_within(ctx_factory):
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        out[i] = 2 * x[i] {id=insn}
+        """)
+
+    t_unit = lp.add_dtypes(t_unit, {"x": "float64"})
+    ref_t_unit = t_unit
+    t_unit = lp.buffer_array(t_unit, "out", buffer_inames=[], within="id:insn")
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
