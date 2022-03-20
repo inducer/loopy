@@ -388,7 +388,6 @@ def test_zero_stride_array():
     evt, (out,) = knl(z=np.empty((0, 18), order='F'))
 
 
-
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
