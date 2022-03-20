@@ -557,7 +557,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                                     "if dim > 1)"
                                     % (arg.name, strify_tuple(sym_strides)))
 
-                            gen('raise ValueError("strides TEST mismatch on '
+                            gen('raise ValueError("strides mismatch on '
                                     "argument '%s' "
                                     "(after removing unit length dims, "
                                     'got: %%s, expected: %%s)" '
