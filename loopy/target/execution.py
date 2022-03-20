@@ -331,7 +331,7 @@ class ExecutionWrapperGeneratorBase(ABC):
 
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
-                gen("raise TypeError(\"value argument '%s' "
+                gen("raise ValueError(\"value argument '%s' "
                         "was not given and could not be automatically "
                         'determined")' % arg.name)
 
@@ -364,7 +364,7 @@ class ExecutionWrapperGeneratorBase(ABC):
         # Returns an expression suitable for use for checking the strides of an
         # argument. Arguments should be sequences of strings.
         return " and ".join(
-                "(%s == 1 or %s == %s)" % elem
+                "(%s in (0,1) or %s == %s)" % elem
                 for elem in zip(shape, strides, sym_strides)) or "True"
 
     # {{{ arg setup
@@ -497,7 +497,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                                     for sa in t)
 
                     shape_mismatch_msg = (
-                            "raise TypeError(\"shape mismatch on argument '%s' "
+                            "raise ValueError(\"shape mismatch on argument '%s' "
                             '(got: %%s, expected: %%s)" '
                             "%% (%s.shape, %s))"
                             % (arg.name, arg.name, strify_tuple(arg.unvec_shape)))
@@ -557,7 +557,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                                     "if dim > 1)"
                                     % (arg.name, strify_tuple(sym_strides)))
 
-                            gen('raise TypeError("strides mismatch on '
+                            gen('raise ValueError("strides TEST mismatch on '
                                     "argument '%s' "
                                     "(after removing unit length dims, "
                                     'got: %%s, expected: %%s)" '
