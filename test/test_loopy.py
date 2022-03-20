@@ -3253,13 +3253,13 @@ def test_zero_stride_array(ctx_factory):
     y = cl.array.to_device(cq, np.empty((18, 0)))
     evt, _ = knl(cq, y=y, z=z)
 
-    z = cl.array.to_device(cq, np.empty((0, 18), order='F'))
+    z = cl.array.to_device(cq, np.empty((0, 18), order="F"))
     evt, (out,) = knl(cq, z=z)
 
-    z = cl.array.to_device(cq, np.empty((18, 0), order='F'))
+    z = cl.array.to_device(cq, np.empty((18, 0), order="F"))
     evt, (out,) = knl(cq, z=z)
 
-    y = cl.array.to_device(cq, np.empty((18, 0), order='F'))
+    y = cl.array.to_device(cq, np.empty((18, 0), order="F"))
     evt, _ = knl(cq, y=y, z=z)
 
     # }}}
