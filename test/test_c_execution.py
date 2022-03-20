@@ -384,6 +384,9 @@ def test_zero_stride_array():
 
     evt, (out,) = knl(z=np.empty((18, 0)))
     evt, (out,) = knl(z=np.empty((0, 18)))
+    evt, (out,) = knl(z=np.empty((18, 0), order='F'))
+    evt, (out,) = knl(z=np.empty((0, 18), order='F'))
+
 
 
 if __name__ == "__main__":
