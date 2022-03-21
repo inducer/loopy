@@ -1329,7 +1329,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             if show_labels:
                 lines.append("TEMPORARIES:")
             for tv in natsorted(kernel.temporary_variables.values(),
-                    key=lambda tv: tv.name):
+                    key=lambda key_tv: key_tv.name):
                 lines.append(str(tv))
 
         if "rules" in what and kernel.substitutions:

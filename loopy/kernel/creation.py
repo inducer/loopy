@@ -734,16 +734,16 @@ def parse_instructions(instructions, defines):
                     "instance or a parseable string. got '%s' instead."
                     % type(insn))
 
-        for insn in insn.split("\n"):
-            comment_start = insn.find("#")
+        for sub_insn in insn.split("\n"):
+            comment_start = sub_insn.find("#")
             if comment_start >= 0:
-                insn = insn[:comment_start]
+                sub_insn = sub_insn[:comment_start]
 
-            insn = insn.strip()
-            if not insn:
+            sub_insn = sub_insn.strip()
+            if not sub_insn:
                 continue
 
-            new_instructions.append(insn)
+            new_instructions.append(sub_insn)
 
     # }}}
 
