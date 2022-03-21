@@ -1374,11 +1374,11 @@ def generate_loop_schedules_internal(
                 found_viable_schedule = False
 
                 for iname in sorted(tier,
-                        key=lambda iname: (
-                            iname_to_usefulness.get(iname, 0),
+                        key=lambda key_iname: (
+                            iname_to_usefulness.get(key_iname, 0),
                             # Sort by iname to achieve deterministic
                             # ordering of generated schedules.
-                            iname),
+                            key_iname),
                         reverse=True):
 
                     for sub_sched in generate_loop_schedules_internal(
