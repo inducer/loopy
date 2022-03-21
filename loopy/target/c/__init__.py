@@ -800,7 +800,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
         if is_first_dev_prog:
             for tv in sorted(
                     kernel.temporary_variables.values(),
-                    key=lambda tv: tv.name):
+                    key=lambda key_tv: key_tv.name):
 
                 if tv.address_space == AddressSpace.GLOBAL and (
                         tv.initializer is not None):
@@ -894,7 +894,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         for tv in sorted(
                 kernel.temporary_variables.values(),
-                key=lambda tv: tv.name):
+                key=lambda key_tv: key_tv.name):
             decl_info = tv.decl_info(self.target, index_dtype=kernel.index_dtype)
 
             if not tv.base_storage:

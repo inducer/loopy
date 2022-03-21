@@ -1529,17 +1529,16 @@ def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
             elif isinstance(tag, GroupInameTag):
                 g_used.add(tag.axis)
 
-    def mult_grid_factor(used_axes, size):
+    def mult_grid_factor(used_axes, sizes):
         result = get_kernel_zero_pwqpolynomial(knl) + 1
 
-        for iaxis, size in enumerate(size):
+        for iaxis, size in enumerate(sizes):
             if iaxis not in used_axes:
-                if not isinstance(size, int):
-                    size = size.align_params(result.space)
-
-                    size = isl.PwQPolynomial.from_pw_aff(size)
-
-                result = result * size
+                if isinstance(size, int):
+                    result = result * size
+                else:
+                    result = result * isl.PwQPolynomial.from_pw_aff(
+                            size.align_params(result.space))
 
         return result
 
