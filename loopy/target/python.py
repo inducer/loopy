@@ -188,7 +188,7 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
         for tv in sorted(
                 kernel.temporary_variables.values(),
-                key=lambda tv: tv.name):
+                key=lambda key_tv: key_tv.name):
             if tv.shape:
                 result.append(
                         Assign(
