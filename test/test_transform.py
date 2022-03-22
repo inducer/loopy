@@ -1458,6 +1458,24 @@ def test_buffer_array_with_within(ctx_factory):
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
+def test_redn_iname_unique_preserves_metadata():
+    class FooTag(Tag):
+        """
+        foo!
+        """
+
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        out = sum(i, 2*i) + sum(i, 3*i) {id=w_out}
+        """)
+
+    t_unit = lp.tag_inames(t_unit, {"i": FooTag()})
+    t_unit = lp.make_reduction_inames_unique(t_unit)
+    assert "i_0" in t_unit.default_entrypoint.id_to_insn["w_out"].reduction_inames()
+    assert t_unit.default_entrypoint.inames["i_0"].tags_of_type(FooTag)  # fails
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
