@@ -676,8 +676,10 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     Line(),
                     ] + ([
                         For("_tv", "_global_temporaries",
-                            # free global temporaries
-                            S("_tv.release()"))
+                            # Free global temporaries.
+                            # Zero-size temporaries allocate as None, tolerate that.
+                            # https://documen.tician.de/pyopencl/tools.html#pyopencl.tools.ImmediateAllocator
+                            S("if _tv is not None: _tv.release()"))
                         ] if self._get_global_temporaries(codegen_state) else []
                     ) + [
                     Line(),
