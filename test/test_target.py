@@ -663,6 +663,29 @@ def test_glibc_bessel_functions(dtype):
                                rtol=1e-6, atol=1e-6)
 
 
+def test_zero_size_temporaries(ctx_factory):
+    """Zero-sized arrays in PyOpenCL allocate as "None". This tests that the
+    invoker is OK with that.
+    """
+    # https://github.com/inducer/loopy/pull/588
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i]: i > 0 and i < 0}",
+        """
+        tmp[i] = i
+        a[i] = tmp[i]
+        """, [lp.TemporaryVariable("tmp", address_space=lp.AddressSpace.GLOBAL,
+                                   shape=(0,)),
+              lp.GlobalArg("a", shape=(0,)),
+              ...])
+
+    _evt, (out, ) = knl(cq)
+    assert out.shape == (0,)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
