@@ -554,7 +554,7 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
         rhs = rhs * var(arg_name)[tuple(var(i) for i in argsp)]
 
     if sum_indices:
-        rhs = Reduction("sum", tuple(var(idx) for idx in sum_indices), rhs)
+        rhs = Reduction("sum", tuple(var(idx) for idx in sorted(sum_indices)), rhs)
 
     constraints = " and ".join(
         "0 <= %s < N%s" % (idx, idx)
