@@ -565,7 +565,7 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
         knl_creation_kwargs["name"] = "einsum%dto%d_kernel" % (
                 len(all_indices), len(out_indices))
 
-    return make_kernel("{[%s]: %s}" % (",".join(all_indices), constraints),
+    return make_kernel("{[%s]: %s}" % (",".join(sorted(all_indices)), constraints),
                        [Assignment(lhs, rhs)],
                        **knl_creation_kwargs)
 
