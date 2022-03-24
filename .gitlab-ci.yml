@@ -116,15 +116,10 @@ Pytest POCL Examples:
 
     curl -L -O https://tiker.net/ci-support-v0
     . ./ci-support-v0
-
     build_py_project_in_venv
 
-    # ipython_genutils for https://github.com/jupyter/nbconvert/issues/1725
-    pip install matplotlib ipykernel nbconvert ipython_genutils
-
-    install_ispc
-
     . ./.ci/examples-funcs.sh
+    install_example_prereqs
     run_py_examples
     run_ipynb_examples
     run_floopy_examples
