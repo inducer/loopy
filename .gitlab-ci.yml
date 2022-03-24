@@ -147,11 +147,14 @@ Pylint:
 
 Documentation:
   stage: deploy
-  script:
-  - PROJECT=loopy
-  - EXTRA_INSTALL="pybind11 numpy"
-  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-docs.sh
-  - ". ./build-docs.sh"
+  script: |
+    EXTRA_INSTALL="pybind11 numpy"
+    curl -L -O https://tiker.net/ci-support-v0
+    . ci-support-v0
+    build_py_project_in_venv
+    build_docs
+    build_asv_html
+    maybe_upload_docs
   tags:
   - python3
 
