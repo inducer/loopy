@@ -2,7 +2,7 @@ import numpy as np
 import loopy as lp
 import pyopencl as cl
 
-cl_ctx = cl.create_some_context(interactive=True)
+cl_ctx = cl.create_some_context()
 
 knl = lp.make_kernel(
     "{[ictr,itgt,idim]: "
