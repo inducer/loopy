@@ -143,29 +143,7 @@ jobs:
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
                 . ./ci-support-v0
-
-                # Use "special grudge" for kcv3 and branches targeting it.
-                if [[ "$DOWNSTREAM_PROJECT" = "grudge" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_BASE_REF" = "kernel_callables_v3-edit2" ]]; then
-                  with_echo git clone "https://github.com/kaushikcfd/$DOWNSTREAM_PROJECT.git" -b "kcv3-e2-compat"
-                else
-                  with_echo git clone "https://github.com/inducer/$DOWNSTREAM_PROJECT.git"
-                fi
-                cd "$DOWNSTREAM_PROJECT"
-                echo "*** $DOWNSTREAM_PROJECT version: $(git rev-parse --short HEAD)"
-
-                if [[ "$DOWNSTREAM_PROJECT" = "pytential" ]] && [[ "$GITHUB_HEAD_REF" = "kernel_callables_v3-edit2" || "$GITHUB_BASE_REF" = "kernel_callables_v3-edit2" ]]; then
-                  sed -i "/egg=sumpy/ c git+https://github.com/inducer/sumpy.git@loopy-callables#egg=sumpy" requirements.txt
-                fi
-
-                transfer_requirements_git_urls ../requirements.txt ./requirements.txt
-                sed -i "/egg=loopy/ c git+file://$(readlink -f ..)#egg=loopy" requirements.txt
-                sed -i "/mpi4py/ d" requirements.txt
-
-                # Avoid slow or complicated tests in downstream projects
-                export PYTEST_ADDOPTS="-k 'not (slowtest or octave or mpi)'"
-
-                build_py_project_in_conda_env
-                test_py_project
+                test_downstream "$DOWNSTREAM_PROJECT"
 
     downstream_firedrake:
         name: Tests for downstream project Firedrake
