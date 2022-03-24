@@ -185,3 +185,15 @@ Benchmarks:
   - benchmark
   except:
   - tags
+
+Downstream:
+  parallel:
+    matrix:
+    - DOWNSTREAM_PROJECT: [meshmode, grudge, pytential, pytato]
+  tags:
+  - large-node
+  - "docker-runner"
+  script: |
+    curl -L -O https://tiker.net/ci-support-v0
+    . ./ci-support-v0
+    test_downstream "$DOWNSTREAM_PROJECT"
