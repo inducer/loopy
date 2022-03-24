@@ -2,6 +2,16 @@
 
 set -e
 
+function install_example_prereqs()
+{
+  # ipython_genutils for https://github.com/jupyter/nbconvert/issues/1725
+  # jinja < 3.1 for https://github.com/jupyter/nbconvert/issues/1736
+  with_echo pip install \
+          matplotlib ipykernel nbconvert ipython_genutils 'jinja2 < 3.1'
+
+  install_ispc
+}
+
 function run_examples()
 {
   PATTERN=$1
