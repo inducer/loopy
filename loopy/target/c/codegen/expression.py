@@ -425,7 +425,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             return real + imag*iota
         elif np.isnan(expr):
             from warnings import warn
-            warn("Consider using `pymbolic.primitives.NaN` instead of `math.nan`."
+            warn("Encountered 'bare' floating point NaN value. Since NaN != NaN,"
+                 " this leads to problems with cache retrieval."
+                 " Consider using `pymbolic.primitives.NaN` instead of `math.nan`."
                  " The generated code will be equivalent with the added benefit"
                  " of sound pickling/unpickling of kernel objects.")
             from pymbolic.primitives import NaN
