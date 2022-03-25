@@ -593,6 +593,12 @@ class TypeInferenceMapper(CombineMapper):
 
     map_fortran_division = map_quotient
 
+    def map_nan(self, expr):
+        if expr.data_type is None:
+            return [NumpyType(np.dtype(np.float32))]
+        else:
+            return [NumpyType(np.dtype(expr.data_type))]
+
 # }}}
 
 

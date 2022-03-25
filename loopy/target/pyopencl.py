@@ -334,7 +334,10 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                     raise RuntimeError("unsupported complex type in expression "
                             "generation: %s" % type(expr))
 
-            return p.Variable("%s_new" % cast_type)(expr.real, expr.imag)
+            return p.Variable("%s_new" % cast_type)(self.rec(expr.real,
+                                                             type_context),
+                                                    self.rec(expr.imag,
+                                                             type_context))
 
         return super().map_constant(expr, type_context)
 

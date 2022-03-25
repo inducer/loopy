@@ -1992,6 +1992,7 @@ class CallablesIDCollector(CombineMapper):
     map_variable = map_constant
     map_function_symbol = map_constant
     map_tagged_variable = map_constant
+    map_nan = map_constant
 
 
 def get_resolved_callable_ids_called_by_knl(knl, callables, recursive=True):

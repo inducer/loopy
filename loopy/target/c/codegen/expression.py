@@ -56,6 +56,14 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     """
     Mapper that converts a loopy-semantic expression to a C-semantic expression
     with typecasts, appropriate arithmetic semantic mapping, etc.
+
+
+    .. note::
+
+        - All mapper methods take in an extra argument called *type_context*.
+          The purpose of *type_context* is to inform the method about the
+          expected type for untyped expressions such as python scalars. The
+          type of the expressions takes precedence over *type_context*.
     """
     def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
         self.kernel = codegen_state.kernel
@@ -410,13 +418,21 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         from loopy.symbolic import Literal
 
         if isinstance(expr, (complex, np.complexfloating)):
-            real = self.rec(expr.real)
-            imag = self.rec(expr.imag)
+            real = self.rec(expr.real, type_context)
+            imag = self.rec(expr.imag, type_context)
             iota = p.Variable("I" if "I" not in self.kernel.all_variable_names()
                     else "_Complex_I")
             return real + imag*iota
         elif np.isnan(expr):
-            return p.Variable("NAN")
+            from warnings import warn
+            warn("Consider using `pymbolic.primitives.NaN` instead of `math.nan`."
+                 " The generated code will be equivalent with the added benefit"
+                 " of sound pickling/unpickling of kernel objects.")
+            from pymbolic.primitives import NaN
+            if not isinstance(expr, np.generic):
+                return self.map_nan(NaN(), type_context)
+            else:
+                return self.map_nan(NaN(expr.dtype.type), type_context)
         elif np.isneginf(expr):
             return -p.Variable("INFINITY")
         elif np.isinf(expr):
@@ -543,6 +559,36 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_local_hw_index(self, expr, type_context):
         raise LoopyError("plain C does not have local hw axes")
+
+    def map_nan(self, expr, type_context):
+        from loopy.types import NumpyType
+        if expr.data_type is None:
+            if type_context == "f":
+                return p.Variable("NAN")
+            elif type_context == "d":
+                registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+                lpy_type = NumpyType(np.dtype(np.float32))
+                cast = var("(%s)" % registry.dtype_to_ctype(lpy_type))
+                return cast(p.Variable("NAN"))
+            else:
+                raise NotImplementedError("lowering NaN with type context"
+                                          f" '{type_context}'.")
+        else:
+            if isinstance(expr.data_type(float("nan")), np.float32):
+                return p.Variable("NAN")
+            elif isinstance(expr.data_type(float("nan")), (np.float64,
+                                                              np.float128)):
+                registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+                lpy_type = NumpyType(np.dtype(expr.data_type))
+                cast = var("(%s)" % registry.dtype_to_ctype(lpy_type))
+                return cast(p.Variable("NAN"))
+            elif isinstance(expr.data_type(float("nan")), np.complexfloating):
+                real_dtype = np.empty(0, dtype=expr.data_type).real.dtype.type
+                return self.map_constant(real_dtype("nan") + expr.data_type(1j),
+                                         type_context)
+            else:
+                raise NotImplementedError(f"{type(self.kernel.target)} does not"
+                                          f" support NaNs of type {expr.data_type}.")
 
 # }}}
 
