@@ -1039,6 +1039,7 @@ class SubArrayRefSweptInamesCollector(CombineMapper):
     map_tagged_variable = map_constant
     map_type_cast = map_constant
     map_resolved_function = map_constant
+    map_nan = map_constant
 
 
 def get_sub_array_ref_swept_inames(expr):

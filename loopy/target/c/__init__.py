@@ -98,6 +98,10 @@ class InfOrNanInExpressionRecorder(IdentityMapper):
             self.saw_inf_or_nan = True
         return super().map_constant(expr)
 
+    def map_nan(self, expr):
+        self.saw_inf_or_nan = True
+        return super().map_nan(expr)
+
 
 def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
