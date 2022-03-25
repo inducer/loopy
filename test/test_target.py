@@ -417,26 +417,48 @@ def test_opencl_support_for_bool(ctx_factory):
     np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
 
 
-def test_nan_support(ctx_factory):
+@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
+def test_nan_support(ctx_factory, target):
     from loopy.symbolic import parse
+    from pymbolic.primitives import NaN, Variable
     ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
     knl = lp.make_kernel(
         "{:}",
         [lp.Assignment(parse("a"), np.nan),
          lp.Assignment(parse("b"), parse("isnan(a)")),
          lp.Assignment(parse("c"), parse("isnan(3.14)")),
-         lp.Assignment(parse("d"), parse("isnan(0)")),
+         lp.Assignment(parse("d"), parse("isnan(0.0)")),
+         lp.Assignment(parse("e"), NaN(np.float32)),
+         lp.Assignment(parse("f"), Variable("isnan")(NaN())),
+         lp.Assignment(parse("g"), NaN(np.complex64)),
+         lp.Assignment(parse("h"), NaN(np.complex128)),
          ],
         [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
-        seq_dependencies=True)
+        seq_dependencies=True, target=target())
 
     knl = lp.set_options(knl, "return_dict")
 
-    evt, out_dict = knl(cl.CommandQueue(ctx))
-    assert np.isnan(out_dict["a"].get())
+    if target == lp.PyOpenCLTarget:
+        evt, out_dict = knl(queue)
+        out_dict = {k: v.get() for k, v in out_dict.items()}
+    elif target == lp.ExecutableCTarget:
+        evt, out_dict = knl()
+    else:
+        raise NotImplementedError("unsupported target")
+
+    assert np.isnan(out_dict["a"])
     assert out_dict["b"] == 1
     assert out_dict["c"] == 0
     assert out_dict["d"] == 0
+    assert np.isnan(out_dict["e"])
+    assert out_dict["e"].dtype == np.float32
+    assert out_dict["f"] == 1
+    assert np.isnan(out_dict["g"])
+    assert out_dict["g"].dtype == np.complex64
+    assert np.isnan(out_dict["h"])
+    assert out_dict["h"].dtype == np.complex128
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
