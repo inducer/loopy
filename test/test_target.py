@@ -813,23 +813,6 @@ def test_c_vector_extensions():
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_omp_simd_tag():
-    knl = lp.make_kernel(
-        "{[i]: 0<=i<16}",
-        """
-        y[i] = 2 * x[i]
-        """)
-
-    knl = lp.add_dtypes(knl, {"x": "float64"})
-    knl = lp.split_iname(knl, "i", 4)
-    knl = lp.tag_inames(knl, {"i_inner": lp.OpenMPSIMDTag()})
-
-    code_str = lp.generate_code_v2(knl).device_code()
-
-    assert any(line.strip() == "#pragma omp simd"
-               for line in code_str.split("\n"))
-
-
 def test_vec_tag_with_omp_simd_fallback():
     knl = lp.make_kernel(
         "{[i, j1, j2, j3]: 0<=i<10 and 0<=j1,j2,j3<4}",
@@ -840,11 +823,13 @@ def test_vec_tag_with_omp_simd_fallback():
         """,
         [lp.GlobalArg("x, y", shape=lp.auto, dtype=float)],
         seq_dependencies=True,
-        target=lp.ExecutableCVectorExtensionsTarget())
+        target=lp.ExecutableCVectorExtensionsTarget(
+            lp.VectorizationFallback.OMP_SIMD)
+    )
 
-    knl = lp.tag_inames(knl, {"j1": lp.VectorizeTag(lp.OpenMPSIMDTag()),
-                              "j2": lp.VectorizeTag(lp.OpenMPSIMDTag()),
-                              "j3": lp.VectorizeTag(lp.OpenMPSIMDTag())})
+    knl = lp.tag_inames(knl, {"j1": "vec",
+                              "j2": "vec",
+                              "j3": "vec"})
     knl = lp.tag_array_axes(knl, "temp1,temp2", "vec")
 
     code_str = lp.generate_code_v2(knl).device_code()
@@ -870,15 +855,16 @@ def test_vec_extensions_with_multiple_loopy_body_insns():
         end
         """,
         seq_dependencies=True,
-        target=lp.ExecutableCVectorExtensionsTarget())
+        target=lp.ExecutableCVectorExtensionsTarget(
+            lp.VectorizationFallback.OMP_SIMD)
+    )
 
     knl = lp.add_dtypes(knl, {"dat0": "float64"})
     knl = lp.split_iname(knl, "n", 4, slabs=(1, 1),
                          inner_iname="n_batch")
     knl = lp.privatize_temporaries_with_inames(knl, "n_batch")
     knl = lp.tag_array_axes(knl, "tmp", "vec")
-    knl = lp.tag_inames(knl, {
-        "n_batch": lp.VectorizeTag(lp.OpenMPSIMDTag())})
+    knl = lp.tag_inames(knl, {"n_batch": "vec"})
 
     _, (out,) = knl(N=100)
     np.testing.assert_allclose(out, 2*np.ones((100, 1)))
