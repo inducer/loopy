@@ -189,6 +189,18 @@ class ExpressionIsScalarChecker(WalkMapper):
         raise NotImplementedError
 
 
+def _get_stride(dim_tag):
+    from loopy.kernel.array import (FixedStrideArrayDimTag,
+                                    VectorArrayDimTag)
+    if isinstance(dim_tag, FixedStrideArrayDimTag):
+        return dim_tag.stride
+    elif isinstance(dim_tag, VectorArrayDimTag):
+        # loopy pushes vec axis to the unit stride dim.
+        return 1
+    else:
+        raise NotImplementedError(type(dim_tag))
+
+
 def get_arg_descriptor_for_expression(kernel, expr):
     """
     :returns: a :class:`ArrayArgDescriptor` or a :class:`ValueArgDescriptor`
@@ -222,7 +234,7 @@ def get_arg_descriptor_for_expression(kernel, expr):
         from loopy.symbolic import simplify_using_aff
         linearized_index = simplify_using_aff(
                 kernel,
-                sum(dim_tag.stride*iname for dim_tag, iname in
+                sum(_get_stride(dim_tag)*iname for dim_tag, iname in
                     zip(arg.dim_tags, expr.subscript.index_tuple)))
 
         strides_as_dict = SweptInameStrideCollector(
