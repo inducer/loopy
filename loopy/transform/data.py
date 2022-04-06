@@ -404,6 +404,9 @@ def add_prefetch(program, *args, **kwargs):
 
     return program.copy(callables_table=new_callables)
 
+
+add_prefetch.__doc__ = add_prefetch_for_single_kernel.__doc__
+
 # }}}
 
 
