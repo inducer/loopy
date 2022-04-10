@@ -703,6 +703,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
             return CLLocal(decl)
         elif scope == AddressSpace.PRIVATE:
             return decl
+        elif scope == AddressSpace.GLOBAL:
+            from cgen.opencl import CLGlobal
+            return CLGlobal(decl)
         else:
             raise ValueError("unexpected temporary variable scope: %s"
                     % scope)

@@ -370,6 +370,38 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 # }}}
 
 
+# {{{ filter out repeated base storages in IDIS
+
+def convert_global_temp_args_to_base_storage(kernel, idis):
+    from loopy.kernel.data import (InameArg,
+                                   TemporaryVariable)
+    new_idis = []
+
+    for idi in idis:
+        if (idi.offset_for_name is not None
+                or idi.stride_for_name_and_axis is not None
+                or issubclass(idi.arg_class, InameArg)):
+            # offset and iname => no need to filter these out
+            new_idis.append(idi)
+        else:
+            name = idi.base_name or idi.name
+            var_descr = kernel.get_var_descriptor(name)
+            if isinstance(var_descr, TemporaryVariable):
+                if var_descr.base_storage is not None:
+                    assert isinstance(var_descr, TemporaryVariable)
+                    new_idis.append(idi.copy(name=var_descr.base_storage,
+                                             base_name=var_descr.base_storage))
+                else:
+                    new_idis.append(idi)
+            else:
+                # loopy kernel argument idi => no need to preprocess
+                new_idis.append(idi)
+
+    return new_idis
+
+# }}}
+
+
 # {{{ target
 
 class PyOpenCLTarget(OpenCLTarget):
@@ -749,7 +781,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         for tv in global_temporaries:
             if tv.base_storage:
                 assert tv.base_storage in base_storage_sizes
-                code_lines.append(Assign(tv.name, tv.base_storage))
             else:
                 nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
                 allocated_var_names.append(tv.name)
@@ -766,6 +797,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         return code_lines
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        from loopy.target.c import filter_temporary_var_idis_with_same_base_storage
+
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
         if not gsize:
@@ -774,6 +807,10 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             lsize = (1,)
 
         all_args = codegen_state.implemented_data_info + extra_args
+        all_args = filter_temporary_var_idis_with_same_base_storage(
+            codegen_state.kernel, all_args)
+        all_args = convert_global_temp_args_to_base_storage(
+            codegen_state.kernel, all_args)
 
         value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
             generate_value_arg_setup(
