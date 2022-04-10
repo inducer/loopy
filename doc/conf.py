@@ -34,3 +34,7 @@ intersphinx_mapping = {
     "https://documen.tician.de/pytools": None,
     "https://pyrsistent.readthedocs.io/en/latest/": None,
     }
+
+nitpick_ignore_regex = [
+        ["py:class", r"typing_extensions\.(.+)"],
+        ]
