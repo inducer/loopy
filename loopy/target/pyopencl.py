@@ -691,6 +691,34 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         # no such thing in Python
         return None
 
+    def preprocess_idis(self, kernel, idis):
+        from loopy.kernel.data import (InameArg,
+                                       TemporaryVariable)
+        new_idis = []
+        seen_base_storages = set()
+
+        for idi in idis:
+            if (idi.offset_for_name is not None
+                    or idi.stride_for_name_and_axis is not None
+                    or issubclass(idi.arg_class, InameArg)):
+                # offset and iname => no need to preprocess
+                new_idis.append(idi)
+            else:
+                name = idi.base_name or idi.name
+                var_descr = kernel.get_var_descriptor(name)
+                if isinstance(var_descr, TemporaryVariable):
+                    if var_descr.base_storage is not None:
+                        assert isinstance(var_descr, TemporaryVariable)
+                        if var_descr.base_storage not in seen_base_storages:
+                            new_idis.append(idi)
+                            seen_base_storages.add(var_descr.base_storage)
+                    else:
+                        new_idis.append(idi)
+                else:
+                    new_idis.append(idi)
+
+        return new_idis
+
     def _get_global_temporaries(self, codegen_state):
         from loopy.kernel.data import AddressSpace
 
@@ -770,7 +798,9 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not lsize:
             lsize = (1,)
 
-        all_args = codegen_state.implemented_data_info + extra_args
+        all_args = self.preprocess_idis(
+            codegen_state.kernel,
+            codegen_state.implemented_data_info + extra_args)
 
         value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
             generate_value_arg_setup(

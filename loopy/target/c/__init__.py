@@ -825,6 +825,34 @@ class CFamilyASTBuilder(ASTBuilderBase):
         else:
             return Collection(result+[Line(), fbody])
 
+    def preprocess_idis(self, kernel, idis):
+        from loopy.kernel.data import (InameArg,
+                                       TemporaryVariable)
+        new_idis = []
+        seen_base_storages = set()
+
+        for idi in idis:
+            if (idi.offset_for_name is not None
+                    or idi.stride_for_name_and_axis is not None
+                    or issubclass(idi.arg_class, InameArg)):
+                # offset and iname => no need to preprocess
+                new_idis.append(idi)
+            else:
+                name = idi.base_name or idi.name
+                var_descr = kernel.get_var_descriptor(name)
+                if isinstance(var_descr, TemporaryVariable):
+                    if var_descr.base_storage is not None:
+                        assert isinstance(var_descr, TemporaryVariable)
+                        if var_descr.base_storage not in seen_base_storages:
+                            new_idis.append(idi)
+                            seen_base_storages.add(var_descr.base_storage)
+                    else:
+                        new_idis.append(idi)
+                else:
+                    new_idis.append(idi)
+
+        return new_idis
+
     def idi_to_cgen_declarator(self, kernel, idi):
         from loopy.kernel.data import InameArg
         if (idi.offset_for_name is not None
@@ -858,11 +886,15 @@ class CFamilyASTBuilder(ASTBuilderBase):
             name = Value("void", name)
         else:
             name = Value("static void", name)
+
         return FunctionDeclarationWrapper(
                 FunctionDeclaration(
                     name,
                     [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                        for idi in codegen_state.implemented_data_info]))
+                     for idi in self.preprocess_idis(
+                         codegen_state.kernel,
+                         codegen_state.implemented_data_info)]
+                ))
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
         return None
@@ -895,6 +927,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
         for tv in sorted(
                 kernel.temporary_variables.values(),
                 key=lambda key_tv: key_tv.name):
+            if tv.name not in sub_knl_temps:
+                continue
             decl_info = tv.decl_info(self.target, index_dtype=kernel.index_dtype)
 
             if not tv.base_storage:
@@ -916,10 +950,6 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
             else:
                 assert tv.initializer is None
-                if (tv.address_space == AddressSpace.GLOBAL
-                        and codegen_state.is_generating_device_code):
-                    # global temps trigger no codegen in the device code
-                    continue
 
                 offset = 0
                 base_storage_sizes.setdefault(tv.base_storage, []).append(
@@ -975,8 +1005,12 @@ class CFamilyASTBuilder(ASTBuilderBase):
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
         for bs_name, bs_sizes in sorted(base_storage_sizes.items()):
-            bs_var_decl = Value("char", bs_name)
             from pytools import single_valued
+            if single_valued(base_storage_to_scope[bs_name]) == AddressSpace.GLOBAL:
+                # allocation for global temporaries is emitted in the host
+                # code.
+                continue
+            bs_var_decl = Value("char", bs_name)
             bs_var_decl = self.wrap_temporary_decl(
                     bs_var_decl, single_valued(base_storage_to_scope[bs_name]))
 
