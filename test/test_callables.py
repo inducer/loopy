@@ -984,6 +984,190 @@ def test_callee_with_parameter_and_grid(ctx_factory):
     np.testing.assert_allclose(out.get(), np.arange(10))
 
 
+@pytest.mark.parametrize("inline", [True, False])
+def test_inlining_does_not_require_barrier(inline):
+
+    # {{{ provided by isuruf in https://github.com/inducer/loopy/issues/578
+
+    fft_knl = lp.make_function(
+        [
+            "{ [i] : 0 <= i <= 1322 }",
+            "{ [ifft_0] : 0 <= ifft_0 <= 188 }",
+            "{ [iN1_0] : 0 <= iN1_0 <= 6 }",
+            "{ [iN1_sum_0] : 0 <= iN1_sum_0 <= 6 }",
+            "{ [iN2_0] : iN2_0 = 0 }",
+            "{ [i_0] : 0 <= i_0 <= 1322 }",
+            "{ [i2_0] : 0 <= i2_0 <= 1322 }",
+            "{ [ifft_1] : 0 <= ifft_1 <= 26 }",
+            "{ [iN1_1] : 0 <= iN1_1 <= 6 }",
+            "{ [iN1_sum_1] : 0 <= iN1_sum_1 <= 6 }",
+            "{ [iN2_1] : 0 <= iN2_1 <= 6 }",
+            "{ [i_1] : 0 <= i_1 <= 1322 }",
+            "{ [i2_1] : 0 <= i2_1 <= 1322 }",
+            "{ [ifft_2] : 0 <= ifft_2 <= 8 }",
+            "{ [iN1_2] : 0 <= iN1_2 <= 2 }",
+            "{ [iN1_sum_2] : 0 <= iN1_sum_2 <= 2 }",
+            "{ [iN2_2] : 0 <= iN2_2 <= 48 }",
+            "{ [i_2] : 0 <= i_2 <= 1322 }",
+            "{ [i2_2] : 0 <= i2_2 <= 1322 }",
+            "{ [ifft_3] : 0 <= ifft_3 <= 2 }",
+            "{ [iN1_3] : 0 <= iN1_3 <= 2 }",
+            "{ [iN1_sum_3] : 0 <= iN1_sum_3 <= 2 }",
+            "{ [iN2_3] : 0 <= iN2_3 <= 146 }",
+            "{ [i_3] : 0 <= i_3 <= 1322 }",
+            "{ [i2_3] : 0 <= i2_3 <= 1322 }",
+            "{ [ifft_4] : ifft_4 = 0 }",
+            "{ [iN1_4] : 0 <= iN1_4 <= 2 }",
+            "{ [iN1_sum_4] : 0 <= iN1_sum_4 <= 2 }",
+            "{ [iN2_4] : 0 <= iN2_4 <= 440 }",
+            "{ [i_4] : 0 <= i_4 <= 1322 }",
+            "{ [i2_4] : 0 <= i2_4 <= 1322 }",
+        ],
+        """
+        exp_table[i] = exp((-0.004749195243521985j)*i) {id=exp_table}
+        temp[i_0] = x[i_0] {id=copy_0, dep=exp_table}
+        x[i2_0] = 0 {id=reset_0, dep=copy_0}
+        table_idx_0 = 189*iN1_sum_0*(iN2_0 + iN1_0) {id=idx_0, dep=reset_0}
+        exp_0 = exp_table[table_idx_0 % 1323] {id=exp_0, dep=idx_0:exp_table}
+        x[ifft_0 + 189*(iN1_0 + iN2_0)] = x[ifft_0 + 189*(iN1_0 + iN2_0)] + exp_0*temp[ifft_0 + 189*(iN2_0*7 + iN1_sum_0)] {id=update_0, dep=exp_0}
+        temp[i_1] = x[i_1] {id=copy_1, dep=update_0}
+        x[i2_1] = 0 {id=reset_1, dep=copy_1}
+        table_idx_1 = 27*iN1_sum_1*(iN2_1 + 7*iN1_1) {id=idx_1, dep=reset_1}
+        exp_1 = exp_table[table_idx_1 % 1323] {id=exp_1, dep=idx_1:exp_table}
+        x[ifft_1 + 27*(iN1_1*7 + iN2_1)] = x[ifft_1 + 27*(iN1_1*7 + iN2_1)] + exp_1*temp[ifft_1 + 27*(iN2_1*7 + iN1_sum_1)] {id=update_1, dep=exp_1}
+        temp[i_2] = x[i_2] {id=copy_2, dep=update_1}
+        x[i2_2] = 0 {id=reset_2, dep=copy_2}
+        table_idx_2 = 9*iN1_sum_2*(iN2_2 + 49*iN1_2) {id=idx_2, dep=reset_2}
+        exp_2 = exp_table[table_idx_2 % 1323] {id=exp_2, dep=exp_table:idx_2}
+        x[ifft_2 + 9*(iN1_2*49 + iN2_2)] = x[ifft_2 + 9*(iN1_2*49 + iN2_2)] + exp_2*temp[ifft_2 + 9*(iN2_2*3 + iN1_sum_2)] {id=update_2, dep=exp_2}
+        temp[i_3] = x[i_3] {id=copy_3, dep=update_2}
+        x[i2_3] = 0 {id=reset_3, dep=copy_3}
+        table_idx_3 = 3*iN1_sum_3*(iN2_3 + 147*iN1_3) {id=idx_3, dep=reset_3}
+        exp_3 = exp_table[table_idx_3 % 1323] {id=exp_3, dep=exp_table:idx_3}
+        x[ifft_3 + 3*(iN1_3*147 + iN2_3)] = x[ifft_3 + 3*(iN1_3*147 + iN2_3)] + exp_3*temp[ifft_3 + 3*(iN2_3*3 + iN1_sum_3)] {id=update_3, dep=exp_3}
+        temp[i_4] = x[i_4] {id=copy_4, dep=update_3}
+        x[i2_4] = 0 {id=reset_4, dep=copy_4}
+        table_idx_4 = iN1_sum_4*(iN2_4 + 441*iN1_4) {id=idx_4, dep=reset_4}
+        exp_4 = exp_table[table_idx_4 % 1323] {id=exp_4, dep=exp_table:idx_4}
+        x[ifft_4 + iN1_4*441 + iN2_4] = x[ifft_4 + iN1_4*441 + iN2_4] + exp_4*temp[ifft_4 + iN2_4*3 + iN1_sum_4] {id=update_4, dep=exp_4}
+        """,  # noqa: E501
+        [
+            lp.GlobalArg(
+                name="x", dtype=np.complex128,
+                shape=(1323,), for_atomic=False),
+            lp.TemporaryVariable(
+                name="exp_table",
+                dtype=np.complex128,
+                shape=(1323,), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="temp",
+                dtype=np.complex128,
+                shape=(1323,), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="table_idx_0",
+                dtype=np.uint32,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="exp_0",
+                dtype=np.complex128,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="table_idx_1",
+                dtype=np.uint32,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="exp_1",
+                dtype=np.complex128,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="table_idx_2",
+                dtype=np.uint32,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="exp_2",
+                dtype=np.complex128,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="table_idx_3",
+                dtype=np.uint32,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="exp_3",
+                dtype=np.complex128,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="table_idx_4",
+                dtype=np.uint32,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            lp.TemporaryVariable(
+                name="exp_4",
+                dtype=np.complex128,
+                shape=(), for_atomic=False,
+                address_space=lp.auto,
+                read_only=False,
+                ),
+            ], name="fft")
+    loopy_kernel_knl = lp.make_kernel(
+        [
+            "{ [i] : 0 <= i <= 1322 }",
+            "[m] -> { [j_outer, j_inner]"
+            " : j_inner >= 0 and -64j_outer <= j_inner <= 63"
+            " and j_inner < m - 64j_outer }",
+        ],
+        """
+        [i]: y[j_inner + j_outer*64, i] = fft([i]: y[j_inner + j_outer*64, i])
+        """, [
+            lp.ValueArg(
+                name="m",
+                dtype=None),
+            lp.GlobalArg(
+                name="y", dtype=None,
+                shape=lp.auto),
+            ],
+        iname_slab_increments={"j_outer": (0, 0)})
+
+    loopy_kernel_knl = lp.tag_inames(loopy_kernel_knl, "j_outer:g.0")
+    t_unit = lp.merge([fft_knl, loopy_kernel_knl])
+    if inline:
+        t_unit = lp.inline_callable_kernel(t_unit, "fft")
+
+    # generate code to ensure that we don't emit spurious missing barrier
+    print(lp.generate_code_v2(t_unit).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
