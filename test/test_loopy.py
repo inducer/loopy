@@ -3275,6 +3275,25 @@ def test_obj_tagged_is_persistent_hashable():
     assert lkb(ObjTagged(MyTag())) == lkb(ObjTagged(MyTag()))
 
 
+def test_barrier_insertion_hw_axes_with_offset():
+    t_unit = lp.make_kernel(
+        ["{[i]: 1<=i<17}",
+         "{[j]: 0<=j<16}"],
+        """
+        <> tmp[i] = i      {id=w_tmp}
+        out[j] = 2*tmp[j]  {id=w_out}
+        """)
+
+    t_unit = lp.set_temporary_address_space(t_unit, "tmp", "local")
+
+    t_unit = lp.tag_inames(t_unit, {"i": "l.0", "j": "l.0"})
+    t_unit = lp.preprocess_kernel(t_unit)
+    knl = lp.get_one_linearized_kernel(t_unit["loopy_kernel"],
+                                       t_unit.callables_table)
+
+    assert barrier_between(knl, "w_tmp", "w_out")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
