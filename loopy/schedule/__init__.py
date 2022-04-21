@@ -1499,7 +1499,7 @@ class DependencyTracker:
     .. automethod:: gen_dependencies_with_target_at
     """
 
-    def __init__(self, kernel, var_kind, reverse):
+    def __init__(self, kernel, callables_table, var_kind, reverse):
         """
         :arg var_kind: "global" or "local", the kind of variable based on which
             barrier-needing dependencies should be found.
@@ -1531,8 +1531,8 @@ class DependencyTracker:
         self.reverse = reverse
         self.var_kind = var_kind
 
-        from loopy.symbolic import AccessRangeOverlapChecker
-        self.overlap_checker = AccessRangeOverlapChecker(kernel)
+        from loopy.schedule.tools import WriteRaceChecker
+        self.write_race_checker = WriteRaceChecker(kernel, callables_table)
 
         if var_kind == "local":
             self.relevant_vars = kernel.local_var_names()
@@ -1654,7 +1654,7 @@ class DependencyTracker:
                     race_var, = src_race_vars
 
                     if not (
-                        self.overlap_checker.do_access_ranges_overlap_conservative(
+                        self.write_race_checker.do_accesses_result_in_races(
                                 target.id, tgt_dir, source_id, src_dir, race_var)):
                         continue
 
@@ -1779,7 +1779,8 @@ def append_barrier_or_raise_error(kernel_name, schedule, dep, verify_only):
             originating_insn_id=None))
 
 
-def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0):
+def insert_barriers(kernel, callables_table, schedule, synchronization_kind,
+                    verify_only, level=0):
     """
     :arg synchronization_kind: "local" or "global".
         The :attr:`Barrier.synchronization_kind` to be inserted. Generally, this
@@ -1793,7 +1794,8 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
     # {{{ insert barriers at outermost scheduling level
 
     def insert_barriers_at_outer_level(schedule, reverse=False):
-        dep_tracker = DependencyTracker(kernel, var_kind=synchronization_kind,
+        dep_tracker = DependencyTracker(kernel, callables_table,
+                                        var_kind=synchronization_kind,
                                         reverse=reverse)
 
         if reverse:
@@ -1896,9 +1898,9 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
 
         if isinstance(sched_item, EnterLoop):
             subloop, new_i = gather_schedule_block(schedule, i)
-            new_subloop = insert_barriers(
-                    kernel, subloop[1:-1], synchronization_kind, verify_only,
-                    level + 1)
+            new_subloop = insert_barriers(kernel, callables_table,
+                                          subloop[1:-1], synchronization_kind,
+                                          verify_only, level + 1)
             result.append(subloop[0])
             result.extend(new_subloop)
             result.append(subloop[-1])
@@ -2080,11 +2082,13 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
             if (gsize or lsize):
                 if not kernel.options.disable_global_barriers:
                     logger.debug("%s: barrier insertion: global" % kernel.name)
-                    gen_sched = insert_barriers(kernel, gen_sched,
-                            synchronization_kind="global", verify_only=True)
+                    gen_sched = insert_barriers(kernel, callables_table, gen_sched,
+                            synchronization_kind="global",
+                            verify_only=(not
+                                kernel.options.insert_gbarriers))
 
                 logger.debug("%s: barrier insertion: local" % kernel.name)
-                gen_sched = insert_barriers(kernel, gen_sched,
+                gen_sched = insert_barriers(kernel, callables_table, gen_sched,
                     synchronization_kind="local", verify_only=False)
                 logger.debug("%s: barrier insertion: done" % kernel.name)
 

@@ -122,6 +122,7 @@ class UnresolvedCallCollector(CombineMapper):
     map_function_symbol = map_constant
     map_tagged_variable = map_constant
     map_type_cast = map_constant
+    map_nan = map_constant
 
 
 @for_each_kernel

@@ -154,101 +154,8 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
         fetch_outer_inames=None,
         prefetch_insn_id=None,
         within=None):
-    """Prefetch all accesses to the variable *var_name*, with all accesses
-    being swept through *sweep_inames*.
+    """See :func:`add_prefetch` for detailed, user-facing documentation."""
 
-    :arg var_name: A string, the name of the variable being prefetched.
-        This may be a 'tagged variable name' (such as ``field$mytag``
-        to restrict the effect of the operation to only variable accesses
-        with a matching tag.
-
-        This may also be a subscripted version of the variable, in which
-        case this access dictates the footprint that is prefetched,
-        e.g. ``A[:,:]`` or ``field[i,j,:,:]``. In this case, accesses
-        in the kernel are disregarded.
-
-    :arg sweep_inames: A list of inames, or a comma-separated string of them.
-        This routine 'sweeps' all accesses to *var_name* through all allowed
-        values of the *sweep_inames* to generate a footprint. All values
-        in this footprint are then stored in a temporary variable, and
-        the original variable accesses replaced with accesses to this
-        temporary.
-
-    :arg dim_arg_names: List of names representing each fetch axis.
-        These names show up as inames in the generated fetch code
-
-    :arg default_tag: The :ref:`implementation tag <iname-tags>` to
-        assign to the inames driving the prefetch code. Use *None* to
-        leave them undefined (to assign them later by hand). The current
-        default will make them local axes and automatically split them to
-        fit the work group size, but this default will disappear in favor
-        of simply leaving them untagged in 2019.x. For 2018.x, a warning
-        will be issued if no *default_tag* is specified.
-
-    :arg rule_name: base name of the generated temporary variable.
-    :arg temporary_name: The name of the temporary to be used.
-    :arg temporary_address_space: The :class:`AddressSpace` to use for the
-        temporary.
-    :arg footprint_subscripts: A list of tuples indicating the index (i.e.
-        subscript) tuples used to generate the footprint.
-
-        If only one such set of indices is desired, this may also be specified
-        directly by putting an index expression into *var_name*. Substitutions
-        such as those occurring in dimension splits are recorded and also
-        applied to these indices.
-
-    :arg fetch_bounding_box: To fit within :mod:`loopy`'s execution model,
-        the 'footprint' of the fetch currently has to be a convex set.
-        Sometimes this is not the case, e.g. for a high-order stencil::
-
-              o
-              o
-            ooooo
-              o
-              o
-
-        The footprint of the stencil when 'swept' over a base domain
-        would look like this, and because of the 'missing corners',
-        this set is not convex::
-
-              oooooooooo
-              oooooooooo
-            oooooooooooooo
-            oooooooooooooo
-            oooooooooooooo
-            oooooooooooooo
-              oooooooooo
-              oooooooooo
-
-        Passing ``fetch_bounding_box=True`` gives :mod:`loopy` permission
-        to instead fetch the 'bounding box' of the footprint, i.e.
-        this set in the stencil example::
-
-            OOooooooooooOO
-            OOooooooooooOO
-            oooooooooooooo
-            oooooooooooooo
-            oooooooooooooo
-            oooooooooooooo
-            OOooooooooooOO
-            OOooooooooooOO
-
-        Note the added corners marked with "``O``". The resulting footprint is
-        guaranteed to be convex.
-
-
-    :arg fetch_outer_inames: The inames within which the fetch
-        instruction is nested. If *None*, make an educated guess.
-
-    :arg fetch_insn_id: The ID of the instruction generated to perform the
-        prefetch.
-
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match` to select the instructions where
-        *var_name* is to be prefetched.
-
-    This function internally uses :func:`extract_subst` and :func:`precompute`.
-    """
     assert isinstance(kernel, LoopKernel)
     if sweep_inames is None:
         sweep_inames = []
@@ -383,6 +290,101 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
 
 
 def add_prefetch(program, *args, **kwargs):
+    """Prefetch all accesses to the variable *var_name*, with all accesses
+    being swept through *sweep_inames*.
+
+    :arg var_name: A string, the name of the variable being prefetched.
+        This may be a 'tagged variable name' (such as ``field$mytag``
+        to restrict the effect of the operation to only variable accesses
+        with a matching tag.
+
+        This may also be a subscripted version of the variable, in which
+        case this access dictates the footprint that is prefetched,
+        e.g. ``A[:,:]`` or ``field[i,j,:,:]``. In this case, accesses
+        in the kernel are disregarded.
+
+    :arg sweep_inames: A list of inames, or a comma-separated string of them.
+        This routine 'sweeps' all accesses to *var_name* through all allowed
+        values of the *sweep_inames* to generate a footprint. All values
+        in this footprint are then stored in a temporary variable, and
+        the original variable accesses replaced with accesses to this
+        temporary.
+
+    :arg dim_arg_names: List of names representing each fetch axis.
+        These names show up as inames in the generated fetch code
+
+    :arg default_tag: The :ref:`implementation tag <iname-tags>` to
+        assign to the inames driving the prefetch code. Use *None* to
+        leave them undefined (to assign them later by hand). The current
+        default will make them local axes and automatically split them to
+        fit the work group size, but this default will disappear in favor
+        of simply leaving them untagged in 2019.x. For 2018.x, a warning
+        will be issued if no *default_tag* is specified.
+
+    :arg rule_name: base name of the generated temporary variable.
+    :arg temporary_name: The name of the temporary to be used.
+    :arg temporary_address_space: The :class:`AddressSpace` to use for the
+        temporary.
+    :arg footprint_subscripts: A list of tuples indicating the index (i.e.
+        subscript) tuples used to generate the footprint.
+
+        If only one such set of indices is desired, this may also be specified
+        directly by putting an index expression into *var_name*. Substitutions
+        such as those occurring in dimension splits are recorded and also
+        applied to these indices.
+
+    :arg fetch_bounding_box: To fit within :mod:`loopy`'s execution model,
+        the 'footprint' of the fetch currently has to be a convex set.
+        Sometimes this is not the case, e.g. for a high-order stencil::
+
+              o
+              o
+            ooooo
+              o
+              o
+
+        The footprint of the stencil when 'swept' over a base domain
+        would look like this, and because of the 'missing corners',
+        this set is not convex::
+
+              oooooooooo
+              oooooooooo
+            oooooooooooooo
+            oooooooooooooo
+            oooooooooooooo
+            oooooooooooooo
+              oooooooooo
+              oooooooooo
+
+        Passing ``fetch_bounding_box=True`` gives :mod:`loopy` permission
+        to instead fetch the 'bounding box' of the footprint, i.e.
+        this set in the stencil example::
+
+            OOooooooooooOO
+            OOooooooooooOO
+            oooooooooooooo
+            oooooooooooooo
+            oooooooooooooo
+            oooooooooooooo
+            OOooooooooooOO
+            OOooooooooooOO
+
+        Note the added corners marked with "``O``". The resulting footprint is
+        guaranteed to be convex.
+
+
+    :arg fetch_outer_inames: The inames within which the fetch
+        instruction is nested. If *None*, make an educated guess.
+
+    :arg fetch_insn_id: The ID of the instruction generated to perform the
+        prefetch.
+
+    :arg within: a stack match as understood by
+        :func:`loopy.match.parse_stack_match` to select the instructions where
+        *var_name* is to be prefetched.
+
+    This function internally uses :func:`extract_subst` and :func:`precompute`.
+    """
     assert isinstance(program, TranslationUnit)
 
     new_callables = {}
