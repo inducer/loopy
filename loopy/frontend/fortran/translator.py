@@ -47,6 +47,10 @@ class SubscriptIndexAdjuster(IdentityMapper):
 
     def __init__(self, scope):
         self.scope = scope
+        super().__init__()
+
+    def get_cache_key(self, expr):
+        return super().get_cache_key(expr) + (self.scope,)
 
     def map_subscript(self, expr):
         from pymbolic.primitives import Variable

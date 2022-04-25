@@ -34,21 +34,23 @@ from pytools.tag import Taggable
 import pymbolic.primitives as p
 
 from pymbolic.mapper import (
-        CombineMapper as CombineMapperBase,
-        IdentityMapper as IdentityMapperBase,
-        WalkMapper as WalkMapperBase,
+        CachedCombineMapper as CombineMapperBase,
+        CachedIdentityMapper as IdentityMapperBase,
+        IdentityMapper as UncachedIdentityMapperBase,
+        CachedWalkMapper as WalkMapperBase,
+        WalkMapper as UncachedWalkMapperBase,
         CallbackMapper as CallbackMapperBase,
         CSECachingMapperMixin,
         )
 import immutables
 from pymbolic.mapper.evaluator import \
-        EvaluationMapper as EvaluationMapperBase
+        CachedEvaluationMapper as EvaluationMapperBase
 from pymbolic.mapper.substitutor import \
-        SubstitutionMapper as SubstitutionMapperBase
+        CachedSubstitutionMapper as SubstitutionMapperBase
 from pymbolic.mapper.stringifier import \
         StringifyMapper as StringifyMapperBase
 from pymbolic.mapper.dependency import \
-        DependencyMapper as DependencyMapperBase
+        CachedDependencyMapper as DependencyMapperBase
 from pymbolic.mapper.coefficient import \
         CoefficientCollector as CoefficientCollectorBase
 from pymbolic.mapper.unifier import UnidirectionalUnifier \
@@ -189,6 +191,11 @@ class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
 
 
+class UncachedIdentityMapper(UncachedIdentityMapperBase,
+                             IdentityMapperMixin):
+    pass
+
+
 class PartialEvaluationMapper(
         EvaluationMapperBase, CSECachingMapperMixin, IdentityMapperMixin):
     def map_variable(self, expr):
@@ -198,7 +205,7 @@ class PartialEvaluationMapper(
         return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
 
-class WalkMapper(WalkMapperBase):
+class WalkMapperMixin:
     def map_literal(self, expr, *args, **kwargs):
         self.visit(expr, *args, **kwargs)
 
@@ -251,7 +258,15 @@ class WalkMapper(WalkMapperBase):
     map_fortran_division = WalkMapperBase.map_quotient
 
 
-class CallbackMapper(CallbackMapperBase, IdentityMapper):
+class WalkMapper(WalkMapperBase, WalkMapperMixin):
+    pass
+
+
+class UncachedWalkMapper(UncachedWalkMapperBase, WalkMapperMixin):
+    pass
+
+
+class CallbackMapper(IdentityMapperMixin, CallbackMapperBase):
     map_reduction = CallbackMapperBase.map_constant
     map_resolved_function = CallbackMapperBase.map_constant
 
@@ -449,6 +464,7 @@ class DependencyMapper(DependencyMapperBase):
 class SubstitutionRuleExpander(IdentityMapper):
     def __init__(self, rules):
         self.rules = rules
+        super().__init__()
 
     def __call__(self, expr, *args, **kwargs):
         if not self.rules:
@@ -1118,6 +1134,7 @@ class ExpansionState(ImmutableRecord):
 class SubstitutionRuleRenamer(IdentityMapper):
     def __init__(self, renames):
         self.renames = renames
+        super().__init__()
 
     def map_call(self, expr):
         if not isinstance(expr.function, p.Variable):
@@ -1282,6 +1299,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
     def __init__(self, rule_mapping_context):
         self.rule_mapping_context = rule_mapping_context
+        super().__init__()
 
     def map_variable(self, expr, expn_state, *args, **kwargs):
         name, tags = parse_tagged_name(expr)
@@ -1356,7 +1374,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
         from loopy.kernel.data import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
-        return IdentityMapper.__call__(self, expr,
+        return super().__call__(expr,
                 ExpansionState(
                     kernel=kernel,
                     instruction=insn,
@@ -1514,7 +1532,7 @@ class VarToTaggedVarMapper(IdentityMapper):
                     expr.name[dollar_idx+1:])
 
 
-class FunctionToPrimitiveMapper(IdentityMapper):
+class FunctionToPrimitiveMapper(UncachedIdentityMapper):
     """Looks for invocations of a function called 'cse' or 'reduce' and
     turns those into the actual pymbolic primitives used for that.
     """
@@ -1717,6 +1735,7 @@ class CoefficientCollector(CoefficientCollectorBase):
 class ArrayAccessFinder(CombineMapper):
     def __init__(self, tgt_vector_name=None):
         self.tgt_vector_name = tgt_vector_name
+        super().__init__()
 
     def combine(self, values):
         from pytools import flatten
@@ -2254,9 +2273,10 @@ def set_to_cond_expr(isl_set):
 
 # {{{ Reduction callback mapper
 
-class ReductionCallbackMapper(IdentityMapper):
+class ReductionCallbackMapper(UncachedIdentityMapper):
     def __init__(self, callback):
         self.callback = callback
+        super().__init__()
 
     def map_reduction(self, expr, **kwargs):
         result = self.callback(expr, self.rec, **kwargs)
@@ -2313,6 +2333,7 @@ class IndexVariableFinder(CombineMapper):
 class WildcardToUniqueVariableMapper(IdentityMapper):
     def __init__(self, unique_var_name_factory):
         self.unique_var_name_factory = unique_var_name_factory
+        super().__init__()
 
     def map_wildcard(self, expr):
         from pymbolic import var
@@ -2487,6 +2508,7 @@ class BatchedAccessMapMapper(WalkMapper):
         self.bad_subscripts = defaultdict(list)
         self._overestimate = overestimate
         self._var_names = set(var_names)
+        super().__init__()
 
     def get_access_range(self, var_name):
         loops_to_amaps = self.access_maps[var_name]
