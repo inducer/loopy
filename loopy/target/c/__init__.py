@@ -894,13 +894,14 @@ class CFamilyASTBuilder(ASTBuilderBase):
         else:
             name = Value("static void", name)
 
+        idis = self.preprocess_idis(
+            kernel, codegen_result.get_idis_for_subkernel(kernel, subkernel))
+
         return FunctionDeclarationWrapper(
                 FunctionDeclaration(
                     name,
-                    [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                     for idi in self.preprocess_idis(
-                         codegen_state.kernel,
-                         codegen_state.implemented_data_info)]
+                    [self.idi_to_cgen_declarator(kernel, idi)
+                     for idi in idis]
                 ))
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):

@@ -22,7 +22,6 @@ THE SOFTWARE.
 
 import islpy as isl
 from loopy.kernel.data import AddressSpace
-import islpy as isl
 import enum
 from loopy.diagnostic import LoopyError
 from loopy.tools import Tree
