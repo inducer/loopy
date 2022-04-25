@@ -312,13 +312,13 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             if schedule is not None:
                 # these should not both be present
                 raise ValueError(
-                    "received both `schedule` and `linearization` args, "
-                    "'LoopKernel.linearization' is deprecated. "
-                    "Use 'LoopKernel.linearization'.")
+                    "Received both 'schedule' and 'linearization' args. "
+                    "'schedule' is deprecated and will be removed "
+                    "in 2022. Pass 'linearization' only instead.")
         elif schedule is not None:
             warn(
-                "'LoopKernel.linearization' is deprecated. "
-                "Use 'LoopKernel.linearization'.",
+                "'schedule' is deprecated and will be removed in 2022. "
+                "Use 'linearization' instead.",
                 DeprecationWarning, stacklevel=2)
             linearization = schedule
 
@@ -658,9 +658,8 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     @property
     def schedule(self):
         warn(
-                "LoopKernel.linearization is deprecated. "
-                "Call LoopKernel.linearization instead, "
-                "will be unsupported in 2022.",
+                "'LoopKernel.schedule' is deprecated and will be removed in 2022. "
+                "Call 'LoopKernel.linearization' instead.",
                 DeprecationWarning, stacklevel=2)
         return self.linearization
 
