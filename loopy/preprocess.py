@@ -389,11 +389,11 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 
     def __call__(self, expr, kernel, insn, assignees=None):
         from loopy.kernel.data import InstructionBase
-        from loopy.symbolic import IdentityMapper, ExpansionState
+        from loopy.symbolic import UncachedIdentityMapper, ExpansionState
         import immutables
         assert insn is None or isinstance(insn, InstructionBase)
 
-        return IdentityMapper.__call__(self, expr,
+        return UncachedIdentityMapper.__call__(self, expr,
                 ExpansionState(
                     kernel=kernel,
                     instruction=insn,

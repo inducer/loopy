@@ -546,6 +546,7 @@ class _AccessCheckMapper(WalkMapper):
     def __init__(self, kernel, callables_table):
         self.kernel = kernel
         self.callables_table = callables_table
+        super().__init__()
 
     @memoize_method
     def _make_slab(self, space, iname, start, stop):

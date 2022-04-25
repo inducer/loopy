@@ -122,7 +122,8 @@ def extract_subst(kernel, subst_name, template, parameters=(), within=None):
             # can't nest, don't recurse
 
     from loopy.symbolic import (
-            CallbackMapper, WalkMapper, IdentityMapper)
+            CallbackMapper, UncachedWalkMapper as WalkMapper,
+            IdentityMapper)
     dfmapper = CallbackMapper(gather_exprs, WalkMapper())
 
     from loopy.kernel.instruction import MultiAssignmentBase

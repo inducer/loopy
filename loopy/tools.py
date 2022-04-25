@@ -25,7 +25,7 @@ import collections.abc as abc
 import numpy as np
 from pytools import memoize_method, ProcessLogger
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
-from loopy.symbolic import (WalkMapper as LoopyWalkMapper,
+from loopy.symbolic import (UncachedWalkMapper as LoopyWalkMapper,
                             RuleAwareIdentityMapper)
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
@@ -59,6 +59,10 @@ class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
 
     See also :meth:`LoopyKeyBuilder.update_for_pymbolic_expression`.
     """
+
+    def __init__(self, key_hash):
+        LoopyWalkMapper.__init__(self)
+        PersistentHashWalkMapperBase.__init__(self, key_hash)
 
     def map_reduction(self, expr, *args):
         if not self.visit(expr):
