@@ -685,7 +685,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
 
     def map_if(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
-        return "({} ? {} : {})".format(
+        return "(({}) ? {} : {})".format(
                 self.rec(expr.condition, PREC_NONE),
                 self.rec(expr.then, PREC_NONE),
                 self.rec(expr.else_, PREC_NONE),
