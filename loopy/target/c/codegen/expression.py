@@ -687,7 +687,9 @@ class CExpressionToCodeMapper(RecursiveMapper):
         from pymbolic.mapper.stringifier import PREC_NONE, PREC_CALL
         return "({} ? {} : {})".format(
                 # Force parentheses around the condition to prevent compiler
-                # warnings regarding precedence.
+                # warnings regarding precedence such as:
+                # "warning: pocl-cache/tempfile_BYDWne.cl:96:2241: operator '?:'
+                # has lower precedence than '*'; '*' will be evaluated first"
                 self.rec(expr.condition, PREC_CALL),
                 self.rec(expr.then, PREC_NONE),
                 self.rec(expr.else_, PREC_NONE),
