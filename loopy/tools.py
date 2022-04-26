@@ -625,6 +625,12 @@ class Optional:
                 key_hash,
                 (self._value,) if self.has_value else ())
 
+    def __hash__(self):
+        if not self.has_value:
+            return hash((type(self), False))
+        else:
+            return hash((self.has_value, self._value))
+
 # }}}
 
 
