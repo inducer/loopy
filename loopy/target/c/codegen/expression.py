@@ -684,9 +684,13 @@ class CExpressionToCodeMapper(RecursiveMapper):
     map_max = map_min
 
     def map_if(self, expr, enclosing_prec):
-        from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.mapper.stringifier import PREC_NONE, PREC_CALL
         return "({} ? {} : {})".format(
-                self.rec(expr.condition, PREC_NONE),
+                # Force parentheses around the condition to prevent compiler
+                # warnings regarding precedence (e.g. with POCL 1.8/LLVM 12):
+                # "warning: pocl-cache/tempfile_BYDWne.cl:96:2241: operator '?:'
+                # has lower precedence than '*'; '*' will be evaluated first"
+                self.rec(expr.condition, PREC_CALL),
                 self.rec(expr.then, PREC_NONE),
                 self.rec(expr.else_, PREC_NONE),
                 )
