@@ -80,7 +80,7 @@ def test_empty_reduction(ctx_factory):
     knl = lp.preprocess_kernel(knl)
     print(knl)
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
     evt, (a,) = knl(queue)
 
     assert (a.get() == 0).all()
@@ -307,7 +307,7 @@ def test_argmax(ctx_factory):
 
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
     print(lp.preprocess_kernel(knl))
-    knl = lp.set_options(knl, write_cl=True, highlight_cl=True)
+    knl = lp.set_options(knl, write_code=True, highlight_cl=True)
 
     a = np.random.randn(10000).astype(dtype)
     evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
@@ -489,7 +489,7 @@ def test_reduction_in_conditional(ctx_factory):
         y[i] = 1729 if (sum(j, j) == 0) else sum(k, k)
         """)
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     knl = lp.preprocess_program(knl)
 

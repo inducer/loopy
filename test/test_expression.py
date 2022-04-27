@@ -345,8 +345,9 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
 
     if target == lp.PyOpenCLTarget:
         cl_ctx = ctx_factory()
-        knl = lp.set_options(knl, "write_cl")
-        evt, lp_values = knl(cl.CommandQueue(cl_ctx), out_host=True)
+        knl = lp.set_options(knl, write_code=True)
+        with cl.CommandQueue(cl_ctx) as queue:
+            evt, lp_values = knl(queue, out_host=True)
     elif target == lp.ExecutableCTarget:
         evt, lp_values = knl()
     else:
@@ -386,7 +387,7 @@ def test_sci_notation_literal(ctx_factory):
          """ { [i]: 0<=i<12 } """,
          """ out[i] = 1e-12""")
 
-    set_kernel = lp.set_options(set_kernel, write_cl=True)
+    set_kernel = lp.set_options(set_kernel, write_code=True)
 
     evt, (out,) = set_kernel(queue)
 
@@ -403,7 +404,7 @@ def test_indexof(ctx_factory):
          [lp.GlobalArg("out", is_input=False, shape=lp.auto)]
     )
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     (evt, (out,)) = knl(queue)
     out = out.get()
@@ -427,7 +428,7 @@ def test_indexof_vec(ctx_factory):
 
     knl = lp.tag_inames(knl, {"i": "vec"})
     knl = lp.tag_data_axes(knl, "out", "vec,c,c")
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     (evt, (out,)) = knl(queue)
     #out = out.get()
@@ -525,9 +526,10 @@ def test_complex_support(ctx_factory, target):
     kwargs = {"in1": in1, "in2": in2}
 
     if target == lp.PyOpenCLTarget:
-        knl = lp.set_options(knl, "write_cl")
+        knl = lp.set_options(knl, write_code=True)
         cl_ctx = ctx_factory()
-        evt, out = knl(cl.CommandQueue(cl_ctx), **kwargs)
+        with cl.CommandQueue(cl_ctx) as queue:
+            evt, out = knl(queue, **kwargs)
     elif target == lp.ExecutableCTarget:
         evt, out = knl(**kwargs)
     else:

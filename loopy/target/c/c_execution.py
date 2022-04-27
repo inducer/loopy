@@ -459,15 +459,15 @@ class CKernelExecutor(KernelExecutorBase):
         host_code = codegen_result.host_code()
         all_code = "\n".join([dev_code, "", host_code])
 
-        if self.program[entrypoint].options.write_cl:
+        if self.program[entrypoint].options.write_code:
             output = all_code
             if self.program[entrypoint].options.highlight_cl:
                 output = get_highlighted_code(output)
 
-            if self.program[entrypoint].options.write_cl is True:
+            if self.program[entrypoint].options.write_code is True:
                 print(output)
             else:
-                with open(self.program[entrypoint].options.write_cl, "w") as outf:
+                with open(self.program[entrypoint].options.write_code, "w") as outf:
                     outf.write(output)
 
         if self.program[entrypoint].options.edit_cl:
