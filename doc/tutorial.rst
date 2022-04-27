@@ -183,7 +183,7 @@ by passing :attr:`loopy.Options.write_code`.
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -391,7 +391,7 @@ Let us take a look at the generated code for the above kernel:
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> knl = lp.prioritize_loops(knl, "i,j")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -442,7 +442,7 @@ Now the intended code is generated and our test passes.
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -497,7 +497,7 @@ ambiguous.
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -555,7 +555,7 @@ Consider this example:
     ...     "a[i] = 0", assumptions="n>=1")
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -586,7 +586,7 @@ relation to loop nesting. For example, it's perfectly possible to request
     ...     "a[i] = 0", assumptions="n>=1")
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.prioritize_loops(knl, "i_inner,i_outer")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -611,7 +611,7 @@ commonly called 'loop tiling':
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.split_iname(knl, "j", 16)
     >>> knl = lp.prioritize_loops(knl, "i_outer,j_outer,i_inner")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -653,7 +653,7 @@ loop's tag to ``"unr"``:
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -728,7 +728,7 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     ...     "a[i] = 0", assumptions="n>=0")
     >>> knl = lp.split_iname(knl, "i", 128,
     ...         outer_tag="g.0", inner_tag="l.0")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -774,7 +774,7 @@ assumption:
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -802,7 +802,7 @@ enabling some cost savings:
 
     >>> knl = orig_knl
     >>> knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -898,7 +898,7 @@ memory, local to each work item.
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out1, out2) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -959,7 +959,7 @@ Consider the following example:
     ...     """)
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
     >>> knl = lp.set_temporary_address_space(knl, "a_temp", "local")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -1024,7 +1024,7 @@ transformation exists in :func:`loopy.add_prefetch`:
     ...     out[16*i_outer + i_inner] = sum(k, a[16*i_outer + i_inner])
     ...     """)
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> knl_pf = lp.add_prefetch(knl, "a")
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -1482,7 +1482,7 @@ When we ask to see the code, the issue becomes apparent:
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> from warnings import catch_warnings
     >>> with catch_warnings():
     ...     filterwarnings("always", category=lp.LoopyWarning)

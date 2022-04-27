@@ -438,7 +438,7 @@ def test_nan_support(ctx_factory, target):
         [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
         seq_dependencies=True, target=target())
 
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     if target == lp.PyOpenCLTarget:
         evt, out_dict = knl(queue)
@@ -478,7 +478,7 @@ def test_opencl_emits_ternary_operators_correctly(ctx_factory, target):
             """, seq_dependencies=True,
             target=target())
 
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     if target == lp.PyOpenCLTarget:
         evt, out_dict = knl(queue)
@@ -534,7 +534,7 @@ def test_inf_support(ctx_factory, target, dtype):
                       dtype=dtype)
          ], target=target())
 
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     if target == lp.PyOpenCLTarget:
         _, out_dict = knl(queue)
@@ -640,7 +640,7 @@ def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
         ...],
         seq_dependencies=True)
     knl = lp.tag_inames(knl, {"i": "g.0", "j": "g.0"})
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     my_allocator = RecordingAllocator(cq)
     _, out = knl(cq, allocator=my_allocator)
