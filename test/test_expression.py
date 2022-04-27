@@ -516,7 +516,7 @@ def test_complex_support(ctx_factory, target):
             ],
             target=target(),
             seq_dependencies=True)
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     n = 10
 

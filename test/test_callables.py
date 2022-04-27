@@ -171,7 +171,7 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
 
     knl = lp.merge([caller_knl, callee_knl])
 
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     if inline:
         knl = lp.inline_callable_kernel(knl, "linear_combo")
@@ -922,7 +922,7 @@ def test_non1_step_slices(ctx_factory, start, inline):
 
     t_unit = lp.merge([t_unit, callee])
 
-    t_unit = lp.set_options(t_unit, "return_dict")
+    t_unit = lp.set_options(t_unit, return_dict=True)
 
     if inline:
         t_unit = lp.inline_callable_kernel(t_unit, "squared_arange")
