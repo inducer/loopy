@@ -114,9 +114,8 @@ def test_nested_dependent_reduction(ctx_factory):
     assert (a == tgt_result).all()
 
 
-def test_multi_nested_dependent_reduction(ctx_factory):
+def test_multi_nested_dependent_reduction():
     dtype = np.dtype(np.int32)
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             [
@@ -140,15 +139,14 @@ def test_multi_nested_dependent_reduction(ctx_factory):
                 lp.ValueArg("nboxes", np.int32),
                 ],
             assumptions="ntgts>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(lp.generate_code_v2(knl).device_code())
     # FIXME: Actually test functionality.
 
 
-def test_recursive_nested_dependent_reduction(ctx_factory):
+def test_recursive_nested_dependent_reduction():
     dtype = np.dtype(np.int32)
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             [
@@ -173,7 +171,7 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
                 lp.ValueArg("nboxes", np.int32),
                 ],
             assumptions="ntgts>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(lp.generate_code_v2(knl).device_code())
     # FIXME: Actually test functionality.

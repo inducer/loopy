@@ -179,9 +179,7 @@ def test_convolution_with_nonzero_base(ctx_factory):
 # }}}
 
 
-def test_rob_stroud_bernstein(ctx_factory):
-    ctx = ctx_factory()
-
+def test_rob_stroud_bernstein():
     # NOTE: tmp would have to be zero-filled beforehand
 
     knl = lp.make_kernel(
@@ -218,7 +216,7 @@ def test_rob_stroud_bernstein(ctx_factory):
                 "..."
                 ],
             assumptions="deg>=0 and nels>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0])
+            target=lp.PyOpenCLTarget()
             )
 
     knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
@@ -234,10 +232,7 @@ def test_rob_stroud_bernstein(ctx_factory):
     print(lp.generate_code_v2(knl))
 
 
-def test_rob_stroud_bernstein_full(ctx_factory):
-    #logging.basicConfig(level=logging.DEBUG)
-    ctx = ctx_factory()
-
+def test_rob_stroud_bernstein_full():
     # NOTE: result would have to be zero-filled beforehand
 
     knl = lp.make_kernel(
@@ -298,7 +293,7 @@ def test_rob_stroud_bernstein_full(ctx_factory):
             "..."
             ],
         assumptions="deg>=0 and nels>=1",
-        target=lp.PyOpenCLTarget(ctx.devices[0])
+        target=lp.PyOpenCLTarget()
         )
 
     knl = lp.fix_parameters(knl, nqp1d=7, deg=4)

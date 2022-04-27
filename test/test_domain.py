@@ -50,14 +50,12 @@ __all__ = [
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
-def test_assume(ctx_factory):
-    ctx = ctx_factory()
-
+def test_assume():
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             "a[i] = a[i] + 1",
             [lp.GlobalArg("a", np.float32, shape="n"), "..."],
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.prioritize_loops(knl, "i_outer,i_inner")
@@ -81,7 +79,7 @@ def test_divisibility_assumption(ctx_factory):
                 lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and (exists zz: n = 16*zz)",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     ref_knl = knl
 
@@ -93,11 +91,7 @@ def test_divisibility_assumption(ctx_factory):
             parameters={"n": 16**3})
 
 
-def test_eq_constraint(ctx_factory):
-    logging.basicConfig(level=logging.INFO)
-
-    ctx = ctx_factory()
-
+def test_eq_constraint():
     knl = lp.make_kernel(
             "{[i]: 0<= i < 32}",
             [
@@ -107,16 +101,15 @@ def test_eq_constraint(ctx_factory):
                 lp.GlobalArg("a", np.float32, shape=(1000,)),
                 lp.GlobalArg("b", np.float32, shape=(1000,))
                 ],
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
     knl = lp.split_iname(knl, "i_inner", 16, outer_tag=None, inner_tag="l.0")
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_dependent_loop_bounds(ctx_factory):
+def test_dependent_loop_bounds():
     dtype = np.dtype(np.float32)
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             [
@@ -135,14 +128,13 @@ def test_dependent_loop_bounds(ctx_factory):
                 lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and row_len>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_dependent_loop_bounds_2(ctx_factory):
+def test_dependent_loop_bounds_2():
     dtype = np.dtype(np.float32)
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             [
@@ -162,7 +154,7 @@ def test_dependent_loop_bounds_2(ctx_factory):
                 lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and row_len>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
@@ -170,14 +162,13 @@ def test_dependent_loop_bounds_2(ctx_factory):
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_dependent_loop_bounds_3(ctx_factory):
+def test_dependent_loop_bounds_3():
     # The point of this test is that it shows a dependency between
     # domains that is exclusively mediated by the row_len temporary.
     # It also makes sure that row_len gets read before any
     # conditionals use it.
 
     dtype = np.dtype(np.float32)
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             [
@@ -193,7 +184,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
                 lp.GlobalArg("a", dtype, shape=("n,n"), order="C"),
                 lp.ValueArg("n", np.int32),
                 ],
-            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            target=lp.PyOpenCLTarget(),
             name="loopy_kernel")
 
     assert knl["loopy_kernel"].parents_per_domain()[1] == 0
@@ -371,14 +362,12 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
             parameters=dict(n=n))
 
 
-def test_triangle_domain(ctx_factory):
-    ctx = ctx_factory()
-
+def test_triangle_domain():
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n and i <= j}",
             "a[i,j] = 17",
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(knl)
     print(lp.generate_code_v2(knl).device_code())
