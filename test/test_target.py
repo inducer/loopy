@@ -211,7 +211,7 @@ def test_random123(ctx_factory, tp):
             """.replace("TYPE", tp))
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     evt, (out,) = knl(queue, n=n)
 
@@ -249,7 +249,7 @@ def test_clamp(ctx_factory):
             "out[i] = clamp(x[i], a, b)")
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     evt, (out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
 

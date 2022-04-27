@@ -714,7 +714,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         a_ref = a.copy()
         a_knl = a.copy()
 
-        knl = lp.set_options(knl, write_cl=True)
+        knl = lp.set_options(knl, write_code=True)
         print("TEST-----------------------------------------")
         knl(queue, a=a_knl)
         print("REF-----------------------------------------")
@@ -755,7 +755,7 @@ def test_make_copy_kernel(ctx_factory):
 
     cknl1 = lp.fix_parameters(cknl1, n2=3)
 
-    cknl1 = lp.set_options(cknl1, write_cl=True)
+    cknl1 = lp.set_options(cknl1, write_code=True)
     evt, a2 = cknl1(queue, input=a1)
 
     cknl2 = lp.make_copy_kernel("c,c,c", intermediate_format)
@@ -1457,12 +1457,12 @@ def test_finite_difference_expr_subst(ctx_factory):
                 ("f", 1, 0)
                 ])
 
-    fused_knl = lp.set_options(fused_knl, write_cl=True)
+    fused_knl = lp.set_options(fused_knl, write_code=True)
     evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
 
     fused_knl = lp.assignment_to_subst(fused_knl, "f")
 
-    fused_knl = lp.set_options(fused_knl, write_cl=True)
+    fused_knl = lp.set_options(fused_knl, write_code=True)
 
     # This is the real test here: The automatically generated
     # shape expressions are '2+n' and the ones above are 'n+2'.
@@ -1788,7 +1788,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
                 "..."
                 ])
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
     knl = lp.fix_parameters(knl, n=a.shape[0])
 
     evt, (a2,) = knl(queue, out_host=True)
@@ -1977,7 +1977,7 @@ def test_tight_loop_bounds(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     evt, (out,) = knl(queue, out_host=True)
 
@@ -2365,7 +2365,7 @@ def test_struct_assignment(ctx_factory):
             "..."],
         preambles=[("000", preamble)])
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
     knl(queue, N=200)
 
 

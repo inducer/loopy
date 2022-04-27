@@ -526,7 +526,7 @@ def test_fd_demo():
     #n = 1000
     #u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
     knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
     code, inf = lp.generate_code(knl)
     print(code)

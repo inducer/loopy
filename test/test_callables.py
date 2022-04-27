@@ -229,8 +229,8 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
         knl = lp.inline_callable_kernel(knl, "callee_fn2")
         knl = lp.inline_callable_kernel(knl, "callee_fn3")
 
-    knl = lp.set_options(knl, "write_cl")
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, write_code=True)
+    knl = lp.set_options(knl, return_dict=True)
     evt, out_dict = knl(queue, x1=x1, x2=x2, x3=x3)
 
     y1 = out_dict["y1"].get()
@@ -328,8 +328,8 @@ def test_packing_unpacking(ctx_factory, inline):
         knl = lp.inline_callable_kernel(knl, "callee_fn1")
         knl = lp.inline_callable_kernel(knl, "callee_fn2")
 
-    knl = lp.set_options(knl, "write_cl")
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, write_code=True)
+    knl = lp.set_options(knl, return_dict=True)
     evt, out_dict = knl(queue, x1=x1, x2=x2)
 
     y1 = out_dict["y1"].get()
@@ -699,7 +699,7 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
         """)
 
     knl = lp.merge([knl, call_sin])
-    knl = lp.set_options(knl, "write_cl")
+    knl = lp.set_options(knl, write_code=True)
     if inline:
         knl = lp.inline_callable_kernel(knl, "call_sin")
 

@@ -300,16 +300,16 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         dev_code = codegen_result.device_code()
 
-        if program[entrypoint].options.write_cl:
+        if program[entrypoint].options.write_code:
             #FIXME: redirect to "translation unit" level option as well.
             output = dev_code
             if self.program[entrypoint].options.highlight_cl:
                 output = get_highlighted_code(output)
 
-            if self.program[entrypoint].options.write_cl is True:
+            if self.program[entrypoint].options.write_code is True:
                 print(output)
             else:
-                with open(self.program[entrypoint].options.write_cl, "w") as outf:
+                with open(self.program[entrypoint].options.write_code, "w") as outf:
                     outf.write(output)
 
         if program[entrypoint].options.edit_cl:

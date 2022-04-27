@@ -87,7 +87,7 @@ def test_diff(ctx_factory):
     evt, (z1,) = knl(queue, x=(x + h1*dx), y=y)
     evt, (z2,) = knl(queue, x=(x + h2*dx), y=y)
 
-    dknl = lp.set_options(dknl, write_cl=True)
+    dknl = lp.set_options(dknl, write_code=True)
     evt, (df,) = dknl(queue, x=x, y=y)
 
     diff1 = (z1-z0)
