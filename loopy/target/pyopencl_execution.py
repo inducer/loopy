@@ -303,7 +303,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         if program[entrypoint].options.write_code:
             #FIXME: redirect to "translation unit" level option as well.
             output = dev_code
-            if self.program[entrypoint].options.highlight_cl:
+            if self.program[entrypoint].options.allow_terminal_colors:
                 output = get_highlighted_code(output)
 
             if self.program[entrypoint].options.write_code is True:
@@ -312,7 +312,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                 with open(self.program[entrypoint].options.write_code, "w") as outf:
                     outf.write(output)
 
-        if program[entrypoint].options.edit_cl:
+        if program[entrypoint].options.edit_code:
             #FIXME: redirect to "translation unit" level option as well.
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
@@ -322,7 +322,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         #FIXME: redirect to "translation unit" level option as well.
         cl_program = (
                 cl.Program(self.context, dev_code)
-                .build(options=program[entrypoint].options.cl_build_options))
+                .build(options=program[entrypoint].options.build_options))
 
         cl_kernels = _Kernels()
         for dp in cl_program.kernel_names.split(";"):

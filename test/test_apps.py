@@ -689,7 +689,7 @@ def test_prefetch_through_indirect_access():
     knl = lp.prioritize_loops(knl, "i,j,k")
 
     with pytest.raises(LoopyError):
-        knl = lp.add_prefetch(knl, "map1[:, j]")
+        knl = lp.add_prefetch(knl, "map1[:, j]", default_tag="l.auto")
 
 
 def test_unsigned_types_to_mod():
