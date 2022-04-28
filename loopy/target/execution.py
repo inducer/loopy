@@ -694,7 +694,7 @@ class ExecutionWrapperGeneratorBase(ABC):
 
         if options.write_wrapper:
             output = gen.get()
-            if options.highlight_wrapper:
+            if options.allow_terminal_colors:
                 output = get_highlighted_python_code(output)
 
             if options.write_wrapper is True:

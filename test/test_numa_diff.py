@@ -232,7 +232,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     hsv = tap_hsv
 
     hsv = lp.set_options(hsv,
-            cl_build_options=[
+            build_options=[
                  "-cl-denorms-are-zero",
                  "-cl-fast-relaxed-math",
                  "-cl-finite-math-only",

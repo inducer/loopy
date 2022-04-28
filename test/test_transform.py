@@ -1437,7 +1437,8 @@ def test_precompute_with_gbarrier(ctx_factory):
                              "x",
                              sweep_inames=["j1"],
                              within="writes:out1",
-                             prefetch_insn_id="x_fetch")
+                             prefetch_insn_id="x_fetch",
+                             default_tag="l.auto")
     assert "gbarrier" in t_unit.default_entrypoint.id_to_insn["x_fetch"].depends_on
 
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)

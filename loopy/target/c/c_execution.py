@@ -461,7 +461,7 @@ class CKernelExecutor(KernelExecutorBase):
 
         if self.program[entrypoint].options.write_code:
             output = all_code
-            if self.program[entrypoint].options.highlight_cl:
+            if self.program[entrypoint].options.allow_terminal_colors:
                 output = get_highlighted_code(output)
 
             if self.program[entrypoint].options.write_code is True:
@@ -470,7 +470,7 @@ class CKernelExecutor(KernelExecutorBase):
                 with open(self.program[entrypoint].options.write_code, "w") as outf:
                     outf.write(output)
 
-        if self.program[entrypoint].options.edit_cl:
+        if self.program[entrypoint].options.edit_code:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
             # update code from editor
