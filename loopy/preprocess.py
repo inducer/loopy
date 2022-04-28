@@ -390,6 +390,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
     def __call__(self, expr, kernel, insn, assignees=None):
         from loopy.kernel.data import InstructionBase
         from loopy.symbolic import IdentityMapper, ExpansionState
+        import immutables
         assert insn is None or isinstance(insn, InstructionBase)
 
         return IdentityMapper.__call__(self, expr,
@@ -397,7 +398,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context={}), assignees=assignees)
+                    arg_context=immutables.Map()), assignees=assignees)
 
     def map_kernel(self, kernel):
 

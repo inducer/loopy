@@ -40,6 +40,7 @@ from pymbolic.mapper import (
         CallbackMapper as CallbackMapperBase,
         CSECachingMapperMixin,
         )
+import immutables
 from pymbolic.mapper.evaluator import \
         EvaluationMapper as EvaluationMapperBase
 from pymbolic.mapper.substitutor import \
@@ -1084,6 +1085,25 @@ class ExpansionState(ImmutableRecord):
 
         a dict representing current argument values
     """
+    def __init__(self, kernel, instruction, stack, arg_context):
+        if not isinstance(arg_context, immutables.Map):
+            from warnings import warn
+            warn(f"Got a {type(arg_context)} for arg_context,"
+                 " expected `immutables.Map`. This is deprecated"
+                 " and will result in an error from 2023.",
+                 DeprecationWarning, stacklevel=2)
+            arg_context = immutables.Map(arg_context)
+        super().__init__(kernel=kernel,
+                         instruction=instruction,
+                         stack=stack,
+                         arg_context=arg_context)
+
+    def __hash__(self):
+        # do not try to be precise about hash of loopy kernel
+        # or the instruction as computing the hash of pymbolic
+        # expressions could have exponential complexity
+        return hash((id(self.kernel), id(self.instruction),
+                     self.stack, self.arg_context))
 
     @property
     def insn_id(self):
@@ -1298,9 +1318,9 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
         from pymbolic.mapper.substitutor import make_subst_func
         arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
-        return {
-                formal_arg_name: arg_subst_map(arg_value)
-                for formal_arg_name, arg_value in zip(arg_names, arguments)}
+        return immutables.Map({
+            formal_arg_name: arg_subst_map(arg_value)
+            for formal_arg_name, arg_value in zip(arg_names, arguments)})
 
     def map_substitution(self, name, tags, arguments, expn_state,
                          *args, **kwargs):
@@ -1341,7 +1361,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context={}))
+                    arg_context=immutables.Map()))
 
     def map_instruction(self, kernel, insn):
         return insn
