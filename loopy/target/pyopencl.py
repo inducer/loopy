@@ -847,8 +847,10 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             Line(),
             Assign("_lpy_knl", "_lpy_cl_kernels."+name),
             Assert(f"_lpy_knl.num_args == {cl_arg_count}, f'Kernel \"{name}\" "
-                   f"setup arg count ({cl_arg_count}) does not match actual arg "
-                   "count ({_lpy_knl.num_args}).'"),
+                   f"invoker argument count ({cl_arg_count}) does not match the "
+                   # No f"" here since {_lpy_knl.num_args} needs to be evaluated
+                   # at runtime, not here.
+                   "argument count of the kernel ({_lpy_knl.num_args}).'"),
             Line(),
             value_arg_code,
             arry_arg_code,
