@@ -1,5 +1,6 @@
 import numpy as np
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 knl = lp.make_kernel(
         "{ [i,k]: 0<=i<n and 0<=k<3 }",
@@ -21,9 +22,9 @@ knl = lp.add_and_infer_dtypes(knl,
 from loopy.preprocess import preprocess_kernel
 knl = preprocess_kernel(knl)
 
-from loopy.schedule import get_one_scheduled_kernel
-knl = knl.with_kernel(get_one_scheduled_kernel(knl["loopy_kernel"],
-                                               knl.callables_table))
+from loopy.schedule import get_one_linearized_kernel
+knl = knl.with_kernel(get_one_linearized_kernel(knl["loopy_kernel"],
+                                                knl.callables_table))
 
 
 # map schedule onto host or device

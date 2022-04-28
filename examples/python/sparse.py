@@ -1,5 +1,7 @@
-import loopy as lp
 import numpy as np
+
+import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 k = lp.make_kernel([
     "{ [i] : 0 <= i < m }",

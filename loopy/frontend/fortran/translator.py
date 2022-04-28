@@ -929,6 +929,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     index_dtype=self.index_dtype,
                     target=self.target,
                     seq_dependencies=seq_dependencies,
+                    lang_version=(2018, 2),
                     )
 
             from loopy.loop import merge_loop_domains
