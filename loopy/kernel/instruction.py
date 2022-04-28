@@ -639,6 +639,10 @@ class OrderedAtomic(VarAtomicity):
                 and self.ordering == other.ordering
                 and self.scope == other.scope)
 
+    def __hash__(self):
+        return hash((type(self), self.var_name,
+                     self.ordering, self.scope))
+
     @property
     def op_name(self):
         raise NotImplementedError
