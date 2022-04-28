@@ -117,10 +117,10 @@ def test_op_counter_logic():
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
             [
                 """
-                e[i,k] = if(
-                        not(k<ell-2) and k>6 or k/2==ell,
-                        g[i,k]*2,
-                        g[i,k]+h[i,k]/2)
+                e[i,k] = \
+                        (g[i, k] * 2) \
+                        if (not(k<ell-2) and k>6 or k/2==ell) else \
+                        (g[i, k] + h[i, k] / 2)
                 """
             ],
             name="logic", assumptions="n,m,ell >= 1")

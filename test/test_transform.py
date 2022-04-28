@@ -405,7 +405,8 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
     assert "i_inner" not in get_dependencies(
             prog["precomputer"].substitutions["D"].expression)
     prog = lp.precompute(prog, "D", sweep_inames="j",
-            precompute_outer_inames="j, i_inner, i_outer")
+            precompute_outer_inames="j, i_inner, i_outer",
+            default_tag="l.auto")
 
     lp.auto_test_vs_ref(
             ref_prog, ctx, prog,
