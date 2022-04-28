@@ -7,7 +7,9 @@ import loopy as lp
 
 
 def main():
-    fn = "matmul.floopy"
+    import pathlib
+    fn = pathlib.Path(__file__).parent / "matmul.floopy"
+
     with open(fn) as inf:
         source = inf.read()
 

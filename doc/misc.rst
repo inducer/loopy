@@ -188,7 +188,7 @@ source of examples. Here are some links:
 Here's a more complicated example of a loopy code:
 
 .. literalinclude:: ../examples/python/find-centers.py
-    :language: c
+    :language: python
 
 This example is included in the :mod:`loopy` distribution as
 :download:`examples/python/find-centers.py <../examples/python/find-centers.py>`.
