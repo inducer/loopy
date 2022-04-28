@@ -1203,7 +1203,7 @@ class CInstruction(InstructionBase):
     """
     .. attribute:: iname_exprs
 
-        A list of tuples *(name, expr)* of inames or expressions based on them
+        A tuple of tuples *(name, expr)* of inames or expressions based on them
         that the instruction needs access to.
 
     .. attribute:: code
@@ -1299,11 +1299,11 @@ class CInstruction(InstructionBase):
                 new_assignees.append(i)
         # }}}
 
-        self.iname_exprs = new_iname_exprs
+        self.iname_exprs = tuple(new_iname_exprs)
         from loopy.tools import remove_common_indentation
         self.code = remove_common_indentation(code)
         self.read_variables = read_variables
-        self.assignees = new_assignees
+        self.assignees = tuple(new_assignees)
 
     # {{{ abstract interface
 
