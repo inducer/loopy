@@ -55,7 +55,6 @@ def synthesize_idis_for_extra_args(kernel, schedule_index):
     for iname in sched_item.extra_inames:
         idis.append(
             ImplementedDataInfo(
-                target=kernel.target,
                 name=iname,
                 dtype=kernel.index_dtype,
                 arg_class=InameArg,

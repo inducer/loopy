@@ -1126,7 +1126,6 @@ class ArrayBase(ImmutableRecord, Taggable):
 
                     stride_args.append(
                             ImplementedDataInfo(
-                                target=target,
                                 name=stride_name,
                                 dtype=index_dtype,
                                 arg_class=ValueArg,
@@ -1135,7 +1134,6 @@ class ArrayBase(ImmutableRecord, Taggable):
                                 is_written=False))
 
                 yield ImplementedDataInfo(
-                            target=target,
                             name=full_name,
                             base_name=self.name,
 
@@ -1154,7 +1152,6 @@ class ArrayBase(ImmutableRecord, Taggable):
                 if self.offset is lp.auto:
                     offset_name = full_name+"_offset"
                     yield ImplementedDataInfo(
-                                target=target,
                                 name=offset_name,
                                 dtype=index_dtype,
                                 arg_class=ValueArg,

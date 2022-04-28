@@ -105,7 +105,7 @@ class ImplementedDataInfo(ImmutableRecord):
     .. attribute:: is_written
     """
 
-    def __init__(self, target, name, dtype, arg_class,
+    def __init__(self, name, dtype, arg_class,
             base_name=None,
             shape=None, strides=None,
             unvec_shape=None, unvec_strides=None,
@@ -512,7 +512,6 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
 
         elif isinstance(arg, ValueArg):
             implemented_data_info.append(ImplementedDataInfo(
-                target=target,
                 name=arg.name,
                 dtype=arg.dtype,
                 arg_class=ValueArg,
