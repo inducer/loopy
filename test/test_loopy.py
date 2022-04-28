@@ -3275,6 +3275,60 @@ def test_obj_tagged_is_persistent_hashable():
     assert lkb(ObjTagged(MyTag())) == lkb(ObjTagged(MyTag()))
 
 
+def test_global_tvs_with_base_storage(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    t_unit = lp.make_kernel(
+        "{[i,i_0,i_1]: 0<=i,i_0,i_1<20000}",
+        """
+        <>tmp1[i] = 2 * i
+        <>tmp2[i] = 3 * i
+        ... gbarrier
+        <>tmp3[i_0] = 6 * i_0
+        <>tmp4[i_0] = 7 * i_0
+        ... gbarrier
+        out[i_1] = tmp1[i_1] + tmp2[i_1] + tmp3[i_1] + tmp4[i_1]
+        """,
+        seq_dependencies=True,
+        lang_version=(2018, 2))
+
+    knl = t_unit.default_entrypoint
+    tmp1_tv = knl.temporary_variables["tmp1"]
+    tmp2_tv = knl.temporary_variables["tmp2"]
+    tmp3_tv = knl.temporary_variables["tmp3"]
+    tmp4_tv = knl.temporary_variables["tmp4"]
+
+    new_tvs = {"tmp1": tmp1_tv.copy(base_storage="base",
+                                    offset=0,
+                                    storage_shape=(40_000,),
+                                    address_space=lp.AddressSpace.GLOBAL,
+                                    ),
+               "tmp2": tmp2_tv.copy(base_storage="base",
+                                    offset=20_000,
+                                    storage_shape=(40_000,),
+                                    address_space=lp.AddressSpace.GLOBAL,
+                                    ),
+               "tmp3": tmp3_tv.copy(base_storage="base_0",
+                                    offset=0,
+                                    storage_shape=(40_000,),
+                                    address_space=lp.AddressSpace.GLOBAL,
+                                    ),
+               "tmp4": tmp4_tv.copy(base_storage="base_0",
+                                    offset=20_000,
+                                    storage_shape=(40_000,),
+                                    address_space=lp.AddressSpace.GLOBAL,
+                                    ),
+               }
+
+    knl = knl.copy(temporary_variables=new_tvs)
+    t_unit = t_unit.with_kernel(knl)
+
+    evt, (out,) = t_unit(cq)
+    np.testing.assert_allclose(out.get(),
+                               18*np.arange(20000))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
