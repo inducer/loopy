@@ -240,7 +240,8 @@ class Options(ImmutableRecord):
                     # Considered enabled if non-empty.
                     or bool(os.environ.get("_LOOPY_SKIP_ARG_CHECKS"))),
                 no_numpy=kwargs.get("no_numpy", False),
-                cl_exec_manage_array_events=kwargs.get("no_numpy", True),
+                cl_exec_manage_array_events=kwargs.get("cl_exec_manage_array_events",
+                    True),
                 return_dict=kwargs.get("return_dict", False),
                 write_wrapper=kwargs.get("write_wrapper", False),
                 write_code=kwargs.get("write_code", False),
