@@ -1346,15 +1346,12 @@ class CSEToAssignmentMapper(IdentityMapper):
         self.add_assignment = add_assignment
         self.expr_to_var = {}
 
-    def map_reduction(self, expr, additional_inames, found):
+    def map_reduction(self, expr, additional_inames):
         additional_inames = additional_inames | frozenset(expr.inames)
-        found[0] = True
 
-        return super().map_reduction(
-                expr, additional_inames, found)
+        return super().map_reduction(expr, additional_inames)
 
-    def map_common_subexpression(self, expr, additional_inames, found):
-        found[0] = True
+    def map_common_subexpression(self, expr, additional_inames):
         try:
             return self.expr_to_var[expr.child]
         except KeyError:
@@ -1364,7 +1361,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             else:
                 dtype = None
 
-            child = self.rec(expr.child, additional_inames, found)
+            child = self.rec(expr.child, additional_inames)
             from pymbolic.primitives import Variable
             if isinstance(child, Variable):
                 return child
@@ -1428,9 +1425,8 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
 
     for insn, insn_inames_to_dup in zip(instructions, inames_to_dup):
         if isinstance(insn, MultiAssignmentBase):
-            found = [False]
-            new_expression = cseam(insn.expression, frozenset(), found)
-            if found[0]:
+            new_expression = cseam(insn.expression, frozenset())
+            if new_expression is not insn.expression:
                 new_insns.append(insn.copy(expression=new_expression))
             else:
                 new_insns.append(insn)
