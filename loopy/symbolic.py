@@ -153,14 +153,27 @@ class IdentityMapperMixin:
         return expr
 
     def map_type_annotation(self, expr, *args, **kwargs):
-        return type(expr)(expr.type, self.rec(expr.child, *args, **kwargs))
+        new_child = self.rec(expr.child, *args, **kwargs)
+
+        if new_child is expr.child:
+            return expr
+
+        return type(expr)(expr.type, new_child)
 
     def map_sub_array_ref(self, expr, *args, **kwargs):
-        return SubArrayRef(self.rec(expr.swept_inames, *args, **kwargs),
-                self.rec(expr.subscript, *args, **kwargs))
+        new_inames = self.rec(expr.swept_inames, *args, **kwargs)
+        new_subscript = self.rec(expr.subscript, *args, **kwargs)
+
+        if (all(new_iname is old_iname
+                for new_iname, old_iname in zip(new_inames, expr.swept_inames))
+                and new_subscript is expr.subscript):
+            return expr
+
+        return SubArrayRef(new_inames, new_subscript)
 
     def map_resolved_function(self, expr, *args, **kwargs):
-        return ResolvedFunction(expr.function)
+        # leaf, doesn't change
+        return expr
 
     map_type_cast = map_type_annotation
 
@@ -168,10 +181,7 @@ class IdentityMapperMixin:
 
     map_rule_argument = map_group_hw_index
 
-    def map_fortran_division(self, expr, *args, **kwargs):
-        return type(expr)(
-                self.rec(expr.numerator, *args, **kwargs),
-                self.rec(expr.denominator, *args, **kwargs))
+    map_fortran_division = IdentityMapperBase.map_quotient
 
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
