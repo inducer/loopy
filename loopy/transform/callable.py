@@ -271,6 +271,10 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     callee_label = callee_knl.name[:4] + "_"
     vng = caller_knl.get_var_name_generator()
     ing = caller_knl.get_instruction_id_generator()
+    # collisions with callee var names might affect the renaming logic
+    # below, better to avoid it.
+    vng.add_names(callee_knl.all_variable_names(), conflicting_ok=True)
+    ing.add_names(callee_knl.all_variable_names(), conflicting_ok=True)
 
     # {{{ construct callee->caller name mappings
 
