@@ -157,7 +157,11 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
             new_indices = []
             for dim_tag in caller_arg.dim_tags:
-                ind = flatten_index // dim_tag.stride
+                if dim_tag.stride != 0:
+                    ind = flatten_index // dim_tag.stride
+                else:
+                    # argument has 0-stride i.e. doesn't matter how we index into it.
+                    ind = 0
                 flatten_index -= (dim_tag.stride * ind)
                 new_indices.append(ind)
 
