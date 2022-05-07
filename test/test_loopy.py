@@ -3275,6 +3275,30 @@ def test_obj_tagged_is_persistent_hashable():
     assert lkb(ObjTagged(MyTag())) == lkb(ObjTagged(MyTag()))
 
 
+@pytest.mark.xfail
+def test_vec_loops_surrounded_by_preds(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/615
+    ctx = ctx_factory()
+    knl = lp.make_kernel(
+        "{[i, j]: 0<=i<100 and 0<=j<4}",
+        """
+        for i
+            for j
+                if j
+                    <> tmp[j] = 1
+                end
+                out[i, j] = 2*tmp[j]
+            end
+        end
+        """, seq_dependencies=True)
+
+    ref_knl = knl
+
+    knl = lp.tag_array_axes(knl, "tmp", "vec")
+    knl = lp.tag_inames(knl, "j:vec")
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
