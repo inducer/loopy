@@ -705,6 +705,36 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
     evt, (out,) = knl(cq, real_x=np.asarray(3.0, dtype=float))
 
 
+@pytest.mark.parametrize("inline", [False, True])
+def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
+    ctx = cl.create_some_context()
+    cq = cl.CommandQueue(ctx)
+    x_in = np.random.rand()
+
+    twice = lp.make_function(
+        "{ : }",
+        """
+        y = 2*x
+        """,
+        name="twice")
+
+    knl = lp.make_kernel(
+        "{ : }",
+        """
+        []: Y[0, 0] = twice(X)
+        """)
+
+    knl = lp.add_dtypes(knl, {"X": np.float64})
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    evt, (out,) = knl(cq, X=x_in)
+
+    np.testing.assert_allclose(out.get(), 2*x_in)
+
+
 def test_symbol_mangler_in_call(ctx_factory):
     from library_for_test import (symbol_x,
                                   preamble_for_x)
