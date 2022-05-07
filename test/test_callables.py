@@ -1224,6 +1224,41 @@ def test_inlining_w_zero_stride_callee_args(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
+@pytest.mark.parametrize("inline", [True, False])
+def test_call_kernel_w_preds(ctx_factory, inline):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    twice = lp.make_function(
+        "{ [i] : 0<=i<10 }",
+        """
+        x[i] = 2*x[i]
+        """, name="twice")
+
+    knl = lp.make_kernel(
+        "{[i] : 0<=i<10}",
+        """
+        for i
+            if i >= 5
+                x[i, :] = twice(x[i, :])
+            end
+        end
+        """,
+        [lp.GlobalArg("x",
+                      shape=(10, 10),),
+         ...])
+
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    evt, (out,) = knl(cq, x=np.ones((10, 10)))
+
+    np.testing.assert_allclose(out[:5], 1)
+    np.testing.assert_allclose(out[5:], 2)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
