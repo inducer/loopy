@@ -181,7 +181,15 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
             if isinstance(arg, ArrayArg):
                 assert arg.shape == ()
                 assert isinstance(par, SubArrayRef) and par.swept_inames == ()
-                return par.subscript.aggregate
+                if par.subscript.index_tuple:
+                    return par.subscript
+                else:
+                    assert (self
+                            .caller_knl
+                            .get_var_descriptor(par.subscript
+                                                .aggregate.name)
+                            .shape) == ()
+                    return par.subscript.aggregate
             else:
                 assert isinstance(arg, ValueArg)
                 return par
