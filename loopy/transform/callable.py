@@ -450,6 +450,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                 depends_on=new_depends_on,
                 tags=insn.tags | call_insn.tags,
                 atomicity=new_atomicity,
+                predicates=insn.predicates | call_insn.predicates,
                 no_sync_with=new_no_sync_with
             )
         else:
@@ -458,7 +459,8 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                 within_inames=new_within_inames,
                 depends_on=new_depends_on,
                 tags=insn.tags | call_insn.tags,
-                no_sync_with=new_no_sync_with
+                no_sync_with=new_no_sync_with,
+                predicates=insn.predicates | call_insn.predicates,
             )
         inlined_insns.append(insn)
 
