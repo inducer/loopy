@@ -26,6 +26,7 @@ import pyopencl.clrandom  # noqa: F401
 import loopy as lp
 import pytest
 import sys
+from pytools import ImmutableRecord
 
 
 from pyopencl.tools import (  # noqa: F401
@@ -1257,6 +1258,51 @@ def test_call_kernel_w_preds(ctx_factory, inline):
 
     np.testing.assert_allclose(out[:5], 1)
     np.testing.assert_allclose(out[5:], 2)
+
+
+# {{{ test_inlining_does_not_lose_preambles
+
+class OurPrintfDefiner(ImmutableRecord):
+    def __call__(self, *args, **kwargs):
+        return (("42", r"#define OURPRINTF printf"),)
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_inlining_does_not_lose_preambles(ctx_factory, inline):
+    # loopy.git<=95cc206 would miscompile this
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    callee = lp.make_function(
+        "{ : }",
+        [
+            lp.CInstruction("",
+                            r"""
+                            MYPRINTF("Foo bar!\n");
+                            """, assignees=())
+        ],
+        preambles=[("1729", r"#define MYPRINTF OURPRINTF")],
+        preamble_generators=[OurPrintfDefiner()],
+        name="print_foo")
+
+    caller = lp.make_kernel(
+        "{ : }",
+        """
+        print_foo()
+        """,
+        name="print_foo_caller")
+
+    knl = lp.merge([caller, callee])
+    knl = lp.set_options(knl, "write_code")
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "print_foo")
+
+    # run to make sure there is no compilation error
+    knl(cq)
+
+# }}}
 
 
 if __name__ == "__main__":

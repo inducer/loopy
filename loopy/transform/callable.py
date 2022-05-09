@@ -485,7 +485,11 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                            domains=caller_knl.domains+new_domains,
                            assumptions=(old_assumptions.params()
                                         & new_assumptions.params()),
-                           inames=new_inames)
+                           inames=new_inames,
+                           preambles=caller_knl.preambles+callee_knl.preambles,
+                           preamble_generators=(caller_knl.preamble_generators
+                                                + callee_knl.preamble_generators),
+                           )
 
 # }}}
 
