@@ -708,6 +708,20 @@ def test_zero_size_temporaries(ctx_factory):
     assert out.shape == (0,)
 
 
+def test_empty_array_output(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i]: i > 0 and i < 0}",
+        [],
+        [lp.GlobalArg("a", shape=(0,), dtype=np.float32,
+            is_output=True, is_input=False)])
+
+    _evt, (out, ) = knl(cq)
+    assert out.shape == (0,)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
