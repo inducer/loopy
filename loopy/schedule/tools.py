@@ -117,6 +117,7 @@ def get_callkernel_dependencies(kernel, subkernel):
     class VariableNoter(IdentityMapper):
         def __init__(self):
             self.deps = set()
+            super().__init__()
 
         def map_variable(self, expr):
             self.deps.add(expr.name)

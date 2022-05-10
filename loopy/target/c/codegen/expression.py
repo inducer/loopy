@@ -578,8 +578,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         else:
             if isinstance(expr.data_type(float("nan")), np.float32):
                 return p.Variable("NAN")
-            elif isinstance(expr.data_type(float("nan")), (np.float64,
-                                                              np.float128)):
+            elif isinstance(expr.data_type(float("nan")), np.floating):
                 registry = self.codegen_state.ast_builder.target.get_dtype_registry()
                 lpy_type = NumpyType(np.dtype(expr.data_type))
                 cast = var("(%s)" % registry.dtype_to_ctype(lpy_type))

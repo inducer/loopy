@@ -1159,6 +1159,8 @@ def test_inlining_does_not_require_barrier(inline):
             ],
         iname_slab_increments={"j_outer": (0, 0)})
 
+    # }}}
+
     loopy_kernel_knl = lp.tag_inames(loopy_kernel_knl, "j_outer:g.0")
     t_unit = lp.merge([fft_knl, loopy_kernel_knl])
     if inline:
@@ -1166,6 +1168,30 @@ def test_inlining_does_not_require_barrier(inline):
 
     # generate code to ensure that we don't emit spurious missing barrier
     print(lp.generate_code_v2(t_unit).device_code())
+
+
+def test_inlining_w_zero_stride_callee_args(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/594
+    ctx = ctx_factory()
+
+    times_two = lp.make_function(
+        "{[j1, j2, j3]: 0<=j1,j2,j3<1}",
+        """
+        out[j1, j2, j3] = 2 * inp[j1, j2, j3]
+        """,
+        name="times_two")
+
+    knl = lp.make_kernel(
+        "{[i1, i2, i3]: 0<=i1,i2,i3<1}",
+        """
+        tmp[0, 0, 0] = 2.0
+        [i1,i2,i3]: y[i1,i2,i3] = times_two([i1,i2,i3]: tmp[0,i2,i3])
+        """,
+        [lp.TemporaryVariable("tmp", strides=(0, 1, 1)), ...])
+
+    ref_knl = lp.merge([knl, times_two])
+    knl = lp.inline_callable_kernel(ref_knl, "times_two")
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
 if __name__ == "__main__":

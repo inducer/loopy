@@ -2075,6 +2075,7 @@ def get_outer_params(domains):
 class _IndexCollector(CombineMapper):
     def __init__(self, var):
         self.var = var
+        super().__init__()
 
     def combine(self, values):
         import operator
@@ -2119,7 +2120,7 @@ def get_insn_access_map(kernel, insn_id, var, inner_inames):
     kernel = expand_subst(kernel, within=Id(insn_id))
     indices = list(_IndexCollector(var)((insn.expression,
                                          insn.assignees,
-                                         list(insn.predicates))))
+                                         tuple(insn.predicates))))
 
     amaps = _project_out_inames_from_maps(
         [get_access_map(kernel.get_inames_domain(insn.within_inames),

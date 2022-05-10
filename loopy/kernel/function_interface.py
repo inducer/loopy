@@ -152,6 +152,7 @@ class ArrayArgDescriptor(ImmutableRecord):
 class ExpressionIsScalarChecker(WalkMapper):
     def __init__(self, kernel):
         self.kernel = kernel
+        super().__init__()
 
     def map_sub_array_ref(self, expr):
         raise LoopyError("Sub-array refs can only be used as call's parameters"

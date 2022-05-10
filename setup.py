@@ -97,6 +97,7 @@ setup(name="loopy",
           "colorama",
           "Mako",
           "pyrsistent",
+          "immutables",
           ],
 
       extras_require={

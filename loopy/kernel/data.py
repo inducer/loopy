@@ -285,6 +285,8 @@ class AddressSpace:
             return "local"
         elif val == cls.GLOBAL:
             return "global"
+        elif val is auto:
+            return "<auto>"
         else:
             raise ValueError("unexpected value of AddressSpace")
 
