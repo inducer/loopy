@@ -227,6 +227,12 @@ def remove_instructions(kernel, insn_ids):
         else:
             depends_on = insn.depends_on
 
+        if ((not (depends_on & insn_ids))
+                and insn.no_sync_with == frozenset()):
+            # early exit if *insn* need not be updated.
+            new_insns.append(insn)
+            continue
+
         new_deps = reduce(frozenset.union,
                           (transitive_deps.get(d, frozenset([d]))
                            for d in depends_on),
