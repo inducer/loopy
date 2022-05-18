@@ -414,7 +414,7 @@ class ExecutionWrapperGeneratorBase(ABC):
             if not options.no_numpy:
                 self.handle_non_numpy_arg(gen, arg)
 
-            if not options.skip_arg_checks and not is_written:
+            if not options.skip_arg_checks and kernel_arg.is_input:
                 gen("if %s is None:" % arg.name)
                 with Indentation(gen):
                     gen("raise RuntimeError(\"input argument '%s' must "
@@ -441,7 +441,8 @@ class ExecutionWrapperGeneratorBase(ABC):
 
             # {{{ allocate written arrays, if needed
 
-            if is_written and arg.arg_class in [lp.ArrayArg, lp.ConstantArg] \
+            if kernel_arg.is_output \
+                    and arg.arg_class in [lp.ArrayArg, lp.ConstantArg] \
                     and arg.shape is not None \
                     and all(si is not None for si in arg.shape):
 

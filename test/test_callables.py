@@ -26,6 +26,7 @@ import pyopencl.clrandom  # noqa: F401
 import loopy as lp
 import pytest
 import sys
+from pytools import ImmutableRecord
 
 
 from pyopencl.tools import (  # noqa: F401
@@ -705,6 +706,36 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
     evt, (out,) = knl(cq, real_x=np.asarray(3.0, dtype=float))
 
 
+@pytest.mark.parametrize("inline", [False, True])
+def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
+    ctx = cl.create_some_context()
+    cq = cl.CommandQueue(ctx)
+    x_in = np.random.rand()
+
+    twice = lp.make_function(
+        "{ : }",
+        """
+        y = 2*x
+        """,
+        name="twice")
+
+    knl = lp.make_kernel(
+        "{ : }",
+        """
+        []: Y[0, 0] = twice(X)
+        """)
+
+    knl = lp.add_dtypes(knl, {"X": np.float64})
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    evt, (out,) = knl(cq, X=x_in)
+
+    np.testing.assert_allclose(out.get(), 2*x_in)
+
+
 def test_symbol_mangler_in_call(ctx_factory):
     from library_for_test import (symbol_x,
                                   preamble_for_x)
@@ -1192,6 +1223,86 @@ def test_inlining_w_zero_stride_callee_args(ctx_factory):
     ref_knl = lp.merge([knl, times_two])
     knl = lp.inline_callable_kernel(ref_knl, "times_two")
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_call_kernel_w_preds(ctx_factory, inline):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    twice = lp.make_function(
+        "{ [i] : 0<=i<10 }",
+        """
+        x[i] = 2*x[i]
+        """, name="twice")
+
+    knl = lp.make_kernel(
+        "{[i] : 0<=i<10}",
+        """
+        for i
+            if i >= 5
+                x[i, :] = twice(x[i, :])
+            end
+        end
+        """,
+        [lp.GlobalArg("x",
+                      shape=(10, 10),),
+         ...])
+
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    evt, (out,) = knl(cq, x=np.ones((10, 10)))
+
+    np.testing.assert_allclose(out[:5], 1)
+    np.testing.assert_allclose(out[5:], 2)
+
+
+# {{{ test_inlining_does_not_lose_preambles
+
+class OurPrintfDefiner(ImmutableRecord):
+    def __call__(self, *args, **kwargs):
+        return (("42", r"#define OURPRINTF printf"),)
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_inlining_does_not_lose_preambles(ctx_factory, inline):
+    # loopy.git<=95cc206 would miscompile this
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    callee = lp.make_function(
+        "{ : }",
+        [
+            lp.CInstruction("",
+                            r"""
+                            MYPRINTF("Foo bar!\n");
+                            """, assignees=())
+        ],
+        preambles=[("1729", r"#define MYPRINTF OURPRINTF")],
+        preamble_generators=[OurPrintfDefiner()],
+        name="print_foo")
+
+    caller = lp.make_kernel(
+        "{ : }",
+        """
+        print_foo()
+        """,
+        name="print_foo_caller")
+
+    knl = lp.merge([caller, callee])
+    knl = lp.set_options(knl, "write_code")
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "print_foo")
+
+    # run to make sure there is no compilation error
+    knl(cq)
+
+# }}}
 
 
 if __name__ == "__main__":

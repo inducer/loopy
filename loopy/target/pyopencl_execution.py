@@ -202,40 +202,47 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         from loopy.kernel.data import KernelArgument
 
+        def is_output(idi):
+            from loopy.kernel.array import ArrayBase
+            if not issubclass(idi.arg_class, ArrayBase):
+                return False
+
+            arg = kernel.impl_arg_to_arg[idi.name]
+            return arg.is_output
+
         if not options.no_numpy:
             gen("if out_host is None and (_lpy_encountered_numpy "
                     "and not _lpy_encountered_dev):")
             with Indentation(gen):
                 gen("out_host = True")
 
-            for arg in implemented_data_info:
-                if not issubclass(arg.arg_class, KernelArgument):
+            for idi in implemented_data_info:
+                if not issubclass(idi.arg_class, KernelArgument):
                     continue
 
-                is_written = arg.base_name in kernel.get_written_variables()
-                if is_written:
-                    np_name = "_lpy_%s_np_input" % arg.name
+                if is_output(idi):
+                    np_name = "_lpy_%s_np_input" % idi.name
                     gen("if out_host or %s is not None:" % np_name)
                     with Indentation(gen):
                         gen("%s = %s.get(queue=queue, ary=%s)"
-                            % (arg.name, arg.name, np_name))
+                            % (idi.name, idi.name, np_name))
 
             gen("")
 
         if options.return_dict:
             gen("return _lpy_evt, {%s}"
-                    % ", ".join(f'"{arg.name}": {arg.name}'
-                        for arg in implemented_data_info
-                        if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in kernel.get_written_variables()))
+                    % ", ".join(f'"{idi.name}": {idi.name}'
+                        for idi in implemented_data_info
+                        if issubclass(idi.arg_class, KernelArgument)
+                        if is_output(idi)))
         else:
-            out_args = [arg
-                    for arg in implemented_data_info
-                        if issubclass(arg.arg_class, KernelArgument)
-                    if arg.base_name in kernel.get_written_variables()]
-            if out_args:
+            out_idis = [idi
+                    for idi in implemented_data_info
+                        if issubclass(idi.arg_class, KernelArgument)
+                    if is_output(idi)]
+            if out_idis:
                 gen("return _lpy_evt, (%s,)"
-                        % ", ".join(arg.name for arg in out_args))
+                        % ", ".join(idi.name for idi in out_idis))
             else:
                 gen("return _lpy_evt, ()")
 

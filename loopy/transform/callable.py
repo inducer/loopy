@@ -181,7 +181,15 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
             if isinstance(arg, ArrayArg):
                 assert arg.shape == ()
                 assert isinstance(par, SubArrayRef) and par.swept_inames == ()
-                return par.subscript.aggregate
+                if par.subscript.index_tuple:
+                    return par.subscript
+                else:
+                    assert (self
+                            .caller_knl
+                            .get_var_descriptor(par.subscript
+                                                .aggregate.name)
+                            .shape) == ()
+                    return par.subscript.aggregate
             else:
                 assert isinstance(arg, ValueArg)
                 return par
@@ -442,6 +450,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                 depends_on=new_depends_on,
                 tags=insn.tags | call_insn.tags,
                 atomicity=new_atomicity,
+                predicates=insn.predicates | call_insn.predicates,
                 no_sync_with=new_no_sync_with
             )
         else:
@@ -450,7 +459,8 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                 within_inames=new_within_inames,
                 depends_on=new_depends_on,
                 tags=insn.tags | call_insn.tags,
-                no_sync_with=new_no_sync_with
+                no_sync_with=new_no_sync_with,
+                predicates=insn.predicates | call_insn.predicates,
             )
         inlined_insns.append(insn)
 
@@ -475,7 +485,11 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                            domains=caller_knl.domains+new_domains,
                            assumptions=(old_assumptions.params()
                                         & new_assumptions.params()),
-                           inames=new_inames)
+                           inames=new_inames,
+                           preambles=caller_knl.preambles+callee_knl.preambles,
+                           preamble_generators=(caller_knl.preamble_generators
+                                                + callee_knl.preamble_generators),
+                           )
 
 # }}}
 

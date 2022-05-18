@@ -161,21 +161,28 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         from loopy.kernel.data import KernelArgument
 
+        def is_output(idi):
+            from loopy.kernel.array import ArrayBase
+            if not issubclass(idi.arg_class, ArrayBase):
+                return False
+
+            arg = kernel.impl_arg_to_arg[idi.name]
+            return arg.is_output
+
         if options.return_dict:
             gen("return None, {%s}"
-                    % ", ".join(f'"{arg.name}": {arg.name}'
-                        for arg in implemented_data_info
-                        if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in
-                        kernel.get_written_variables()))
+                    % ", ".join(f'"{idi.name}": {idi.name}'
+                        for idi in implemented_data_info
+                        if issubclass(idi.arg_class, KernelArgument)
+                        if is_output(idi)))
         else:
-            out_args = [arg
-                    for arg in implemented_data_info
-                        if issubclass(arg.arg_class, KernelArgument)
-                    if arg.base_name in kernel.get_written_variables()]
-            if out_args:
+            out_idis = [idi
+                    for idi in implemented_data_info
+                        if issubclass(idi.arg_class, KernelArgument)
+                    if is_output(idi)]
+            if out_idis:
                 gen("return None, (%s,)"
-                        % ", ".join(arg.name for arg in out_args))
+                        % ", ".join(idi.name for idi in out_idis))
             else:
                 gen("return None, ()")
 
