@@ -92,6 +92,7 @@ class DTypeRegistryWrapper:
 class InfOrNanInExpressionRecorder(IdentityMapper):
     def __init__(self):
         self.saw_inf_or_nan = False
+        super().__init__()
 
     def map_constant(self, expr):
         if (np.isinf(expr) or np.isnan(expr) or np.isnan(expr)):

@@ -285,6 +285,8 @@ class AddressSpace:
             return "local"
         elif val == cls.GLOBAL:
             return "global"
+        elif val is auto:
+            return "<auto>"
         else:
             raise ValueError("unexpected value of AddressSpace")
 
@@ -373,10 +375,18 @@ class ArrayArg(ArrayBase, KernelArgument):
 
         aspace_str = AddressSpace.stringify(self.address_space)
 
+        assert self.is_input or self.is_output
+
+        inout = []
+        if self.is_input:
+            inout.append("in")
+        if self.is_output:
+            inout.append("out")
+
         return (
                 self.stringify(include_typename=include_typename)
-                +
-                " aspace: %s" % aspace_str)
+                + " " + "/".join(inout)
+                + " aspace: %s" % aspace_str)
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with

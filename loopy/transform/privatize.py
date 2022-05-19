@@ -46,6 +46,7 @@ class ExtraInameIndexInserter(IdentityMapper):
         self.var_to_new_inames = var_to_new_inames
         self.iname_to_lbound = iname_to_lbound
         self.seen_priv_axis_inames = set()
+        super().__init__()
 
     def map_subscript(self, expr):
         try:

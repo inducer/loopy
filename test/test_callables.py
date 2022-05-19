@@ -26,6 +26,7 @@ import pyopencl.clrandom  # noqa: F401
 import loopy as lp
 import pytest
 import sys
+from pytools import ImmutableRecord
 
 
 from pyopencl.tools import (  # noqa: F401
@@ -705,6 +706,36 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
     evt, (out,) = knl(cq, real_x=np.asarray(3.0, dtype=float))
 
 
+@pytest.mark.parametrize("inline", [False, True])
+def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
+    ctx = cl.create_some_context()
+    cq = cl.CommandQueue(ctx)
+    x_in = np.random.rand()
+
+    twice = lp.make_function(
+        "{ : }",
+        """
+        y = 2*x
+        """,
+        name="twice")
+
+    knl = lp.make_kernel(
+        "{ : }",
+        """
+        []: Y[0, 0] = twice(X)
+        """)
+
+    knl = lp.add_dtypes(knl, {"X": np.float64})
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    evt, (out,) = knl(cq, X=x_in)
+
+    np.testing.assert_allclose(out.get(), 2*x_in)
+
+
 def test_symbol_mangler_in_call(ctx_factory):
     from library_for_test import (symbol_x,
                                   preamble_for_x)
@@ -1159,6 +1190,8 @@ def test_inlining_does_not_require_barrier(inline):
             ],
         iname_slab_increments={"j_outer": (0, 0)})
 
+    # }}}
+
     loopy_kernel_knl = lp.tag_inames(loopy_kernel_knl, "j_outer:g.0")
     t_unit = lp.merge([fft_knl, loopy_kernel_knl])
     if inline:
@@ -1166,6 +1199,110 @@ def test_inlining_does_not_require_barrier(inline):
 
     # generate code to ensure that we don't emit spurious missing barrier
     print(lp.generate_code_v2(t_unit).device_code())
+
+
+def test_inlining_w_zero_stride_callee_args(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/594
+    ctx = ctx_factory()
+
+    times_two = lp.make_function(
+        "{[j1, j2, j3]: 0<=j1,j2,j3<1}",
+        """
+        out[j1, j2, j3] = 2 * inp[j1, j2, j3]
+        """,
+        name="times_two")
+
+    knl = lp.make_kernel(
+        "{[i1, i2, i3]: 0<=i1,i2,i3<1}",
+        """
+        tmp[0, 0, 0] = 2.0
+        [i1,i2,i3]: y[i1,i2,i3] = times_two([i1,i2,i3]: tmp[0,i2,i3])
+        """,
+        [lp.TemporaryVariable("tmp", strides=(0, 1, 1)), ...])
+
+    ref_knl = lp.merge([knl, times_two])
+    knl = lp.inline_callable_kernel(ref_knl, "times_two")
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_call_kernel_w_preds(ctx_factory, inline):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    twice = lp.make_function(
+        "{ [i] : 0<=i<10 }",
+        """
+        x[i] = 2*x[i]
+        """, name="twice")
+
+    knl = lp.make_kernel(
+        "{[i] : 0<=i<10}",
+        """
+        for i
+            if i >= 5
+                x[i, :] = twice(x[i, :])
+            end
+        end
+        """,
+        [lp.GlobalArg("x",
+                      shape=(10, 10),),
+         ...])
+
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    evt, (out,) = knl(cq, x=np.ones((10, 10)))
+
+    np.testing.assert_allclose(out[:5], 1)
+    np.testing.assert_allclose(out[5:], 2)
+
+
+# {{{ test_inlining_does_not_lose_preambles
+
+class OurPrintfDefiner(ImmutableRecord):
+    def __call__(self, *args, **kwargs):
+        return (("42", r"#define OURPRINTF printf"),)
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_inlining_does_not_lose_preambles(ctx_factory, inline):
+    # loopy.git<=95cc206 would miscompile this
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    callee = lp.make_function(
+        "{ : }",
+        [
+            lp.CInstruction("",
+                            r"""
+                            MYPRINTF("Foo bar!\n");
+                            """, assignees=())
+        ],
+        preambles=[("1729", r"#define MYPRINTF OURPRINTF")],
+        preamble_generators=[OurPrintfDefiner()],
+        name="print_foo")
+
+    caller = lp.make_kernel(
+        "{ : }",
+        """
+        print_foo()
+        """,
+        name="print_foo_caller")
+
+    knl = lp.merge([caller, callee])
+    knl = lp.set_options(knl, "write_code")
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "print_foo")
+
+    # run to make sure there is no compilation error
+    knl(cq)
+
+# }}}
 
 
 if __name__ == "__main__":

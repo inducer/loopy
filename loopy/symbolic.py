@@ -34,20 +34,23 @@ from pytools.tag import Taggable
 import pymbolic.primitives as p
 
 from pymbolic.mapper import (
-        CombineMapper as CombineMapperBase,
-        IdentityMapper as IdentityMapperBase,
-        WalkMapper as WalkMapperBase,
+        CachedCombineMapper as CombineMapperBase,
+        CachedIdentityMapper as IdentityMapperBase,
+        IdentityMapper as UncachedIdentityMapperBase,
+        CachedWalkMapper as WalkMapperBase,
+        WalkMapper as UncachedWalkMapperBase,
         CallbackMapper as CallbackMapperBase,
         CSECachingMapperMixin,
         )
+import immutables
 from pymbolic.mapper.evaluator import \
-        EvaluationMapper as EvaluationMapperBase
+        CachedEvaluationMapper as EvaluationMapperBase
 from pymbolic.mapper.substitutor import \
-        SubstitutionMapper as SubstitutionMapperBase
+        CachedSubstitutionMapper as SubstitutionMapperBase
 from pymbolic.mapper.stringifier import \
         StringifyMapper as StringifyMapperBase
 from pymbolic.mapper.dependency import \
-        DependencyMapper as DependencyMapperBase
+        CachedDependencyMapper as DependencyMapperBase
 from pymbolic.mapper.coefficient import \
         CoefficientCollector as CoefficientCollectorBase
 from pymbolic.mapper.unifier import UnidirectionalUnifier \
@@ -153,14 +156,27 @@ class IdentityMapperMixin:
         return expr
 
     def map_type_annotation(self, expr, *args, **kwargs):
-        return type(expr)(expr.type, self.rec(expr.child, *args, **kwargs))
+        new_child = self.rec(expr.child, *args, **kwargs)
+
+        if new_child is expr.child:
+            return expr
+
+        return type(expr)(expr.type, new_child)
 
     def map_sub_array_ref(self, expr, *args, **kwargs):
-        return SubArrayRef(self.rec(expr.swept_inames, *args, **kwargs),
-                self.rec(expr.subscript, *args, **kwargs))
+        new_inames = self.rec(expr.swept_inames, *args, **kwargs)
+        new_subscript = self.rec(expr.subscript, *args, **kwargs)
+
+        if (all(new_iname is old_iname
+                for new_iname, old_iname in zip(new_inames, expr.swept_inames))
+                and new_subscript is expr.subscript):
+            return expr
+
+        return SubArrayRef(new_inames, new_subscript)
 
     def map_resolved_function(self, expr, *args, **kwargs):
-        return ResolvedFunction(expr.function)
+        # leaf, doesn't change
+        return expr
 
     map_type_cast = map_type_annotation
 
@@ -168,13 +184,15 @@ class IdentityMapperMixin:
 
     map_rule_argument = map_group_hw_index
 
-    def map_fortran_division(self, expr, *args, **kwargs):
-        return type(expr)(
-                self.rec(expr.numerator, *args, **kwargs),
-                self.rec(expr.denominator, *args, **kwargs))
+    map_fortran_division = IdentityMapperBase.map_quotient
 
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
+    pass
+
+
+class UncachedIdentityMapper(UncachedIdentityMapperBase,
+                             IdentityMapperMixin):
     pass
 
 
@@ -187,7 +205,7 @@ class PartialEvaluationMapper(
         return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
 
-class WalkMapper(WalkMapperBase):
+class WalkMapperMixin:
     def map_literal(self, expr, *args, **kwargs):
         self.visit(expr, *args, **kwargs)
 
@@ -240,7 +258,15 @@ class WalkMapper(WalkMapperBase):
     map_fortran_division = WalkMapperBase.map_quotient
 
 
-class CallbackMapper(CallbackMapperBase, IdentityMapper):
+class WalkMapper(WalkMapperBase, WalkMapperMixin):
+    pass
+
+
+class UncachedWalkMapper(UncachedWalkMapperBase, WalkMapperMixin):
+    pass
+
+
+class CallbackMapper(IdentityMapperMixin, CallbackMapperBase):
     map_reduction = CallbackMapperBase.map_constant
     map_resolved_function = CallbackMapperBase.map_constant
 
@@ -438,6 +464,7 @@ class DependencyMapper(DependencyMapperBase):
 class SubstitutionRuleExpander(IdentityMapper):
     def __init__(self, rules):
         self.rules = rules
+        super().__init__()
 
     def __call__(self, expr, *args, **kwargs):
         if not self.rules:
@@ -1074,6 +1101,25 @@ class ExpansionState(ImmutableRecord):
 
         a dict representing current argument values
     """
+    def __init__(self, kernel, instruction, stack, arg_context):
+        if not isinstance(arg_context, immutables.Map):
+            from warnings import warn
+            warn(f"Got a {type(arg_context)} for arg_context,"
+                 " expected `immutables.Map`. This is deprecated"
+                 " and will result in an error from 2023.",
+                 DeprecationWarning, stacklevel=2)
+            arg_context = immutables.Map(arg_context)
+        super().__init__(kernel=kernel,
+                         instruction=instruction,
+                         stack=stack,
+                         arg_context=arg_context)
+
+    def __hash__(self):
+        # do not try to be precise about hash of loopy kernel
+        # or the instruction as computing the hash of pymbolic
+        # expressions could have exponential complexity
+        return hash((id(self.kernel), id(self.instruction),
+                     self.stack, self.arg_context))
 
     @property
     def insn_id(self):
@@ -1088,6 +1134,7 @@ class ExpansionState(ImmutableRecord):
 class SubstitutionRuleRenamer(IdentityMapper):
     def __init__(self, renames):
         self.renames = renames
+        super().__init__()
 
     def map_call(self, expr):
         if not isinstance(expr.function, p.Variable):
@@ -1252,6 +1299,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
     def __init__(self, rule_mapping_context):
         self.rule_mapping_context = rule_mapping_context
+        super().__init__()
 
     def map_variable(self, expr, expn_state, *args, **kwargs):
         name, tags = parse_tagged_name(expr)
@@ -1288,9 +1336,9 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
         from pymbolic.mapper.substitutor import make_subst_func
         arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
-        return {
-                formal_arg_name: arg_subst_map(arg_value)
-                for formal_arg_name, arg_value in zip(arg_names, arguments)}
+        return immutables.Map({
+            formal_arg_name: arg_subst_map(arg_value)
+            for formal_arg_name, arg_value in zip(arg_names, arguments)})
 
     def map_substitution(self, name, tags, arguments, expn_state,
                          *args, **kwargs):
@@ -1326,12 +1374,12 @@ class RuleAwareIdentityMapper(IdentityMapper):
         from loopy.kernel.data import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
-        return IdentityMapper.__call__(self, expr,
+        return super().__call__(expr,
                 ExpansionState(
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context={}))
+                    arg_context=immutables.Map()))
 
     def map_instruction(self, kernel, insn):
         return insn
@@ -1484,7 +1532,7 @@ class VarToTaggedVarMapper(IdentityMapper):
                     expr.name[dollar_idx+1:])
 
 
-class FunctionToPrimitiveMapper(IdentityMapper):
+class FunctionToPrimitiveMapper(UncachedIdentityMapper):
     """Looks for invocations of a function called 'cse' or 'reduce' and
     turns those into the actual pymbolic primitives used for that.
     """
@@ -1687,6 +1735,7 @@ class CoefficientCollector(CoefficientCollectorBase):
 class ArrayAccessFinder(CombineMapper):
     def __init__(self, tgt_vector_name=None):
         self.tgt_vector_name = tgt_vector_name
+        super().__init__()
 
     def combine(self, values):
         from pytools import flatten
@@ -2224,9 +2273,10 @@ def set_to_cond_expr(isl_set):
 
 # {{{ Reduction callback mapper
 
-class ReductionCallbackMapper(IdentityMapper):
+class ReductionCallbackMapper(UncachedIdentityMapper):
     def __init__(self, callback):
         self.callback = callback
+        super().__init__()
 
     def map_reduction(self, expr, **kwargs):
         result = self.callback(expr, self.rec, **kwargs)
@@ -2283,6 +2333,7 @@ class IndexVariableFinder(CombineMapper):
 class WildcardToUniqueVariableMapper(IdentityMapper):
     def __init__(self, unique_var_name_factory):
         self.unique_var_name_factory = unique_var_name_factory
+        super().__init__()
 
     def map_wildcard(self, expr):
         from pymbolic import var
@@ -2457,6 +2508,7 @@ class BatchedAccessMapMapper(WalkMapper):
         self.bad_subscripts = defaultdict(list)
         self._overestimate = overestimate
         self._var_names = set(var_names)
+        super().__init__()
 
     def get_access_range(self, var_name):
         loops_to_amaps = self.access_maps[var_name]

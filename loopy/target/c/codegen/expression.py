@@ -578,8 +578,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         else:
             if isinstance(expr.data_type(float("nan")), np.float32):
                 return p.Variable("NAN")
-            elif isinstance(expr.data_type(float("nan")), (np.float64,
-                                                              np.float128)):
+            elif isinstance(expr.data_type(float("nan")), np.floating):
                 registry = self.codegen_state.ast_builder.target.get_dtype_registry()
                 lpy_type = NumpyType(np.dtype(expr.data_type))
                 cast = var("(%s)" % registry.dtype_to_ctype(lpy_type))
@@ -684,9 +683,13 @@ class CExpressionToCodeMapper(RecursiveMapper):
     map_max = map_min
 
     def map_if(self, expr, enclosing_prec):
-        from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.mapper.stringifier import PREC_NONE, PREC_CALL
         return "({} ? {} : {})".format(
-                self.rec(expr.condition, PREC_NONE),
+                # Force parentheses around the condition to prevent compiler
+                # warnings regarding precedence (e.g. with POCL 1.8/LLVM 12):
+                # "warning: pocl-cache/tempfile_BYDWne.cl:96:2241: operator '?:'
+                # has lower precedence than '*'; '*' will be evaluated first"
+                self.rec(expr.condition, PREC_CALL),
                 self.rec(expr.then, PREC_NONE),
                 self.rec(expr.else_, PREC_NONE),
                 )

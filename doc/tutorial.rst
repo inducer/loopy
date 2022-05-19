@@ -112,9 +112,9 @@ always see loopy's view of a kernel by printing it.
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
     ARGUMENTS:
-    a: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) aspace: global
+    a: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) in aspace: global
     n: ValueArg, type: <auto/runtime>
-    out: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) aspace: global
+    out: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) out aspace: global
     ---------------------------------------------------------------------------
     DOMAINS:
     [n] -> { [i] : 0 <= i < n }
@@ -560,7 +560,7 @@ Consider this example:
     #define lid(N) ((int) get_local_id(N))
     ...
       for (int i_outer = 0; i_outer <= -1 + (15 + n) / 16; ++i_outer)
-        for (int i_inner = 0; i_inner <= (-17 + n + -16 * i_outer >= 0 ? 15 : -1 + n + -16 * i_outer); ++i_inner)
+        for (int i_inner = 0; i_inner <= ((-17 + n + -16 * i_outer >= 0) ? 15 : -1 + n + -16 * i_outer); ++i_inner)
           a[16 * i_outer + i_inner] = 0.0f;
     ...
 
@@ -590,7 +590,7 @@ relation to loop nesting. For example, it's perfectly possible to request
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_inner = 0; i_inner <= (-17 + n >= 0 ? 15 : -1 + n); ++i_inner)
+      for (int i_inner = 0; i_inner <= ((-17 + n >= 0) ? 15 : -1 + n); ++i_inner)
         for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + (15 + n + 15 * i_inner) / 16; ++i_outer)
           a[16 * i_outer + i_inner] = 0.0f;
     ...
