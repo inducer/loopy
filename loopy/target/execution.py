@@ -549,17 +549,16 @@ class ExecutionWrapperGeneratorBase(ABC):
                         with Indentation(gen):
                             gen("_lpy_got = tuple(stride "
                                     "for (dim, stride) in zip(%s.shape, %s.strides) "
-                                    "if dim > 1)"
+                                    ")"
                                     % (arg.name, arg.name))
                             gen("_lpy_expected = tuple(stride "
                                     "for (dim, stride) in zip(%s.shape, %s) "
-                                    "if dim > 1)"
+                                    ")"
                                     % (arg.name, strify_tuple(sym_strides)))
 
                             gen('raise ValueError("strides mismatch on '
                                     "argument '%s' "
-                                    "(after removing unit length dims, "
-                                    'got: %%s, expected: %%s)" '
+                                    '(got: %%s, expected: %%s)" '
                                     "%% (_lpy_got, _lpy_expected))"
                                     % arg.name)
 
