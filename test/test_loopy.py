@@ -2752,7 +2752,7 @@ def test_shape_mismatch_check(ctx_factory):
     if t_unit["loopy_kernel"].options.skip_arg_checks:
         pytest.skip("args checks disabled, cannot check")
 
-    with pytest.raises(TypeError, match="strides mismatch"):
+    with pytest.raises(ValueError, match="strides mismatch"):
         t_unit(queue, a=a, b=b)
 
 
