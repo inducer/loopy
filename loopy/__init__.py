@@ -561,9 +561,9 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
         for idx in all_indices
         )
 
-    if "name" not in knl_creation_kwargs:
-        knl_creation_kwargs["name"] = "einsum%dto%d_kernel" % (
-                len(all_indices), len(out_indices))
+    knl_creation_kwargs.setdefault("name", "einsum%dto%d_kernel" % (
+            len(all_indices), len(out_indices)))
+    knl_creation_kwargs.setdefault("lang_version", MOST_RECENT_LANGUAGE_VERSION)
 
     return make_kernel("{[%s]: %s}" % (",".join(sorted(all_indices)), constraints),
                        [Assignment(lhs, rhs)],
