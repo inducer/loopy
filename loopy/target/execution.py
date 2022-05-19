@@ -360,12 +360,26 @@ class ExecutionWrapperGeneratorBase(ABC):
     def get_arg_pass(self, arg):
         raise NotImplementedError()
 
-    def get_strides_check_expr(self, shape, strides, sym_strides):
+    def get_strides_check_expr(self, shape, strides, expected_strides):
+        assert len(shape) == len(strides) == len(expected_strides)
+
         # Returns an expression suitable for use for checking the strides of an
         # argument. Arguments should be sequences of strings.
-        return " and ".join(
-                "(%s == 1 or %s == %s)" % elem
-                for elem in zip(shape, strides, sym_strides)) or "True"
+
+        # Shape axes of length 1 are ignored because strides along these
+        # axes are never used: The only valid index is 1.
+        match_expr = " and ".join(
+                f"({shape_i} == 1 or {strides_i} == {expected_strides_i})"
+                for shape_i, strides_i, expected_strides_i
+                in zip(shape, strides, expected_strides)) or "True"
+
+        if shape:
+            # If any shape component is zero, the array is empty and the strides
+            # don't matter.
+            match_expr = (f"({match_expr})"
+            + "".join(f" or not {shape_i}" for shape_i in shape))
+
+        return match_expr
 
     # {{{ arg setup
 
@@ -545,7 +559,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         gen("if not (%s):"
                                 % self.get_strides_check_expr(
                                     shape, strides,
-                                    (strify(s) for s in sym_strides)))
+                                    [strify(s) for s in sym_strides]))
                         with Indentation(gen):
                             gen("_lpy_got = tuple(stride "
                                     "for (dim, stride) in zip(%s.shape, %s.strides) "

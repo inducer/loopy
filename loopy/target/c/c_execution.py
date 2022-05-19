@@ -115,9 +115,9 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         #check strides
         if not skip_arg_checks:
             strides_check_expr = self.get_strides_check_expr(
-                    (strify(s) for s in sym_shape),
-                    (strify(s) for s in sym_strides),
-                    (strify(s) for s in expected_strides))
+                    [strify(s) for s in sym_shape],
+                    [strify(s) for s in sym_strides],
+                    [strify(s) for s in expected_strides])
             gen("assert %(strides_check)s, "
                     "'Strides of loopy created array %(name)s, "
                     "do not match expected.'" %
