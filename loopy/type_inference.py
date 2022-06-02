@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pymbolic.mapper import CombineMapper
+from loopy.symbolic import CombineMapper
 import numpy as np
 
 from loopy.tools import is_integer
@@ -198,6 +198,7 @@ class TypeInferenceMapper(CombineMapper):
         self.symbols_with_unknown_types = set()
         self.clbl_inf_ctx = clbl_inf_ctx
         self.old_calls_to_new_calls = {}
+        super().__init__()
 
     def __call__(self, expr, return_tuple=False, return_dtype_set=False):
         kwargs = {}
@@ -612,6 +613,7 @@ class TypeReader(TypeInferenceMapper):
         self.kernel = kernel
         self.callables = callables
         self.new_assignments = new_assignments
+        CombineMapper.__init__(self)
 
     # {{{ disabled interface
 
