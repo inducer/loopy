@@ -303,7 +303,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     # {{{ iname_to_tags
 
     # new_inames: caller's inames post inlining
-    new_inames = caller_knl.inames
+    new_inames = caller_knl.inames.copy()
 
     for old_name, callee_iname in callee_knl.inames.items():
         new_name = name_map[old_name]
