@@ -80,6 +80,11 @@ Manipulating Instructions
 
 .. autofunction:: add_barrier
 
+Loop Distribution
+-----------------
+
+.. automodule:: loopy.transform.loop_distribution
+
 Registering Library Routines
 ----------------------------
 

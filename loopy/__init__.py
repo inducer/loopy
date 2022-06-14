@@ -125,6 +125,8 @@ from loopy.transform.callable import (register_callable,
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 
 from loopy.transform.realize_reduction import realize_reduction
+from loopy.transform.loop_distribution import (distribute_loops,
+                                               IllegalLoopDistributionError)
 
 # }}}
 
@@ -253,6 +255,8 @@ __all__ = [
         "inline_callable_kernel", "rename_callable",
 
         "pack_and_unpack_args_for_call",
+
+        "distribute_loops", "IllegalLoopDistributionError",
 
         # }}}
 

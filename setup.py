@@ -98,6 +98,7 @@ setup(name="loopy",
           "Mako",
           "pyrsistent",
           "immutables",
+          "more-itertools",
           ],
 
       extras_require={
