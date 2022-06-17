@@ -23,6 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Sequence, Mapping, FrozenSet, Dict, AbstractSet, Set, List
+
 import sys
 
 from sys import intern
@@ -638,7 +640,8 @@ def show_dependency_graph(*args, **kwargs):
 
 # {{{ is domain dependent on inames
 
-def is_domain_dependent_on_inames(kernel, domain_index, inames):
+def is_domain_dependent_on_inames(kernel: LoopKernel,
+        domain_index: int, inames: AbstractSet[str]) -> bool:
     dom = kernel.domains[domain_index]
     dom_parameters = set(dom.get_var_names(dim_type.param))
 
@@ -1763,7 +1766,26 @@ def find_most_recent_global_barrier(kernel, insn_id):
 # {{{ subkernel tools
 
 @memoize_on_first_arg
-def get_subkernels(kernel):
+def get_subkernel_start_indices(kernel: LoopKernel) -> Mapping[str, int]:
+    """Return a sequence of schedule indices of
+
+    See also :class:`loopy.schedule.CallKernel`.
+    """
+    from loopy.kernel import KernelState
+    if kernel.state != KernelState.LINEARIZED:
+        raise LoopyError("Kernel must be linearized")
+
+    assert kernel.linearization is not None
+
+    from loopy.schedule import CallKernel
+
+    return {lin_item.kernel_name: i
+            for i, lin_item in enumerate(kernel.linearization)
+            if isinstance(lin_item, CallKernel)}
+
+
+@memoize_on_first_arg
+def get_subkernels(kernel) -> Sequence[str]:
     """Return a :class:`tuple` of the names of the subkernels in the kernel. The
     kernel must be scheduled.
 
@@ -1773,15 +1795,14 @@ def get_subkernels(kernel):
     if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("Kernel must be linearized")
 
-    from loopy.schedule import CallKernel
+    assert kernel.linearization is not None
 
-    return tuple(sched_item.kernel_name
-            for sched_item in kernel.linearization
-            if isinstance(sched_item, CallKernel))
+    return tuple(kernel.linearization[i].kernel_name
+            for i in get_subkernel_start_indices(kernel).values())
 
 
 @memoize_on_first_arg
-def get_subkernel_to_insn_id_map(kernel):
+def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[str]]:
     """Return a :class:`dict` mapping subkernel names to a :class:`frozenset`
     consisting of the instruction ids scheduled within the subkernel. The
     kernel must be scheduled.
@@ -1790,25 +1811,51 @@ def get_subkernel_to_insn_id_map(kernel):
     if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("Kernel must be scheduled")
 
+    assert kernel.linearization is not None
+
     from loopy.schedule import (
             sched_item_to_insn_id, CallKernel, ReturnFromKernel)
 
     subkernel = None
-    result = {}
+    result: Dict[str, Set[str]] = {}
 
-    for sched_item in kernel.linearization:
-        if isinstance(sched_item, CallKernel):
-            subkernel = sched_item.kernel_name
+    for lin_item in kernel.linearization:
+        if isinstance(lin_item, CallKernel):
+            subkernel = lin_item.kernel_name
             result[subkernel] = set()
 
-        if isinstance(sched_item, ReturnFromKernel):
+        if isinstance(lin_item, ReturnFromKernel):
             subkernel = None
 
         if subkernel is not None:
-            for insn_id in sched_item_to_insn_id(sched_item):
+            for insn_id in sched_item_to_insn_id(lin_item):
                 result[subkernel].add(insn_id)
 
     return {name: frozenset(insn_ids) for name, insn_ids in result.items()}
+
+
+@memoize_on_first_arg
+def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, FrozenSet[str]]:
+    from loopy.kernel import KernelState
+    if kernel.state != KernelState.LINEARIZED:
+        raise LoopyError("Kernel must be scheduled")
+
+    assert kernel.linearization is not None
+
+    result = {}
+    inames: List[str] = []
+
+    from loopy.schedule import CallKernel, EnterLoop, LeaveLoop
+
+    for lin_item in kernel.linearization:
+        if isinstance(lin_item, CallKernel):
+            result[lin_item.kernel_name] = frozenset(inames)
+        elif isinstance(lin_item, EnterLoop):
+            inames.append(lin_item.iname)
+        elif isinstance(lin_item, LeaveLoop):
+            inames.pop()
+
+    return result
 
 # }}}
 

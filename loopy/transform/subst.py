@@ -337,7 +337,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         def_id = set()
         for dep_id in insn.depends_on:
             dep_insn = id_to_insn[dep_id]
-            if lhs_name in dep_insn.write_dependency_names():
+            if lhs_name in dep_insn.assignee_var_names():
                 if lhs_name in dep_insn.read_dependency_names():
                     raise LoopyError("instruction '%s' both reads *and* "
                             "writes '%s'--cannot transcribe to substitution "
@@ -378,7 +378,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
     definition_insn_ids = set()
     for insn in kernel.instructions:
-        if lhs_name in insn.write_dependency_names():
+        if lhs_name in insn.assignee_var_names():
             definition_insn_ids.add(insn.id)
 
     # }}}

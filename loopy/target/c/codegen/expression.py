@@ -163,7 +163,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         from loopy.kernel.array import _apply_offset
                         from loopy.symbolic import simplify_using_aff
 
-                        subscript = _apply_offset(0, expr.name, arg)
+                        subscript = _apply_offset(0, arg)
                         result = self.make_subscript(
                                 arg,
                                 var(expr.name),
@@ -223,7 +223,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         index_tuple = tuple(
                 simplify_using_aff(self.kernel, idx) for idx in expr.index_tuple)
 
-        access_info = get_access_info(self.kernel.target, ary, index_tuple,
+        access_info = get_access_info(self.kernel, ary, index_tuple,
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 

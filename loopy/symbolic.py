@@ -24,12 +24,19 @@ THE SOFTWARE.
 """
 
 
-from functools import reduce
+from typing import ClassVar, Tuple
+from functools import reduce, cached_property
 from sys import intern
+import re
 
-from pytools import memoize, memoize_method, memoize_on_first_arg, ImmutableRecord
+import numpy as np
+
+from pytools import (memoize, memoize_method, memoize_on_first_arg,
+        ImmutableRecord)
 import pytools.lex
 from pytools.tag import Taggable
+import islpy as isl
+from islpy import dim_type
 
 import pymbolic.primitives as p
 
@@ -63,12 +70,6 @@ from loopy.diagnostic import LoopyError
 from loopy.diagnostic import (ExpressionToAffineConversionError,
                               UnableToDetermineAccessRangeError)
 
-
-import islpy as isl
-from islpy import dim_type
-
-import re
-import numpy as np
 
 __doc__ = """
 .. currentmodule:: loopy.symbolic
@@ -592,7 +593,7 @@ class LocalHardwareAxisIndex(HardwareAxisIndex):
 class FunctionIdentifier(LoopyExpressionBase):
     """A base class for symbols representing functions."""
 
-    init_arg_names = ()
+    init_arg_names: ClassVar[Tuple[str, ...]] = ()
 
     mapper_method = intern("map_loopy_function_identifier")
 
@@ -801,8 +802,7 @@ class Reduction(LoopyExpressionBase):
     def is_tuple_typed(self):
         return self.operation.arg_count > 1
 
-    @property
-    @memoize_method
+    @cached_property
     def inames_set(self):
         return set(self.inames)
 
@@ -2680,8 +2680,7 @@ class AccessRangeOverlapChecker:
     def __init__(self, kernel):
         self.kernel = kernel
 
-    @property
-    @memoize_method
+    @cached_property
     def vars(self):
         return (self.kernel.get_written_variables()
                 | self.kernel.get_read_variables())
@@ -2722,7 +2721,7 @@ class AccessRangeOverlapChecker:
             if access_dir == "any":
                 return var_name in insn.dependency_names()
             else:
-                return var_name in insn.write_dependency_names()
+                return var_name in insn.assignee_var_names()
 
         return self._get_access_ranges(insn_id, access_dir)[var_name]
 

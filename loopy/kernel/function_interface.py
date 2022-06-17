@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import ClassVar, Tuple
+
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
@@ -324,7 +326,8 @@ class InKernelCallable(ImmutableRecord):
 
     """
 
-    hash_fields = ("name", "arg_id_to_dtype", "arg_id_to_descr")
+    hash_fields: ClassVar[Tuple[str, ...]] = (
+            "name", "arg_id_to_dtype", "arg_id_to_descr")
 
     def __init__(self, name, arg_id_to_dtype=None, arg_id_to_descr=None):
 

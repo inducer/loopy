@@ -235,7 +235,7 @@ inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
         if allocator is None:
             allocator = _lpy_cl_tools.DeferredAllocator(queue.context)
     <BLANKLINE>
-        # {{{ find integer arguments from shapes
+        # {{{ find integer arguments from array data
     <BLANKLINE>
         if n is None:
             if a is not None:
@@ -1228,11 +1228,11 @@ should call :func:`loopy.get_one_linearized_kernel`:
    ...
    ---------------------------------------------------------------------------
    LINEARIZATION:
-      0: CALL KERNEL rotate_v2(extra_args=[], extra_inames=[])
+      0: CALL KERNEL rotate_v2
       1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2: RETURN FROM KERNEL rotate_v2
       3: ... gbarrier
-      4: CALL KERNEL rotate_v2_0(extra_args=[], extra_inames=[])
+      4: CALL KERNEL rotate_v2_0
       5:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
       6: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
@@ -1260,18 +1260,18 @@ put those instructions into the schedule.
    ...
    ---------------------------------------------------------------------------
    TEMPORARIES:
-   tmp: type: np:dtype('int32'), shape: () aspace:private
-   tmp_save_slot: type: np:dtype('int32'), shape: (n // 16, 16), dim_tags: (N1:stride:16, N0:stride:1) aspace:global
+   tmp: type: np:dtype('int32'), shape: () aspace: private
+   tmp_save_slot: type: np:dtype('int32'), shape: (n // 16, 16), dim_tags: (N1:stride:16, N0:stride:1) aspace: global
    ---------------------------------------------------------------------------
    ...
    ---------------------------------------------------------------------------
    LINEARIZATION:
-      0: CALL KERNEL rotate_v2(extra_args=['tmp_save_slot'], extra_inames=[])
+      0: CALL KERNEL rotate_v2
       1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2:     tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] = tmp  {id=tmp.save}
       3: RETURN FROM KERNEL rotate_v2
       4: ... gbarrier
-      5: CALL KERNEL rotate_v2_0(extra_args=['tmp_save_slot'], extra_inames=[])
+      5: CALL KERNEL rotate_v2_0
       6:     tmp = tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]  {id=tmp.reload}
       7:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
       8: RETURN FROM KERNEL rotate_v2_0
@@ -1297,7 +1297,7 @@ The kernel translates into two OpenCL kernels.
    #define lid(N) ((int) get_local_id(N))
    #define gid(N) ((int) get_group_id(N))
    <BLANKLINE>
-   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int const *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
    {
      int tmp;
    <BLANKLINE>
@@ -1305,7 +1305,7 @@ The kernel translates into two OpenCL kernels.
      tmp_save_slot[16 * gid(0) + lid(0)] = tmp;
    }
    <BLANKLINE>
-   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n, __global int const *__restrict__ tmp_save_slot)
    {
      int tmp;
    <BLANKLINE>

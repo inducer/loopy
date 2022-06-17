@@ -515,24 +515,14 @@ Arguments
 ^^^^^^^^^
 
 .. autoclass:: KernelArgument
-    :members:
-    :undoc-members:
 
 .. autoclass:: ValueArg
-    :members:
-    :undoc-members:
 
 .. autoclass:: ArrayArg
-    :members:
-    :undoc-members:
 
 .. autoclass:: ConstantArg
-    :members:
-    :undoc-members:
 
 .. autoclass:: ImageArg
-    :members:
-    :undoc-members:
 
 .. _temporaries:
 

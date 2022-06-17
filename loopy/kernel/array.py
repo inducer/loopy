@@ -1,5 +1,6 @@
 """Implementation tagging of array axes."""
 
+from __future__ import annotations
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -23,16 +24,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import sys
+from typing import (cast, Optional, Tuple, Union, FrozenSet, Type, Sequence,
+        List, Callable, ClassVar, TypeVar, TYPE_CHECKING)
+from dataclasses import dataclass
 import re
 from warnings import warn
 
-from pytools import ImmutableRecord, memoize_method
-from pytools.tag import Taggable
+from pytools import ImmutableRecord
+from pytools.tag import Taggable, Tag
 
 import numpy as np  # noqa
 
 from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
+from loopy.typing import ExpressionT, ShapeType
+from loopy.types import LoopyType
+
+if TYPE_CHECKING:
+    from loopy.target import TargetBase
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.data import auto, TemporaryVariable, ArrayArg
+    from loopy.codegen import VectorizationInfo
+
+if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
+    from loopy.target import TargetBase  # noqa: F811
+
+
+T = TypeVar("T")
 
 
 __doc__ = """
@@ -680,11 +699,19 @@ class ArrayBase(ImmutableRecord, Taggable):
 
     (supports persistent hashing)
     """
+    name: str
+    dtype: LoopyType
+    shape: Union[ShapeType, Type["auto"], None]
+    dim_tags: Optional[Sequence[ArrayDimImplementationTag]]
+    offset: Union[ExpressionT, str, None]
+    dim_names: Optional[Tuple[str, ...]]
+    alignment: Optional[int]
+    tags: FrozenSet[Tag]
 
     # Note that order may also wind up in attributes, if the
     # number of dimensions has not yet been determined.
 
-    allowed_extra_kwargs = []
+    allowed_extra_kwargs: ClassVar[Tuple[str, ...]] = ()
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
@@ -949,7 +976,7 @@ class ArrayBase(ImmutableRecord, Taggable):
                         for i in self.dim_tags))
 
         if self.offset:
-            info_entries.append("offset: %s" % self.offset)
+            info_entries.append(f"offset: {self.offset}")
 
         if self.tags:
             info_entries.append(
@@ -1042,18 +1069,27 @@ class ArrayBase(ImmutableRecord, Taggable):
         else:
             return self
 
-    def vector_size(self, target):
+    def vector_size(self, target: TargetBase) -> int:
         """Return the size of the vector type used for the array
         divided by the basic data type.
 
         Note: For 3-vectors, this will be 4.
         """
 
-        if self.dim_tags is None:
+        if self.dim_tags is None or self.shape is None:
             return 1
+
+        assert isinstance(self.shape, tuple)
+
+        saw_vec_tag = False
 
         for i, dim_tag in enumerate(self.dim_tags):
             if isinstance(dim_tag, VectorArrayDimTag):
+                if saw_vec_tag:
+                    raise LoopyError("more than one axis of '{self.name}' "
+                            "is tagged 'vec'")
+                saw_vec_tag = True
+
                 shape_i = self.shape[i]
                 if not is_integer(shape_i):
                     raise LoopyError("shape of '%s' has non-constant-integer "
@@ -1066,222 +1102,51 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         return 1
 
-    def decl_info(self, target, is_written, index_dtype, shape_override=None):
-        """Return a list of :class:`loopy.codegen.ImplementedDataInfo`
-        instances corresponding to the array.
-        """
-
-        array_shape = self.shape
-        if shape_override is not None:
-            array_shape = shape_override
-
-        from loopy.codegen import ImplementedDataInfo
-        from loopy.kernel.data import ValueArg
-
-        def gen_decls(name_suffix,
-                shape, strides,
-                unvec_shape, unvec_strides,
-                stride_arg_axes,
-                dtype, user_index):
-            """
-            :arg unvec_shape: shape tuple
-                that accounts for :class:`loopy.kernel.array.VectorArrayDimTag`
-                in a scalar manner
-            :arg unvec_strides: strides tuple
-                that accounts for :class:`loopy.kernel.array.VectorArrayDimTag`
-                in a scalar manner
-            :arg stride_arg_axes: a tuple *(user_axis, impl_axis, unvec_impl_axis)*
-            :arg user_index: A tuple representing a (user-facing)
-                multi-dimensional subscript. This is filled in with
-                concrete integers when known (such as for separate-array
-                dim tags), and with *None* where the index won't be
-                known until run time.
-            """
-
-            if dtype is None:
-                dtype = self.dtype
-
-            user_axis = len(user_index)
-
-            num_user_axes = self.num_user_axes(require_answer=False)
-
-            if num_user_axes is None or user_axis >= num_user_axes:
-                # {{{ recursion base case
-
-                full_name = self.name + name_suffix
-
-                stride_args = []
-                strides = list(strides)
-                unvec_strides = list(unvec_strides)
-
-                # generate stride arguments, yielded later to keep array first
-                for stride_user_axis, stride_impl_axis, stride_unvec_impl_axis \
-                        in stride_arg_axes:
-                    stride_name = full_name+"_stride%d" % stride_user_axis
-
-                    from pymbolic import var
-                    strides[stride_impl_axis] = \
-                            unvec_strides[stride_unvec_impl_axis] = \
-                            var(stride_name)
-
-                    stride_args.append(
-                            ImplementedDataInfo(
-                                target=target,
-                                name=stride_name,
-                                dtype=index_dtype,
-                                arg_class=ValueArg,
-                                stride_for_name_and_axis=(
-                                    full_name, stride_impl_axis),
-                                is_written=False))
-
-                yield ImplementedDataInfo(
-                            target=target,
-                            name=full_name,
-                            base_name=self.name,
-
-                            arg_class=type(self),
-                            dtype=dtype,
-                            shape=shape,
-                            strides=tuple(strides),
-                            unvec_shape=unvec_shape,
-                            unvec_strides=tuple(unvec_strides),
-                            allows_offset=bool(self.offset),
-
-                            is_written=is_written)
-
-                import loopy as lp
-
-                if self.offset is lp.auto:
-                    offset_name = full_name+"_offset"
-                    yield ImplementedDataInfo(
-                                target=target,
-                                name=offset_name,
-                                dtype=index_dtype,
-                                arg_class=ValueArg,
-                                offset_for_name=full_name,
-                                is_written=False)
-
-                yield from stride_args
-
-                # }}}
-
-                return
-
-            dim_tag = self.dim_tags[user_axis]
-
-            if isinstance(dim_tag, FixedStrideArrayDimTag):
-                if array_shape is None:
-                    new_shape_axis = None
-                else:
-                    new_shape_axis = array_shape[user_axis]
-
-                import loopy as lp
-                if dim_tag.stride is lp.auto:
-                    new_stride_arg_axes = stride_arg_axes \
-                            + ((user_axis, len(strides), len(unvec_strides)),)
-
-                    # repaired above when final array name is known
-                    # (and stride argument is created)
-                    new_stride_axis = None
-                else:
-                    new_stride_arg_axes = stride_arg_axes
-                    new_stride_axis = dim_tag.stride
-
-                yield from gen_decls(name_suffix,
-                        shape + (new_shape_axis,), strides + (new_stride_axis,),
-                        unvec_shape + (new_shape_axis,),
-                        unvec_strides + (new_stride_axis,),
-                        new_stride_arg_axes,
-                        dtype, user_index + (None,))
-
-            elif isinstance(dim_tag, SeparateArrayArrayDimTag):
-                shape_i = array_shape[user_axis]
-                if not is_integer(shape_i):
-                    raise LoopyError("shape of '%s' has non-constant "
-                            "integer axis %d (0-based)" % (
-                                self.name, user_axis))
-
-                for i in range(shape_i):
-                    yield from gen_decls(name_suffix + "_s%d" % i,
-                            shape, strides, unvec_shape, unvec_strides,
-                            stride_arg_axes, dtype,
-                            user_index + (i,))
-
-            elif isinstance(dim_tag, VectorArrayDimTag):
-                shape_i = array_shape[user_axis]
-                if not is_integer(shape_i):
-                    raise LoopyError("shape of '%s' has non-constant "
-                            "integer axis %d (0-based)" % (
-                                self.name, user_axis))
-
-                yield from gen_decls(name_suffix,
-                        shape, strides,
-                        unvec_shape + (shape_i,),
-                        # vectors always have stride 1
-                        unvec_strides + (1,),
-                        stride_arg_axes,
-                        target.vector_dtype(dtype, shape_i),
-                        user_index + (None,))
-
-            else:
-                raise LoopyError("unsupported array dim implementation tag '%s' "
-                        "in array '%s'" % (dim_tag, self.name))
-
-        yield from gen_decls(name_suffix="",
-                shape=(), strides=(),
-                unvec_shape=(), unvec_strides=(),
-                stride_arg_axes=(),
-                dtype=self.dtype, user_index=())
-
-    @memoize_method
-    def sep_shape(self):
-        sep_shape = []
-        for shape_i, dim_tag in zip(self.shape, self.dim_tags):
-            if isinstance(dim_tag, SeparateArrayArrayDimTag):
-                if not is_integer(shape_i):
-                    raise TypeError("array '%s' has non-fixed-size "
-                            "separate-array axis" % self.name)
-
-                sep_shape.append(shape_i)
-
-        return tuple(sep_shape)
-
-    @memoize_method
-    def subscripts_and_names(self):
-        sep_shape = self.sep_shape()
-
-        if not sep_shape:
-            return None
-
-        def unwrap_1d_indices(idx):
-            # This allows these indices to work on Python sequences, too, not
-            # just numpy arrays.
-
-            if len(idx) == 1:
-                return idx[0]
-            else:
-                return idx
-
-        return [
-                (unwrap_1d_indices(i),
-                    self.name + "".join("_s%d" % sub_i for sub_i in i))
-                for i in np.ndindex(sep_shape)]
 
 # }}}
+
+def drop_vec_dims(
+        dim_tags: Tuple[ArrayDimImplementationTag, ...],
+        t: Tuple[T, ...]) -> Tuple[T, ...]:
+    assert len(dim_tags) == len(t)
+    return tuple(t_i for dim_tag, t_i in zip(dim_tags, t)
+            if not isinstance(dim_tag, VectorArrayDimTag))
+
+
+def get_strides(array: ArrayBase) -> Tuple[ExpressionT, ...]:
+    from pymbolic import var
+    result: List[ExpressionT] = []
+
+    if array.dim_tags is None:
+        return ()
+
+    for dim_tag in array.dim_tags:
+        if isinstance(dim_tag, VectorArrayDimTag):
+            result.append(1)
+
+        elif isinstance(dim_tag, FixedStrideArrayDimTag):
+            if isinstance(dim_tag.stride, str):
+                result.append(var(dim_tag.stride))
+            else:
+                result.append(dim_tag.stride)
+
+        else:
+            raise ValueError("unexpected dim tag type during stride finding: "
+                    f"'{type(dim_tag)}'")
+
+    return tuple(result)
 
 
 # {{{ access code generation
 
+@dataclass(frozen=True)
 class AccessInfo(ImmutableRecord):
-    """
-    .. attribute:: array_name
-    .. attribute:: vector_index
-    .. attribute:: subscripts
-        List of expressions, one for each target axis
-    """
+    array_name: str
+    vector_index: Optional[int]
+    subscripts: Tuple[ExpressionT, ...]
 
 
-def _apply_offset(sub, array_name, ary):
+def _apply_offset(sub: ExpressionT, ary: ArrayBase) -> ExpressionT:
     """
     Helper for :func:`get_access_info`.
     Augments *ary*'s subscript index expression (*sub*) with its offset info.
@@ -1293,18 +1158,33 @@ def _apply_offset(sub, array_name, ary):
     from pymbolic import var
 
     if ary.offset:
+        from loopy.kernel.data import TemporaryVariable
+        if isinstance(ary, TemporaryVariable):
+            # offsets for base_storage are added when the temporary
+            # is declared.
+            return sub
+
         if ary.offset is lp.auto:
-            return var(array_name+"_offset") + sub
+            raise AssertionError(
+                    f"Offset for '{ary.name}' should have been replaced "
+                    "with an actual argument by "
+                    "make_temporaries_for_offsets_and_strides "
+                    "during preprocessing.")
         elif isinstance(ary.offset, str):
             return var(ary.offset) + sub
         else:
             # assume it's an expression
-            return ary.offset + sub
+            # FIXME: mypy can't figure out that ExpressionT + ExpressionT works
+            return ary.offset + sub  # type: ignore[call-overload, arg-type, operator]  # noqa: E501
     else:
         return sub
 
 
-def get_access_info(target, ary, index, eval_expr, vectorization_info):
+def get_access_info(kernel: "LoopKernel",
+        ary: Union["ArrayArg", "TemporaryVariable"],
+        index: Union[ExpressionT, Tuple[ExpressionT, ...]],
+        eval_expr: Callable[[ExpressionT], int],
+        vectorization_info: "VectorizationInfo") -> AccessInfo:
     """
     :arg ary: an object of type :class:`ArrayBase`
     :arg index: a tuple of indices representing a subscript into ary
@@ -1313,7 +1193,6 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
     """
 
     import loopy as lp
-    from pymbolic import var
 
     def eval_expr_assert_integer_constant(i, expr):
         from pymbolic.mapper.evaluator import UnknownVariableError
@@ -1336,8 +1215,6 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
     if not isinstance(index, tuple):
         index = (index,)
 
-    array_name = ary.name
-
     if ary.dim_tags is None:
         if len(index) != 1:
             raise LoopyError("Array '%s' has no known axis implementation "
@@ -1347,8 +1224,8 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
                     % ary.name)
 
         return AccessInfo(
-                array_name=array_name,
-                subscripts=(_apply_offset(index[0], array_name, ary),),
+                array_name=ary.name,
+                subscripts=(_apply_offset(index[0], ary),),
                 vector_index=None)
 
     if len(ary.dim_tags) != len(index):
@@ -1359,21 +1236,33 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
     num_target_axes = ary.num_target_axes()
 
     vector_index = None
-    subscripts = [0] * num_target_axes
+    subscripts: List[ExpressionT] = [0] * num_target_axes
 
-    vector_size = ary.vector_size(target)
+    vector_size = ary.vector_size(kernel.target)
 
     # {{{ process separate-array dim tags first, to find array name
 
-    for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
-        if isinstance(dim_tag, SeparateArrayArrayDimTag):
-            idx = eval_expr_assert_integer_constant(i, idx)
-            array_name += "_s%d" % idx
+    from loopy.kernel.data import ArrayArg
+    if isinstance(ary, ArrayArg) and ary._separation_info:
+        sep_index = []
+        remaining_index = []
+        for iaxis, (index_i, dim_tag) in enumerate(zip(index, ary.dim_tags)):
+            if iaxis in ary._separation_info.sep_axis_indices_set:
+                sep_index.append(eval_expr_assert_integer_constant(iaxis, index_i))
+                assert isinstance(dim_tag, SeparateArrayArrayDimTag)
+            else:
+                remaining_index.append(index_i)
+
+        index = tuple(remaining_index)
+        # only arguments (not temporaries) may be sep-tagged
+        ary = cast(ArrayArg,
+            kernel.arg_dict[ary._separation_info.subarray_names[tuple(sep_index)]])
 
     # }}}
 
     # {{{ process remaining dim tags
 
+    assert ary.dim_tags is not None
     for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
         if isinstance(dim_tag, FixedStrideArrayDimTag):
             stride = dim_tag.stride
@@ -1386,18 +1275,24 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
                             % (ary.name, i, dim_tag.stride, vector_size))
 
             elif stride is lp.auto:
-                stride = var(array_name + "_stride%d" % i)
+                raise AssertionError(
+                        f"Stride for axis {i+1} (1-based) of "
+                        "'{array_name}' should have been replaced "
+                        "with an actual argument by "
+                        "make_temporaries_for_offsets_and_strides "
+                        "during preprocessing.")
 
             subscripts[dim_tag.target_axis] += (stride // vector_size)*idx
 
         elif isinstance(dim_tag, SeparateArrayArrayDimTag):
-            pass
+            raise AssertionError()
 
         elif isinstance(dim_tag, VectorArrayDimTag):
             from pymbolic.primitives import Variable
+            index_i = index[i]
             if (vectorization_info is not None
-                    and isinstance(index[i], Variable)
-                    and index[i].name == vectorization_info.iname):
+                    and isinstance(index_i, Variable)
+                    and index_i.name == vectorization_info.iname):
                 # We'll do absolutely nothing here, which will result
                 # in the vector being returned.
                 pass
@@ -1414,18 +1309,17 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
     # }}}
 
-    from pymbolic import var
     import loopy as lp
     if ary.offset:
         if num_target_axes > 1:
             raise NotImplementedError("offsets for multiple image axes")
 
-        subscripts[0] = _apply_offset(subscripts[0], array_name, ary)
+        subscripts[0] = _apply_offset(subscripts[0], ary)
 
     return AccessInfo(
-            array_name=array_name,
+            array_name=ary.name,
             vector_index=vector_index,
-            subscripts=subscripts)
+            subscripts=tuple(subscripts))
 
 # }}}
 

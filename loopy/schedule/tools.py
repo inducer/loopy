@@ -20,10 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.kernel.data import AddressSpace
+from functools import cached_property
+import enum
+from typing import Sequence, FrozenSet, Tuple, List, Set, Dict
+from dataclasses import dataclass
+
 from pytools import memoize_method
 import islpy as isl
-import enum
+
+from loopy.kernel.data import AddressSpace, TemporaryVariable, ArrayArg
+from loopy.kernel import LoopKernel
 
 
 # {{{ block boundary finder
@@ -51,60 +57,244 @@ def get_block_boundaries(schedule):
 
 # {{{ subkernel tools
 
-def temporaries_read_in_subkernel(kernel, subkernel):
+def temporaries_read_in_subkernel(
+        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
-    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
-    return frozenset(tv
-            for insn_id in insn_ids
-            for tv in kernel.id_to_insn[insn_id].read_dependency_names()
-            if tv in kernel.temporary_variables)
+    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
+    inames = frozenset().union(*(kernel.insn_inames(insn_id)
+                                 for insn_id in insn_ids))
+    domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
+    params = frozenset().union(*(
+        kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
+        for dom_idx in domain_idxs))
+
+    return (frozenset(tv
+                for insn_id in insn_ids
+                for tv in kernel.id_to_insn[insn_id].read_dependency_names()
+                if tv in kernel.temporary_variables)
+            | (params & frozenset(kernel.temporary_variables)))
 
 
-def temporaries_written_in_subkernel(kernel, subkernel):
+def temporaries_written_in_subkernel(
+        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
-    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel]
+    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     return frozenset(tv
-            for insn_id in insn_ids
-            for tv in kernel.id_to_insn[insn_id].write_dependency_names()
-            if tv in kernel.temporary_variables)
+                for insn_id in insn_ids
+                for tv in kernel.id_to_insn[insn_id].assignee_var_names()
+                if tv in kernel.temporary_variables)
+
+
+def args_read_in_subkernel(
+        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+    from loopy.kernel.tools import get_subkernel_to_insn_id_map
+    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
+    inames = frozenset().union(*(kernel.insn_inames(insn_id)
+                                 for insn_id in insn_ids))
+    domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
+    params = frozenset().union(*(
+        kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
+        for dom_idx in domain_idxs))
+    return (frozenset(arg
+                for insn_id in insn_ids
+                for arg in kernel.id_to_insn[insn_id].read_dependency_names()
+                if arg in kernel.arg_dict)
+            | (params & frozenset(kernel.arg_dict)))
+
+
+def args_written_in_subkernel(
+        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+    from loopy.kernel.tools import get_subkernel_to_insn_id_map
+    insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
+    return frozenset(arg
+                for insn_id in insn_ids
+                for arg in kernel.id_to_insn[insn_id].assignee_var_names()
+                if arg in kernel.arg_dict)
+
+
+def supporting_temporary_names(
+        kernel: LoopKernel, tv_names: FrozenSet[str]) -> FrozenSet[str]:
+    result: Set[str] = set()
+
+    for name in tv_names:
+        tv = kernel.temporary_variables[name]
+        for supp_name in tv.supporting_names():
+            if supp_name in kernel.temporary_variables:
+                result.add(supp_name)
+
+    return frozenset(result)
 
 # }}}
 
 
-# {{{ add extra args to schedule
+# {{{ argument lists
 
-def add_extra_args_to_schedule(kernel):
-    """
-    Fill the `extra_args` fields in all the :class:`loopy.schedule.CallKernel`
-    instructions in the schedule with global temporaries.
-    """
-    new_schedule = []
-    from loopy.schedule import CallKernel
+@dataclass(frozen=True)
+class KernelArgInfo:
+    passed_arg_names: Sequence[str]
 
-    for sched_item in kernel.linearization:
-        if isinstance(sched_item, CallKernel):
-            subkernel = sched_item.kernel_name
+    written_names: FrozenSet[str]
 
-            used_temporaries = (
-                    temporaries_read_in_subkernel(kernel, subkernel)
-                    | temporaries_written_in_subkernel(kernel, subkernel))
+    @property
+    def passed_names(self) -> Sequence[str]:
+        return self.passed_arg_names
 
-            more_args = {tv
-                    for tv in used_temporaries
-                    if
-                    kernel.temporary_variables[tv].address_space
-                    == AddressSpace.GLOBAL
-                    and
-                    kernel.temporary_variables[tv].initializer is None
-                    and
-                    tv not in sched_item.extra_args}
 
-            new_schedule.append(sched_item.copy(
-                    extra_args=sched_item.extra_args + sorted(more_args)))
+@dataclass(frozen=True)
+class SubKernelArgInfo(KernelArgInfo):
+    passed_inames: Sequence[str]
+    passed_temporaries: Sequence[str]
+
+    @property
+    def passed_names(self) -> Sequence[str]:
+        return (list(self.passed_arg_names)
+                + list(self.passed_inames)
+                + list(self.passed_temporaries))
+
+
+def _should_temp_var_be_passed(tv: TemporaryVariable) -> bool:
+    return tv.address_space == AddressSpace.GLOBAL and tv.initializer is None
+
+
+class _SupportingNameTracker:
+    def __init__(self, kernel: LoopKernel):
+        self.kernel = kernel
+        self.name_to_main_name: Dict[str, str] = {}
+
+    def add_supporting_names_for(self, name):
+        var_descr = self.kernel.get_var_descriptor(name)
+        for supp_name in var_descr.supporting_names():
+            self.name_to_main_name[supp_name] = (
+                    self.name_to_main_name.get(supp_name, frozenset())
+                    | {name})
+
+    def get_additional_args_and_tvs(
+            self, already_passed: Set[str]
+            ) -> Tuple[List[str], List[str]]:
+        additional_args = []
+        additional_temporaries = []
+
+        for supporting_name in sorted(frozenset(self.name_to_main_name)):
+            if supporting_name not in already_passed:
+                already_passed.add(supporting_name)
+                var_descr = self.kernel.get_var_descriptor(supporting_name)
+                if isinstance(var_descr, TemporaryVariable):
+                    if _should_temp_var_be_passed(var_descr):
+                        additional_temporaries.append(supporting_name)
+                else:
+                    additional_args.append(supporting_name)
+
+        return additional_args, additional_temporaries
+
+
+def _process_args_for_arg_info(
+        kernel: LoopKernel, args_read: Set[str], args_written: Set[str],
+        supp_name_tracker: _SupportingNameTracker, used_only: bool,
+        ) -> List[str]:
+
+    args_expected: Set[str] = set()
+
+    passed_arg_names = []
+    for arg in kernel.args:
+        if used_only and not (arg.name in args_read or arg.name in args_written):
+            continue
+
+        try:
+            args_expected.remove(arg.name)
+        except KeyError:
+            pass
+
+        # Disregard the original array if it had a sep-tagged axis.
+        if isinstance(arg, ArrayArg):
+            if not arg._separation_info:
+                passed_arg_names.append(arg.name)
+                supp_name_tracker.add_supporting_names_for(arg.name)
+            else:
+                for sep_name in sorted(arg._separation_info.subarray_names.values()):
+                    # Separated arrays occur later in the argument list.
+                    # Mark them as accessed if the original array was,
+                    # we'll stumble on them when it is their turn.
+                    # Add them to args_expected to ensure they're not missed.
+                    if arg.name in args_read:
+                        args_read.add(sep_name)
+                        args_expected.add(sep_name)
+                    if arg.name in args_written:
+                        args_written.add(sep_name)
+                        args_expected.add(sep_name)
+
         else:
-            new_schedule.append(sched_item)
+            passed_arg_names.append(arg.name)
+            supp_name_tracker.add_supporting_names_for(arg.name)
 
-    return kernel.copy(linearization=new_schedule)
+    assert not args_expected
+
+    return passed_arg_names
+
+
+def get_kernel_arg_info(kernel: LoopKernel) -> KernelArgInfo:
+    args_written = set(kernel.arg_dict) & kernel.get_written_variables()
+
+    supp_name_tracker = _SupportingNameTracker(kernel)
+
+    passed_arg_names = _process_args_for_arg_info(kernel,
+            args_read=set(), args_written=args_written,
+            supp_name_tracker=supp_name_tracker,
+            used_only=False)
+
+    additional_args, additional_temporaries = \
+            supp_name_tracker.get_additional_args_and_tvs(
+                    already_passed=(
+                        set(passed_arg_names)))
+
+    assert not additional_temporaries
+
+    return KernelArgInfo(
+            passed_arg_names=passed_arg_names + additional_args,
+            written_names=frozenset(args_written))
+
+
+def get_subkernel_arg_info(
+        kernel: LoopKernel, subkernel_name: str) -> SubKernelArgInfo:
+    assert kernel.linearization is not None
+
+    args_read = set(args_read_in_subkernel(kernel, subkernel_name))
+    args_written = set(args_written_in_subkernel(kernel, subkernel_name))
+
+    tvs_read = temporaries_read_in_subkernel(kernel, subkernel_name)
+    tvs_written = set(temporaries_written_in_subkernel(kernel, subkernel_name))
+
+    supp_name_tracker = _SupportingNameTracker(kernel)
+
+    passed_arg_names = _process_args_for_arg_info(kernel,
+            args_read=args_read, args_written=args_written,
+            supp_name_tracker=supp_name_tracker,
+            used_only=True)
+
+    passed_temporaries: List[str] = []
+    for tv_name in sorted(tvs_read | tvs_written):
+        supp_name_tracker.add_supporting_names_for(tv_name)
+        tv = kernel.temporary_variables[tv_name]
+
+        if _should_temp_var_be_passed(tv):
+            if tv.base_storage:
+                if tv_name in tvs_written:
+                    if tv_name in tvs_written:
+                        tvs_written.add(tv.base_storage)
+            else:
+                passed_temporaries.append(tv.name)
+
+    additional_args, additional_temporaries = \
+            supp_name_tracker.get_additional_args_and_tvs(
+                    already_passed=(
+                        set(passed_arg_names) | set(passed_temporaries)))
+
+    from loopy.kernel.tools import get_subkernel_extra_inames
+
+    return SubKernelArgInfo(
+            passed_arg_names=passed_arg_names + additional_args,
+            passed_inames=sorted(get_subkernel_extra_inames(kernel)[subkernel_name]),
+            passed_temporaries=passed_temporaries + additional_temporaries,
+            written_names=frozenset(args_written | tvs_written))
 
 # }}}
 
@@ -287,8 +477,7 @@ class WriteRaceChecker:
         self.kernel = kernel
         self.callables_table = callables_table
 
-    @property
-    @memoize_method
+    @cached_property
     def vars(self):
         return (self.kernel.get_written_variables()
                 | self.kernel.get_read_variables())
@@ -364,3 +553,5 @@ class WriteRaceChecker:
                                        self.kernel, self.callables_table)
 
 # }}}
+
+# vim: foldmethod=marker

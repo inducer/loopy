@@ -2447,6 +2447,25 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     from pytools.tag import normalize_tags, check_tag_uniqueness
     tags = check_tag_uniqueness(normalize_tags(kwargs.pop("tags", frozenset())))
 
+    index_dtype = kwargs.pop("index_dtype", None)
+    if index_dtype is None:
+        index_dtype = np.int32
+
+    from loopy.types import to_loopy_type
+    index_dtype = to_loopy_type(index_dtype)
+
+    preambles = kwargs.pop("preambles", None)
+    if preambles is None:
+        preambles = ()
+    elif not isinstance(preambles, tuple):
+        preambles = tuple(preambles)
+
+    preamble_generators = kwargs.pop("preamble_generators", None)
+    if preamble_generators is None:
+        preamble_generators = ()
+    elif not isinstance(preamble_generators, tuple):
+        preamble_generators = tuple(preamble_generators)
+
     from loopy.kernel import LoopKernel
     knl = LoopKernel(domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
@@ -2456,6 +2475,9 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
             tags=tags,
             inames=inames,
             assumptions=assumptions,
+            index_dtype=index_dtype,
+            preambles=preambles,
+            preamble_generators=preamble_generators,
             **kwargs)
 
     from loopy.transform.instruction import uniquify_instruction_ids

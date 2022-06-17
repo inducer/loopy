@@ -20,7 +20,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import cached_property
 from pytools import memoize_method
+
 from loopy.schedule import (EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel,
                             Barrier, BeginBlockItem, gather_schedule_block,
                             ScheduleItem)
@@ -40,7 +42,7 @@ __doc__ = """
 """
 
 
-@dataclass
+@dataclass(frozen=True)
 class KernelProxyForCodegenOperationCacheManager:
     """
     Proxy to :class:`loopy.LoopKernel` to be used by
@@ -50,8 +52,7 @@ class KernelProxyForCodegenOperationCacheManager:
     linearization: List[ScheduleItem]
     inames: Dict[str, Iname]
 
-    @property
-    @memoize_method
+    @cached_property
     def id_to_insn(self):
         return {insn.id: insn for insn in self.instructions}
 
@@ -111,8 +112,7 @@ class CodegenOperationCacheManager:
 
         return self
 
-    @property
-    @memoize_method
+    @cached_property
     def active_inames(self):
         """
         Returns an instance of :class:`list`, with the i-th entry being a
@@ -139,8 +139,7 @@ class CodegenOperationCacheManager:
 
         return active_inames
 
-    @property
-    @memoize_method
+    @cached_property
     def callkernel_index(self):
         """
         Returns an instance of :class:`list`, with the i-th entry being the index of
@@ -165,8 +164,7 @@ class CodegenOperationCacheManager:
 
         return callkernel_index
 
-    @property
-    @memoize_method
+    @cached_property
     def has_barrier_within(self):
         """
         Returns an instance of :class:`list`. The list's i-th entry is *True* if the

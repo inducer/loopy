@@ -1342,6 +1342,38 @@ def test_c_instruction_in_callee(ctx_factory, inline):
     assert out.get() == (n-1)
 
 
+def test_global_temp_var_with_base_storage(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i, i2] : 0<=i,i2<3}",
+        """
+        a[i] = 5
+        b[i] = a[i] + 1
+        ... gbarrier
+        c[i2] = b[i2] + 2
+        d[i2] = c[i2] + 3
+        """, [
+            lp.TemporaryVariable("a", dtype=np.int32, shape=(3,),
+                address_space=lp.AddressSpace.GLOBAL, base_storage="bs"),
+            lp.TemporaryVariable("b", dtype=np.int32, shape=(3,),
+                address_space=lp.AddressSpace.GLOBAL, base_storage="bs"),
+            lp.TemporaryVariable("c", dtype=np.int32, shape=(3,),
+                address_space=lp.AddressSpace.GLOBAL, base_storage="bs"),
+            ...
+        ],
+        seq_dependencies=True)
+
+    knl = lp.allocate_temporaries_for_base_storage(knl, aliased=False)
+
+    cl_prg = cl.Program(ctx, lp.generate_code_v2(knl).device_code()).build()
+    assert [knl.num_args for knl in cl_prg.all_kernels()] == [1, 2]
+
+    _evt, (d,) = knl(cq)
+    assert (d.get() == 5 + 1 + 2 + 3).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
