@@ -24,17 +24,25 @@ THE SOFTWARE.
 """
 
 
+from typing import cast, Tuple
+
 import numpy as np  # noqa
+import pymbolic.primitives as p
+from pymbolic import var
+from pymbolic.mapper.stringifier import PREC_NONE
+from pytools import memoize_method
+from cgen import Generable, Declarator, Const
+
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
-from pymbolic import var
-import pymbolic.primitives as p
-from loopy.kernel.data import AddressSpace
-from pymbolic.mapper.stringifier import PREC_NONE
-
-from pytools import memoize_method
+from loopy.schedule import CallKernel
+from loopy.typing import ExpressionT
+from loopy.types import LoopyType
+from loopy.kernel.data import AddressSpace, TemporaryVariable, ArrayArg
+from loopy.codegen import CodeGenerationState
+from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ expression mapper
@@ -110,7 +118,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 from loopy.kernel.array import get_access_info
                 from pymbolic import evaluate
 
-                access_info = get_access_info(self.kernel.target, ary, expr.index,
+                access_info = get_access_info(self.kernel, ary, expr.index,
                     lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                     self.codegen_state.vectorization_info)
 
@@ -159,15 +167,6 @@ class ISPCTarget(CFamilyTarget):
     Intel CPUs with wide vector units.
     """
 
-    def __init__(self, occa_mode=False):
-        """
-        :arg occa_mode: Whether to modify the generated call signature to
-            be compatible with OCCA
-        """
-        self.occa_mode = occa_mode
-
-        super().__init__()
-
     host_program_name_suffix = ""
     device_program_name_suffix = "_inner"
 
@@ -201,43 +200,36 @@ class ISPCTarget(CFamilyTarget):
 
 
 class ISPCASTBuilder(CFamilyASTBuilder):
-    def _arg_names_and_decls(self, codegen_state):
-        implemented_data_info = codegen_state.implemented_data_info
-        arg_names = [iai.name for iai in implemented_data_info]
-
-        arg_decls = [
-                self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                for idi in implemented_data_info]
-
-        # {{{ occa compatibility hackery
-
-        from cgen import Value
-        if self.target.occa_mode:
-            from cgen import ArrayOf, Const
-            from cgen.ispc import ISPCUniform
-
-            arg_decls = [
-                    Const(ISPCUniform(ArrayOf(Value("int", "loopy_dims")))),
-                    Const(ISPCUniform(Value("int", "o1"))),
-                    Const(ISPCUniform(Value("int", "o2"))),
-                    Const(ISPCUniform(Value("int", "o3"))),
-                    ] + arg_decls
-            arg_names = ["loopy_dims", "o1", "o2", "o3"] + arg_names
-
-        # }}}
-
-        return arg_names, arg_decls
-
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int) -> Generable:
         name = codegen_result.current_program(codegen_state).name
+        kernel = codegen_state.kernel
+
+        assert codegen_state.kernel.linearization is not None
+        subkernel_name = cast(
+                        CallKernel,
+                        codegen_state.kernel.linearization[schedule_index]
+                        ).kernel_name
 
         from cgen import (FunctionDeclaration, Value)
         from cgen.ispc import ISPCExport, ISPCTask
 
-        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+        if codegen_state.is_entrypoint:
+            # subkernel launches occur only as part of entrypoint kernels for now
+            from loopy.schedule.tools import get_subkernel_arg_info
+            skai = get_subkernel_arg_info(codegen_state.kernel, subkernel_name)
+            passed_names = skai.passed_names
+            written_names = skai.written_names
+        else:
+            passed_names = [arg.name for arg in kernel.args]
+            written_names = kernel.get_written_variables()
+
+        arg_decls = [self.arg_to_cgen_declarator(
+                            kernel, arg_name,
+                            is_written=arg_name in written_names)
+                        for arg_name in passed_names]
 
         if codegen_state.is_generating_device_code:
             result = ISPCTask(
@@ -253,9 +245,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from loopy.target.c import FunctionDeclarationWrapper
         return FunctionDeclarationWrapper(result)
 
-    # }}}
-
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+    def get_kernel_call(self, codegen_state: CodeGenerationState,
+            subkernel_name: str,
+            gsize: Tuple[ExpressionT, ...],
+            lsize: Tuple[ExpressionT, ...]) -> Generable:
+        kernel = codegen_state.kernel
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -267,18 +261,26 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         "assert(programCount == (%s))"
                         % ecm(lsize[0], PREC_NONE)))
 
-        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+        if codegen_state.is_entrypoint:
+            # subkernel launches occur only as part of entrypoint kernels for now
+            from loopy.schedule.tools import get_subkernel_arg_info
+            skai = get_subkernel_arg_info(codegen_state.kernel, subkernel_name)
+            passed_names = skai.passed_names
+        else:
+            passed_names = [arg.name for arg in kernel.args]
 
         from cgen.ispc import ISPCLaunch
         result.append(
                 ISPCLaunch(
                     tuple(ecm(gs_i, PREC_NONE) for gs_i in gsize),
                     "{}({})".format(
-                        name,
-                        ", ".join(arg_names)
+                        subkernel_name,
+                        ", ".join(passed_names)
                         )))
 
         return Block(result)
+
+    # }}}
 
     # {{{ code generation guts
 
@@ -302,17 +304,43 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def get_temporary_decl(self, codegen_state, sched_index, temp_var, decl_info):
-        from loopy.target.c import POD  # uses the correct complex type
-        temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
+    # }}}
 
-        shape = decl_info.shape
+    # {{{ declarators
+
+    def get_value_arg_declaraotor(
+            self, name: str, dtype: LoopyType, is_written: bool) -> Declarator:
+        from cgen.ispc import ISPCUniform
+        return ISPCUniform(super().get_value_arg_declaraotor(
+                name, dtype, is_written))
+
+    def get_array_arg_declarator(
+            self, arg: ArrayArg, is_written: bool) -> Declarator:
+        # FIXME restrict?
+        from cgen.ispc import ISPCUniformPointer, ISPCUniform
+        decl = ISPCUniform(
+                ISPCUniformPointer(self.get_array_base_declarator(arg)))
+
+        if not is_written:
+            decl = Const(decl)
+
+        return decl
+
+    def get_temporary_var_declarator(self,
+            codegen_state: CodeGenerationState,
+            temp_var: TemporaryVariable) -> Declarator:
+        temp_var_decl = self.get_array_base_declarator(temp_var)
+
+        shape = temp_var.shape
+
+        assert isinstance(shape, tuple)
 
         if temp_var.address_space == AddressSpace.PRIVATE:
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # above in expr to code mapper)
-            _, lsize = codegen_state.kernel.get_grid_size_upper_bounds_as_exprs()
+            _, lsize = codegen_state.kernel.get_grid_size_upper_bounds_as_exprs(
+                    codegen_state.callables_table)
             shape = lsize + shape
 
         if shape:
@@ -325,50 +353,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         return temp_var_decl
 
-    def wrap_temporary_decl(self, decl, scope):
-        from cgen.ispc import ISPCUniform
-        return ISPCUniform(decl)
+    # }}}
 
-    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
-        from loopy.target.c import POD  # uses the correct complex type
-        from cgen import Const
-        from cgen.ispc import ISPCUniformPointer, ISPCUniform
-
-        arg_decl = ISPCUniformPointer(POD(self, dtype, name))
-
-        if not is_written:
-            arg_decl = Const(arg_decl)
-
-        arg_decl = ISPCUniform(arg_decl)
-
-        return arg_decl
-
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from warnings import warn
-        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
-                "instead.", DeprecationWarning, stacklevel=2)
-        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
-                dtype, is_written)
-
-    def get_value_arg_decl(self, name, shape, dtype, is_written):
-        result = super().get_value_arg_decl(
-                name, shape, dtype, is_written)
-
-        from cgen import Reference, Const
-        was_const = isinstance(result, Const)
-
-        if was_const:
-            result = result.subdecl
-
-        if self.target.occa_mode:
-            result = Reference(result)
-
-        if was_const:
-            result = Const(result)
-
-        from cgen.ispc import ISPCUniform
-        return ISPCUniform(result)
-
+    # {{{ emit_...
     def emit_assignment(self, codegen_state, insn):
         kernel = codegen_state.kernel
         ecm = codegen_state.expression_to_code_mapper
@@ -404,7 +391,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
             index_tuple = tuple(
                     simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
 
-            access_info = get_access_info(kernel.target, ary, index_tuple,
+            access_info = get_access_info(kernel, ary, index_tuple,
                     lambda expr: evaluate(expr, codegen_state.var_subst_map),
                     codegen_state.vectorization_info)
 
@@ -505,6 +492,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
+
     # }}}
 
 

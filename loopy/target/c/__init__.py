@@ -23,21 +23,32 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np  # noqa
-from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
-from loopy.diagnostic import LoopyError, LoopyTypeError
-from cgen import Pointer, NestedDeclarator, Block
-from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
-from pymbolic.mapper.stringifier import PREC_NONE
-from loopy.symbolic import IdentityMapper
-from loopy.types import NumpyType
-from loopy.kernel.function_interface import ScalarCallable
-import pymbolic.primitives as p
-
-from loopy.tools import remove_common_indentation
+from typing import cast, Tuple, Optional
 import re
 
+import numpy as np  # noqa
+
+from cgen import Pointer, NestedDeclarator, Block, Generable, Declarator, Const
+from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
+from pymbolic.mapper.stringifier import PREC_NONE
+import pymbolic.primitives as p
 from pytools import memoize_method
+
+from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
+from loopy.diagnostic import LoopyError, LoopyTypeError
+from loopy.symbolic import IdentityMapper
+from loopy.types import NumpyType, LoopyType
+from loopy.typing import ExpressionT
+from loopy.kernel import LoopKernel
+from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
+from loopy.kernel.data import (TemporaryVariable, AddressSpace, ArrayArg,
+        ConstantArg, ImageArg, ValueArg)
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.schedule import CallKernel
+from loopy.tools import remove_common_indentation
+from loopy.codegen import CodeGenerationState
+from loopy.codegen.result import CodeGenerationResult
+
 
 __doc__ = """
 .. currentmodule loopy.target.c
@@ -249,9 +260,6 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
 
 
 # {{{ cgen overrides
-
-from cgen import Declarator
-
 
 class POD(Declarator):
     """A simple declarator: The type is given as a :class:`numpy.dtype`
@@ -748,7 +756,7 @@ def get_gnu_libc_callables():
 # }}}
 
 
-class CFamilyASTBuilder(ASTBuilderBase):
+class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     preamble_function_qualifier = "inline"
 
@@ -777,10 +785,13 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
     # {{{ code generation
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index,
-            function_decl, function_body):
+    def get_function_definition(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult,
+            schedule_index: int, function_decl: Generable, function_body: Generable
+            ) -> Generable:
         kernel = codegen_state.kernel
+        assert kernel.linearization is not None
 
         from cgen import (
                 FunctionBody,
@@ -811,12 +822,8 @@ class CFamilyASTBuilder(ASTBuilderBase):
                         tv.initializer is not None):
                     assert tv.read_only
 
-                    decl_info, = tv.decl_info(self.target,
-                                    index_dtype=kernel.index_dtype)
                     decl = self.wrap_global_constant(
-                            self.get_temporary_decl(
-                                codegen_state, schedule_index, tv,
-                                decl_info))
+                            self.get_temporary_var_declarator(codegen_state, tv))
 
                     if tv.initializer is not None:
                         decl = Initializer(decl, generate_array_literal(
@@ -830,29 +837,16 @@ class CFamilyASTBuilder(ASTBuilderBase):
         else:
             return Collection(result+[Line(), fbody])
 
-    def idi_to_cgen_declarator(self, kernel, idi):
-        from loopy.kernel.data import InameArg
-        if (idi.offset_for_name is not None
-                or idi.stride_for_name_and_axis is not None):
-            assert not idi.is_written
-            from cgen import Const
-            return Const(POD(self, idi.dtype, idi.name))
-        elif issubclass(idi.arg_class, InameArg):
-            return InameArg(idi.name, idi.dtype).get_arg_decl(self)
-        else:
-            name = idi.base_name or idi.name
-            var_descr = kernel.get_var_descriptor(name)
-            from loopy.kernel.data import ArrayBase
-            if isinstance(var_descr, ArrayBase):
-                return var_descr.get_arg_decl(
-                        self,
-                        idi.name[len(name):], idi.shape, idi.dtype,
-                        idi.is_written)
-            else:
-                return var_descr.get_arg_decl(self)
+    def get_function_declaration(self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int) -> Generable:
+        kernel = codegen_state.kernel
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+        assert codegen_state.kernel.linearization is not None
+        subkernel_name = cast(
+                        CallKernel,
+                        codegen_state.kernel.linearization[schedule_index]
+                        ).kernel_name
+
         from cgen import FunctionDeclaration, Value
 
         name = codegen_result.current_program(codegen_state).name
@@ -861,146 +855,110 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         if codegen_state.is_entrypoint:
             name = Value("void", name)
+
+            # subkernel launches occur only as part of entrypoint kernels for now
+            from loopy.schedule.tools import get_subkernel_arg_info
+            skai = get_subkernel_arg_info(kernel, subkernel_name)
+            passed_names = skai.passed_names
+            written_names = skai.written_names
         else:
             name = Value("static void", name)
+            passed_names = [arg.name for arg in kernel.args]
+            written_names = kernel.get_written_variables()
+
         return FunctionDeclarationWrapper(
                 FunctionDeclaration(
                     name,
-                    [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                        for idi in codegen_state.implemented_data_info]))
+                    [self.arg_to_cgen_declarator(
+                            kernel, arg_name,
+                            is_written=arg_name in written_names)
+                        for arg_name in passed_names]))
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+    def get_kernel_call(self, codegen_state: CodeGenerationState,
+            subkernel_name: str,
+            gsize: Tuple[ExpressionT, ...],
+            lsize: Tuple[ExpressionT, ...]) -> Optional[Generable]:
         return None
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import AddressSpace
 
         kernel = codegen_state.kernel
+        assert kernel.linearization is not None
 
-        base_storage_decls = []
         temp_decls = []
+        temp_decls_using_base_storage = []
 
         # {{{ declare temporaries
 
-        base_storage_sizes = {}
-        base_storage_to_scope = {}
-        base_storage_to_align_bytes = {}
-
-        from cgen import ArrayOf, Initializer, AlignedAttribute, Value, Line
+        from cgen import Initializer, Line
         # Getting the temporary variables that are needed for the current
         # sub-kernel.
         from loopy.schedule.tools import (
                 temporaries_read_in_subkernel,
-                temporaries_written_in_subkernel)
-        subkernel = kernel.linearization[schedule_index].kernel_name
+                temporaries_written_in_subkernel,
+                supporting_temporary_names)
+        subkernel_name = kernel.linearization[schedule_index].kernel_name
         sub_knl_temps = (
-                temporaries_read_in_subkernel(kernel, subkernel)
-                | temporaries_written_in_subkernel(kernel, subkernel))
+                temporaries_read_in_subkernel(kernel, subkernel_name)
+                | temporaries_written_in_subkernel(kernel, subkernel_name))
+        sub_knl_temps = (
+                sub_knl_temps
+                | supporting_temporary_names(kernel, sub_knl_temps))
+
+        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         for tv in sorted(
                 kernel.temporary_variables.values(),
                 key=lambda key_tv: key_tv.name):
-            decl_info = tv.decl_info(self.target, index_dtype=kernel.index_dtype)
-
             if not tv.base_storage:
-                for idi in decl_info:
-                    # global temp vars are mapped to arguments or global declarations
-                    if tv.address_space != AddressSpace.GLOBAL and (
-                            tv.name in sub_knl_temps):
-                        decl = self.wrap_temporary_decl(
-                                self.get_temporary_decl(
-                                    codegen_state, schedule_index, tv, idi),
-                                tv.address_space)
+                # global temp vars are mapped to arguments or global
+                # declarations, no need to declare locally.
+                if tv.address_space != AddressSpace.GLOBAL and (
+                        tv.name in sub_knl_temps):
+                    decl = self.get_temporary_var_declarator(codegen_state, tv)
 
-                        if tv.initializer is not None:
-                            assert tv.read_only
-                            decl = Initializer(decl, generate_array_literal(
-                                codegen_state, tv, tv.initializer))
+                    if tv.initializer is not None:
+                        assert tv.read_only
+                        decl = Initializer(decl, generate_array_literal(
+                            codegen_state, tv, tv.initializer))
 
-                        temp_decls.append(decl)
+                    temp_decls.append(decl)
 
             else:
                 assert tv.initializer is None
-                if (tv.address_space == AddressSpace.GLOBAL
-                        and codegen_state.is_generating_device_code):
-                    # global temps trigger no codegen in the device code
-                    continue
 
-                offset = 0
-                base_storage_sizes.setdefault(tv.base_storage, []).append(
-                        tv.nbytes)
-                base_storage_to_scope.setdefault(tv.base_storage, []).append(
-                        tv.address_space)
+                cast_decl = POD(self, tv.dtype, "")
+                temp_var_decl = POD(self, tv.dtype, tv.name)
 
-                align_size = tv.dtype.itemsize
+                if tv._base_storage_access_may_be_aliasing:
+                    ptrtype = _ConstPointer
+                else:
+                    # The 'restrict' part of this is a complete lie--of course
+                    # all these temporaries are aliased. But we're promising to
+                    # not use them to shovel data from one representation to the
+                    # other. That counts, right?
+                    ptrtype = _ConstRestrictPointer
 
-                from loopy.kernel.array import VectorArrayDimTag
-                for dim_tag, axis_len in zip(tv.dim_tags, tv.shape):
-                    if isinstance(dim_tag, VectorArrayDimTag):
-                        align_size *= axis_len
+                cast_decl = self.wrap_decl_for_address_space(
+                        ptrtype(cast_decl), tv.address_space)
+                temp_var_decl = self.wrap_decl_for_address_space(
+                        ptrtype(temp_var_decl), tv.address_space)
 
-                base_storage_to_align_bytes.setdefault(tv.base_storage, []).append(
-                        align_size)
+                cast_tp, cast_d = cast_decl.get_decl_pair()
+                temp_var_decl = Initializer(
+                        temp_var_decl,
+                        "({} {}) ({} + {})".format(
+                            " ".join(cast_tp), cast_d,
+                            tv.base_storage,
+                            ecm(tv.offset)
+                            ))
 
-                for idi in decl_info:
-                    cast_decl = POD(self, idi.dtype, "")
-                    temp_var_decl = POD(self, idi.dtype, idi.name)
-
-                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.address_space)
-                    temp_var_decl = self.wrap_temporary_decl(
-                            temp_var_decl, tv.address_space)
-
-                    if tv._base_storage_access_may_be_aliasing:
-                        ptrtype = _ConstPointer
-                    else:
-                        # The 'restrict' part of this is a complete lie--of course
-                        # all these temporaries are aliased. But we're promising to
-                        # not use them to shovel data from one representation to the
-                        # other. That counts, right?
-                        ptrtype = _ConstRestrictPointer
-
-                    cast_decl = ptrtype(cast_decl)
-                    temp_var_decl = ptrtype(temp_var_decl)
-
-                    cast_tp, cast_d = cast_decl.get_decl_pair()
-                    temp_var_decl = Initializer(
-                            temp_var_decl,
-                            "({} {}) ({} + {})".format(
-                                " ".join(cast_tp), cast_d,
-                                tv.base_storage,
-                                offset))
-
-                    temp_decls.append(temp_var_decl)
-
-                    from pytools import product
-                    offset += (
-                            idi.dtype.itemsize
-                            * product(si for si in idi.shape))
-
-        ecm = self.get_expression_to_code_mapper(codegen_state)
-
-        for bs_name, bs_sizes in sorted(base_storage_sizes.items()):
-            bs_var_decl = Value("char", bs_name)
-            from pytools import single_valued
-            bs_var_decl = self.wrap_temporary_decl(
-                    bs_var_decl, single_valued(base_storage_to_scope[bs_name]))
-
-            # FIXME: Could try to use isl knowledge to simplify max.
-            if all(isinstance(bs, int) for bs in bs_sizes):
-                bs_size_max = max(bs_sizes)
-            else:
-                bs_size_max = p.Max(tuple(bs_sizes))
-
-            bs_var_decl = ArrayOf(bs_var_decl, ecm(bs_size_max))
-
-            alignment = max(base_storage_to_align_bytes[bs_name])
-            bs_var_decl = AlignedAttribute(alignment, bs_var_decl)
-
-            base_storage_decls.append(bs_var_decl)
+                temp_decls_using_base_storage.append(temp_var_decl)
 
         # }}}
 
-        result = base_storage_decls + temp_decls
+        result = temp_decls + temp_decls_using_base_storage
 
         if result:
             result.append(Line())
@@ -1017,8 +975,6 @@ class CFamilyASTBuilder(ASTBuilderBase):
         return ScopingBlock
 
     # }}}
-
-    # {{{ code generation guts
 
     @property
     def ast_module(self):
@@ -1037,36 +993,18 @@ class CFamilyASTBuilder(ASTBuilderBase):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
         return CExpressionToCodeMapper()
 
-    def get_temporary_decl(self, codegen_state, schedule_index, temp_var, decl_info):
-        temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
+    # {{{ declarators
 
-        if temp_var.read_only:
-            from cgen import Const
-            temp_var_decl = Const(temp_var_decl)
-
-        if decl_info.shape:
-            from cgen import ArrayOf
-            ecm = self.get_expression_to_code_mapper(codegen_state)
-            temp_var_decl = ArrayOf(temp_var_decl,
-                    ecm(p.flattened_product(decl_info.shape),
-                        prec=PREC_NONE, type_context="i"))
-
-        if temp_var.alignment:
-            from cgen import AlignedAttribute
-            temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
-
-        return temp_var_decl
-
-    def wrap_temporary_decl(self, decl, scope):
+    def wrap_decl_for_address_space(
+            self, decl: Declarator, address_space: AddressSpace) -> Declarator:
         return decl
 
-    def wrap_global_constant(self, decl):
+    def wrap_global_constant(self, decl: Declarator) -> Declarator:
         from cgen import Static
         return Static(decl)
 
-    def get_value_arg_decl(self, name, shape, dtype, is_written):
-        assert shape == ()
-
+    def get_value_arg_declaraotor(
+            self, name: str, dtype: LoopyType, is_written: bool) -> Declarator:
         result = POD(self, dtype, name)
 
         if not is_written:
@@ -1079,34 +1017,114 @@ class CFamilyASTBuilder(ASTBuilderBase):
 
         return result
 
-    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
-        from cgen import RestrictPointer, Const
+    def get_array_base_declarator(self, ary: ArrayBase) -> Declarator:
+        arg_decl = POD(self, ary.dtype, ary.name)
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
+        if ary.dim_tags:
+            for dim_tag in ary.dim_tags:
+                if isinstance(dim_tag, FixedStrideArrayDimTag):
+                    # we're OK with that
+                    pass
+                else:
+                    raise NotImplementedError(
+                        f"{type(self).__name__} does not understand axis tag "
+                        f"'{type(dim_tag)}.")
+
+        return arg_decl
+
+    def get_array_arg_declarator(
+            self, arg: ArrayArg, is_written: bool) -> Declarator:
+        from cgen import RestrictPointer
+        arg_decl = RestrictPointer(
+                self.wrap_decl_for_address_space(
+                    self.get_array_base_declarator(arg), arg.address_space))
 
         if not is_written:
             arg_decl = Const(arg_decl)
 
         return arg_decl
 
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from warnings import warn
-        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
-                "instead.", DeprecationWarning, stacklevel=2)
-        from loopy.kernel.data import AddressSpace
-        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
-                dtype, is_written)
+    def get_constant_arg_declarator(
+            self, arg: ConstantArg) -> Declarator:
+        from cgen import RestrictPointer
+        return Const(self.wrap_decl_for_address_space(
+            RestrictPointer(
+                self.get_array_base_declarator(arg)), arg.address_space))
 
-    def get_constant_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.target.c import POD  # uses the correct complex type
-        from cgen import RestrictPointer, Const
+    def get_temporary_arg_decl(
+            self, temp_var: TemporaryVariable, is_written: bool) -> Declarator:
+        if temp_var.address_space == AddressSpace.GLOBAL:
+            from cgen import RestrictPointer
+            arg_decl = RestrictPointer(
+                    self.wrap_decl_for_address_space(
+                        self.get_array_base_declarator(temp_var),
+                        temp_var.address_space))
+            if not is_written:
+                arg_decl = Const(arg_decl)
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
+            return arg_decl
+        else:
+            raise LoopyError("unexpected request for argument declaration of "
+                    "non-global temporary")
 
-        if not is_written:
-            arg_decl = Const(arg_decl)
+    def get_image_arg_declarator(
+            self, arg: ImageArg, is_written: bool) -> Declarator:
+        raise NotImplementedError()
 
-        return arg_decl
+    def arg_to_cgen_declarator(
+            self, kernel: LoopKernel, passed_name: str, is_written: bool
+            ) -> Declarator:
+        if passed_name in kernel.all_inames():
+            assert not is_written
+            return self.get_value_arg_declaraotor(
+                    passed_name, kernel.index_dtype, is_written)
+        var_descr = kernel.get_var_descriptor(passed_name)
+        if isinstance(var_descr, ValueArg):
+            return self.get_value_arg_declaraotor(
+                    var_descr.name, var_descr.dtype, is_written)
+        elif isinstance(var_descr, ArrayArg):
+            return self.get_array_arg_declarator(var_descr, is_written)
+        elif isinstance(var_descr, TemporaryVariable):
+            return self.get_temporary_arg_decl(var_descr, is_written)
+        elif isinstance(var_descr, ConstantArg):
+            return self.get_constant_arg_declarator(var_descr)
+        elif isinstance(var_descr, ImageArg):
+            return self.get_image_arg_declarator(var_descr, is_written)
+        else:
+            raise ValueError(f"unexpected type of argument '{passed_name}': "
+                    f"'{type(var_descr)}'")
+
+    def get_temporary_var_declarator(self,
+            codegen_state: CodeGenerationState,
+            temp_var: TemporaryVariable) -> Declarator:
+        temp_var_decl = self.get_array_base_declarator(temp_var)
+
+        if temp_var.storage_shape:
+            shape = temp_var.storage_shape
+        else:
+            shape = temp_var.shape
+
+        assert isinstance(shape, tuple)
+        assert isinstance(temp_var.dim_tags, tuple)
+
+        from loopy.kernel.array import drop_vec_dims
+        unvec_shape = drop_vec_dims(temp_var.dim_tags, shape)
+
+        if unvec_shape:
+            from cgen import ArrayOf
+            ecm = self.get_expression_to_code_mapper(codegen_state)
+            temp_var_decl = ArrayOf(temp_var_decl,
+                    ecm(p.flattened_product(unvec_shape),
+                        prec=PREC_NONE, type_context="i"))
+
+        if temp_var.alignment:
+            from cgen import AlignedAttribute
+            temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
+
+        return self.wrap_decl_for_address_space(temp_var_decl,
+                temp_var.address_space)
+
+    # }}}
 
     def emit_assignment(self, codegen_state, insn):
         kernel = codegen_state.kernel

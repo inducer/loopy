@@ -482,7 +482,8 @@ def test_divide_precedence(ctx_factory):
             x[0] = c*(a/b)
             y[0] = c*(a%b)
             """,
-            [lp.ValueArg("a, b, c", np.int32), lp.GlobalArg("x, y", np.int32)])
+            [lp.ValueArg("a, b, c", np.int32),
+                lp.GlobalArg("x, y", np.int32, shape=lp.auto)])
     print(lp.generate_code_v2(knl).device_code())
 
     evt, (x_out, y_out) = knl(queue, c=2, b=2, a=5)

@@ -24,6 +24,7 @@ import sys
 import numpy as np
 import loopy as lp
 import pyopencl as cl
+import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
 import pytest
@@ -203,23 +204,6 @@ def test_owed_barriers():
     print(lp.generate_code_v2(knl))
 
 
-def test_wg_too_small():
-    knl = lp.make_kernel(
-            "{[i]: 0<=i<100}",
-            [
-                "<float32> z[i] = a[i] {id=copy}"
-                ],
-            [lp.GlobalArg("a", np.float32, shape=(100,))],
-            target=lp.PyOpenCLTarget(),
-            local_sizes={0: 16})
-
-    knl = lp.tag_inames(knl, dict(i="l.0"))
-
-    print(knl)
-    with pytest.raises(RuntimeError):
-        print(lp.generate_code_v2(knl))
-
-
 def test_multi_cse():
     knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
@@ -227,8 +211,7 @@ def test_multi_cse():
                 "<float32> z[i] = a[i] + a[i]**2"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))],
-            target=lp.PyOpenCLTarget(),
-            local_sizes={0: 16})
+            target=lp.PyOpenCLTarget())
 
     knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", [])
@@ -764,6 +747,23 @@ def test_make_copy_kernel(ctx_factory):
     evt, a3 = cknl2(queue, input=a2)
 
     assert (a1 == a3).all()
+
+
+def test_make_copy_kernel_with_offsets(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    a1 = np.random.randn(3, 1024, 4)
+    a1_dev = cl.array.to_device(queue, a1)
+
+    cknl1 = lp.make_copy_kernel("c,c,c", "sep,c,c")
+
+    cknl1 = lp.fix_parameters(cknl1, n0=3)
+
+    cknl1 = lp.set_options(cknl1, write_code=True)
+    evt, (a2_dev,) = cknl1(queue, input=a1_dev)
+
+    assert (a1 == a2_dev.get()).all()
 
 
 def test_auto_test_can_detect_problems(ctx_factory):
@@ -1400,7 +1400,7 @@ def test_global_temporary(ctx_factory):
 
     assert len(cgr.device_programs) == 2
 
-    #print(cgr.device_code())
+    print(cgr.device_code())
     #print(cgr.host_code())
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
@@ -1841,7 +1841,7 @@ def test_header_extract():
     cuknl = knl.copy(target=lp.CudaTarget())
     assert str(lp.generate_header(cuknl)[0]) == (
             'extern "C" __global__ void __launch_bounds__(1) '
-            "loopy_kernel(float *__restrict__ T);")
+            "loopy_kernel(__global__ float *__restrict__ T);")
 
     #test OpenCL
     oclknl = knl.copy(target=lp.PyOpenCLTarget())
@@ -1859,8 +1859,12 @@ def test_scalars_with_base_storage(ctx_factory):
     knl = lp.make_kernel(
             [isl.BasicSet("[] -> {[]: }")],  # empty (domain w/unused inames errors)
             "a = 1",
-            [lp.TemporaryVariable("a", dtype=np.float64,
-                                  shape=(), base_storage="base")])
+            [
+                lp.TemporaryVariable("a", dtype=np.float64,
+                                  shape=(), base_storage="base"),
+                lp.TemporaryVariable("b", dtype=np.float64,
+                                  shape=(), base_storage="base"),
+                ])
 
     knl(queue, out_host=True)
 
@@ -2390,20 +2394,6 @@ def test_inames_conditional_generation(ctx_factory):
 
     with cl.CommandQueue(ctx) as queue:
         knl(queue)
-
-
-def test_kernel_var_name_generator():
-    prog = lp.make_kernel(
-            "{[i]: 0 <= i <= 10}",
-            """
-            <>a = 0
-            <>b_s0 = 0
-            """)
-
-    vng = prog["loopy_kernel"].get_var_name_generator()
-
-    assert vng("a_s0") != "a_s0"
-    assert vng("b") != "b"
 
 
 def test_fixed_parameters(ctx_factory):

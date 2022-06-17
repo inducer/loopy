@@ -725,6 +725,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     TemporaryVariable(
                         name=new_assignee_name,
                         dtype=None,
+                        shape=(),
                         address_space=AddressSpace.PRIVATE))
 
             from pymbolic import var

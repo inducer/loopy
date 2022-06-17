@@ -291,7 +291,7 @@ class Tagged(GlobMatchExpressionBase):
 class Writes(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
-                for name in matchable.write_dependency_names())
+                for name in matchable.assignee_var_names())
 
 
 class Reads(GlobMatchExpressionBase):

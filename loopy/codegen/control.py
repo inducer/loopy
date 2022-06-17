@@ -23,45 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.codegen.result import merge_codegen_results, wrap_in_if
 import islpy as isl
+
+from loopy.codegen.result import merge_codegen_results, wrap_in_if
 from loopy.schedule import (
         EnterLoop, LeaveLoop, RunInstruction, Barrier, CallKernel,
         gather_schedule_block, generate_sub_sched_items)
 from loopy.diagnostic import LoopyError
-
-
-def synthesize_idis_for_extra_args(kernel, schedule_index):
-    """
-    :returns: A list of :class:`loopy.codegen.ImplementedDataInfo`
-    """
-    sched_item = kernel.linearization[schedule_index]
-
-    from loopy.codegen import ImplementedDataInfo
-    from loopy.kernel.data import InameArg, AddressSpace
-
-    assert isinstance(sched_item, CallKernel)
-
-    idis = []
-
-    for arg in sched_item.extra_args:
-        temporary = kernel.temporary_variables[arg]
-        assert temporary.address_space == AddressSpace.GLOBAL
-        idis.extend(
-            temporary.decl_info(
-                kernel.target,
-                index_dtype=kernel.index_dtype))
-
-    for iname in sched_item.extra_inames:
-        idis.append(
-            ImplementedDataInfo(
-                target=kernel.target,
-                name=iname,
-                dtype=kernel.index_dtype,
-                arg_class=InameArg,
-                is_written=False))
-
-    return idis
 
 
 def generate_code_for_sched_index(codegen_state, sched_index):
@@ -75,14 +43,11 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         _, past_end_i = gather_schedule_block(kernel.linearization, sched_index)
         assert past_end_i <= codegen_state.schedule_index_end
 
-        extra_args = synthesize_idis_for_extra_args(kernel, sched_index)
-
         new_codegen_state = codegen_state.copy(
                 is_generating_device_code=True,
                 gen_program_name=sched_item.kernel_name,
                 schedule_index_end=past_end_i-1,
-                implemented_data_info=(codegen_state.implemented_data_info
-                    + extra_args))
+                )
 
         from loopy.codegen.result import generate_host_or_device_program
         codegen_result = generate_host_or_device_program(
@@ -98,8 +63,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 codegen_state.ast_builder.get_kernel_call(
                     codegen_state,
                     sched_item.kernel_name,
-                    glob_grid, loc_grid,
-                    extra_args),
+                    glob_grid, loc_grid)
                 ])
         else:
             # do not generate host code for non-entrypoint kernels
@@ -157,8 +121,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 return CodeGenerationResult(
                         host_program=None,
                         device_programs=[],
-                        implemented_domains={},
-                        implemented_data_info=codegen_state.implemented_data_info)
+                        implemented_domains={})
 
             else:
                 raise LoopyError("do not know how to emit code for barrier "

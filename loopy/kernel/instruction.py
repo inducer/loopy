@@ -21,12 +21,15 @@ THE SOFTWARE.
 """
 
 from sys import intern
-from pytools import ImmutableRecord, memoize_method
-from pytools.tag import Tag, tag_dataclass, Taggable
-from loopy.diagnostic import LoopyError
-from loopy.tools import Optional
+from functools import cached_property
+
 from warnings import warn
 import islpy as isl
+from pytools import ImmutableRecord, memoize_method
+from pytools.tag import Tag, tag_dataclass, Taggable
+
+from loopy.diagnostic import LoopyError
+from loopy.tools import Optional
 
 
 # {{{ instruction tags
@@ -412,8 +415,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # {{{ hashing and key building
 
-    @property
-    @memoize_method
+    @cached_property
     def _key_builder(self):
         from loopy.tools import LoopyEqKeyBuilder
         key_builder = LoopyEqKeyBuilder()

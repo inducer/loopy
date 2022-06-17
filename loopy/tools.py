@@ -21,7 +21,10 @@ THE SOFTWARE.
 """
 
 import collections.abc as abc
+from functools import cached_property
 
+from immutables import Map
+import islpy as isl
 import numpy as np
 from pytools import memoize_method, ProcessLogger
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
@@ -109,7 +112,13 @@ class LoopyKeyBuilder(KeyBuilderBase):
         getattr(prn, "print_"+key._base_name)(key)
         key_hash.update(prn.get_str().encode("utf8"))
 
-    update_for_Map = update_for_BasicSet  # noqa
+    def update_for_Map(self, key_hash, key):  # noqa
+        if isinstance(key, Map):
+            self.update_for_dict(key_hash, key)
+        elif isinstance(key, isl.Map):
+            self.update_for_BasicSet(key_hash, key)
+        else:
+            raise AssertionError()
 
     def update_for_pymbolic_expression(self, key_hash, key):
         if key is None:
@@ -673,8 +682,7 @@ class _CallablesUnresolver(RuleAwareIdentityMapper):
         self.callables_table = callables_table
         self.target = target
 
-    @property
-    @memoize_method
+    @cached_property
     def known_callables(self):
         from loopy.kernel.function_interface import CallableKernel
         return (frozenset(self.target.get_device_ast_builder().known_callables)
@@ -800,9 +808,9 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
     % endif
             )
 
-    % for iname, tags in kernel.iname_to_tags.items():
-    % for tag in tags:
-    ${var_name} = lp.tag_inames(${var_name}, "${"%s:%s" %(iname, tag)}")
+    % for iname in kernel.inames.values():
+    % for tag in iname.tags:
+    ${var_name} = lp.tag_inames(${var_name}, "${"%s:%s" %(iname.name, tag)}")
     % endfor
 
     % endfor
@@ -856,8 +864,12 @@ def t_unit_to_python(t_unit, var_name="t_unit",
     knl_args = ", ".join(f"{name}_knl" for name in t_unit.callables_table)
     merge_stmt = f"{var_name} = lp.merge([{knl_args}])"
 
-    preamble_str = "\n".join(["import loopy as lp", "import numpy as np",
-                              "from pymbolic.primitives import *"])
+    preamble_str = "\n".join([
+        "import loopy as lp",
+        "import numpy as np",
+        "from pymbolic.primitives import *",
+        "import immutables",
+        ])
     body_str = "\n".join(knl_python_code_srcs + ["\n", merge_stmt])
 
     python_code = "\n".join([preamble_str, "\n", body_str])

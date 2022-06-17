@@ -855,6 +855,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     from loopy.kernel.data import TemporaryVariable, KernelArgument
 
     old_calls_to_new_calls = {}
+    touched_variable_names = set()
 
     for var_chain in sccs:
         changed_during_last_queue_run = False
@@ -896,6 +897,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                 if new_dtype != item.dtype:
                     debug("     changed from: %s", item.dtype)
                     changed_during_last_queue_run = True
+                    touched_variable_names.add(name)
 
                     if isinstance(item, TemporaryVariable):
                         new_temp_vars[name] = item.copy(dtype=new_dtype)
@@ -1000,6 +1002,18 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     end_time = time.time()
     logger.debug("type inference took {dur:.2f} seconds".format(
             dur=end_time - start_time))
+
+    if kernel._separation_info():
+        sep_names = set(kernel._separation_info()) | {
+                sep_info.subarray_names.values()
+                for sep_info in kernel._separation_info().values()}
+
+        touched_sep_names = sep_names & touched_variable_names
+        if touched_sep_names:
+            raise LoopyError("Type inference must not touch variables subject to "
+                    "separation after separation has been performed. "
+                    "Untyped separation-related variables: "
+                    f"{', '.join(touched_sep_names)}")
 
     pre_type_specialized_knl = unexpanded_kernel.copy(
             temporary_variables=new_temp_vars,

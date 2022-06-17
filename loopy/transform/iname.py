@@ -245,7 +245,7 @@ def _split_iname_backend(kernel, iname_to_split,
         raise ValueError(
                 f"cannot split loop for unknown variable '{iname_to_split}'")
 
-    applied_iname_rewrites = kernel.applied_iname_rewrites[:]
+    applied_iname_rewrites = list(kernel.applied_iname_rewrites)
 
     vng = kernel.get_var_name_generator()
 
@@ -284,8 +284,7 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # }}}
 
-    iname_slab_increments = kernel.iname_slab_increments.copy()
-    iname_slab_increments[outer_iname] = slabs
+    iname_slab_increments = kernel.iname_slab_increments.set(outer_iname, slabs)
 
     new_priorities = []
     for prio in kernel.loop_priority:
@@ -626,7 +625,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
             .copy(
                 instructions=new_insns,
                 domains=domch.get_domains_with(new_domain),
-                applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
+                applied_iname_rewrites=kernel.applied_iname_rewrites + (subst_dict,)
                 ))
 
     from loopy.match import parse_stack_match
@@ -1396,7 +1395,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
             rule_mapping_context.finish_kernel(
                 old_to_new.map_kernel(kernel))
             .copy(
-                applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
+                applied_iname_rewrites=kernel.applied_iname_rewrites + (subst_dict,)
                 ))
 
     # }}}
@@ -1987,7 +1986,7 @@ def map_domain(kernel, transform_map):
 
     substitutions = {}
     var_substitutions = {}
-    applied_iname_rewrites = kernel.applied_iname_rewrites[:]
+    applied_iname_rewrites = kernel.applied_iname_rewrites
 
     from loopy.symbolic import aff_to_expr
     from pymbolic import var
@@ -1997,7 +1996,7 @@ def map_domain(kernel, transform_map):
         substitutions[iname] = subst_from_map
         var_substitutions[var(iname)] = subst_from_map
 
-    applied_iname_rewrites.append(var_substitutions)
+    applied_iname_rewrites = applied_iname_rewrites + (var_substitutions,)
     del var_substitutions
 
     # }}}

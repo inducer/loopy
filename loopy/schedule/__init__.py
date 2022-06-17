@@ -20,9 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import sys
+from dataclasses import dataclass, replace
+from typing import Any, TypeVar
 
 from pytools import ImmutableRecord
-import sys
 import islpy as isl
 from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
 
@@ -50,17 +52,15 @@ __doc__ = """
 """
 
 
+SelfT = TypeVar("SelfT")
+
+
 # {{{ schedule items
 
-class ScheduleItem(ImmutableRecord):
-    __slots__ = []
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-        for field_name in self.hash_fields:
-            key_builder.rec(key_hash, getattr(self, field_name))
+@dataclass(frozen=True)
+class ScheduleItem:
+    def copy(self: SelfT, **kwargs: Any) -> SelfT:
+        return replace(self, **kwargs)
 
 
 class BeginBlockItem(ScheduleItem):
@@ -71,26 +71,32 @@ class EndBlockItem(ScheduleItem):
     pass
 
 
+@dataclass(frozen=True)
 class EnterLoop(BeginBlockItem):
-    hash_fields = __slots__ = ["iname"]
+    iname: str
 
 
+@dataclass(frozen=True)
 class LeaveLoop(EndBlockItem):
-    hash_fields = __slots__ = ["iname"]
+    iname: str
 
 
+@dataclass(frozen=True)
 class RunInstruction(ScheduleItem):
-    hash_fields = __slots__ = ["insn_id"]
+    insn_id: str
 
 
+@dataclass(frozen=True)
 class CallKernel(BeginBlockItem):
-    hash_fields = __slots__ = ["kernel_name", "extra_args", "extra_inames"]
+    kernel_name: str
 
 
+@dataclass(frozen=True)
 class ReturnFromKernel(EndBlockItem):
-    hash_fields = __slots__ = ["kernel_name"]
+    kernel_name: str
 
 
+@dataclass(frozen=True)
 class Barrier(ScheduleItem):
     """
     .. attribute:: comment
@@ -107,9 +113,10 @@ class Barrier(ScheduleItem):
 
     .. attribute:: originating_insn_id
     """
-
-    hash_fields = ["comment", "synchronization_kind", "mem_kind"]
-    __slots__ = hash_fields + ["originating_insn_id"]
+    comment: str
+    synchronization_kind: str
+    mem_kind: str
+    originating_insn_id: str
 
 # }}}
 
@@ -450,11 +457,7 @@ def dump_schedule(kernel, schedule):
             indent = indent[:-4]
             lines.append(indent + "end %s" % sched_item.iname)
         elif isinstance(sched_item, CallKernel):
-            lines.append(indent +
-                         "CALL KERNEL {}(extra_args={}, extra_inames={})".format(
-                             sched_item.kernel_name,
-                             sched_item.extra_args,
-                             sched_item.extra_inames))
+            lines.append(indent + f"CALL KERNEL {sched_item.kernel_name}")
             indent += "    "
         elif isinstance(sched_item, ReturnFromKernel):
             indent = indent[:-4]
@@ -2102,8 +2105,6 @@ def generate_loop_schedules_inner(kernel, callables_table, debug_args=None):
                 # Device mapper only gets run once.
                 new_kernel = map_schedule_onto_host_or_device(new_kernel)
 
-            from loopy.schedule.tools import add_extra_args_to_schedule
-            new_kernel = add_extra_args_to_schedule(new_kernel)
             yield new_kernel
 
             debug.start()

@@ -22,12 +22,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Sequence, Mapping, Tuple, Dict, List, Union
+
 import numpy as np
 import pymbolic.primitives as p
+import genpy
 
 from loopy.target.opencl import (OpenCLTarget, OpenCLCASTBuilder,
         ExpressionToOpenCLCExpressionMapper)
 from loopy.target.python import PythonASTBuilderBase
+from loopy.kernel import LoopKernel
 from loopy.types import NumpyType
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from warnings import warn
@@ -527,20 +531,22 @@ class PyOpenCLTarget(OpenCLTarget):
 
 # {{{ host code: value arg setup
 
-def generate_value_arg_setup(kernel, implemented_data_info):
+def generate_value_arg_setup(
+        kernel: LoopKernel, passed_names: Sequence[str]
+        ) -> Tuple[genpy.Generable, Mapping[int, int], int]:
     options = kernel.options
 
     import loopy as lp
     from loopy.kernel.array import ArrayBase
 
     cl_arg_idx = 0
-    arg_idx_to_cl_arg_idx = {}
+    arg_idx_to_cl_arg_idx: Dict[int, int] = {}
 
     fp_arg_count = 0
 
     from genpy import If, Raise, Statement as S, Suite
 
-    result = []
+    result: List[str] = []
     gen = result.append
 
     buf_indices_and_args = []
@@ -557,11 +563,18 @@ def generate_value_arg_setup(kernel, implemented_data_info):
             buf_indices_and_args.append(arg_idx)
             buf_indices_and_args.append(f"pack('{typechar}', {expr_str})")
 
-    for arg_idx, idi in enumerate(implemented_data_info):
+    for arg_idx, passed_name in enumerate(passed_names):
         arg_idx_to_cl_arg_idx[arg_idx] = cl_arg_idx
 
-        if not issubclass(idi.arg_class, lp.ValueArg):
-            assert issubclass(idi.arg_class, ArrayBase)
+        if passed_name in kernel.all_inames():
+            add_buf_arg(cl_arg_idx, kernel.index_dtype.numpy_dtype.char, passed_name)
+            cl_arg_idx += 1
+            continue
+
+        var_descr = kernel.get_var_descriptor(passed_name)
+
+        if not isinstance(var_descr, lp.ValueArg):
+            assert isinstance(var_descr, ArrayBase)
 
             # assume each of those generates exactly one...
             cl_arg_idx += 1
@@ -569,20 +582,20 @@ def generate_value_arg_setup(kernel, implemented_data_info):
             continue
 
         if not options.skip_arg_checks:
-            gen(If("%s is None" % idi.name,
-                Raise('RuntimeError("input argument \'{name}\' '
-                        'must be supplied")'.format(name=idi.name))))
+            gen(If(f"{passed_name} is None",
+                Raise('RuntimeError("input argument \'{var_descr.name}\' '
+                        'must be supplied")')))
 
-        if idi.dtype.is_composite():
+        if var_descr.dtype.is_composite():
             buf_indices_and_args.append(cl_arg_idx)
-            buf_indices_and_args.append(f"{idi.name}")
+            buf_indices_and_args.append(f"{passed_name}")
 
             cl_arg_idx += 1
 
-        elif idi.dtype.is_complex():
-            assert isinstance(idi.dtype, NumpyType)
+        elif var_descr.dtype.is_complex():
+            assert isinstance(var_descr.dtype, NumpyType)
 
-            dtype = idi.dtype
+            dtype = var_descr.dtype
 
             if dtype.numpy_dtype == np.complex64:
                 arg_char = "f"
@@ -594,21 +607,21 @@ def generate_value_arg_setup(kernel, implemented_data_info):
             buf_indices_and_args.append(cl_arg_idx)
             buf_indices_and_args.append(
                 f"_lpy_pack('{arg_char}{arg_char}', "
-                f"{idi.name}.real, {idi.name}.imag)")
+                f"{passed_name}.real, {passed_name}.imag)")
             cl_arg_idx += 1
 
             fp_arg_count += 2
 
-        elif isinstance(idi.dtype, NumpyType):
-            if idi.dtype.dtype.kind == "f":
+        elif isinstance(var_descr.dtype, NumpyType):
+            if var_descr.dtype.dtype.kind == "f":
                 fp_arg_count += 1
 
-            add_buf_arg(cl_arg_idx, idi.dtype.dtype.char, idi.name)
+            add_buf_arg(cl_arg_idx, var_descr.dtype.dtype.char, passed_name)
             cl_arg_idx += 1
 
         else:
             raise LoopyError("do not know how to pass argument of type '%s'"
-                    % idi.dtype)
+                    % var_descr.dtype)
 
     for arg_kind, args_and_indices, entry_length in [
             ("_buf", buf_indices_and_args, 2),
@@ -625,18 +638,23 @@ def generate_value_arg_setup(kernel, implemented_data_info):
 # }}}
 
 
-def generate_array_arg_setup(kernel, implemented_data_info, arg_idx_to_cl_arg_idx):
+def generate_array_arg_setup(kernel: LoopKernel, passed_names: Sequence[str],
+        arg_idx_to_cl_arg_idx: Mapping[int, int]) -> genpy.Generable:
     from loopy.kernel.array import ArrayBase
     from genpy import Statement as S, Suite
 
-    result = []
+    result: List[str] = []
     gen = result.append
 
-    cl_indices_and_args = []
-    for arg_idx, arg in enumerate(implemented_data_info):
-        if issubclass(arg.arg_class, ArrayBase):
+    cl_indices_and_args: List[Union[int, str]] = []
+    for arg_idx, passed_name in enumerate(passed_names):
+        if passed_name in kernel.all_inames():
+            continue
+
+        var_descr = kernel.get_var_descriptor(passed_name)
+        if isinstance(var_descr, ArrayBase):
             cl_indices_and_args.append(arg_idx_to_cl_arg_idx[arg_idx])
-            cl_indices_and_args.append(arg.name)
+            cl_indices_and_args.append(passed_name)
 
     if cl_indices_and_args:
         assert len(cl_indices_and_args) % 2 == 0
@@ -656,13 +674,18 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     # {{{ code generation guts
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index, function_decl, function_body):
-        from loopy.kernel.data import TemporaryVariable
+    def get_function_definition(
+            self, codegen_state, codegen_result,
+            schedule_index: int, function_decl, function_body: genpy.Generable
+            ) -> genpy.Function:
+        assert schedule_index == 0
+
+        from loopy.schedule.tools import get_kernel_arg_info
+        kai = get_kernel_arg_info(codegen_state.kernel)
+
         args = (
                 ["_lpy_cl_kernels", "queue"]
-                + [idi.name for idi in codegen_state.implemented_data_info
-                    if not issubclass(idi.arg_class, TemporaryVariable)]
+                + [arg_name for arg_name in kai.passed_arg_names]
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Return, Line, Statement as S)
@@ -702,14 +725,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from genpy import Assign, Comment, Line
-        from collections import defaultdict
-        from numbers import Number
-        import pymbolic.primitives as prim
-
-        def alloc_nbytes(tv):
-            from functools import reduce
-            from operator import mul
-            return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
@@ -718,37 +733,14 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not global_temporaries:
             return []
 
-        # {{{ allocate space for the base_storage
-
-        base_storage_sizes = defaultdict(set)
-
-        for tv in global_temporaries:
-            if tv.base_storage:
-                base_storage_sizes[tv.base_storage].add(tv.nbytes)
-
-        # }}}
-
         allocated_var_names = []
         code_lines = []
         code_lines.append(Line())
         code_lines.append(Comment("{{{ allocate global temporaries"))
         code_lines.append(Line())
 
-        for name, sizes in base_storage_sizes.items():
-            if all(isinstance(s, Number) for s in sizes):
-                size = max(sizes)
-            else:
-                size = prim.Max(tuple(sizes))
-
-            allocated_var_names.append(name)
-            code_lines.append(Assign(name,
-                                     f"allocator({ecm(size, PREC_NONE, 'i')})"))
-
         for tv in global_temporaries:
-            if tv.base_storage:
-                assert tv.base_storage in base_storage_sizes
-                code_lines.append(Assign(tv.name, tv.base_storage))
-            else:
+            if not tv.base_storage:
                 nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
                 allocated_var_names.append(tv.name)
                 code_lines.append(Assign(tv.name,
@@ -763,7 +755,12 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         return code_lines
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+    def get_kernel_call(self,
+            codegen_state, subkernel_name, gsize, lsize):
+        from loopy.schedule.tools import get_subkernel_arg_info
+        skai = get_subkernel_arg_info(
+                codegen_state.kernel, subkernel_name)
+
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
         if not gsize:
@@ -771,16 +768,10 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not lsize:
             lsize = (1,)
 
-        all_args = codegen_state.implemented_data_info + extra_args
-
         value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
-            generate_value_arg_setup(
-                    codegen_state.kernel,
-                    all_args)
+            generate_value_arg_setup(codegen_state.kernel, skai.passed_names)
         arry_arg_code = generate_array_arg_setup(
-            codegen_state.kernel,
-            all_args,
-            arg_idx_to_cl_arg_idx)
+            codegen_state.kernel, skai.passed_names, arg_idx_to_cl_arg_idx)
 
         from genpy import Suite, Assign, Assert, Line, Comment
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -794,10 +785,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         # TODO: Generate finer-grained dependency structure
         return Suite([
-            Comment("{{{ enqueue %s" % name),
+            Comment("{{{ enqueue %s" % subkernel_name),
             Line(),
-            Assign("_lpy_knl", "_lpy_cl_kernels."+name),
-            Assert(f"_lpy_knl.num_args == {cl_arg_count}, f'Kernel \"{name}\" "
+            Assign("_lpy_knl", "_lpy_cl_kernels."+subkernel_name),
+            Assert(f"_lpy_knl.num_args == {cl_arg_count}, "
+                   f"f'Kernel \"{subkernel_name}\" "
                    f"invoker argument count ({cl_arg_count}) does not match the "
                    # No f"" here since {_lpy_knl.num_args} needs to be evaluated
                    # at runtime, not here.
@@ -857,7 +849,6 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     def get_expression_to_c_expression_mapper(self, codegen_state):
         return ExpressionToPyOpenCLCExpressionMapper(codegen_state)
-
 
 # }}}
 

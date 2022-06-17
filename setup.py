@@ -82,7 +82,7 @@ setup(name="loopy",
           "Topic :: Utilities",
           ],
 
-      python_requires="~=3.6",
+      python_requires="~=3.8",
       install_requires=[
           "pytools>=2022.1.2",
           "pymbolic>=2022.1",

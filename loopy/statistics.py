@@ -25,10 +25,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import loopy as lp
+from functools import partial, cached_property
+
 from islpy import dim_type
 import islpy as isl
 from pymbolic.mapper import CombineMapper
+
+import loopy as lp
 from loopy.kernel.data import (
         MultiAssignmentBase, TemporaryVariable, AddressSpace)
 from loopy.diagnostic import warn_with_kernel, LoopyError
@@ -36,7 +39,6 @@ from loopy.symbolic import CoefficientCollector
 from pytools import ImmutableRecord, memoize_method
 from loopy.kernel.function_interface import CallableKernel
 from loopy.translation_unit import TranslationUnit
-from functools import partial
 
 
 __doc__ = """
@@ -813,8 +815,7 @@ class CounterBase(CombineMapper):
         self.zero = get_kernel_zero_pwqpolynomial(self.knl)
         self.one = self.zero + 1
 
-    @property
-    @memoize_method
+    @cached_property
     def param_space(self):
         return get_kernel_parameter_space(self.knl)
 

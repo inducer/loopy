@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from loopy.diagnostic import LoopyError
-from loopy.schedule import (Barrier, CallKernel, EnterLoop, LeaveLoop,
+from loopy.schedule import (Barrier, CallKernel, EnterLoop,
                             ReturnFromKernel, RunInstruction)
 from loopy.schedule.tools import get_block_boundaries
 
@@ -40,9 +40,7 @@ def map_schedule_onto_host_or_device(kernel):
 
     if not kernel.target.split_kernel_at_global_barriers():
         new_schedule = (
-            [CallKernel(kernel_name=device_prog_name_gen(),
-                        extra_args=[],
-                        extra_inames=[])] +
+            [CallKernel(kernel_name=device_prog_name_gen())] +
             list(kernel.linearization) +
             [ReturnFromKernel(kernel_name=kernel.name)])
         kernel = kernel.copy(linearization=new_schedule)
@@ -59,7 +57,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
 
     # {{{ inner mapper function
 
-    dummy_call = CallKernel(kernel_name="", extra_args=[], extra_inames=[])
+    dummy_call = CallKernel(kernel_name="")
     dummy_return = ReturnFromKernel(kernel_name="")
 
     def inner_mapper(start_idx, end_idx, new_schedule):
@@ -143,22 +141,14 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
             new_schedule +
             [dummy_return.copy()])
 
-    # Assign names, extra_inames to CallKernel / ReturnFromKernel instructions
-    inames = []
+    # Assign names to CallKernel / ReturnFromKernel instructions
 
     for idx, sched_item in enumerate(new_schedule):
         if isinstance(sched_item, CallKernel):
             last_kernel_name = device_prog_name_gen()
-            new_schedule[idx] = sched_item.copy(
-                kernel_name=last_kernel_name,
-                extra_inames=list(inames))
+            new_schedule[idx] = sched_item.copy(kernel_name=last_kernel_name)
         elif isinstance(sched_item, ReturnFromKernel):
-            new_schedule[idx] = sched_item.copy(
-                kernel_name=last_kernel_name)
-        elif isinstance(sched_item, EnterLoop):
-            inames.append(sched_item.iname)
-        elif isinstance(sched_item, LeaveLoop):
-            inames.pop()
+            new_schedule[idx] = sched_item.copy(kernel_name=last_kernel_name)
 
     new_kernel = kernel.copy(linearization=new_schedule)
 

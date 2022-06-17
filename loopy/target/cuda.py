@@ -24,15 +24,16 @@ THE SOFTWARE.
 """
 
 import numpy as np
-
+from pymbolic import var
 from pytools import memoize_method
+from cgen import Declarator, Const
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.types import NumpyType
-from loopy.kernel.data import AddressSpace
-from pymbolic import var
+from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
+from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg, ArrayArg
 from loopy.kernel.function_interface import ScalarCallable
 
 
@@ -388,55 +389,77 @@ class CUDACASTBuilder(CFamilyASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def wrap_temporary_decl(self, decl, scope):
-        if scope == AddressSpace.LOCAL:
-            from cgen.cuda import CudaShared
+    # }}}
+
+    # {{{ declarators
+
+    def wrap_decl_for_address_space(
+            self, decl: Declarator, address_space: AddressSpace) -> Declarator:
+        from cgen.cuda import CudaGlobal, CudaShared
+        if address_space == AddressSpace.GLOBAL:
+            return CudaGlobal(decl)
+        if address_space == AddressSpace.LOCAL:
             return CudaShared(decl)
-        elif scope == AddressSpace.PRIVATE:
+        elif address_space == AddressSpace.PRIVATE:
             return decl
         else:
-            raise ValueError("unexpected temporary variable scope: %s"
-                    % scope)
+            raise ValueError("unexpected address_space: %s"
+                    % address_space)
 
-    def wrap_global_constant(self, decl):
-        from cgen.cuda import CudaConstant
+    def wrap_global_constant(self, decl: Declarator) -> Declarator:
+        from cgen.cuda import CudaConstant, CudaGlobal
+        assert isinstance(decl, CudaGlobal)
+        decl = decl.subdecl
         return CudaConstant(decl)
 
-    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
-        from loopy.target.c import POD  # uses the correct complex type
-        from cgen import Const
-        from cgen.cuda import CudaRestrictPointer
+    # duplicated in OpenCL, update there if updating here
+    def get_array_base_declarator(self, ary: ArrayBase) -> Declarator:
+        dtype = ary.dtype
 
-        arg_decl = CudaRestrictPointer(POD(self, dtype, name))
+        vec_size = ary.vector_size(self.target)
+        if vec_size > 1:
+            dtype = self.target.vector_dtype(dtype, vec_size)
+
+        if ary.dim_tags:
+            for dim_tag in ary.dim_tags:
+                if isinstance(dim_tag, (FixedStrideArrayDimTag, VectorArrayDimTag)):
+                    # we're OK with those
+                    pass
+
+                else:
+                    raise NotImplementedError(
+                        f"{type(self).__name__} does not understand axis tag "
+                        f"'{type(dim_tag)}.")
+
+        from loopy.target.c import POD
+        return POD(self, dtype, ary.name)
+
+    def get_array_arg_declarator(
+            self, arg: ArrayArg, is_written: bool) -> Declarator:
+        from cgen.cuda import CudaRestrictPointer
+        arg_decl = CudaRestrictPointer(
+                self.wrap_decl_for_address_space(
+                    self.get_array_base_declarator(arg), arg.address_space))
 
         if not is_written:
             arg_decl = Const(arg_decl)
 
         return arg_decl
 
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from warnings import warn
-        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
-                "instead.", DeprecationWarning, stacklevel=2)
-        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
-                dtype, is_written)
-
-    def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
-        raise NotImplementedError("not yet: texture arguments in CUDA")
-
-    def get_constant_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.target.c import POD  # uses the correct complex type
-        from cgen import RestrictPointer, Const
+    def get_constant_arg_declarator(self, arg: ConstantArg) -> Declarator:
+        from cgen import RestrictPointer
         from cgen.cuda import CudaConstant
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
+        # constant *is* an address space as far as CUDA is concerned, do not re-wrap
+        return CudaConstant(RestrictPointer(self.get_array_base_declarator(arg)))
 
-        if not is_written:
-            arg_decl = Const(arg_decl)
+    def get_image_arg_declarator(
+            self, arg: ImageArg, is_written: bool) -> Declarator:
+        raise NotImplementedError("not yet: texture arguments in CUDA")
 
-        return CudaConstant(arg_decl)
+    # }}}
 
-    # {{{ code generation for atomic update
+    # {{{ atomics
 
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
@@ -524,8 +547,6 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                     ])
         else:
             raise NotImplementedError("atomic update for '%s'" % lhs_dtype)
-
-    # }}}
 
     # }}}
 

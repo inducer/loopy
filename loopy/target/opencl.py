@@ -24,16 +24,18 @@ THE SOFTWARE.
 """
 
 import numpy as np
+from pymbolic import var
+from pytools import memoize_method
+from cgen import Declarator
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from pytools import memoize_method
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
-from loopy.kernel.data import AddressSpace
+from loopy.kernel.array import VectorArrayDimTag, FixedStrideArrayDimTag, ArrayBase
+from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg
 from loopy.kernel.function_interface import ScalarCallable
-from pymbolic import var
 
 
 # {{{ dtype registry wrappers
@@ -668,8 +670,6 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # }}}
 
-    # {{{ code generation guts
-
     def get_expression_to_c_expression_mapper(self, codegen_state):
         return ExpressionToOpenCLCExpressionMapper(codegen_state)
 
@@ -695,68 +695,71 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def wrap_temporary_decl(self, decl, scope):
-        if scope == AddressSpace.LOCAL:
-            from cgen.opencl import CLLocal
+    # {{{ declarators
+
+    def wrap_decl_for_address_space(
+            self, decl: Declarator, address_space: AddressSpace) -> Declarator:
+        from cgen.opencl import CLGlobal, CLLocal
+        if address_space == AddressSpace.GLOBAL:
+            return CLGlobal(decl)
+        elif address_space == AddressSpace.LOCAL:
             return CLLocal(decl)
-        elif scope == AddressSpace.PRIVATE:
+        elif address_space == AddressSpace.PRIVATE:
             return decl
         else:
-            raise ValueError("unexpected temporary variable scope: %s"
-                    % scope)
+            raise ValueError("unexpected temporary variable address space: %s"
+                    % address_space)
 
-    def wrap_global_constant(self, decl):
-        from cgen.opencl import CLConstant
+    def wrap_global_constant(self, decl: Declarator) -> Declarator:
+        from cgen.opencl import CLGlobal, CLConstant
+        assert isinstance(decl, CLGlobal)
+        decl = decl.subdecl
+
         return CLConstant(decl)
 
-    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
-        from cgen.opencl import CLGlobal, CLLocal
-        from loopy.kernel.data import AddressSpace
+    # duplicated in CUDA, update there if updating here
+    def get_array_base_declarator(self, ary: ArrayBase) -> Declarator:
+        dtype = ary.dtype
 
-        if mem_address_space == AddressSpace.LOCAL:
-            return CLLocal(super().get_array_arg_decl(
-                name, mem_address_space, shape, dtype, is_written))
-        elif mem_address_space == AddressSpace.PRIVATE:
-            return super().get_array_arg_decl(
-                name, mem_address_space, shape, dtype, is_written)
-        elif mem_address_space == AddressSpace.GLOBAL:
-            return CLGlobal(super().get_array_arg_decl(
-                name, mem_address_space, shape, dtype, is_written))
-        else:
-            raise ValueError("unexpected array argument scope: %s"
-                    % mem_address_space)
+        vec_size = ary.vector_size(self.target)
+        if vec_size > 1:
+            dtype = self.target.vector_dtype(dtype, vec_size)
 
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.kernel.data import AddressSpace
-        from warnings import warn
-        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
-                "instead.", DeprecationWarning, stacklevel=2)
+        if ary.dim_tags:
+            for dim_tag in ary.dim_tags:
+                if isinstance(dim_tag, (FixedStrideArrayDimTag, VectorArrayDimTag)):
+                    # we're OK with those
+                    pass
 
-        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
-                dtype, is_written)
+                else:
+                    raise NotImplementedError(
+                        f"{type(self).__name__} does not understand axis tag "
+                        f"'{type(dim_tag)}.")
 
-    def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
+        from loopy.target.c import POD
+        return POD(self, dtype, ary.name)
+
+    def get_constant_arg_declarator(self, arg: ConstantArg) -> Declarator:
+        from cgen import RestrictPointer
+        from cgen.opencl import CLConstant
+
+        # constant *is* an address space as far as CL is concerned, do not re-wrap
+        return CLConstant(RestrictPointer(self.get_array_base_declarator(
+                arg)))
+
+    def get_image_arg_declarator(
+            self, arg: ImageArg, is_written: bool) -> Declarator:
         if is_written:
             mode = "w"
         else:
             mode = "r"
 
         from cgen.opencl import CLImage
-        return CLImage(num_target_axes, mode, name)
+        return CLImage(arg.num_target_axes(), mode, arg.name)
 
-    def get_constant_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.target.c import POD  # uses the correct complex type
-        from cgen import RestrictPointer, Const
-        from cgen.opencl import CLConstant
+    # }}}
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
-
-        if not is_written:
-            arg_decl = Const(arg_decl)
-
-        return CLConstant(arg_decl)
-
-    # {{{
+    # {{{ atomics
 
     def emit_atomic_init(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
@@ -765,10 +768,6 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
         return self.emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
-
-    # }}}
-
-    # {{{ code generation for atomic update
 
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
@@ -878,8 +877,6 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 ])
         else:
             raise NotImplementedError("atomic update for '%s'" % lhs_dtype)
-
-    # }}}
 
     # }}}
 

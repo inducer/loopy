@@ -54,7 +54,7 @@ __all__ = [
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
-def test_ispc_target(occa_mode=False):
+def test_ispc_target():
     from loopy.target.ispc import ISPCTarget
 
     knl = lp.make_kernel(
@@ -64,7 +64,7 @@ def test_ispc_target(occa_mode=False):
                 lp.GlobalArg("out,a", np.float32, shape=lp.auto),
                 "..."
                 ],
-            target=ISPCTarget(occa_mode=occa_mode))
+            target=ISPCTarget())
 
     knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
@@ -252,39 +252,6 @@ def test_clamp(ctx_factory):
     knl = lp.set_options(knl, write_code=True)
 
     evt, (out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
-
-
-def test_numba_target():
-    knl = lp.make_kernel(
-        "{[i,j,k]: 0<=i,j<M and 0<=k<N}",
-        "D[i,j] = sqrt(sum(k, (X[i, k]-X[j, k])**2))",
-        target=lp.NumbaTarget())
-
-    knl = lp.add_and_infer_dtypes(knl, {"X": np.float32})
-
-    print(lp.generate_code_v2(knl).device_code())
-
-
-def test_numba_cuda_target():
-    knl = lp.make_kernel(
-        "{[i,j,k]: 0<=i,j<M and 0<=k<N}",
-        "D[i,j] = sqrt(sum(k, (X[i, k]-X[j, k])**2))",
-        target=lp.NumbaCudaTarget())
-
-    knl = lp.assume(knl, "M>0")
-    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
-    knl = lp.split_iname(knl, "j", 128, inner_tag="l.0", slabs=(0, 1))
-    knl = lp.add_prefetch(knl, "X[i,:]",
-            fetch_outer_inames="i_inner, i_outer, j_inner",
-            default_tag="l.auto")
-    knl = lp.fix_parameters(knl, N=3)
-    knl = lp.prioritize_loops(knl, "i_inner,j_outer")
-    knl = lp.tag_inames(knl, "k:unr")
-    knl = lp.tag_array_axes(knl, "X", "N0,N1")
-
-    knl = lp.add_and_infer_dtypes(knl, {"X": np.float32})
-
-    print(lp.generate_code_v2(knl).all_code())
 
 
 def test_sized_integer_c_codegen(ctx_factory):
@@ -557,7 +524,7 @@ def test_input_args_are_required(ctx_factory):
         """
         g[i] = f[i] + 1.5
         """,
-        [lp.GlobalArg("f, g", dtype="float64"), ...]
+        [lp.GlobalArg("f, g", shape=lp.auto, dtype="float64"), ...]
     )
 
     knl2 = lp.make_kernel(
@@ -582,7 +549,7 @@ def test_input_args_are_required(ctx_factory):
         f[i] = 3.
         g[i] = f[i] + 1.5
         """,
-        [lp.GlobalArg("f, g", dtype="float64"), ...]
+        [lp.GlobalArg("f, g", shape=lp.auto, dtype="float64"), ...]
     )
 
     # FIXME: this should not raise!
