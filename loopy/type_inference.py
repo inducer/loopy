@@ -613,6 +613,7 @@ class TypeReader(TypeInferenceMapper):
         self.kernel = kernel
         self.callables = callables
         self.new_assignments = new_assignments
+        self.symbols_with_unknown_types = set()
         CombineMapper.__init__(self)
 
     # {{{ disabled interface
