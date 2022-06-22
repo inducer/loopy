@@ -155,13 +155,12 @@ jobs:
                 . /home/firedrake/firedrake/bin/activate
 
                 pip install --editable .
+                pip uninstall -y pytools
                 pip uninstall -y pymbolic
+                pip install "git+https://github.com/inducer/pytools.git#egg=pytools"
                 pip install "git+https://github.com/inducer/pymbolic.git#egg=pymbolic"
 
                 cd /home/firedrake/firedrake/src/firedrake
-
-                # https://github.com/OP2/PyOP2/pull/663
-                (cd ../PyOP2 && git pull https://github.com/OP2/PyOP2.git a33fedfccad017aa0d7b8479fe7c454ebec4265d)
 
                 # patch so exception messages get shown
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/63edfaf2ec8bf06987896569a4f24264df490e9e/firedrake-debug-patch.diff | patch -p1
