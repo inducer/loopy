@@ -2075,10 +2075,11 @@ def simplify_using_aff(kernel, expr):
 
 # {{{ qpolynomial_to_expr
 
-def _term_to_expr(space, term):
+def _get_monomial_coeff_from_term(space, term):
     from pymbolic.primitives import Variable
 
-    result = term.get_coefficient_val().to_python()
+    result = 1
+
     for dt in isl._CHECK_DIM_TYPES:
         for i in range(term.dim(dt)):
             exp = term.get_exp(dt, i)
@@ -2089,12 +2090,46 @@ def _term_to_expr(space, term):
         exp = term.get_exp(dim_type.div, i)
         result *= (aff_to_expr(term.get_div(i))**exp)
 
-    return result
+    return result, term.get_coefficient_val()
+
+
+def _take_common_denominator(coeffs):
+    denominators = [coeff.get_den_val() for coeff in coeffs]
+    numerators = [coeff * den for coeff, den in zip(coeffs, denominators)]
+
+    common_denominator = isl.Val.one(coeffs[0].get_ctx())
+    for den in denominators:
+        # LCM(a, b) = a * b / GCD(a, b)
+        common_denominator = ((common_denominator * den)
+                              .div(den.gcd(common_denominator)))
+
+    numerators_scaled = [numerator * (common_denominator.div(denominator))
+                         for numerator, denominator in zip(numerators, denominators)]
+
+    return (tuple(num.to_python() for num in numerators_scaled),
+            common_denominator.to_python())
 
 
 def qpolynomial_to_expr(qpoly):
+    from pymbolic.primitives import FloorDiv
+
     space = qpoly.space
-    return sum(_term_to_expr(space, t) for t in qpoly.get_terms())
+    monomials, coeffs = zip(*[_get_monomial_coeff_from_term(space, t)
+                              for t in qpoly.get_terms()])
+
+    numerators, common_denominator = _take_common_denominator(coeffs)
+
+    assert len(numerators) == len(monomials)
+    assert all(isinstance(num, int) for num in numerators)
+    assert isinstance(common_denominator, int)
+
+    if common_denominator == 1:
+        return sum(num * monomial
+                   for num, monomial in zip(numerators, monomials))
+    else:
+        return FloorDiv(sum(num * monomial
+                            for num, monomial in zip(numerators, monomials)),
+                        common_denominator)
 
 # }}}
 
