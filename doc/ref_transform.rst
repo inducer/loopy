@@ -54,6 +54,8 @@ Influencing data access
 
 .. autofunction:: allocate_temporaries_for_base_storage
 
+.. automodule:: loopy.transform.reindex
+
 Padding Data
 ------------
 
