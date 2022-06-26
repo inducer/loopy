@@ -763,13 +763,14 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
                 continue
             coeffs = CoefficientCollector()(iexpr_i)
             for var, coeff in coeffs.items():
-                if (isinstance(var, Variable)
-                        and var.name in auto_axis_inames):
-                    # excludes '1', i.e.  the constant
-                    new_stride = coeff*stride
-                    old_stride = iname_to_stride_expr.get(var.name, None)
-                    if old_stride is None or new_stride < old_stride:
-                        iname_to_stride_expr[var.name] = new_stride
+                # This is a nested if instead of 'and' for pylint's benefit.
+                if isinstance(var, Variable):
+                    if var.name in auto_axis_inames:
+                        # excludes '1', i.e.  the constant
+                        new_stride = coeff*stride
+                        old_stride = iname_to_stride_expr.get(var.name, None)
+                        if old_stride is None or new_stride < old_stride:
+                            iname_to_stride_expr[var.name] = new_stride
 
         # }}}
 
@@ -1807,10 +1808,7 @@ def get_subkernel_to_insn_id_map(kernel):
             for insn_id in sched_item_to_insn_id(sched_item):
                 result[subkernel].add(insn_id)
 
-    for subkernel in result:
-        result[subkernel] = frozenset(result[subkernel])
-
-    return result
+    return {name: frozenset(insn_ids) for name, insn_ids in result.items()}
 
 # }}}
 
