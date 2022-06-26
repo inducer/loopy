@@ -96,6 +96,20 @@ def test_simplify_via_aff_reproducibility():
     assert simplify_via_aff(expr) == expr
 
 
+def test_qpolynomrial_to_expr():
+    from loopy.symbolic import qpolynomial_to_expr
+    import pymbolic.primitives as p
+
+    (_, qpoly), = isl.PwQPolynomial(
+        "[i,j,k] -> { ((1/3)*i + (1/2)*j + (1/4)*k) : (4i+6j+3k) mod 12 = 0}"
+    ).get_pieces()
+
+    expr = qpolynomial_to_expr(qpoly)
+
+    i, j, k = p.variables("i j k")
+    assert expr == (4*i + 6*j + 3*k) // 12
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
