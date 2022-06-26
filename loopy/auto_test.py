@@ -307,6 +307,7 @@ def _default_check_result(result, ref_result):
         linf_err = (
                 np.max(np.abs(ref_result-result))
                 / np.max(np.abs(ref_result-result)))
+        # pylint: disable=bad-string-format-type
         return (False,
                 "results do not match -- (rel) l_2 err: %g, l_inf err: %g"
                 % (l2_err, linf_err))
