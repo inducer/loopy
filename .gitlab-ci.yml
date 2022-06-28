@@ -6,8 +6,7 @@ Pytest POCL:
   stage: test
   script:
   - export PYOPENCL_TEST=portable:pthread
-  - export 
-  NSTALL="pybind11 numpy mako"
+  - export EXTRA_INSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
   - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
