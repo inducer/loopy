@@ -6,7 +6,8 @@ Pytest POCL:
   stage: test
   script:
   - export PYOPENCL_TEST=portable:pthread
-  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export 
+  NSTALL="pybind11 numpy mako"
   - export LOOPY_NO_CACHE=1
   - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
@@ -170,6 +171,7 @@ Flake8:
 
 Mypy:
   script: |
+    EXTRA_INSTALL="pybind11 numpy"
     curl -L -O https://tiker.net/ci-support-v0
     . ./ci-support-v0
     build_py_project_in_venv
