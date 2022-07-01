@@ -1593,7 +1593,7 @@ def determine_shapes_of_temporaries(knl):
     def feed_all_expressions(receiver):
         for insn in knl.instructions:
             insn.with_transformed_expressions(
-                lambda expr: receiver(expr, insn.within_inames))
+                    lambda expr: receiver(expr, insn.within_inames))  # noqa: B023
 
     var_to_base_indices, var_to_shape, var_to_error = (
         find_shapes_of_vars(

@@ -1393,7 +1393,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
             insn if not kernel.substitutions and not within(kernel, insn, ()) else
             self.map_instruction(kernel,
                 insn.with_transformed_expressions(
-                    lambda expr: self(expr, kernel, insn)))
+                    lambda expr: self(expr, kernel, insn)))  # noqa: B023
             for insn in kernel.instructions]
 
         from functools import partial

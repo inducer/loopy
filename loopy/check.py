@@ -845,7 +845,7 @@ def _check_bounds_inner(kernel, callables_table):
             domain_with_assumptions = domain & assumptions
 
         def run_acm(expr):
-            acm(expr, domain_with_assumptions, insn.id)
+            acm(expr, domain_with_assumptions, insn.id)  # noqa: B023
             return expr
 
         insn.with_transformed_expressions(run_acm)
