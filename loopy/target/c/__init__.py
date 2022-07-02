@@ -375,26 +375,6 @@ class CASTIdentityMapper(CASTIdentityMapperBase):
         return FunctionDeclarationWrapper(
                 self.rec(node.subdecl, *args, **kwargs))
 
-
-class SubscriptSubsetCounter(IdentityMapper):
-    def __init__(self, subset_counters):
-        self.subset_counters = subset_counters
-
-
-class ASTSubscriptCollector(CASTIdentityMapper):
-    def __init__(self):
-        self.subset_counters = {}
-
-    def map_expression(self, expr):
-        from pymbolic.primitives import is_constant
-        if isinstance(expr, CExpression) or is_constant(expr):
-            return expr
-        elif isinstance(expr, str):
-            return expr
-        else:
-            raise LoopyError(
-                    "Unexpected expression type: %s" % type(expr).__name__)
-
 # }}}
 
 
@@ -1284,8 +1264,6 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     # }}}
 
     def process_ast(self, node):
-        sc = ASTSubscriptCollector()
-        sc(node)
         return node
 
 
