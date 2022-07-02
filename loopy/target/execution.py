@@ -594,7 +594,7 @@ class ExecutionWrapperGeneratorBase(ABC):
             if isinstance(arg, (lp.ArrayArg, lp.ConstantArg)):
                 args.append(self.get_arg_pass(arg))
             else:
-                args.append("%s" % arg.name)
+                args.append(arg.name)
 
             gen("")
 
