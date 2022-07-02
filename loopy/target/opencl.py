@@ -23,10 +23,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Tuple, Sequence
+
 import numpy as np
 from pymbolic import var
 from pytools import memoize_method
-from cgen import Declarator
+from cgen import Declarator, Generable
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
@@ -36,6 +38,8 @@ from loopy.target.c import DTypeRegistryWrapper
 from loopy.kernel.array import VectorArrayDimTag, FixedStrideArrayDimTag, ArrayBase
 from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg
 from loopy.kernel.function_interface import ScalarCallable
+from loopy.codegen import CodeGenerationState
+from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ dtype registry wrappers
@@ -624,9 +628,11 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        fdecl = super().get_function_declaration(
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+        preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper
@@ -634,10 +640,14 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         if not codegen_state.is_entrypoint:
             # auxiliary kernels need not mention opencl speicific qualifiers
             # for a functions signature
-            return fdecl
+            return preambles, fdecl
 
-        fdecl = fdecl.subdecl
+        return preambles, FunctionDeclarationWrapper(
+                self._wrap_kernel_decl(codegen_state, schedule_index, fdecl.subdecl))
 
+    def _wrap_kernel_decl(
+            self, codegen_state: CodeGenerationState, schedule_index: int,
+            fdecl: Declarator) -> Declarator:
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
         fdecl = CLKernel(fdecl)
 
@@ -654,7 +664,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
             fdecl = CLRequiredWorkGroupSize(local_sizes, fdecl)
 
-        return FunctionDeclarationWrapper(fdecl)
+        return fdecl
 
     def generate_top_of_body(self, codegen_state):
         from loopy.kernel.data import ImageArg

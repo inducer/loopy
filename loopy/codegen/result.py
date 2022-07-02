@@ -27,6 +27,10 @@ from dataclasses import dataclass, replace
 import islpy as isl
 
 
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+
+
 def process_preambles(preambles: Sequence[Tuple[int, str]]) -> Sequence[str]:
     seen_preamble_tags = set()
     dedup_preambles = []
@@ -171,7 +175,8 @@ class CodeGenerationResult:
                 + "\n\n"
                 + str(self.host_program.ast))
 
-    def current_program(self, codegen_state):
+    def current_program(
+            self, codegen_state: "CodeGenerationState") -> GeneratedProgram:
         if codegen_state.is_generating_device_code:
             if self.device_programs:
                 result = self.device_programs[-1]
@@ -344,12 +349,22 @@ def generate_host_or_device_program(codegen_state, schedule_index):
 
         cur_prog = codegen_result.current_program(codegen_state)
         body_ast = cur_prog.ast
-        fdecl_ast = ast_builder.get_function_declaration(
+        fdef_preambles, fdecl_ast = ast_builder.get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         fdef_ast = ast_builder.get_function_definition(
                 codegen_state, codegen_result,
                 schedule_index, fdecl_ast, body_ast)
+
+        if fdef_preambles:
+            if codegen_state.is_generating_device_code:
+                codegen_result = codegen_result.copy(
+                        device_preambles=(
+                            codegen_result.device_preambles + tuple(fdef_preambles)))
+            else:
+                codegen_result = codegen_result.copy(
+                        host_preambles=(
+                            codegen_result.host_preambles + tuple(fdef_preambles)))
 
         codegen_result = codegen_result.with_new_program(
                 codegen_state,

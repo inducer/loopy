@@ -23,13 +23,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Tuple, Sequence
+
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
+from genpy import Generable, Suite, Collection
+
 from loopy.type_inference import TypeReader
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
-from genpy import Suite, Collection
+from loopy.codegen import CodeGenerationState
+from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ expression to code
@@ -137,7 +142,7 @@ def _base_python_preamble_generator(preamble_info):
             """)
 
 
-class PythonASTBuilderBase(ASTBuilderBase):
+class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     """A Python host AST builder for integration with PyOpenCL.
     """
 
@@ -161,9 +166,11 @@ class PythonASTBuilderBase(ASTBuilderBase):
         import genpy
         return genpy
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        return None
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], None]:
+        return [], None
 
     def get_function_definition(self, codegen_state, codegen_result,
             schedule_index,

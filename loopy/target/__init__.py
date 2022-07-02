@@ -203,7 +203,8 @@ class ASTBuilderBase(Generic[ASTType]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> ASTType:
+            ) -> Tuple[Sequence[Tuple[str, str]], ASTType]:
+        """Returns preambles and the AST for the function declaration."""
         raise NotImplementedError
 
     def generate_top_of_body(
@@ -293,14 +294,16 @@ class _DummyASTBlock:
         return ""
 
 
-class DummyHostASTBuilder(ASTBuilderBase):
+class DummyHostASTBuilder(ASTBuilderBase[None]):
     def get_function_definition(self, codegen_state, codegen_result,
             schedule_index, function_decl, function_body):
         return function_body
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        return None
+    def get_function_declaration(
+            self, codegen_state, codegen_result,
+            schedule_index,
+            ) -> Tuple[Sequence[Tuple[str, str]], None]:
+        return [], None
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         return []

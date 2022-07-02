@@ -25,8 +25,9 @@ import sys
 import numpy as np
 import loopy as lp
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
+import pyopencl.tools
 import pytest
 
 from loopy.target.c import CTarget
@@ -717,6 +718,63 @@ def test_empty_array_stride_check_fortran(ctx_factory):
         "output[i,j] = sqrt(input[i,j])")
 
     knl(queue, input=a_f)
+
+
+@pytest.mark.parametrize("with_gbarrier", [False, True])
+def test_passing_bajillions_of_svm_args(ctx_factory, with_gbarrier):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from pyopencl.characterize import has_coarse_grain_buffer_svm
+    if not has_coarse_grain_buffer_svm(queue.device):
+        pytest.skip("device does not support SVM, which is required for this test")
+
+    if with_gbarrier:
+        gbarrier_part = [
+            # Make this artificially have multiple subkernels to check that
+            # declarations are correctly emitted in that setting as well
+            # https://github.com/inducer/loopy/pull/642#pullrequestreview-1087588248
+            "z[j] = 0 {id=init_z}",
+            "... gbarrier {dep=init_z,id=gb}"
+             ]
+
+        dep = "{dep=gb}"
+
+    else:
+        gbarrier_part = []
+        dep = ""
+
+    nargsets = 300
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i,j<n}",
+            gbarrier_part + [
+                f"c{iargset}[i] = a{iargset}[i]+b{iargset}[i] {dep}"
+                for iargset in range(nargsets)
+            ], [
+                lp.GlobalArg(f"{name}{iargset}", shape=lp.auto, dtype=np.float32)
+                for name in "abc"
+                for iargset in range(nargsets)
+                ] + [...],
+            target=lp.PyOpenCLTarget(limit_arg_size_nbytes=20),
+            options=lp.Options(return_dict=True))
+
+    alloc = cl.tools.SVMAllocator(
+            ctx, flags=cl.svm_mem_flags.READ_WRITE, queue=queue)
+
+    multiplier = 10_000
+    args = {}
+    for iargset in range(nargsets):
+        args[f"a{iargset}"] = (
+                cl.array.zeros(queue, 20, np.float32, allocator=alloc)
+                + np.float32(multiplier * iargset))
+        args[f"b{iargset}"] = (
+                cl.array.zeros(queue, 20, np.float32, allocator=alloc)
+                + np.float32(iargset))
+
+    evt, res = knl(queue, **args, allocator=alloc)
+
+    for iargset in range(nargsets):
+        assert (res[f"c{iargset}"].get() == iargset * multiplier + iargset).all()
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import cast, Tuple
+from typing import cast, Tuple, Sequence
 
 import numpy as np  # noqa
 import pymbolic.primitives as p
@@ -202,8 +202,10 @@ class ISPCTarget(CFamilyTarget):
 class ISPCASTBuilder(CFamilyASTBuilder):
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int) -> Generable:
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
         name = codegen_result.current_program(codegen_state).name
         kernel = codegen_state.kernel
 
@@ -243,7 +245,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         arg_decls))
 
         from loopy.target.c import FunctionDeclarationWrapper
-        return FunctionDeclarationWrapper(result)
+        return [], FunctionDeclarationWrapper(result)
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
