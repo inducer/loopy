@@ -23,10 +23,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Tuple, Sequence
+
 import numpy as np
 from pymbolic import var
 from pytools import memoize_method
-from cgen import Declarator, Const
+from cgen import Declarator, Const, Generable
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
@@ -35,6 +37,8 @@ from loopy.types import NumpyType
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
 from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg, ArrayArg
 from loopy.kernel.function_interface import ScalarCallable
+from loopy.codegen.result import CodeGenerationResult
+from loopy.codegen import CodeGenerationState
 
 
 # {{{ vector types
@@ -316,9 +320,11 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        fdecl = super().get_function_declaration(
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+        preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper
@@ -348,7 +354,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
             fdecl = CudaLaunchBounds(nthreads, fdecl)
 
-        return FunctionDeclarationWrapper(fdecl)
+        return preambles, FunctionDeclarationWrapper(fdecl)
 
     def preamble_generators(self):
 

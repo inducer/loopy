@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import cast, Tuple, Optional
+from typing import cast, Tuple, Optional, Sequence
 import re
 
 import numpy as np  # noqa
@@ -817,8 +817,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         else:
             return Collection(result+[Line(), fbody])
 
-    def get_function_declaration(self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int) -> Generable:
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 
         assert codegen_state.kernel.linearization is not None
@@ -846,7 +848,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             passed_names = [arg.name for arg in kernel.args]
             written_names = kernel.get_written_variables()
 
-        return FunctionDeclarationWrapper(
+        return [], FunctionDeclarationWrapper(
                 FunctionDeclaration(
                     name,
                     [self.arg_to_cgen_declarator(
