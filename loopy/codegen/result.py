@@ -20,7 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any, Sequence, Mapping, Tuple, Optional
+from typing import (Any, Sequence, Mapping, Tuple, Optional, TYPE_CHECKING, Union,
+                    Dict, List)
 from dataclasses import dataclass, replace
 
 import islpy as isl
@@ -217,7 +218,10 @@ class CodeGenerationResult:
 
 # {{{ support code for AST merging
 
-def merge_codegen_results(codegen_state, elements, collapse=True):
+def merge_codegen_results(
+        codegen_state: "CodeGenerationState",
+        elements: Sequence[Union[CodeGenerationResult, Any]], collapse=True
+        ) -> CodeGenerationResult:
     elements = [el for el in elements if el is not None]
 
     if not elements:
@@ -226,10 +230,16 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
                 device_programs=[],
                 implemented_domains={})
 
+    # FIXME This is fundamentally broken. What is this even doing?
+    # I guess partly to blame is the fact that there's an unresolved
+    # tension between subkernels and callables.
+    # -AK, 2022-08-28
+
     ast_els = []
     new_device_programs = []
+    new_device_preambles: List[Tuple[str, str]] = []
     dev_program_names = set()
-    implemented_domains = {}
+    implemented_domains: Dict[str, isl.Set] = {}
     codegen_result = None
 
     block_cls = codegen_state.ast_builder.ast_block_class
@@ -253,6 +263,8 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
                         new_device_programs.append(dp)
                         dev_program_names.add(dp.name)
 
+            new_device_preambles.extend(el.device_preambles)
+
             cur_ast = el.current_ast(codegen_state)
             if (isinstance(cur_ast, block_cls)
                     and not isinstance(cur_ast, block_scope_cls)):
@@ -272,9 +284,12 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
     if not codegen_state.is_generating_device_code:
         kwargs["device_programs"] = new_device_programs
 
+    assert codegen_result is not None
+
     return (codegen_result
             .with_new_ast(codegen_state, ast)
             .copy(
+                device_preambles=tuple(new_device_preambles),
                 implemented_domains=implemented_domains,
                 **kwargs))
 

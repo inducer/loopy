@@ -431,7 +431,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     if kernel.all_inames():
         seen_dtypes.add(kernel.index_dtype)
 
-    preambles = list(kernel.preambles)
+    preambles = kernel.preambles + codegen_result.device_preambles
 
     preamble_info = PreambleInfo(
             kernel=kernel,
@@ -445,7 +445,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
     preamble_generators = (list(kernel.preamble_generators)
             + list(target.get_device_ast_builder().preamble_generators()))
     for prea_gen in preamble_generators:
-        preambles.extend(prea_gen(preamble_info))
+        preambles = preambles + tuple(prea_gen(preamble_info))
 
     codegen_result = codegen_result.copy(device_preambles=preambles)
 
