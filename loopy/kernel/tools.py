@@ -2115,4 +2115,73 @@ def get_outer_params(domains):
 # }}}
 
 
+# {{{ get access map from an instruction
+
+class _IndexCollector(CombineMapper):
+    def __init__(self, var):
+        self.var = var
+        super().__init__()
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, frozenset())
+
+    def map_subscript(self, expr):
+        if expr.aggregate.name == self.var:
+            return (super().map_subscript(expr) | frozenset([expr.index_tuple]))
+        else:
+            return super().map_subscript(expr)
+
+    def map_algebraic_leaf(self, expr):
+        return frozenset()
+
+    map_constant = map_algebraic_leaf
+    map_resolved_function = map_algebraic_leaf
+
+
+def _project_out_inames_from_maps(amaps, inames_to_project_out):
+    new_amaps = []
+    for amap in amaps:
+        for iname in inames_to_project_out:
+            dt, pos = amap.get_var_dict()[iname]
+            amap = amap.project_out(dt, pos, 1)
+
+        new_amaps.append(amap)
+
+    return new_amaps
+
+
+def _union_amaps(amaps):
+    import islpy as isl
+    return reduce(isl.Map.union, amaps[1:], amaps[0])
+
+
+def get_insn_access_map(kernel, insn_id, var):
+    from loopy.kernel.instruction import NoOpInstruction, BarrierInstruction
+    from loopy.transform.subst import expand_subst
+    from loopy.match import Id
+    from loopy.symbolic import get_access_map
+
+    insn = kernel.id_to_insn[insn_id]
+
+    kernel = expand_subst(kernel, within=Id(insn_id))
+    if isinstance(insn, MultiAssignmentBase):
+        indices = list(_IndexCollector(var)((insn.expression,
+                                             insn.assignees,
+                                             tuple(insn.predicates))))
+    elif isinstance(insn, (CInstruction, NoOpInstruction)):
+        indices = list(_IndexCollector(var)(tuple(insn.predicates)))
+    elif isinstance(insn, BarrierInstruction):
+        indices = []
+    else:
+        raise NotImplementedError(type(insn))
+
+    amaps = [get_access_map(kernel.get_inames_domain(insn.within_inames),
+                        idx, kernel.assumptions)
+            for idx in indices]
+
+    return _union_amaps(amaps)
+
+# }}}
+
 # vim: foldmethod=marker
