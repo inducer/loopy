@@ -1296,7 +1296,9 @@ def get_access_info(kernel: "LoopKernel",
                 # We'll do absolutely nothing here, which will result
                 # in the vector being returned.
                 pass
-
+            elif (vectorization_info is None
+                    and kernel.target.allows_non_constant_indexing_for_vec_types):
+                vector_index = eval_expr(idx)
             else:
                 idx = eval_expr_assert_integer_constant(i, idx)
 

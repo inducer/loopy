@@ -198,6 +198,19 @@ class ISPCTarget(CFamilyTarget):
 
     # }}}
 
+    @property
+    def broadcasts_scalar_assignment_to_vec_types(self):
+        return True
+
+    @property
+    def allows_non_constant_indexing_for_vec_types(self):
+        return False
+
+    @property
+    def vectorization_fallback(self):
+        from loopy.target import VectorizationFallback
+        return VectorizationFallback.UNROLL
+
 
 class ISPCASTBuilder(CFamilyASTBuilder):
     # {{{ top-level codegen

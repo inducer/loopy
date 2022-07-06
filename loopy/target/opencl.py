@@ -594,6 +594,19 @@ class OpenCLTarget(CFamilyTarget):
     def vector_dtype(self, base, count):
         return NumpyType(vec.types[base.numpy_dtype, count])
 
+    @property
+    def allows_non_constant_indexing_for_vec_types(self):
+        return False
+
+    @property
+    def broadcasts_scalar_assignment_to_vec_types(self):
+        return True
+
+    @property
+    def vectorization_fallback(self):
+        from loopy.target import VectorizationFallback
+        return VectorizationFallback.UNROLL
+
 # }}}
 
 

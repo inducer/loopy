@@ -160,10 +160,25 @@ def generate_unroll_loop(codegen_state, sched_index):
 
 # {{{ vectorized loops
 
+def raise_for_unvectorizable_loop(codegen_state, sched_index):
+    kernel = codegen_state.kernel
+    raise RuntimeError(f"Cannot vectorize {kernel.schedule[sched_index]}")
+
+
 def generate_vectorize_loop(codegen_state, sched_index):
+    from loopy.kernel.data import VectorizeTag
+    from loopy.target import VectorizationFallback
     kernel = codegen_state.kernel
 
     iname = kernel.linearization[sched_index].iname
+    vec_tag, = kernel.inames[iname].tags_of_type(VectorizeTag)
+
+    if kernel.target.vectorization_fallback == VectorizationFallback.UNROLL:
+        fallback_codegen_routine = generate_unroll_loop
+    elif kernel.target.vectorization_fallback == VectorizationFallback.OMP_SIMD:
+        fallback_codegen_routine = generate_openmp_simd_loop
+    else:
+        raise NotImplementedError(kernel.target.vectorization_fallback)
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
@@ -177,7 +192,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
         warn(kernel, "vec_upper_not_const",
                 "upper bound for vectorized loop '%s' is not a constant, "
                 "cannot vectorize--unrolling instead")
-        return generate_unroll_loop(codegen_state, sched_index)
+        return fallback_codegen_routine(codegen_state, sched_index)
 
     length = int(pw_aff_to_expr(length_aff))
 
@@ -192,7 +207,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
         warn(kernel, "vec_lower_not_0",
                 "lower bound for vectorized loop '%s' is not zero, "
                 "cannot vectorize--unrolling instead")
-        return generate_unroll_loop(codegen_state, sched_index)
+        return fallback_codegen_routine(codegen_state, sched_index)
 
     # {{{ 'implement' vectorization bounds
 
@@ -483,5 +498,18 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
     return merge_codegen_results(codegen_state, result)
 
 # }}}
+
+
+# {{{ omp simd loop
+
+def generate_openmp_simd_loop(codegen_state, sched_index):
+    return merge_codegen_results(
+        codegen_state,
+        [codegen_state.ast_builder.emit_pragma("omp simd"),
+         generate_sequential_loop_dim_code(codegen_state,
+                                           sched_index)])
+
+# }}}
+
 
 # vim: foldmethod=marker

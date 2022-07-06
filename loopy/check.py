@@ -605,13 +605,15 @@ def check_for_data_dependent_parallel_bounds(kernel):
     Check that inames tagged as hw axes have bounds that are known at kernel
     launch.
     """
-    from loopy.kernel.data import ConcurrentTag
+    from loopy.kernel.data import LocalInameTagBase, GroupInameTag
 
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
-        par_inames = {
-                iname for iname in dom_inames
-                if kernel.iname_tags_of_type(iname, ConcurrentTag)}
+        # do not check for vec-inames as their implementation is accompanied
+        # with a fallback machinery
+        par_inames = {iname for iname in dom_inames
+                      if kernel.iname_tags_of_type(iname, (LocalInameTagBase,
+                                                           GroupInameTag))}
 
         if not par_inames:
             continue
