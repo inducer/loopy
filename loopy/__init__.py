@@ -150,7 +150,7 @@ from loopy.auto_test import auto_test_vs_ref
 from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
-from loopy.target import TargetBase, ASTBuilderBase
+from loopy.target import TargetBase, ASTBuilderBase, VectorizationFallback
 from loopy.target.c import (CFamilyTarget, CTarget, ExecutableCTarget,
                             generate_header, CWithGNULibcTarget,
                             ExecutableCWithGNULibcTarget)
@@ -298,7 +298,7 @@ __all__ = [
 
         "LoopyError", "LoopyWarning",
 
-        "TargetBase",
+        "TargetBase", "VectorizationFallback",
         "CFamilyTarget", "CTarget", "ExecutableCTarget", "generate_header",
         "CWithGNULibcTarget", "ExecutableCWithGNULibcTarget",
         "CudaTarget", "OpenCLTarget",

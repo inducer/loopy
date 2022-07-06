@@ -610,6 +610,11 @@ class OpenCLTarget(CFamilyTarget):
     def broadcasts_scalar_assignment_to_vec_types(self):
         return True
 
+    @property
+    def vectorization_fallback(self):
+        from loopy.target import VectorizationFallback
+        return VectorizationFallback.UNROLL
+
 # }}}
 
 

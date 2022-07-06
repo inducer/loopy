@@ -1356,6 +1356,11 @@ class CTarget(CFamilyTarget):
     def broadcasts_scalar_assignment_to_vec_types(self):
         return False
 
+    @property
+    def vectorization_fallback(self):
+        from loopy.target import VectorizationFallback
+        return VectorizationFallback.UNROLL
+
 
 class CASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
