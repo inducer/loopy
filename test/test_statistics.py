@@ -1531,6 +1531,29 @@ def test_no_loop_ops():
     assert f64_mul == 1
 
 
+def test_c_instructions_stats():
+    # loopy.git <= 04fb703 would fail this regression as CInstructions weren't
+    # supported in loopy.statistics
+    knl = lp.make_kernel(
+        "{ : }",
+        ["""
+         a = 2.0f
+         b = 2*a
+         """,
+         lp.CInstruction((),
+                         code='printf("Hello World\n");'),
+         """
+         c = a + b
+         """
+         ])
+
+    op_map = lp.get_op_map(knl, subgroup_size=1)
+    f32_add = op_map.filter_by(name="add").eval_and_sum({})
+    f32_mul = op_map.filter_by(name="mul").eval_and_sum({})
+    assert f32_add == 1
+    assert f32_mul == 1
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

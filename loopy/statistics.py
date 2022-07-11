@@ -914,7 +914,7 @@ class ExpressionOpCounter(CounterBase):
     arithmetic_count_granularity = CountGranularity.SUBGROUP
 
     def combine(self, values):
-        return sum(values)
+        return sum(values, self.new_zero_poly_map())
 
     def map_constant(self, expr):
         return self.new_zero_poly_map()
@@ -1670,23 +1670,26 @@ def _get_op_map_for_single_kernel(knl, callables_table,
     op_map = op_counter.new_zero_poly_map()
 
     from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
+            MultiAssignmentBase, CInstruction,
             NoOpInstruction, BarrierInstruction)
 
     for insn in knl.instructions:
-        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
-            ops = op_counter(insn.assignees) + op_counter(insn.expression)
-            for key, val in ops.count_map.items():
-                count = _get_insn_count(knl, callables_table, insn.id,
-                            subgroup_size, count_redundant_work,
-                            key.count_granularity)
-                op_map = op_map + ToCountMap({key: val}) * count
+        if isinstance(insn, MultiAssignmentBase):
+            exprs_in_insn = (insn.assignees, insn.expression,
+                             tuple(insn.predicates))
 
-        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
-            pass
+        elif isinstance(insn, (CInstruction, NoOpInstruction, BarrierInstruction)):
+            exprs_in_insn = tuple(insn.predicates)
         else:
             raise NotImplementedError("unexpected instruction item type: '%s'"
                     % type(insn).__name__)
+
+        ops = op_counter(exprs_in_insn)
+        for key, val in ops.count_map.items():
+            count = _get_insn_count(knl, callables_table, insn.id,
+                        subgroup_size, count_redundant_work,
+                        key.count_granularity)
+            op_map = op_map + ToCountMap({key: val}) * count
 
     return op_map
 
