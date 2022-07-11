@@ -3253,6 +3253,36 @@ def test_vec_loops_surrounded_by_preds(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
+def test_vec_inames_can_reenter(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/644
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i, j]: 0<=i,j<4}",
+        """
+        for i
+            <> tmp0[i] = 1
+            for j
+                <> tmp1[i] = 2
+            end
+            <> tmp2[i] = 3
+            out[i] = tmp0[i] + tmp1[i] + tmp2[i]
+        end
+        """,
+        seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, "i:vec")
+    knl = lp.tag_array_axes(knl, "tmp0,tmp1,tmp2", "vec")
+
+    knl = lp.duplicate_inames(knl, "i",
+                              within="writes:tmp1",
+                              tags={"i": "vec"})
+
+    _, (out,) = knl(cq)
+    np.testing.assert_allclose(out.get(), 6*np.ones(4))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
