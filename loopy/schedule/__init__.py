@@ -1112,7 +1112,9 @@ def generate_loop_schedules_internal(
             for insn_id in sched_state.unscheduled_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
                 if last_entered_loop in insn.within_inames:
-                    if debug_mode:
+                    can_leave = last_entered_loop in sched_state.vec_inames
+
+                    if debug_mode and not can_leave:
                         print("cannot leave '%s' because '%s' still depends on it"
                                 % (last_entered_loop, format_insn(kernel, insn.id)))
 
@@ -1144,7 +1146,6 @@ def generate_loop_schedules_internal(
                                         "dep_i": format_insn(kernel, insn_id),
                                         })
 
-                    can_leave = False
                     break
 
         if can_leave:
