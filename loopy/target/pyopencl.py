@@ -551,6 +551,10 @@ class PyOpenCLTarget(OpenCLTarget):
                 "stop working in 2022.", DeprecationWarning, stacklevel=2)
         return self
 
+    @property
+    def is_executable(self) -> bool:
+        return True
+
 # }}}
 
 

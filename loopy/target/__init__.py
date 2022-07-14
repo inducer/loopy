@@ -49,6 +49,7 @@ THE SOFTWARE.
 
 from typing import (Any, Tuple, Generic, TypeVar, Sequence, ClassVar, Optional,
         TYPE_CHECKING)
+import abc
 
 if TYPE_CHECKING:
     from loopy.typing import ExpressionT
@@ -158,6 +159,13 @@ class TargetBase():
             kernel executor caching.
         """
         raise NotImplementedError()
+
+    @abc.abstractproperty
+    def is_executable(self) -> bool:
+        """
+        Returns *True* only if the target allows executing loopy
+        translation units through :attr:`loopy.TranslationUnit.__call__`.
+        """
 
 
 class ASTBuilderBase(Generic[ASTType]):
