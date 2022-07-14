@@ -598,6 +598,10 @@ class OpenCLTarget(CFamilyTarget):
     def vector_dtype(self, base, count):
         return NumpyType(vec.types[base.numpy_dtype, count])
 
+    @property
+    def is_executable(self) -> bool:
+        return False
+
 # }}}
 
 

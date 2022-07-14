@@ -198,6 +198,10 @@ class ISPCTarget(CFamilyTarget):
 
     # }}}
 
+    @property
+    def is_executable(self) -> bool:
+        return False
+
 
 class ISPCASTBuilder(CFamilyASTBuilder):
     # {{{ top-level codegen
@@ -222,7 +226,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
             # subkernel launches occur only as part of entrypoint kernels for now
             from loopy.schedule.tools import get_subkernel_arg_info
             skai = get_subkernel_arg_info(codegen_state.kernel, subkernel_name)
-            passed_names = skai.passed_names
+            passed_names = (skai.passed_names
+                            if self.target.is_executable
+                            else [arg.name for arg in kernel.args])
             written_names = skai.written_names
         else:
             passed_names = [arg.name for arg in kernel.args]
@@ -263,7 +269,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         "assert(programCount == (%s))"
                         % ecm(lsize[0], PREC_NONE)))
 
-        if codegen_state.is_entrypoint:
+        if codegen_state.is_entrypoint and self.target.is_executable:
             # subkernel launches occur only as part of entrypoint kernels for now
             from loopy.schedule.tools import get_subkernel_arg_info
             skai = get_subkernel_arg_info(codegen_state.kernel, subkernel_name)
