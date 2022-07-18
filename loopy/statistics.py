@@ -1873,7 +1873,7 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
             NoOpInstruction, BarrierInstruction)
 
     for insn in knl.instructions:
-        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+        if isinstance(insn, (CallInstruction, Assignment)):
             insn_access_map = (
                         access_counter_g(insn.expression)
                         + access_counter_l(insn.expression)
@@ -1890,7 +1890,7 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
                             key.count_granularity)
                 access_map = access_map + ToCountMap({key: val}) * count
 
-        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+        elif isinstance(insn, (NoOpInstruction, CInstruction, BarrierInstruction)):
             pass
 
         else:
