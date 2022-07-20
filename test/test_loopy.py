@@ -3283,6 +3283,23 @@ def test_vec_inames_can_reenter(ctx_factory):
     np.testing.assert_allclose(out.get(), 6*np.ones(4))
 
 
+def test_split_and_join_inames(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/652
+    ctx = ctx_factory()
+
+    tunit = lp.make_kernel(
+        "{[i]: 0<=i<16}",
+        """
+        y[i] = i
+        """)
+    ref_tunit = tunit
+
+    tunit = lp.split_iname(tunit, "i", 4)
+    tunit = lp.join_inames(tunit, ["i_inner", "i_outer"])
+
+    lp.auto_test_vs_ref(ref_tunit, ctx, tunit)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
