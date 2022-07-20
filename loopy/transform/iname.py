@@ -245,8 +245,6 @@ def _split_iname_backend(kernel, iname_to_split,
         raise ValueError(
                 f"cannot split loop for unknown variable '{iname_to_split}'")
 
-    applied_iname_rewrites = list(kernel.applied_iname_rewrites)
-
     vng = kernel.get_var_name_generator()
 
     if outer_iname is None:
@@ -265,7 +263,6 @@ def _split_iname_backend(kernel, iname_to_split,
     new_loop_index = make_new_loop_index(inner, outer)
 
     subst_map = {var(iname_to_split): new_loop_index}
-    applied_iname_rewrites.append(subst_map)
 
     # {{{ update within_inames
 
@@ -300,7 +297,7 @@ def _split_iname_backend(kernel, iname_to_split,
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
             instructions=new_insns,
-            applied_iname_rewrites=applied_iname_rewrites,
+            applied_iname_rewrites=kernel.applied_iname_rewrites+(subst_map,),
             loop_priority=frozenset(new_priorities))
 
     rule_mapping_context = SubstitutionRuleMappingContext(

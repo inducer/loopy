@@ -200,7 +200,7 @@ class LoopKernel(Taggable):
             default_factory=Map)
     loop_priority: FrozenSet[Tuple[str]] = field(
             default_factory=frozenset)
-    applied_iname_rewrites: Sequence[Dict[str, ExpressionT]] = ()
+    applied_iname_rewrites: Tuple[Dict[str, ExpressionT], ...] = ()
     index_dtype: NumpyType = NumpyType(np.dtype(np.int32))
     silenced_warnings: FrozenSet[str] = frozenset()
 
