@@ -899,8 +899,8 @@ class EvaluatorWithDeficientContext(PartialEvaluationMapper):
 
 class VariableInAnExpression(CombineMapper):
     def __init__(self, variables_to_search):
-        assert(all(isinstance(variable, p.Variable) for variable in
-            variables_to_search))
+        assert all(isinstance(variable, p.Variable) for variable in
+            variables_to_search)
         self.variables_to_search = variables_to_search
 
     def combine(self, values):

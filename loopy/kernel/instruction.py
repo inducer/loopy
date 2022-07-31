@@ -1065,9 +1065,9 @@ class CallInstruction(MultiAssignmentBase):
         return result
 
     def arg_id_to_arg(self):
-        """:returns: a :class:`dict` mapping argument identifiers (non-negative numbers
-            for positional arguments and negative numbers
-            for assignees) to their respective values
+        """:returns: a :class:`dict` mapping argument identifiers (non-negative
+            numbers for positional arguments and negative numbers for assignees) to
+            their respective values
         """
         arg_id_to_arg = dict(enumerate(self.expression.parameters))
         for i, arg in enumerate(self.assignees):

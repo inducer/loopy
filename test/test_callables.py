@@ -287,8 +287,8 @@ def test_multi_arg_array_call(ctx_factory):
     evt, out_dict = knl(queue, b=b)
     tol = 1e-15
     from numpy.linalg import norm
-    assert(norm(out_dict["min_val"] - np.min(b)) < tol)
-    assert(norm(out_dict["min_index"] - np.argmin(b)) < tol)
+    assert norm(out_dict["min_val"] - np.min(b)) < tol
+    assert norm(out_dict["min_index"] - np.argmin(b)) < tol
 
 
 @pytest.mark.parametrize("inline", [False, True])

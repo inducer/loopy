@@ -128,11 +128,11 @@ class PyOpenCLCallable(ScalarCallable):
             dtype = self.arg_id_to_dtype[-1]
             ctype = target.dtype_to_typename(dtype)
 
-            yield(f"40_{name}", f"""
-            static inline {ctype} {name}({ctype} x) {{
-                return {ret};
-            }}
-            """)
+            yield (f"40_{name}", f"""
+                static inline {ctype} {name}({ctype} x) {{
+                    return {ret};
+                }}
+                """)
 
 
 def get_pyopencl_callables():
