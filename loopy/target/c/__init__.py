@@ -117,13 +117,13 @@ class InfOrNanInExpressionRecorder(IdentityMapper):
 
 def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
-        yield("10_stdint", "#include <stdint.h>")
+        yield ("10_stdint", "#include <stdint.h>")
     if any(dtype.numpy_dtype == np.dtype("bool")
            for dtype in preamble_info.seen_dtypes
            if isinstance(dtype, NumpyType)):
-        yield("10_stdbool", "#include <stdbool.h>")
+        yield ("10_stdbool", "#include <stdbool.h>")
     if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
-        yield("10_complex", "#include <complex.h>")
+        yield ("10_complex", "#include <complex.h>")
 
     # {{{ emit math.h
 
@@ -133,7 +133,7 @@ def c99_preamble_generator(preamble_info):
         insn.with_transformed_expressions(inf_or_nan_recorder)
 
     if inf_or_nan_recorder.saw_inf_or_nan:
-        yield("10_math", "#include <math.h>")
+        yield ("10_math", "#include <math.h>")
 
     # }}}
 
@@ -235,7 +235,7 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
                           n =  -n;
                         }""")
 
-            yield(f"07_{func.c_name}", f"""
+            yield (f"07_{func.c_name}", f"""
             inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
@@ -684,7 +684,7 @@ class CMathCallable(ScalarCallable):
                                                             "isnani64"}:
             dtype = self.arg_id_to_dtype[0]
             ctype = target.dtype_to_typename(dtype)
-            yield(f"08_c_{self.name_in_target}", f"""
+            yield (f"08_c_{self.name_in_target}", f"""
             inline static int {self.name_in_target}({ctype} x) {{
               return 0;
             }}""")
@@ -730,7 +730,7 @@ class GNULibcCallable(ScalarCallable):
 
     def generate_preambles(self, target):
         if self.name in ["bessel_yn", "bessel_jn"]:
-            yield("08_c_math", "#include <math.h>")
+            yield ("08_c_math", "#include <math.h>")
 
 
 def get_c_callables():

@@ -68,4 +68,4 @@ def symbol_x(knl, name):
 
 
 def preamble_for_x(preamble_info):
-    yield("preamble_ten", r"#define X 10.0")
+    yield ("preamble_ten", r"#define X 10.0")

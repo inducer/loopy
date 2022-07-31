@@ -497,16 +497,16 @@ def opencl_preamble_generator(preamble_info):
 
     for func in preamble_info.seen_functions:
         if func.name == "pow" and func.c_name == "powf32":
-            yield("08_clpowf32", """
-            inline float powf32(float x, float y) {
-              return pow(x, y);
-            }""")
+            yield ("08_clpowf32", """
+                inline float powf32(float x, float y) {
+                return pow(x, y);
+                }""")
 
         if func.name == "pow" and func.c_name == "powf64":
-            yield("08_clpowf64", """
-            inline double powf64(double x, double y) {
-              return pow(x, y);
-            }""")
+            yield ("08_clpowf64", """
+                inline double powf64(double x, double y) {
+                return pow(x, y);
+                }""")
 
 # }}}
 
