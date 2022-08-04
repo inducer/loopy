@@ -224,7 +224,7 @@ class CudaTarget(CFamilyTarget):
         return True
 
     def get_device_ast_builder(self):
-        return CUDACASTBuilder(self)
+        return CudaCASTBuilder(self)
 
     # {{{ types
 
@@ -300,7 +300,7 @@ def cuda_preamble_generator(preamble_info):
 
 # {{{ ast builder
 
-class CUDACASTBuilder(CFamilyASTBuilder):
+class CudaCASTBuilder(CFamilyASTBuilder):
 
     preamble_function_qualifier = "inline __device__"
 
