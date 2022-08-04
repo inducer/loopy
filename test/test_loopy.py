@@ -3300,6 +3300,32 @@ def test_split_and_join_inames(ctx_factory):
     lp.auto_test_vs_ref(ref_tunit, ctx, tunit)
 
 
+def test_different_index_dtypes():
+    from loopy.diagnostic import LoopyError
+
+    doublify = lp.make_function(
+        "{[i]: 0<=i<10}",
+        """
+        x[i] = x[i] * 2
+        """,
+        name="doublify",
+        index_dtype=np.int64
+    )
+
+    knl = lp.make_kernel(
+        "{[I]: 0<=I<10}",
+        """
+        [I]: X[I] = doublify([I]: X[I])
+        """,
+        index_dtype=np.int32
+    )
+
+    knl = lp.merge([knl, doublify])
+
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
