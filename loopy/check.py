@@ -1697,10 +1697,31 @@ def validate_kernel_call_sites(translation_unit):
 # }}}
 
 
+# {{{ check_all_callees_have_same_index_dtype
+
+def check_all_callees_have_same_index_dtype(epoint: LoopKernel,
+                                            callables_table):
+    from loopy.kernel.function_interface import CallableKernel
+
+    epoint_clbl = callables_table[epoint.name]
+    for clbl_name in epoint_clbl.get_called_callables(callables_table,
+                                                      recursive=True):
+        clbl = callables_table[clbl_name]
+        if isinstance(clbl, CallableKernel):
+            if clbl.subkernel.index_dtype != epoint.index_dtype:
+                raise LoopyError(f"Callee '{clbl_name}' in entrypoint"
+                                 f" {epoint.name}'s callgraph does not have the"
+                                 " same index_dtype as the entrypoint. This is"
+                                 " not allowed.")
+
+# }}}
+
+
 def pre_codegen_entrypoint_checks(kernel, callables_table):
     logger.debug("pre-codegen entrypoint check %s: start" % kernel.name)
 
     kernel.target.pre_codegen_entrypoint_check(kernel, callables_table)
+    check_all_callees_have_same_index_dtype(kernel, callables_table)
 
     logger.debug("pre-codegen entrypoint check %s: done" % kernel.name)
 
