@@ -157,6 +157,7 @@ from loopy.target.c import (CFamilyTarget, CTarget, ExecutableCTarget,
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
+from loopy.target.pycuda import PyCudaTarget
 from loopy.target.ispc import ISPCTarget
 
 from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
@@ -303,7 +304,7 @@ __all__ = [
         "CWithGNULibcTarget", "ExecutableCWithGNULibcTarget",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
-        "ASTBuilderBase",
+        "PyCudaTarget", "ASTBuilderBase",
 
         "Optional", "memoize_on_disk",
 
