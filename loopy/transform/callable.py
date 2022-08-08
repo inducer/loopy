@@ -422,7 +422,8 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     noop_end = NoOpInstruction(
         id=call_insn.id,
         within_inames=call_insn.within_inames,
-        depends_on=frozenset(insn_id_map.values())
+        depends_on=frozenset(insn_id_map.values()),
+        depends_on_is_final=True,
     )
 
     # }}}
@@ -448,6 +449,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                 id=insn_id_map[insn.id],
                 within_inames=new_within_inames,
                 depends_on=new_depends_on,
+                depends_on_is_final=True,
                 tags=insn.tags | call_insn.tags,
                 atomicity=new_atomicity,
                 predicates=insn.predicates | call_insn.predicates,

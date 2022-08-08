@@ -1374,6 +1374,36 @@ def test_global_temp_var_with_base_storage(ctx_factory):
     assert (d.get() == 5 + 1 + 2 + 3).all()
 
 
+def test_inline_deps(ctx_factory):
+    # https://github.com/inducer/loopy/issues/564
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    child_knl = lp.make_function(
+        "{[i]:0<=i < 4}",
+        """
+        a[i] = b[i]
+        """, name="func")
+
+    parent_knl = lp.make_kernel(
+        "{[i]: 0<=i<4}",
+        """
+        <> b[i] = i  {id=init,dup=i}
+        [i]: a[i] = func([i]: b[i]) {dep=init}
+        """)
+
+    prg = lp.merge([parent_knl, child_knl])
+    inlined = lp.inline_callable_kernel(prg, "func")
+
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
+    apply_single_writer_depencency_heuristic(inlined, error_if_used=True)
+
+    _evt, (a_dev,) = inlined(cq)
+
+    assert np.array_equal(a_dev.get(), np.arange(4))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
