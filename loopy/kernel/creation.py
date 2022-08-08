@@ -1855,7 +1855,8 @@ def add_inferred_inames(knl):
 # {{{ apply single-writer heuristic
 
 @for_each_kernel
-def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
+def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True,
+        error_if_used=False):
     logger.debug("%s: default deps" % kernel.name)
 
     from loopy.transform.subst import expand_subst
@@ -1905,16 +1906,19 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
             new_deps = frozenset(auto_deps) | depends_on
 
             if new_deps != depends_on:
+                msg = (
+                    "The single-writer dependency heuristic added dependencies "
+                    "on instruction ID(s) '%s' to instruction ID '%s' after "
+                    "kernel creation is complete. This is deprecated and "
+                    "may stop working in the future. "
+                    "To fix this, ensure that instruction dependencies "
+                    "are added/resolved as soon as possible, ideally at kernel "
+                    "creation time."
+                    % (", ".join(new_deps - depends_on), insn.id))
                 if warn_if_used:
-                    warn_with_kernel(kernel, "single_writer_after_creation",
-                        "The single-writer dependency heuristic added dependencies "
-                        "on instruction ID(s) '%s' to instruction ID '%s' after "
-                        "kernel creation is complete. This is deprecated and "
-                        "may stop working in the future. "
-                        "To fix this, ensure that instruction dependencies "
-                        "are added/resolved as soon as possible, ideally at kernel "
-                        "creation time."
-                        % (", ".join(new_deps - depends_on), insn.id))
+                    warn_with_kernel(kernel, "single_writer_after_creation", msg)
+                if error_if_used:
+                    raise LoopyError(msg)
 
                 insn = insn.copy(depends_on=new_deps)
                 changed = True
