@@ -433,6 +433,7 @@ def get_opencl_callables():
 # {{{ symbol mangler
 
 def opencl_symbol_mangler(kernel, name):
+    # Also being used in loopy.target.cuda.CudaCASTBuilder.symbol_manglers
     # FIXME: should be more picky about exact names
     if name.startswith("FLT_"):
         return NumpyType(np.dtype(np.float32)), name

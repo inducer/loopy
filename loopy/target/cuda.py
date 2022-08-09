@@ -312,6 +312,12 @@ class CudaCASTBuilder(CFamilyASTBuilder):
         callables.update(get_cuda_callables())
         return callables
 
+    def symbol_manglers(self):
+        from loopy.target.opencl import opencl_symbol_mangler
+        return (
+                super().symbol_manglers() + [
+                    opencl_symbol_mangler
+                    ])
     # }}}
 
     # {{{ top-level codegen
