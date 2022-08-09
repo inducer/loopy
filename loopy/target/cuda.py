@@ -297,8 +297,35 @@ def cuda_preamble_generator(preamble_info):
 
 # }}}
 
+# {{{ symbol mangler
+
+
+def cuda_symbol_mangler(kernel, name):
+    # FIXME: should be more picky about exact names
+    if name.startswith("FLT_"):
+        return NumpyType(np.dtype(np.float32)), name
+    elif name.startswith("DBL_"):
+        return NumpyType(np.dtype(np.float64)), name
+    elif name.startswith("M_"):
+        if name.endswith("_F"):
+            return NumpyType(np.dtype(np.float32)), name
+        else:
+            return NumpyType(np.dtype(np.float64)), name
+    elif name == "INFINITY":
+        return NumpyType(np.dtype(np.float32)), name
+    elif name.startswith("INT_"):
+        return NumpyType(np.dtype(np.int32)), name
+    elif name.startswith("LONG_"):
+        return NumpyType(np.dtype(np.int64)), name
+    elif name == "HUGE_VAL":
+        return NumpyType(np.dtype(np.float64)), name
+    else:
+        return None
+
+# }}
 
 # {{{ ast builder
+
 
 class CudaCASTBuilder(CFamilyASTBuilder):
 
@@ -312,6 +339,11 @@ class CudaCASTBuilder(CFamilyASTBuilder):
         callables.update(get_cuda_callables())
         return callables
 
+    def symbol_manglers(self):
+        return (
+                super().symbol_manglers() + [
+                    cuda_symbol_mangler
+                    ])
     # }}}
 
     # {{{ top-level codegen
