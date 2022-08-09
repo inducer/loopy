@@ -300,7 +300,6 @@ def cuda_preamble_generator(preamble_info):
 
 # {{{ ast builder
 
-
 class CudaCASTBuilder(CFamilyASTBuilder):
 
     preamble_function_qualifier = "inline __device__"
