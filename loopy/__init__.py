@@ -107,6 +107,8 @@ from loopy.transform.buffer import buffer_array
 from loopy.transform.fusion import fuse_kernels
 from loopy.transform.concatenate import concatenate_arrays
 
+from loopy.transform.reindex import reindex_temporary_using_seghir_loechner_scheme
+
 from loopy.transform.arithmetic import (
         fold_constants,
         collect_common_factors_on_increment)
@@ -239,6 +241,8 @@ __all__ = [
         "concatenate_arrays",
 
         "fold_constants", "collect_common_factors_on_increment",
+
+        "reindex_temporary_using_seghir_loechner_scheme",
 
         "split_array_axis", "split_array_dim", "split_arg_axis",
         "find_padding_multiple", "add_padding",

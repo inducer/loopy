@@ -456,6 +456,13 @@ Here's a Bibtex entry for your convenience::
        doi = "{10.1145/2627373.2627387}",
     }
 
+References
+==========
+
+.. [Seghir_2006] Seghir and Loechner, Proceedings of the 2006 International
+    Conference on Compilers, Architecture and Synthesis for Embedded systems,
+    `(DOI) <https://doi.org/10.1145/1176760.1176771>`__
+
 Getting help
 ============
 
