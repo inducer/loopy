@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import ClassVar, Tuple
+from typing import ClassVar, Tuple, Union
 from functools import reduce, cached_property
 from sys import intern
 import re
@@ -69,6 +69,7 @@ from pymbolic.parser import Parser as ParserBase
 from loopy.diagnostic import LoopyError
 from loopy.diagnostic import (ExpressionToAffineConversionError,
                               UnableToDetermineAccessRangeError)
+from loopy.typing import ExpressionT
 
 
 __doc__ = """
@@ -2791,5 +2792,30 @@ def is_tuple_of_expressions_equal(a, b):
         for ai, bi in zip(a, b))
 
 # }}}
+
+
+def _is_isl_set_universe(isl_set: Union[isl.BasicSet, isl.Set]):
+    if isinstance(isl_set, isl.BasicSet):
+        return isl_set.is_universe()
+    else:
+        assert isinstance(isl_set, isl.Set)
+        return isl_set.complement().is_empty()
+
+
+def pw_qpolynomial_to_expr(pw_qpoly: isl.PwQPolynomial
+                           ) -> ExpressionT:
+    from pymbolic.primitives import If
+
+    result = 0
+
+    for bset, qpoly in reversed(pw_qpoly.get_pieces()):
+        if _is_isl_set_universe(bset):
+            result = qpolynomial_to_expr(qpoly)
+        else:
+            result = If(set_to_cond_expr(bset),
+                        qpolynomial_to_expr(qpoly),
+                        result)
+
+    return result
 
 # vim: foldmethod=marker
