@@ -434,8 +434,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         from cgen.cuda import CudaRestrictPointer
         arg_decl = CudaRestrictPointer(
-                self.wrap_decl_for_address_space(
-                    self.get_array_base_declarator(arg), arg.address_space))
+                    self.get_array_base_declarator(arg))
 
         if not is_written:
             arg_decl = Const(arg_decl)

@@ -1841,7 +1841,7 @@ def test_header_extract():
     cuknl = knl.copy(target=lp.CudaTarget())
     assert str(lp.generate_header(cuknl)[0]) == (
             'extern "C" __global__ void __launch_bounds__(1) '
-            "loopy_kernel(__global__ float *__restrict__ T);")
+            "loopy_kernel(float *__restrict__ T);")
 
     #test OpenCL
     oclknl = knl.copy(target=lp.PyOpenCLTarget())
