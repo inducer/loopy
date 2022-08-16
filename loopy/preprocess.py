@@ -179,7 +179,7 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
 
         new_args.append(arg.copy(_separation_info=sep_info))
 
-        for san in sorted(sep_info.subarray_names.values()):
+        for _ind, san in sorted(sep_info.subarray_names.items()):
             new_args.append(
                     arg.copy(
                         name=san,
