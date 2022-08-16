@@ -6,7 +6,7 @@ git+https://github.com/inducer/pymbolic.git#egg=pymbolic
 git+https://github.com/inducer/genpy.git#egg=genpy
 git+https://github.com/inducer/codepy.git#egg=codepy
 
-git+https://github.com/inducer/f2py#egg=f2py
+fparser
 
 # Optional, needed for using the C preprocessor on Fortran
 ply>=3.6
