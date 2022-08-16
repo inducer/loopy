@@ -242,8 +242,14 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                         for arg_name in kai.passed_arg_names
                         if kernel.arg_dict[arg_name].is_output))
         else:
-            out_names = [arg_name for arg_name in kai.passed_arg_names
-                    if kernel.arg_dict[arg_name].is_output]
+            passed_arg_names_set = frozenset(kai.passed_arg_names)
+            out_names = [
+                    # Must ensure that these occur in the same order as in
+                    # kernel.args.
+                    arg.name
+                    for arg in kernel.args
+                    if arg.name in passed_arg_names_set
+                    if arg.is_output]
             if out_names:
                 gen("return _lpy_evt, (%s,)"
                         % ", ".join(out_names))

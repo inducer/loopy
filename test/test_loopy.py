@@ -3183,6 +3183,30 @@ def test_zero_stride_array(ctx_factory):
     assert out.shape == (10, 0)
 
 
+def test_sep_array_ordering(ctx_factory):
+    # https://github.com/inducer/loopy/pull/667
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    # NOTE: this works with n = 10, but fails with n >= 11
+    n = 11
+    knl = lp.make_kernel(
+        "{[i, k]: 0<=k<noutputs and 0<=i<m}",
+        """
+        x[k, i] = k
+        """,
+        [lp.GlobalArg("x", shape=("noutputs", "m"), dim_tags="sep,C")] + [...],
+        fixed_parameters=dict(noutputs=n),
+        )
+    knl = lp.tag_inames(knl, "k:unr")
+
+    x = [cl.array.empty(cq, (0,), dtype=np.float64) for i in range(n)]
+    evt, out = knl(cq, x=x)
+
+    for i in range(n):
+        assert out[i] is x[i], f"failed on input x{i}: {id(out[i])} {id(x[i])}"
+
+
 def test_predicated_redn(ctx_factory):
     # See https://github.com/inducer/loopy/issues/427
     ctx = ctx_factory()
