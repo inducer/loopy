@@ -128,6 +128,16 @@ class LoopyKeyBuilder(KeyBuilderBase):
 
     update_for_PMap = update_for_dict  # noqa: N815
 
+    def update_for_OrderedDict(self, key_hash, key):  # noqa: N815
+        # Firedrake accidentally uses these in kernels. It shouldn't (and it
+        # doesn't notice because they disable caching), but we'll tolerate it
+        # for now.
+
+        from warnings import warn
+        warn("OrderedDict encountered in persistent hashing. This is deprecated "
+                "and will stop working in 2023.", DeprecationWarning)
+        self.update_for_dict(key_hash, key)
+
 
 class PymbolicExpressionHashWrapper:
     def __init__(self, expression):
