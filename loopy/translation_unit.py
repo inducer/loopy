@@ -204,7 +204,10 @@ class TranslationUnit(ImmutableRecord):
                 func_id_to_in_knl_callable_mappers=(
                     func_id_to_in_knl_callable_mappers))
 
-        self._program_executor_cache = {}
+        from weakref import WeakKeyDictionary
+        # Since PyOpenCL uses CL contexts as keys, this avoids artificially
+        # keeping contexts alive.
+        self._program_executor_cache = WeakKeyDictionary()
         self._hash_value = None
 
     hash_fields = (
