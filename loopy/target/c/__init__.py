@@ -1365,6 +1365,10 @@ class CASTBuilder(CFamilyASTBuilder):
 
 # {{{ executable c target
 
+class _CExecutorCacheKey:
+    pass
+
+
 class ExecutableCTarget(CTarget):
     """
     An executable CFamilyTarget that uses (by default) JIT compilation of C-code
@@ -1377,7 +1381,10 @@ class ExecutableCTarget(CTarget):
     def get_kernel_executor_cache_key(self, *args, **kwargs):
         # This is for things like the context in OpenCL. There is no such
         # thing that CPU JIT is specific to.
-        return None
+
+        # We can't use None here, because this will be a key in a WeakKeyDict,
+        # and None isn't allowed in that setting.
+        return _CExecutorCacheKey
 
     def get_kernel_executor(self, t_unit, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
