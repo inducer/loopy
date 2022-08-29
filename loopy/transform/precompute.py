@@ -34,6 +34,7 @@ from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.kernel.tools import (kernel_has_global_barriers,
                                 find_most_recent_global_barrier)
 from loopy.kernel.data import AddressSpace
+from loopy.types import LoopyType
 
 from pymbolic import var
 from pytools import memoize_on_first_arg
@@ -1074,7 +1075,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         elif temp_var.dtype is not lp.auto and dtype is lp.auto:
             dtype = temp_var.dtype
         elif temp_var.dtype is not lp.auto and dtype is not lp.auto:
-            if temp_var.dtype != dtype:
+            assert isinstance(temp_var.dtype, LoopyType)
+            if temp_var.dtype.numpy_dtype != dtype:
                 raise LoopyError("Existing and new dtype of temporary '%s' "
                         "do not match (existing: %s, new: %s)"
                         % (temporary_name, temp_var.dtype, dtype))
