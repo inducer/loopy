@@ -110,8 +110,8 @@ class CodeGenerationResult:
     host_program: Optional[GeneratedProgram]
     device_programs: Sequence[GeneratedProgram]
     implemented_domains: Mapping[str, isl.Set]
-    host_preambles: Sequence[Tuple[int, str]] = ()
-    device_preambles: Sequence[Tuple[int, str]] = ()
+    host_preambles: Sequence[Tuple[str, str]] = ()
+    device_preambles: Sequence[Tuple[str, str]] = ()
 
     def copy(self, **kwargs: Any) -> "CodeGenerationResult":
         return replace(self, **kwargs)
