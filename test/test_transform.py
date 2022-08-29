@@ -1478,6 +1478,47 @@ def test_redn_iname_unique_preserves_metadata():
     assert t_unit.default_entrypoint.inames["i_0"].tags_of_type(FooTag)  # fails
 
 
+def test_prefetch_to_same_temp_var(ctx_factory):
+    ctx = ctx_factory()
+
+    # loopy.git<=5d83454 would raise with a dtype mismatch during the second
+    # prefetch call.
+    t_unit = lp.make_kernel(
+        "{[i0, i1, j0, j1]: 0<=i0, i1<1000 and 0<=j0, j1<10}",
+        """
+        y0[i0] = sum(j0, A[j0] * x0[i0, j0])
+        y1[i1] = sum(j1, A[j1] * x1[i1, j1])
+        """)
+    t_unit = lp.add_dtypes(t_unit, {"A": "float64",
+                                    "x0": "float64",
+                                    "x1": "float64"})
+    ref_tunit = t_unit
+
+    t_unit = lp.add_prefetch(t_unit,
+                             "A",
+                             sweep_inames=["j0"],
+                             within="iname:i0",
+                             temporary_name="A_fetch",
+                             prefetch_insn_id="first_fetch"
+                             )
+    t_unit = lp.add_prefetch(t_unit,
+                             "A",
+                             sweep_inames=["j1"],
+                             within="iname:i1",
+                             temporary_name="A_fetch",
+                             prefetch_insn_id="second_fetch"
+                             )
+    t_unit = lp.add_dependency(t_unit,
+                               "writes:y1 or writes:y0",
+                               "id:second_fetch or id:first_fetch")
+    t_unit = lp.add_dependency(t_unit,
+                               "id:first_fetch",
+                               "id:second_fetch")
+
+    t_unit = lp.add_dependency(t_unit, "id:first_fetch", "id:second_fetch")
+    lp.auto_test_vs_ref(ref_tunit, ctx, t_unit)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
