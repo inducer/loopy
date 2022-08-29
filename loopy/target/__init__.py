@@ -224,6 +224,10 @@ class ASTBuilderBase(Generic[ASTType]):
     def ast_block_class(self):
         raise NotImplementedError()
 
+    @property
+    def ast_block_scope_class(self):
+        raise NotImplementedError()
+
     def get_expression_to_code_mapper(self, codegen_state: CodeGenerationState):
         raise NotImplementedError()
 
