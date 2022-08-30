@@ -1279,6 +1279,60 @@ def test_privatize_with_nonzero_lbound(ctx_factory):
     np.testing.assert_allclose(out.get()[10:14], np.arange(10, 14))
 
 
+def test_unprivatize():
+    knl = lp.make_kernel(
+        ["{[icoeff]: 0<=icoeff<10}",
+         "{[tgt_box]: 0<=tgt_box<20}",
+         "{[src_box]: 0<=src_box<30}"],
+        """
+        for tgt_box
+            <> temp[icoeff] = 0 {dup=icoeff}
+            for src_box
+               for icoeff
+                   temp[icoeff] = temp[icoeff] + \
+                        deriv[icoeff] * src_coeffs[src_box, icoeff]
+               end
+            end
+            tgt_coeffs[tgt_box, icoeff] = temp[icoeff] {dup=icoeff}
+        end
+        """,
+        name="unprivatize_m2l",
+        seq_dependencies=True)
+
+    knl = lp.rename_inames(knl, ["icoeff_0", "icoeff", "icoeff_1"], "icoeff0")
+    knl = lp.unprivatize_temporaries_with_inames(knl, {"icoeff0"}, {"temp"})
+    assert knl["unprivatize_m2l"].temporary_variables["temp"].shape == ()
+
+
+def test_unprivatize_error():
+    knl = lp.make_kernel(
+        ["{[i]: 0<=i<10}",
+         "{[j]: 0<=j<10}",
+         "{[tgt_box]: 0<=tgt_box<20}",
+         "{[src_box]: 0<=src_box<30}"],
+        """
+        for tgt_box
+            <> temp[i, j] = 0 {dup=i:j}
+            for src_box
+               for i, j
+                   temp[j, i] = temp[i, j] + deriv[i, j] * \
+                        src_coeffs[src_box, i, j]
+               end
+            end
+            tgt_coeffs[tgt_box, i, j] = temp[i, j] {dup=i:j}
+        end
+        """,
+        name="unprivatize_m2l",
+        seq_dependencies=True)
+
+    knl = lp.rename_inames(knl, ["i_0", "i_1", "i"], "i0")
+    knl = lp.rename_inames(knl, ["j_0", "j_1", "j"], "j0")
+    with pytest.raises(lp.LoopyError):
+        knl = lp.unprivatize_temporaries_with_inames(knl, {"i0"}, {"temp"})
+    with pytest.raises(lp.LoopyError):
+        knl = lp.unprivatize_temporaries_with_inames(knl, {"i0", "j0"}, {"temp"})
+
+
 def test_simplify_indices_when_inlining(ctx_factory):
     ctx = ctx_factory()
     twice = lp.make_function(

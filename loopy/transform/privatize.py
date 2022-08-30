@@ -23,6 +23,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 from loopy.translation_unit import for_each_kernel
+import pymbolic
 
 import logging
 logger = logging.getLogger(__name__)
@@ -33,10 +34,11 @@ __doc__ = """
 .. currentmodule:: loopy
 
 .. autofunction:: privatize_temporaries_with_inames
+.. autofunction:: unprivatize_temporaries_with_inames
 """
 
 
-# {{{ privatize temporaries with iname
+# {{{ privatize temp oraries with iname
 
 from loopy.symbolic import IdentityMapper
 
@@ -238,6 +240,139 @@ def privatize_temporaries_with_inames(
                         eiii.seen_priv_axis_inames - insn.within_inames)))
 
         new_insns.append(new_insn)
+
+    return kernel.copy(
+        temporary_variables=new_temp_vars,
+        instructions=new_insns)
+
+# }}}
+
+
+# {{{ unprivatize temporaries with iname
+
+class _InameRemover(IdentityMapper):
+    def __init__(self, inames_to_remove, only_var_names):
+        self.only_var_names = only_var_names
+        self.inames_to_remove = inames_to_remove
+        self.var_name_to_remove_indices = {}
+        super().__init__()
+
+    def map_subscript(self, expr, in_subscript=False):
+        name = expr.aggregate.name
+        if not self.only_var_names or name in self.only_var_names:
+            index = expr.index
+            if not isinstance(index, tuple):
+                index = (index,)
+
+            remove_indices = {}
+            new_index = []
+            for i, index_expr in enumerate(index):
+                if isinstance(index_expr, pymbolic.primitives.Variable) and \
+                        index_expr.name in self.inames_to_remove:
+                    remove_indices[i] = index_expr.name
+                else:
+                    new_index.append(index_expr)
+
+            if name in self.var_name_to_remove_indices:
+                old_remove_indices = self.var_name_to_remove_indices[name]
+                if old_remove_indices != remove_indices:
+                    raise LoopyError(f"Cannot remove indices {remove_indices}"
+                         f" for subscript {expr} because there was another"
+                         f" subscript that required removing indices"
+                         f" {old_remove_indices}")
+            else:
+                self.var_name_to_remove_indices[name] = remove_indices
+
+            if new_index:
+                return expr.aggregate.index(tuple(new_index))
+            else:
+                return expr.aggregate
+        else:
+            return IdentityMapper.map_subscript(self, expr, in_subscript=False)
+
+
+@for_each_kernel
+def unprivatize_temporaries_with_inames(
+        kernel, privatizing_inames, only_var_names=None):
+    """This function reversese the affects of privatize_temporaries_with_inames
+    and removes the private entries in the temporaries each loop iteration of the
+    *privatizing_inames* accesses (possibly restricted to *only_var_names*).
+
+    Example::
+
+        for imatrix, i
+            acc[imatrix] = 0
+            for k
+                acc[imatrix] = acc[imatrix] + a[imatrix, i, k] * vec[k]
+            end
+        end
+
+    might become::
+
+        for imatrix, i
+            acc[0] = 0
+            for k
+                acc[0] = acc[0] + a[imatrix, i, k] * vec[k]
+            end
+        end
+
+    .. versionadded:: 2022.1
+    """
+
+    if isinstance(privatizing_inames, str):
+        privatizing_inames = frozenset(
+                s.strip()
+                for s in privatizing_inames.split(","))
+
+    if isinstance(only_var_names, str):
+        only_var_names = frozenset(
+                s.strip()
+                for s in only_var_names.split(","))
+
+    # {{{ sanity checks
+
+    if (only_var_names is not None
+            and privatizing_inames <= kernel.all_inames()
+            and not (frozenset(only_var_names) <= kernel.all_variable_names())):
+        raise LoopyError(f"Some variables in '{only_var_names}'"
+                         f" not used in kernel '{kernel.name}'.")
+
+    # }}}
+
+    ir = _InameRemover(privatizing_inames, only_var_names)
+
+    new_insns = [
+        insn.with_transformed_expressions(lambda x: ir(x, False))
+        for insn in kernel.instructions]
+
+    # {{{ change temporary variables
+
+    var_name_to_remove_indices = ir.var_name_to_remove_indices
+
+    new_temp_vars = kernel.temporary_variables.copy()
+    for tv_name, tv in new_temp_vars.items():
+        remove_indices = var_name_to_remove_indices.get(tv_name, {})
+        new_shape = tv.shape
+        if new_shape is not None:
+            new_shape = tuple(dim for idim, dim in enumerate(new_shape)
+                if idim not in remove_indices)
+
+        new_dim_tags = tv.dim_tags
+        if new_dim_tags is not None:
+            new_dim_tags = tuple(dim for idim, dim in enumerate(new_dim_tags)
+                if idim not in remove_indices)
+
+        new_dim_names = tv.dim_names
+        if new_dim_names is not None:
+            new_dim_names = tuple(dim for idim, dim in enumerate(new_dim_names)
+                if idim not in remove_indices)
+
+        new_temp_vars[tv_name] = tv.copy(
+                shape=new_shape,
+                dim_tags=new_dim_tags,
+                dim_names=new_dim_names)
+
+    # }}}
 
     return kernel.copy(
         temporary_variables=new_temp_vars,
