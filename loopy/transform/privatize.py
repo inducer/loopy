@@ -52,7 +52,7 @@ class ExtraInameIndexInserter(IdentityMapper):
 
     def map_subscript(self, expr):
         try:
-            new_idx = self.var_to_new_inames[expr.aggregate.name]
+            extra_idx = self.var_to_new_inames[expr.aggregate.name]
         except KeyError:
             return IdentityMapper.map_subscript(self, expr)
         else:
@@ -63,10 +63,12 @@ class ExtraInameIndexInserter(IdentityMapper):
 
             self.seen_priv_axis_inames.update(v.name for v in new_idx)
 
-            new_idx = tuple(v - self.iname_to_lbound[v.name]
-                            for v in new_idx)
+            new_idx = index + tuple(v - self.iname_to_lbound[v.name]
+                            for v in extra_idx)
 
-            return expr.aggregate.index(index + new_idx)
+            if len(new_idx) == 1:
+                new_idx = new_idx[0]
+            return expr.aggregate.index(new_idx)
 
     def map_variable(self, expr):
         try:
@@ -79,6 +81,8 @@ class ExtraInameIndexInserter(IdentityMapper):
             new_idx = tuple(v - self.iname_to_lbound[v.name]
                             for v in new_idx)
 
+            if len(new_idx) == 1:
+                new_idx = new_idx[0]
             return expr.index(new_idx)
 
 
@@ -284,7 +288,11 @@ class _InameRemover(IdentityMapper):
                 self.var_name_to_remove_indices[name] = remove_indices
 
             if new_index:
-                return expr.aggregate.index(tuple(new_index))
+                if len(new_index) == 1:
+                    new_index = new_index[0]
+                else:
+                    new_index = tuple(new_index)
+                return expr.aggregate.index(new_index)
             else:
                 return expr.aggregate
         else:

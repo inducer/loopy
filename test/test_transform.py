@@ -1334,7 +1334,7 @@ def test_unprivatize_error():
 
 
 def test_privatize_unprivatize_roundtrip():
-    in_knl = lp.make_kernel(
+    knl1 = lp.make_kernel(
         ["{[i]: 0<=i<10}",
          "{[imatrix]: 0<=imatrix<20}",
          "{[k]: 0<=k<30}"],
@@ -1349,10 +1349,12 @@ def test_privatize_unprivatize_roundtrip():
         name="privatize_unprivatize_roundtrip",
         seq_dependencies=True)
 
-    knl = lp.unprivatize_temporaries_with_inames(in_knl, {"imatrix"}, {"acc"})
-    knl = lp.privatize_temporaries_with_inames(knl, {"imatrix"}, {"acc"})
+    knl2 = lp.unprivatize_temporaries_with_inames(knl1, {"imatrix"}, {"acc"})
+    knl3 = lp.privatize_temporaries_with_inames(knl2, {"imatrix"}, {"acc"})
+    knl4 = lp.unprivatize_temporaries_with_inames(knl3, {"imatrix"}, {"acc"})
 
-    assert in_knl == knl
+    assert knl3 == knl1
+    assert knl4 == knl2
 
 
 def test_simplify_indices_when_inlining(ctx_factory):
