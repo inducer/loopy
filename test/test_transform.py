@@ -1340,7 +1340,7 @@ def test_privatize_unprivatize_roundtrip():
          "{[k]: 0<=k<30}"],
         """
         for imatrix, i
-            acc[imatrix] = 0
+            <> acc[imatrix] = 0
             for k
                 acc[imatrix] = acc[imatrix] + a[imatrix, i, k] * vec[k]
             end
