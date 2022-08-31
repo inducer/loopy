@@ -1350,7 +1350,7 @@ def test_privatize_unprivatize_roundtrip():
         seq_dependencies=True)
 
     knl = lp.unprivatize_temporaries_with_inames(in_knl, {"imatrix"}, {"acc"})
-    knl = lp.privatize_temporaries_with_inames(in_knl, {"imatrix"}, {"acc"})
+    knl = lp.privatize_temporaries_with_inames(knl, {"imatrix"}, {"acc"})
 
     assert in_knl == knl
 
