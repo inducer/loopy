@@ -166,7 +166,8 @@ def privatize_temporaries_with_inames(
                 if new_priv_axis_inames != set(var_to_new_priv_axis_iname[tv.name]):
                     raise LoopyError("instruction '%s' requires adding "
                             "indices for privatizing var '%s' on iname(s) '%s', "
-                            "but previous instructions required inames '%s'"
+                            "but previous instructions required different "
+                            "inames '%s'"
                             % (writer_insn_id, tv.name,
                                 ", ".join(new_priv_axis_inames),
                                 ", ".join(var_to_new_priv_axis_iname[tv.name])))
