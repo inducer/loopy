@@ -1349,12 +1349,23 @@ def test_privatize_unprivatize_roundtrip():
         name="privatize_unprivatize_roundtrip",
         seq_dependencies=True)
 
-    knl2 = lp.unprivatize_temporaries_with_inames(knl1, {"imatrix"}, {"acc"})
-    knl3 = lp.privatize_temporaries_with_inames(knl2, {"imatrix"}, {"acc"})
-    knl4 = lp.unprivatize_temporaries_with_inames(knl3, {"imatrix"}, {"acc"})
+    knl2 = lp.make_kernel(
+        ["{[i]: 0<=i<10}",
+         "{[imatrix]: 0<=imatrix<20}",
+         "{[k]: 0<=k<30}"],
+        """
+        for imatrix, i
+            <> acc = 0
+            for k
+                acc = acc + a[imatrix, i, k] * vec[k]
+            end
+        end
+        """,
+        name="privatize_unprivatize_roundtrip",
+        seq_dependencies=True)
 
-    assert knl3 == knl1
-    assert knl4 == knl2
+    assert knl2 == lp.unprivatize_temporaries_with_inames(knl1, {"imatrix"}, {"acc"})
+    assert knl1 == lp.privatize_temporaries_with_inames(knl2, {"imatrix"}, {"acc"})
 
 
 def test_simplify_indices_when_inlining(ctx_factory):

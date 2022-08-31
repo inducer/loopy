@@ -215,7 +215,12 @@ def privatize_temporaries_with_inames(
             if kernel.iname_tags_of_type(iname, VectorizeTag):
                 dim_tags[len(shape) + i] = "vec"
 
+        base_indices = tv.base_indices
+        if base_indices is not None:
+            base_indices = base_indices + tuple([0]*len(extra_shape))
+
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,
+                base_indices=base_indices,
                 # Forget what you knew about data layout,
                 # create from scratch.
                 dim_tags=dim_tags,
@@ -377,10 +382,16 @@ def unprivatize_temporaries_with_inames(
             new_dim_names = tuple(dim for idim, dim in enumerate(new_dim_names)
                 if idim not in remove_indices)
 
+        new_base_indices = tv.base_indices
+        if new_base_indices is not None:
+            new_base_indices = tuple(dim for idim, dim in enumerate(new_base_indices)
+                if idim not in remove_indices)
+
         new_temp_vars[tv_name] = tv.copy(
                 shape=new_shape,
                 dim_tags=new_dim_tags,
-                dim_names=new_dim_names)
+                dim_names=new_dim_names,
+                base_indices=new_base_indices)
 
     # }}}
 
