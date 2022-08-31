@@ -38,7 +38,7 @@ __doc__ = """
 """
 
 
-# {{{ privatize temp oraries with iname
+# {{{ privatize temporaries with iname
 
 from loopy.symbolic import IdentityMapper
 
@@ -294,9 +294,10 @@ class _InameRemover(IdentityMapper):
 @for_each_kernel
 def unprivatize_temporaries_with_inames(
         kernel, privatizing_inames, only_var_names=None):
-    """This function reversese the affects of privatize_temporaries_with_inames
-    and removes the private entries in the temporaries each loop iteration of the
-    *privatizing_inames* accesses (possibly restricted to *only_var_names*).
+    """This function reverses the effects of
+    :func:`privatize_temporaries_with_inames` and removes the private entries
+    in the temporaries each loop iteration of the *privatizing_inames*
+    accesses (possibly restricted to *only_var_names*).
 
     Example::
 
@@ -310,9 +311,9 @@ def unprivatize_temporaries_with_inames(
     might become::
 
         for imatrix, i
-            acc[0] = 0
+            acc = 0
             for k
-                acc[0] = acc[0] + a[imatrix, i, k] * vec[k]
+                acc = acc + a[imatrix, i, k] * vec[k]
             end
         end
 
