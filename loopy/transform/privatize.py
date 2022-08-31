@@ -61,7 +61,7 @@ class ExtraInameIndexInserter(IdentityMapper):
                 index = (index,)
             index = tuple(self.rec(i) for i in index)
 
-            self.seen_priv_axis_inames.update(v.name for v in new_idx)
+            self.seen_priv_axis_inames.update(v.name for v in extra_idx)
 
             new_idx = index + tuple(v - self.iname_to_lbound[v.name]
                             for v in extra_idx)
