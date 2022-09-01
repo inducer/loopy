@@ -288,7 +288,7 @@ class _InameRemover(IdentityMapper):
                 if old_remove_indices != remove_indices:
                     raise LoopyError(f"Cannot remove indices {remove_indices}"
                          f" for subscript {expr} because there was another"
-                         f" subscript that required removing indices"
+                         f" subscript that required removing different indices"
                          f" {old_remove_indices}")
             else:
                 self.var_name_to_remove_indices[name] = remove_indices
