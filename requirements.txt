@@ -1,4 +1,4 @@
-git+https://github.com/inducer/pytools.git#egg=pytools >= 2021.1
+git+https://github.com/inducer/pytools.git#egg=pytools >= 2022.1.7
 git+https://github.com/inducer/islpy.git#egg=islpy
 git+https://github.com/inducer/cgen.git#egg=cgen
 git+https://github.com/inducer/pyopencl.git#egg=pyopencl
