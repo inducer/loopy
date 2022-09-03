@@ -323,14 +323,21 @@ class TranslationUnit(ImmutableRecord):
         """
         entrypoint = kwargs.get("entrypoint", None)
         if entrypoint is None:
-            if len(self.entrypoints) == 1:
+            nentrypoints = len(self.entrypoints)
+            if nentrypoints == 1:
                 entrypoint, = self.entrypoints
-            else:
+            elif nentrypoints > 1:
                 raise ValueError("TranslationUnit has multiple possible entrypoints."
                                  " The default entrypoint kernel is not uniquely"
                                  " determined. You may explicitly specify an "
                                  " entrypoint using the 'entrypoint' kwarg.")
-
+            elif nentrypoints == 0:
+                raise ValueError("TranslationUnit has no entrypoints, but"
+                                 f" {len(self.callables_table)} callables."
+                                 " Use TranslationUnit.with_entrypoints to"
+                                 " set an entrypoint.")
+            else:
+                raise AssertionError
         else:
             if entrypoint not in self.entrypoints:
                 raise LoopyError(f"'{entrypoint}' not in list of possible "
