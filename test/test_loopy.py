@@ -3350,6 +3350,19 @@ def test_different_index_dtypes():
         lp.generate_code_v2(knl)
 
 
+def test_translation_unit_pickle():
+    tunit = lp.make_kernel(
+        "{[i]: 0<=i<16}",
+        """
+        y[i] = i
+        """)
+    assert isinstance(hash(tunit), int)
+
+    from pickle import dumps, loads
+    tunit = loads(dumps(tunit))
+    assert isinstance(hash(tunit), int)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
