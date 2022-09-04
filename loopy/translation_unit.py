@@ -373,14 +373,14 @@ class TranslationUnit(ImmutableRecord):
         self._program_executor_cache = {}
 
     def __hash__(self):
-        if self._hash_value is not None:
-            return self._hash_value
+        # NOTE: _hash_value may vanish during pickling
+        if getattr(self, "_hash_value", None) is None:
+            from loopy.tools import LoopyKeyBuilder
+            from pytools.persistent_dict import new_hash
+            key_hash = new_hash()
+            self.update_persistent_hash(key_hash, LoopyKeyBuilder())
+            self._hash_value = hash(key_hash.digest())
 
-        from loopy.tools import LoopyKeyBuilder
-        from pytools.persistent_dict import new_hash
-        key_hash = new_hash()
-        self.update_persistent_hash(key_hash, LoopyKeyBuilder())
-        self._hash_value = hash(key_hash.digest())
         return self._hash_value
 
 # }}}
