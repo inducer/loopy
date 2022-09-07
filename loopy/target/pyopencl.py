@@ -478,7 +478,9 @@ class PyOpenCLTarget(OpenCLTarget):
     # }}}
 
     def get_kernel_executor_cache_key(self, queue, **kwargs):
-        return queue.context
+        import weakref
+        # Use weakref for CL context to avoid keeping context artifically alive
+        return (weakref.ref(queue.context), kwargs["entrypoint"])
 
     def preprocess_translation_unit_for_passed_args(self, t_unit, epoint,
                                                    passed_args_dict):
