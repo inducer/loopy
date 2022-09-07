@@ -228,7 +228,7 @@ class CudaTarget(CFamilyTarget):
         return True
 
     def get_device_ast_builder(self):
-        return CUDACASTBuilder(self)
+        return CudaCASTBuilder(self)
 
     # {{{ types
 
@@ -304,7 +304,7 @@ def cuda_preamble_generator(preamble_info):
 
 # {{{ ast builder
 
-class CUDACASTBuilder(CFamilyASTBuilder):
+class CudaCASTBuilder(CFamilyASTBuilder):
 
     preamble_function_qualifier = "inline __device__"
 
@@ -316,6 +316,12 @@ class CUDACASTBuilder(CFamilyASTBuilder):
         callables.update(get_cuda_callables())
         return callables
 
+    def symbol_manglers(self):
+        from loopy.target.opencl import opencl_symbol_mangler
+        return (
+                super().symbol_manglers() + [
+                    opencl_symbol_mangler
+                    ])
     # }}}
 
     # {{{ top-level codegen
