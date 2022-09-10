@@ -822,10 +822,11 @@ class ArrayBase(ImmutableRecord, Taggable):
                     num_user_axes = new_num_user_axes
                 else:
                     if new_num_user_axes != num_user_axes:
-                        raise LoopyError("contradictory values for number of "
-                                "dimensions of array '%s' from shape, strides, "
-                                "dim_tags, or dim_names"
-                                % name)
+                        raise LoopyError(
+                            "contradictory values for number of dimensions of "
+                            f"array '{name}' from shape, strides, dim_tags, or "
+                            f"dim_names: got {new_num_user_axes} but expected "
+                            f"{num_user_axes}")
 
                 del new_num_user_axes
 
