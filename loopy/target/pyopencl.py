@@ -404,7 +404,7 @@ class PyOpenCLTarget(OpenCLTarget):
     def __init__(
             self, device=None, *, pyopencl_module_name: str = "_lpy_cl",
             atomics_flavor=None, use_int8_for_bool: bool = True,
-            limit_arg_size_nbytes: Optional[int] = None,
+            limit_arg_size_nbytes: Optional[int] = 1024,
             pointer_size_nbytes: Optional[int] = None
             ) -> None:
         # This ensures the dtype registry is populated.
