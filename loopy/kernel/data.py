@@ -354,7 +354,7 @@ class KernelArgument(ImmutableRecord):
     .. automethod:: supporting_names
     """
     name: str
-    dtype: LoopyType
+    dtype: Optional[LoopyType]
     is_output: bool
     is_input: bool
 

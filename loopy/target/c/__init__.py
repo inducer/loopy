@@ -1062,6 +1062,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                     passed_name, kernel.index_dtype, is_written)
         var_descr = kernel.get_var_descriptor(passed_name)
         if isinstance(var_descr, ValueArg):
+            assert var_descr.dtype is not None
             return self.get_value_arg_declaraotor(
                     var_descr.name, var_descr.dtype, is_written)
         elif isinstance(var_descr, ArrayArg):

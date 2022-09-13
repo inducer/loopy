@@ -1022,6 +1022,7 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
                     only_address_space is None
                     or tv.address_space == only_address_space)):
             made_changes = True
+            assert isinstance(tv.dtype, LoopyType)
 
             if tv.address_space is auto:
                 raise LoopyError("Ahen allocating base storage for temporary "
