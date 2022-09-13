@@ -438,6 +438,10 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         untagged in 2019. For 2018, a warning will be issued if no *default_tag* is
         specified.
 
+    :arg dtype: The dtype of the temporary variable to precompute the result
+        in. Can be either a dtype as understood by :class:`numpy.dtype` or
+        *None* to let :mod:`loopy` infer it.
+
     :arg compute_insn_id: The ID of the instruction generated to perform the
         precomputation.
 
@@ -1070,11 +1074,11 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         # {{{ check and adapt existing temporary
 
-        if temp_var.dtype is lp.auto:
+        if temp_var.dtype is None:
             pass
-        elif temp_var.dtype is not lp.auto and dtype is lp.auto:
+        elif temp_var.dtype is not None and dtype is None:
             dtype = temp_var.dtype
-        elif temp_var.dtype is not lp.auto and dtype is not lp.auto:
+        elif temp_var.dtype is not None and dtype is not None:
             assert isinstance(temp_var.dtype, LoopyType)
             if temp_var.dtype.numpy_dtype != dtype:
                 raise LoopyError("Existing and new dtype of temporary '%s' "
