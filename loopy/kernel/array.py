@@ -700,7 +700,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     (supports persistent hashing)
     """
     name: str
-    dtype: LoopyType
+    dtype: Optional[LoopyType]
     shape: Union[ShapeType, Type["auto"], None]
     dim_tags: Optional[Sequence[ArrayDimImplementationTag]]
     offset: Union[ExpressionT, str, None]
@@ -1081,6 +1081,7 @@ class ArrayBase(ImmutableRecord, Taggable):
             return 1
 
         assert isinstance(self.shape, tuple)
+        assert isinstance(self.dtype, LoopyType)
 
         saw_vec_tag = False
 

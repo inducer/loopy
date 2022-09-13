@@ -119,6 +119,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         strides = get_strides(arg)
         num_axes = len(strides)
 
+        assert arg.dtype is not None
         itemsize = arg.dtype.numpy_dtype.itemsize
         for i in range(num_axes):
             gen("_lpy_ustrides_%d = %s" % (i, strify(strides[i])))

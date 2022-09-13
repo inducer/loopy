@@ -168,6 +168,7 @@ class ExecutionWrapperGeneratorBase(ABC):
 
         for arg_name in kai.passed_arg_names:
             arg = kernel.arg_dict[arg_name]
+            assert arg.dtype is not None
             if isinstance(arg, ArrayArg):
                 assert arg.shape is not auto
                 if isinstance(arg.shape, tuple):

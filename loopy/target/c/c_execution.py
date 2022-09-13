@@ -98,6 +98,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         from pymbolic import var
 
         assert isinstance(arg.shape, tuple)
+        assert isinstance(arg.dtype, LoopyType)
         num_axes = len(arg.shape)
         for i in range(num_axes):
             gen("_lpy_shape_%d = %s" % (i, strify(arg.shape[i])))

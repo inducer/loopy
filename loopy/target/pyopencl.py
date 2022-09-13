@@ -589,6 +589,7 @@ def generate_value_arg_setup(
             continue
 
         var_descr = kernel.get_var_descriptor(passed_name)
+        assert var_descr.dtype is not None
 
         if not isinstance(var_descr, lp.ValueArg):
             assert isinstance(var_descr, ArrayBase)
@@ -809,6 +810,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     assert arg_name in struct_overflow_arg_names_set
 
                     arg = kernel.get_var_descriptor(arg_name)
+                    assert arg.dtype is not None
                     if isinstance(arg, ValueArg):
                         struct_pack_types.append(arg.dtype.numpy_dtype.char)
                         struct_pack_args.append(arg_name)
@@ -909,6 +911,7 @@ def split_args_for_overflow(
         arg = kernel.get_var_descriptor(arg_name)
         if isinstance(arg, (ValueArg, ArrayArg, ConstantArg, TemporaryVariable)):
             if isinstance(arg, ValueArg):
+                assert arg.dtype is not None
                 arg_size = arg.dtype.numpy_dtype.itemsize
             else:
                 arg_size = pointer_size_nbytes
