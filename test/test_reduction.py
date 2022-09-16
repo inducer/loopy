@@ -498,6 +498,33 @@ def test_reduction_in_conditional(ctx_factory):
     assert (out == 45).all()
 
 
+def test_realize_reduction_insn_id_filter_list(ctx_factory):
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+        "{[i, j, k]: 0<=i,j,k<10}",
+        """
+        a = sum(i, 8*i)    {id=w_a}
+        b = sum(j, j*j)    {id=w_b}
+        c = sum(k, sin(3.14*k)) {id=w_c}
+        """)
+    ref_t_unit = t_unit
+
+    knl = t_unit.default_entrypoint
+    assert knl.id_to_insn["w_a"].reduction_inames() == frozenset({"i"})
+    assert knl.id_to_insn["w_b"].reduction_inames() == frozenset({"j"})
+    assert knl.id_to_insn["w_c"].reduction_inames() == frozenset({"k"})
+
+    t_unit = lp.realize_reduction(t_unit, insn_id_filter=["w_a", "w_b"])
+
+    knl = t_unit.default_entrypoint
+    assert knl.id_to_insn["w_a"].reduction_inames() == frozenset()
+    assert knl.id_to_insn["w_b"].reduction_inames() == frozenset()
+    assert knl.id_to_insn["w_c"].reduction_inames() == frozenset({"k"})
+
+    lp.auto_test_vs_ref(t_unit, ctx, ref_t_unit)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
