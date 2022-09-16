@@ -914,7 +914,7 @@ class ExpressionOpCounter(CounterBase):
     arithmetic_count_granularity = CountGranularity.SUBGROUP
 
     def combine(self, values):
-        return sum(values)
+        return sum(values, self.new_zero_poly_map())
 
     def map_constant(self, expr):
         return self.new_zero_poly_map()
@@ -1654,8 +1654,10 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
 # {{{ get_op_map
 
 def _get_op_map_for_single_kernel(knl, callables_table,
-        count_redundant_work,
-        count_within_subscripts, subgroup_size):
+                                  count_redundant_work,
+                                  count_within_subscripts,
+                                  ignore_c_instruction_ops,
+                                  subgroup_size):
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
@@ -1663,6 +1665,7 @@ def _get_op_map_for_single_kernel(knl, callables_table,
             callables_table=callables_table,
             count_redundant_work=count_redundant_work,
             count_within_subscripts=count_within_subscripts,
+            ignore_c_instruction_ops=ignore_c_instruction_ops,
             subgroup_size=subgroup_size)
 
     op_counter = ExpressionOpCounter(knl, callables_table, kernel_rec,
@@ -1670,29 +1673,40 @@ def _get_op_map_for_single_kernel(knl, callables_table,
     op_map = op_counter.new_zero_poly_map()
 
     from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
+            MultiAssignmentBase, CInstruction,
             NoOpInstruction, BarrierInstruction)
 
     for insn in knl.instructions:
-        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
-            ops = op_counter(insn.assignees) + op_counter(insn.expression)
-            for key, val in ops.count_map.items():
-                count = _get_insn_count(knl, callables_table, insn.id,
-                            subgroup_size, count_redundant_work,
-                            key.count_granularity)
-                op_map = op_map + ToCountMap({key: val}) * count
+        if isinstance(insn, MultiAssignmentBase):
+            exprs_in_insn = (insn.assignees, insn.expression,
+                             tuple(insn.predicates))
+        elif isinstance(insn, CInstruction):
+            if ignore_c_instruction_ops:
+                exprs_in_insn = tuple(insn.predicates)
+            else:
+                raise LoopyError("Cannot count number of operations in CInstruction."
+                                 " To ignore the operations in CInstructions pass"
+                                 " `ignore_c_instruction_ops=True`.")
 
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
-            pass
+            exprs_in_insn = tuple(insn.predicates)
         else:
             raise NotImplementedError("unexpected instruction item type: '%s'"
                     % type(insn).__name__)
+
+        ops = op_counter(exprs_in_insn)
+        for key, val in ops.count_map.items():
+            count = _get_insn_count(knl, callables_table, insn.id,
+                        subgroup_size, count_redundant_work,
+                        key.count_granularity)
+            op_map = op_map + ToCountMap({key: val}) * count
 
     return op_map
 
 
 def get_op_map(program, count_redundant_work=False,
                count_within_subscripts=True, subgroup_size=None,
+               ignore_c_instruction_ops=True,
                entrypoint=None):
 
     """Count the number of operations in a loopy kernel.
@@ -1707,6 +1721,12 @@ def get_op_map(program, count_redundant_work=False,
 
     :arg count_within_subscripts: A :class:`bool` specifying whether to
         count operations inside array indices.
+
+    :arg ignore_c_instruction_ops: A instance of :class:`bool`. If *True*
+        ignores the operations performed in :attr:`loopy.CInstruction`. If
+        *False*, raises an error on encountering a :attr:`loopy.CInstruction`,
+        since :mod:`loopy` cannot parse the number of operations in plain
+        C-code.
 
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``"guess"``, or *None* that specifies the sub-group size. An OpenCL
@@ -1768,6 +1788,7 @@ def get_op_map(program, count_redundant_work=False,
             program[entrypoint], program.callables_table,
             count_redundant_work=count_redundant_work,
             count_within_subscripts=count_within_subscripts,
+            ignore_c_instruction_ops=ignore_c_instruction_ops,
             subgroup_size=subgroup_size)
 
 # }}}
