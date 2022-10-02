@@ -1233,7 +1233,7 @@ should call :func:`loopy.get_one_linearized_kernel`:
       2: RETURN FROM KERNEL rotate_v2
       3: ... gbarrier
       4: CALL KERNEL rotate_v2_0
-      5:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
+      5:     arr[(i_inner + i_outer*16 + 1) % n] = tmp  {id=rotate}
       6: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
@@ -1273,7 +1273,7 @@ put those instructions into the schedule.
       4: ... gbarrier
       5: CALL KERNEL rotate_v2_0
       6:     tmp = tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]  {id=tmp.reload}
-      7:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
+      7:     arr[(i_inner + i_outer*16 + 1) % n] = tmp  {id=rotate}
       8: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
@@ -1310,7 +1310,7 @@ The kernel translates into two OpenCL kernels.
      int tmp;
    <BLANKLINE>
      tmp = tmp_save_slot[16 * gid(0) + lid(0)];
-     arr[(1 + lid(0) + gid(0) * 16) % n] = tmp;
+     arr[(lid(0) + gid(0) * 16 + 1) % n] = tmp;
    }
 
 Now we can execute the kernel.
