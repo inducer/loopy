@@ -315,16 +315,6 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # {{{ abstract interface
 
-    @property
-    def depends_on(self, dep_relation):
-        if self.depends_on is None:
-            self.depends_on = frozenset()
-
-        result = self.depends_on | frozenset({dep_relation})
-
-        return result
-
-
     def read_dependency_names(self):
         from loopy.symbolic import get_dependencies
         result = frozenset()

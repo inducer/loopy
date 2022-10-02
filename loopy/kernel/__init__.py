@@ -80,13 +80,20 @@ class _BoundsRecord:
     upper_bound_pw_aff: isl.PwAff
     size: isl.PwAff
 
-@dataclass
+@dataclass(frozen=True)
 class RelationInfo:
     insn_id: str
     var_name: str
     relation: isl.Map
-    map_type: str
-    dep_type: str
+
+@dataclass(frozen=True)
+class AccessRelation(RelationInfo):
+    access_type: str
+
+@dataclass(frozen=True)
+class DependencyRelation(RelationInfo):
+    dependent_id: str
+    dependency_type: str
 
 PreambleGenerator = Callable[["PreambleInfo"], Iterator[Tuple[int, str]]]
 
@@ -648,70 +655,58 @@ class LoopKernel(Taggable):
     # {{{ dependency wrangling
 
     def generate_access_relations(self):
-        from loopy.symbolic import BatchedAccessMapMapper 
+        from loopy.symbolic import BatchedAccessMapMapper
         bmap = BatchedAccessMapMapper(self, self.all_variable_names())
-        get_map = bmap.access_maps
-
-        # generate all access relations
         for insn in self.instructions:
             bmap(insn.assignee, insn.within_inames)
             bmap(insn.expression, insn.within_inames)
 
-        read_rels = [RelationInfo(insn.id, var, get_map[var][insn.within_inames],
-                    "read")
-                    for insn in self.instructions
-                    for var in insn.read_dependency_names() - insn.within_inames]
-        write_rels = [RelationInfo(insn.id, var, get_map[var][insn.within_inames], 
-                    "write")
-                    for insn in self.instructions
-                    for var in insn.write_dependency_names() - insn.within_inames]
+        def get_map(var, insn):
+            return bmap.access_maps[var][insn.within_inames]
 
-        return read_rels, write_rels
+        def var_list(insn):
+            return insn.read_dependency_names() - insn.within_inames
 
-    def generate_dep_relations(self, read_rels, write_rels):
+        read_maps = [AccessRelation(insn.id, var, get_map(var, insn), "read")
+                     for insn in self.instructions
+                     for var in var_list(insn)]
+        write_maps = [AccessRelation(insn.id, var, get_map(var, insn), "write")
+                      for insn in self.instructions
+                      for var in var_list(insn)]
+
+        return read_maps, write_maps
+
+    def generate_dependency_relations(self, read_maps, write_maps):
         
-        # read-write `insn.depends_on` updates
-        for r_rel in read_rels:
-            for w_rel in write_rels:
-                if r_rel.var_name == w_rel.var_name:
-                    rw_rel = r_rel.relation.apply_range(w_rel.relation.reverse())
-                    rw_dep = RelationInfo(r_rel.id, r_rel.var_name, rw_rel, "dep",
-                            "rw")
-                    for insn in self.instructions:
-                        if insn.id == r_rel.insn_id:
-                            insn.depends_on(rw_dep)
+        def get_dependency_relation(X, Y):
+            return X.relation.apply_range(Y.relation.reverse())
 
-        # write-read `insn.depends_on` updates
-        for w_rel in write_rels:
-            for r_rel in read_rels:
-                if w_rel.var_name == r_rel.var_name:
-                    wr_rel = w_rel.relation.apply_range(r_rel.relation.reverse())
-                    wr_dep = RelationInfo(w_rel.id, w_rel.var_name, rw_rel, "dep",
-                    "wr")
-                    for insn in self.instructions:
-                        if insn.id == w_rel.insn_id:
-                            insn.depends_on(wr_dep)
+        write_read = [DependencyRelation(write.insn_id, write.var_name,
+                                         get_dependency_relation(write, read),
+                                         read.insn_id, "write-read")
+                      for write in write_maps
+                      for read in read_maps
+                      if write.var_name == read.var_name]
+        read_write = [DependencyRelation(read.insn_id, read.var_name,
+                                         get_dependency_relation(read, write),
+                                         write.insn_id, "read-write")
+                      for read in read_maps
+                      for write in write_maps
+                      if read.var_name == write.var_name]
+        write_write = [DependencyRelation(write1.insn_id, write1.var_name,
+                                          get_dependency_relation(write1, write2),
+                                          write2.insn_id, "write-write")
+                       for write1 in write_maps
+                       for write2 in write_maps
+                       if write1.var_name == write2.var_name]
 
-        # write-write `insn.depends_on` updates
-        for w1_rel in write_rels:
-            for w2_rel in write_rels:
-                if w1_rel.var_name == w2_rel.var_name:
-                    ww_rel = w1_rel.relation.apply_range(w2_rel.relation.reverse())
-                    ww_dep = RelationInfo(w1_rel.id, w1_rel.var_name, ww_dep,
-                    "dep", "ww")
-                    for insn in self.instructions:
-                        if insn.id == w1_rel.insn_id:
-                            insn.depends_on(ww_dep)
+        return write_read, read_write, write_write
 
+    def update_happens_before(self, write_read, read_write, write_write):
+        pass
 
     def dep_finder(self):
-
-        # generate access relations for each statement
-        read_rels, write_rels = generate_access_relations()
-
-        # generate dependency relations and store results in each statement
-        generate_dep_relations(read_rels, write_rels)
-
+        pass
 
     @memoize_method
     def recursive_insn_dep_map(self):
