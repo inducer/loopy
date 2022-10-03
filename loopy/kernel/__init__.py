@@ -664,22 +664,32 @@ class LoopKernel(Taggable):
         def get_map(var, insn):
             return bmap.access_maps[var][insn.within_inames]
 
-        def var_list(insn):
+        def read_var_list(insn):
             return insn.read_dependency_names() - insn.within_inames
+
+        def write_var_list(insn):
+            return insn.write_dependency_names() - insn.within_inames
 
         read_maps = [AccessRelation(insn.id, var, get_map(var, insn), "read")
                      for insn in self.instructions
-                     for var in var_list(insn)]
+                     for var in read_var_list(insn)]
         write_maps = [AccessRelation(insn.id, var, get_map(var, insn), "write")
                       for insn in self.instructions
-                      for var in var_list(insn)]
+                      for var in write_var_list(insn)]
 
         return read_maps, write_maps
 
     def generate_dependency_relations(self, read_maps, write_maps):
         
-        def get_dependency_relation(X, Y):
-            return X.relation.apply_range(Y.relation.reverse())
+        def get_dependency_relation(x, y):
+            
+            # TODO deal with self dependencies
+            #self_dependency = x.relation.apply_range(x.relation.reverse())
+
+            dependency_relation = x.relation.apply_range(y.relation.reverse())
+            #dependency_relation -= self_dependency
+
+            return dependency_relation 
 
         write_read = [DependencyRelation(write.insn_id, write.var_name,
                                          get_dependency_relation(write, read),
@@ -687,12 +697,14 @@ class LoopKernel(Taggable):
                       for write in write_maps
                       for read in read_maps
                       if write.var_name == read.var_name]
+        
         read_write = [DependencyRelation(read.insn_id, read.var_name,
                                          get_dependency_relation(read, write),
                                          write.insn_id, "read-write")
                       for read in read_maps
                       for write in write_maps
                       if read.var_name == write.var_name]
+        
         write_write = [DependencyRelation(write1.insn_id, write1.var_name,
                                           get_dependency_relation(write1, write2),
                                           write2.insn_id, "write-write")
@@ -700,10 +712,19 @@ class LoopKernel(Taggable):
                        for write2 in write_maps
                        if write1.var_name == write2.var_name]
 
-        return write_read, read_write, write_write
+        # update depends_on for each instruction
+        for insn in self.instructions:
+            for relation in write_read:
+                if relation.dependent_id == insn.id:
+                    insn.update_depends_on(relation.insn_id)
+            for relation in read_write:
+                if relation.dependent_id == insn.id:
+                    insn.update_depends_on(relation.insn_id)
+            for relation in write_write:
+                if relation.dependent_id == insn.id:
+                    insn.update_depends_on(relation.insn_id)
 
-    def update_happens_before(self, write_read, read_write, write_write):
-        pass
+        return write_read, read_write, write_write
 
     def dep_finder(self):
         pass
