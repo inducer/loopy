@@ -21,7 +21,7 @@ jobs:
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
-                . ./prepare-and-run-flake8.sh "$(basename $GITHUB_REPOSITORY)" ./test examples
+                . ./prepare-and-run-flake8.sh "$(basename $GITHUB_REPOSITORY)" ./test examples proto-tests contrib
 
     pylint:
         name: Pylint
