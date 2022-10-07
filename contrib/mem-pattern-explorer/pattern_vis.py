@@ -26,7 +26,7 @@ class ArrayAccessPatternContext:
 
         self.arrays = []
 
-    def l(self, index):  # noqa: E743
+    def l(self, index):  # noqa: E741,E743
         subscript = [np.newaxis] * self.ind_length
         subscript[len(self.gsize) + index] = slice(None)
 
@@ -125,7 +125,7 @@ class Array:
             lin_index = np.array(lin_index)[subscript]
 
         self.array[lin_index, 0] = self.ctx.timestamp
-        for i, glength in enumerate(self.ctx.gsize):
+        for i, _glength in enumerate(self.ctx.gsize):
             if lin_index.shape[i] > 1:
                 self.array[lin_index, 2+i] = self.ctx.g(i)
 

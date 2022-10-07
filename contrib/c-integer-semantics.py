@@ -80,7 +80,7 @@ def main():
     with open("int-experiments.c", "w") as outf:
         outf.write(C_SRC)
 
-    system('gcc -Wall -shared int-experiments.c -o int-experiments.so')
+    system("gcc -Wall -shared int-experiments.c -o int-experiments.so")
 
     int_exp = ctypes.CDLL("int-experiments.so")
     for func in [
