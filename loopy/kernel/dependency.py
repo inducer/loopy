@@ -137,3 +137,6 @@ def generate_dependency_relations(knl: LoopKernel) \
                                         if write1.variable_name == write2.variable_name]
 
     return write_read, read_write, write_write
+
+def dependency_finder(knl: LoopKernel) -> None:
+    pass
