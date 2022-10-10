@@ -75,7 +75,8 @@ class AccessRelation:
     relation: isl.Map
     access_type: AccessType
 
-def generate_dependency_relations(knl: LoopKernel) -> None:
+def generate_dependency_relations(knl: LoopKernel) \
+        -> tuple[list[HappensBefore], list[HappensBefore], list[HappensBefore]]:
 
     bmap: BatchedAccessMapMapper = BatchedAccessMapMapper(knl,
                                                           knl.all_variable_names())
@@ -111,29 +112,28 @@ def generate_dependency_relations(knl: LoopKernel) -> None:
                  for var in write_var_list(insn)]
 
     write_read: list[HappensBefore] = [HappensBefore(read.id,
-                                                     write.variable_name,
-                                                     get_dependency_relation(write.relation,
-                                                                             read.relation),
-                                                     DependencyType.WRITE_READ)
+                                        write.variable_name,
+                                        get_dependency_relation(write.relation,
+                                                                read.relation),
+                                        DependencyType.WRITE_READ)
                                        for write in write_maps
                                        for read in read_maps
                                        if write.variable_name == read.variable_name]
     read_write: list[HappensBefore] = [HappensBefore(write.id,
-                                                     read.variable_name,
-                                                     get_dependency_relation(read.relation,
-                                                                             write.relation),
-                                                     DependencyType.READ_WRITE)
+                                        read.variable_name,
+                                        get_dependency_relation(read.relation,
+                                                                write.relation),
+                                        DependencyType.READ_WRITE)
                                        for read in read_maps
                                        for write in write_maps
                                        if read.variable_name == write.variable_name]
     write_write: list[HappensBefore] = [HappensBefore(write2.id,
-                                                      write1.variable_name,
-                                                      get_dependency_relation(write1.relation,
-                                                                              write2.relation),
-                                                      DependencyType.WRITE_WRITE)
+                                         write1.variable_name,
+                                         get_dependency_relation(write1.relation,
+                                         write2.relation),
+                                         DependencyType.WRITE_WRITE)
                                         for write1 in write_maps
                                         for write2 in write_maps
                                         if write1.variable_name == write2.variable_name]
 
-
-
+    return write_read, read_write, write_write
