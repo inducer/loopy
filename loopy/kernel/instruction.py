@@ -315,10 +315,6 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # {{{ abstract interface
 
-    def update_depends_on(self, dependee):
-        update = frozenset({dependee})
-        self.depends_on = self.depends_on | update
-
     def read_dependency_names(self):
         from loopy.symbolic import get_dependencies
         result = frozenset()
