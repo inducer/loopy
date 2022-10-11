@@ -30,3 +30,7 @@ virtualenv-[0-9]*[0-9]
 *.so
 
 .asv
+
+# Files used by run-pylint.sh
+.pylintrc.yml
+.run-pylint.py
