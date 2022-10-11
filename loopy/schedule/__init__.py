@@ -34,6 +34,8 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
+from loopy.schedule.tree import Tree  # noqa
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,8 @@ __doc__ = """
 .. autoclass:: RunInstruction
 
 .. autoclass:: MinRecursionLimitForScheduling
+
+.. autoclass:: Tree
 """
 
 

@@ -628,7 +628,7 @@ def _pull_out_loop_nest(tree, loop_nests, inames_to_pull_out):
                          parent=tree.parent(innermost_loop_nest))
 
     # rename the old loop to the inner loop
-    tree = tree.rename_node(innermost_loop_nest,
+    tree = tree.replace_node(innermost_loop_nest,
                             new_id=new_inner_loop_nest)
 
     # set the parent of inner loop to be the outer loop
