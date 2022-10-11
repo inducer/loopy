@@ -30,7 +30,7 @@ import islpy as isl
 
 from loopy.kernel.data import AddressSpace, TemporaryVariable, ArrayArg
 from loopy.kernel import LoopKernel
-from loopy.tools import Tree
+from loopy.schedule.tree import Tree
 from loopy.diagnostic import LoopyError
 from pyrsistent import pmap
 
