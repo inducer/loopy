@@ -1555,6 +1555,16 @@ def test_within_stats():
     with pytest.raises(KeyError):
         _ = ops_dtype[lp.Op(dtype=np.int32)].eval_with_dict({})
 
+    mem_map = lp.get_mem_access_map(knl, subgroup_size="guess",
+                                    within="tag:writes_float")
+
+    mem_dtype = mem_map.group_by("dtype")
+    mem_ops = mem_dtype[lp.MemAccess(dtype=np.float32)].eval_with_dict({})
+    assert mem_ops == 20
+
+    with pytest.raises(KeyError):
+        _ = ops_dtype[lp.MemAccess(dtype=np.int32)].eval_with_dict({})
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
