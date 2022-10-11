@@ -1531,6 +1531,64 @@ def test_no_loop_ops():
     assert f64_mul == 1
 
 
+from pytools.tag import Tag
+
+
+class MyCostTag1(Tag):
+    pass
+
+
+class MyCostTag2(Tag):
+    pass
+
+
+class MyCostTagSum(Tag):
+    pass
+
+
+def test_op_with_tag():
+    from loopy.symbolic import WithTag
+    from pymbolic.primitives import Subscript, Variable, Sum
+
+    n = 500
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            [
+                lp.Assignment("c[i]", WithTag(frozenset((MyCostTagSum(),)),
+                            Sum(
+                                (WithTag(frozenset((MyCostTag1(),)),
+                                Subscript(Variable("a"), Variable("i"))),
+                                WithTag(frozenset((MyCostTag2(),)),
+                                Subscript(Variable("b"), Variable("i")))))))
+            ])
+
+    knl = lp.add_dtypes(knl, {"a": np.float64, "b": np.float64})
+
+    params = {"n": n}
+
+    op_map = lp.get_op_map(knl, subgroup_size=32)
+
+    f64_add = op_map.filter_by(dtype=[np.float64]).eval_and_sum(params)
+    assert f64_add == n
+
+    f64_add = op_map.filter_by(
+        tags=[frozenset((MyCostTagSum(),))]).eval_and_sum(params)
+    assert f64_add == n
+
+    f64_add = op_map.filter_by(
+        tags=[frozenset((MyCostTag1(),))]).eval_and_sum(params)
+    assert f64_add == 0
+
+    f64_add = op_map.filter_by(
+        tags=[frozenset((MyCostTag2(),))]).eval_and_sum(params)
+    assert f64_add == 0
+
+    f64_add = op_map.filter_by(
+        tags=[frozenset((MyCostTag2(), MyCostTagSum()))]).eval_and_sum(params)
+    assert f64_add == 0
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

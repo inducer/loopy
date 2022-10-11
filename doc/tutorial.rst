@@ -1566,7 +1566,7 @@ information provided. Now we will count the operations:
 
     >>> op_map = lp.get_op_map(knl, subgroup_size=32)
     >>> print(op_map)
-    Op(np:dtype('float32'), add, subgroup, "stats_knl"): ...
+    Op(np:dtype('float32'), add, subgroup, "stats_knl", None): ...
 
 Each line of output will look roughly like::
 
@@ -1628,7 +1628,7 @@ together into keys containing only the specified fields:
 
     >>> op_map_dtype = op_map.group_by('dtype')
     >>> print(op_map_dtype)
-    Op(np:dtype('float32'), None, None): ...
+    Op(np:dtype('float32'), None, None, None): ...
     <BLANKLINE>
     >>> f32op_count = op_map_dtype[lp.Op(dtype=np.float32)
     ...                           ].eval_with_dict(param_dict)

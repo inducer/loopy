@@ -636,10 +636,14 @@ class Op(ImmutableRecord):
 
         A :class:`str` representing the kernel name where the operation occurred.
 
+    .. attribute:: tags
+
+        A :class:`frozenset` of tags to the operation.
+
     """
 
     def __init__(self, dtype=None, name=None, count_granularity=None,
-            kernel_name=None):
+            kernel_name=None, tags=None):
         if count_granularity not in CountGranularity.ALL+[None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
                     "not allowed. count_granularity options: %s"
@@ -651,15 +655,17 @@ class Op(ImmutableRecord):
 
         super().__init__(dtype=dtype, name=name,
                         count_granularity=count_granularity,
-                        kernel_name=kernel_name)
+                        kernel_name=kernel_name,
+                        tags=tags)
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
         if self.kernel_name is not None:
             return (f"Op({self.dtype}, {self.name}, {self.count_granularity},"
-                    f' "{self.kernel_name}")')
+                    f' "{self.kernel_name}", {self.tags})')
         else:
-            return f"Op({self.dtype}, {self.name}, {self.count_granularity})"
+            return f"Op({self.dtype}, {self.name}, " + \
+                        f"{self.count_granularity}, {self.tags})"
 
 # }}}
 
@@ -724,7 +730,7 @@ class MemAccess(ImmutableRecord):
        work-group executes on a single compute unit with all work-items within
        the work-group sharing local memory. A sub-group is an
        implementation-dependent grouping of work-items within a work-group,
-       analagous to an NVIDIA CUDA warp.
+       analogous to an NVIDIA CUDA warp.
 
     .. attribute:: kernel_name
 
@@ -921,6 +927,12 @@ class ExpressionOpCounter(CounterBase):
 
     map_tagged_variable = map_constant
     map_variable = map_constant
+
+    def map_with_tag(self, expr):
+        opmap = self.rec(expr.expr)
+        for op in opmap.count_map:
+            op.tags = expr.tags
+        return opmap
 
     def map_call(self, expr):
         from loopy.symbolic import ResolvedFunction

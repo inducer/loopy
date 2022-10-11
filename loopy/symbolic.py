@@ -114,6 +114,10 @@ Expression Manipulation Helpers
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin:
+    def map_with_tag(self, expr, *args, **kwargs):
+        new_expr = self.rec(expr.expr, *args, **kwargs)
+        return WithTag(expr.tags, new_expr)
+
     def map_literal(self, expr, *args, **kwargs):
         return expr
 
@@ -207,6 +211,12 @@ class PartialEvaluationMapper(
 
 
 class WalkMapperMixin:
+    def map_with_tag(self, expr, *args, **kwargs):
+        if not self.visit(expr, *args, **kwargs):
+            return
+
+        self.rec(expr.expr, *args, **kwargs)
+
     def map_literal(self, expr, *args, **kwargs):
         self.visit(expr, *args, **kwargs)
 
@@ -273,6 +283,9 @@ class CallbackMapper(IdentityMapperMixin, CallbackMapperBase):
 
 
 class CombineMapper(CombineMapperBase):
+    def map_with_tag(self, expr, *args, **kwargs):
+        return self.rec(expr.expr, *args, **kwargs)
+
     def map_reduction(self, expr, *args, **kwargs):
         return self.rec(expr.expr, *args, **kwargs)
 
@@ -298,6 +311,10 @@ class ConstantFoldingMapper(ConstantFoldingMapperBase,
 
 
 class StringifyMapper(StringifyMapperBase):
+    def map_with_tag(self, expr, *args):
+        from pymbolic.mapper.stringifier import PREC_NONE
+        return f"WithTag({expr.tags}, {self.rec(expr.expr, PREC_NONE)}"
+
     def map_literal(self, expr, *args):
         return expr.s
 
@@ -439,6 +456,10 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_loopy_function_identifier(self, expr, *args, **kwargs):
         return set()
+
+    def map_with_tag(self, expr, *args, **kwargs):
+        deps = self.rec(expr.expr, *args, **kwargs)
+        return deps
 
     def map_sub_array_ref(self, expr, *args, **kwargs):
         deps = self.rec(expr.subscript, *args, **kwargs)
@@ -710,6 +731,31 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
         return TaggedVariable(name, tags)
 
     mapper_method = intern("map_tagged_variable")
+
+
+class WithTag(LoopyExpressionBase):
+    """
+    Represents a frozenset of tags attached to an :attr:`expr`.
+    """
+
+    init_arg_names = ("tags", "expr")
+
+    def __init__(self, tags, expr):
+        self.tags = tags
+        self.expr = expr
+
+    def __getinitargs__(self):
+        return (self.tags, self.expr)
+
+    def get_hash(self):
+        return hash((self.__class__, self.tags, self.expr))
+
+    def is_equal(self, other):
+        return (other.__class__ == self.__class__
+                and other.tags == self.tags
+                and other.expr == self.expr)
+
+    mapper_method = intern("map_with_tag")
 
 
 class Reduction(LoopyExpressionBase):
