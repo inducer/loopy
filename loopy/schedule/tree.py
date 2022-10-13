@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from immutables import Map
-from typing import FrozenSet, Generic, Hashable, Tuple, TypeVar, Iterator, Optional, List
+from typing import Generic, Hashable, Tuple, TypeVar, Iterator, Optional, List
 from dataclasses import dataclass
 
 # {{{ tree data structure
@@ -48,12 +48,12 @@ class Tree(Generic[NodeT]):
        deep trees. At the very least if the Python implementation is CPython
        this allocates a new stack frame for each iteration of the operation.
     """
-    _parent_to_children: Map[NodeT, FrozenSet[NodeT]]
+    _parent_to_children: Map[NodeT, Tuple[NodeT, ...]]
     _child_to_parent: Map[NodeT, Optional[NodeT]]
 
     @staticmethod
     def from_root(root: NodeT) -> "Tree[NodeT]":
-        return Tree(Map({root: frozenset()}),
+        return Tree(Map({root: tuple()}),
                     Map({root: None}))
 
     @property
@@ -91,7 +91,7 @@ class Tree(Generic[NodeT]):
 
         return self._child_to_parent[node]
 
-    def children(self, node: NodeT) -> FrozenSet[NodeT]:
+    def children(self, node: NodeT) -> Tuple[NodeT, ...]:
         """
         Returns the children of *node*.
         """
@@ -142,8 +142,8 @@ class Tree(Generic[NodeT]):
         siblings = self._parent_to_children[parent]
 
         return Tree((self._parent_to_children
-                     .set(parent, siblings | frozenset([node]))
-                     .set(node, frozenset())),
+                     .set(parent, siblings + (node,))
+                     .set(node, tuple())),
                     self._child_to_parent.set(node, parent))
 
     def replace_node(self, node: NodeT, new_id: NodeT) -> "Tree[NodeT]":
@@ -181,9 +181,10 @@ class Tree(Generic[NodeT]):
             # update the child's name in the parent's children
             new_parent_to_children = (new_parent_to_children
                                       .delete(parent)
-                                      .set(parent, ((self.children(parent)
+                                      .set(parent, tuple(
+                                                    frozenset(self.children(parent))
                                                     - frozenset([node]))
-                                                    | frozenset([new_id]))))
+                                                    + (new_id,)))
 
         # }}}
 
@@ -212,8 +213,8 @@ class Tree(Generic[NodeT]):
         parent = self.parent(node)
         assert parent is not None  # parent=root handled as a special case
         siblings = self.children(parent)
-        parents_new_children = siblings - frozenset([node])
-        new_parents_children = self.children(new_parent) | frozenset([node])
+        parents_new_children = tuple(frozenset(siblings) - frozenset([node]))
+        new_parents_children = self.children(new_parent) + (node,)
 
         new_child_to_parent = self._child_to_parent.set(node, new_parent)
         new_parent_to_children = (self._parent_to_children
@@ -227,9 +228,9 @@ class Tree(Generic[NodeT]):
         """
         Stringifies the tree by using the box-drawing unicode characters.
 
-        ::
+        .. doctest::
 
-            >>> from loopy.tools import Tree
+            >>> from loopy.schedule.tree import Tree
             >>> tree = (Tree.from_root("Root")
             ...         .add_node("A", "Root")
             ...         .add_node("B", "Root")

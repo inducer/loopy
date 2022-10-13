@@ -829,8 +829,8 @@ def _get_outermost_diverging_inames(tree, within1, within2):
 
     innermost_parent = max(common_ancestors,
                            key=lambda k: tree.depth(k))
-    iname1, = tree.children(innermost_parent) & within1
-    iname2, = tree.children(innermost_parent) & within2
+    iname1, = frozenset(tree.children(innermost_parent)) & within1
+    iname2, = frozenset(tree.children(innermost_parent)) & within2
 
     return iname1, iname2
 
