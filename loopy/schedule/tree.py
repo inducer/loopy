@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 from immutables import Map
-from typing import FrozenSet, Generic, Hashable, TypeVar, Iterator, Optional, List
+from typing import FrozenSet, Generic, Hashable, Tuple, TypeVar, Iterator, Optional, List
 from dataclasses import dataclass
 
 # {{{ tree data structure
@@ -52,7 +52,7 @@ class Tree(Generic[NodeT]):
     _child_to_parent: Map[NodeT, Optional[NodeT]]
 
     @staticmethod
-    def from_root(root: NodeT):
+    def from_root(root: NodeT) -> "Tree[NodeT]":
         return Tree(Map({root: frozenset()}),
                     Map({root: None}))
 
@@ -66,21 +66,21 @@ class Tree(Generic[NodeT]):
 
         return guess
 
-    def ancestors(self, node: NodeT) -> FrozenSet[NodeT]:
+    def ancestors(self, node: NodeT) -> Tuple[NodeT, ...]:
         """
-        Returns a :class:`frozenset` of nodes that are ancestors of *node*.
+        Returns a :class:`tuple` of nodes that are ancestors of *node*.
         """
         if not self.is_a_node(node):
             raise ValueError(f"'{node}' not in tree.")
 
         if self.is_root(node):
             # => root
-            return frozenset()
+            return tuple()
 
         parent = self._child_to_parent[node]
         assert parent is not None
 
-        return frozenset([parent]) | self.ancestors(parent)
+        return (parent,) + self.ancestors(parent)
 
     def parent(self, node: NodeT) -> Optional[NodeT]:
         """
