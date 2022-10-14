@@ -12,9 +12,9 @@ jobs:
         name: Flake8
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -
-            uses: actions/setup-python@v1
+            uses: actions/setup-python@v4
             with:
                 # matches compat target in setup.py
                 python-version: '3.8'
@@ -27,7 +27,7 @@ jobs:
         name: Pylint
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 sed 's/python=3/python=3.7/' .test-conda-env-py3.yml > .test-conda-env.yml
@@ -39,7 +39,7 @@ jobs:
         name: Mypy
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -52,7 +52,7 @@ jobs:
         name: Conda Pytest
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
@@ -62,7 +62,7 @@ jobs:
         name: Conda Pytest with Intel CL
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://raw.githubusercontent.com/illinois-scicomp/machine-shop-maintenance/main/install-intel-icd.sh
@@ -81,7 +81,7 @@ jobs:
         name: Conda Pytest without arg check
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
@@ -92,7 +92,7 @@ jobs:
         name: Conda Pytest Twice (for cache behavior)
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -105,7 +105,7 @@ jobs:
         name: Conda Examples
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -122,9 +122,9 @@ jobs:
         name: Documentation
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -
-            uses: actions/setup-python@v1
+            uses: actions/setup-python@v4
             with:
                 python-version: '3.x'
         -   name: "Main Script"
@@ -142,7 +142,7 @@ jobs:
         name: Tests for downstream project ${{ matrix.downstream_project }}
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             env:
                 DOWNSTREAM_PROJECT: ${{ matrix.downstream_project }}
@@ -157,12 +157,16 @@ jobs:
         container:
             image: 'firedrakeproject/firedrake'
         steps:
-        -   uses: actions/checkout@v1
-        -   name: "Main script"
+        -   name: "Fix permissions"
             run: |
+                sudo mkdir -p /home/runner
+                sudo chown -R $(whoami) /home/runner || true
                 sudo chown -R $(whoami) /github/home || true
                 sudo chown -R $(whoami) /__w/loopy/ || true
-
+                sudo chown -R $(whoami) /__w/_temp/ || true
+        -   uses: actions/checkout@v3
+        -   name: "Main script"
+            run: |
                 git submodule update --init
 
                 . /home/firedrake/firedrake/bin/activate
