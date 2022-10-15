@@ -196,5 +196,8 @@ def verify_execution_order(knl: LoopKernel, existing_happens_before: isl.Map):
     :function:`generate_execution_order` to generate the "happens-before" for
     each iname domain that *must* be respected in order for a transformation to
     be valid.
+
+    :returns: True or false depending on whether the provided execution order
+    respects the dependencies in the loopy program.
     """
     pass
