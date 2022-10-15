@@ -190,7 +190,7 @@ def generate_execution_order(knl: LoopKernel) -> None:
 
         execution_order = execution_order | frozenset(insn_order)
 
-def verify_execution_order(knl: LoopKernel):
+def verify_execution_order(knl: LoopKernel, existing_happens_before: isl.Map):
     """Verify that a given transformation respects the dependencies in a
     :class:`loopy.LoopKernel` program. Calls
     :function:`generate_execution_order` to generate the "happens-before" for
