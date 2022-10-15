@@ -77,7 +77,17 @@ class AccessRelation:
 
 def generate_dependency_relations(knl: LoopKernel) \
         -> tuple[list[HappensBefore], list[HappensBefore], list[HappensBefore]]:
+    """Generates :class:`isl.Map` objects representing the data dependencies between
+    statements in a loopy program. The :class:`isl.Map` objects are stored in a
+    :class:`loopy.Dependency.HappensBefore` object along with the dependee id,
+    variable name, and dependency type.
+    
+    :arg knl: A :class:`loopy.LoopKernel` containing the instructions we wish to
+    find data dependencies between.
 
+    :returns: Three lists containing :class:`loopy.Dependency.HappensBefore`
+    objects describing the data dependencies.
+    """
     bmap: BatchedAccessMapMapper = BatchedAccessMapMapper(knl,
                                                           knl.all_variable_names())
     for insn in knl.instructions:
@@ -138,5 +148,17 @@ def generate_dependency_relations(knl: LoopKernel) \
 
     return write_read, read_write, write_write
 
-def dependency_finder(knl: LoopKernel) -> None:
+def generate_execution_order(knl: LoopKernel) -> None:
+    """Generate the "happens-before" execution order that *must* be respected by
+    any transformation. Calls :function:`generate_dependency_relations` to get
+    the information needed to compute the execution order.
+
+    :arg knl: A :class:`loopy.LoopKernel` containing the instructions for which
+    to generate a "happens-before" execution order.
+    """
+
+    write_read, read_write, write_write = generate_dependency_relations(knl)
+
+    
+
     pass
