@@ -158,7 +158,43 @@ def generate_execution_order(knl: LoopKernel) -> None:
     """
 
     write_read, read_write, write_write = generate_dependency_relations(knl)
-
     
+    execution_order: frozenset[isl.Set] = frozenset()
 
+    for insn in knl.instructions:
+        domain: isl.BasicSet = knl.get_inames_domain(insn.within_inames)
+        insn_order: isl.Map = domain.lex_lt_set(domain)
+
+        # v FIXME: there must be a better way
+        union_of_dependencies = None
+        for rel in write_read:
+            if rel.happens_before == insn.id:
+                if union_of_dependencies == None:
+                    union_of_dependencies = rel.relation
+                else:
+                    union_of_dependencies = union_of_dependencies | rel.relation
+        for rel in read_write:
+            if rel.happens_before == insn.id:
+                if union_of_dependencies == None:
+                    union_of_dependencies = rel.relation
+                else:
+                    union_of_dependencies = union_of_dependencies | rel.relation
+        for rel in write_write:
+            if rel.happens_before == insn.id:
+                if union_of_dependencies == None:
+                    union_of_dependencies = rel.relation
+                else:
+                    union_of_dependencies = union_of_dependencies | rel.relation
+
+        insn_order = insn_order & union_of_dependencies
+
+        execution_order = execution_order | frozenset(insn_order)
+
+def verify_execution_order(knl: LoopKernel):
+    """Verify that a given transformation respects the dependencies in a
+    :class:`loopy.LoopKernel` program. Calls
+    :function:`generate_execution_order` to generate the "happens-before" for
+    each iname domain that *must* be respected in order for a transformation to
+    be valid.
+    """
     pass
