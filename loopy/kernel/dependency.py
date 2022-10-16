@@ -104,9 +104,11 @@ def generate_dependency_relations(knl: LoopKernel) \
         return insn.write_dependency_names() - insn.within_inames
 
     def get_dependency_relation(x: isl.Map, y:isl.Map) -> isl.Map:
-        diagonal: isl.Map = isl.Map("{ [i,j] -> [i',j']: i = i' and j = j' }")
+        # FIXME: how to generate a 'diagonal' map using what we know about the
+        # space of our domain?
+#        diagonal: isl.Map = isl.Map("{ [i,j] -> [i',j']: i = i' and j = j' }")
         dependency_relation: isl.Map = x.apply_range(y.reverse())
-        dependency_relation -= diagonal
+#       dependency_relation -= diagonal
 
         return dependency_relation
 
@@ -148,18 +150,21 @@ def generate_dependency_relations(knl: LoopKernel) \
 
     return write_read, read_write, write_write
 
-def generate_execution_order(knl: LoopKernel):
+def generate_execution_order(knl: LoopKernel) -> frozenset[isl.Map]:
     """Generate the "happens-before" execution order that *must* be respected by
     any transformation. Calls :function:`generate_dependency_relations` to get
     the information needed to compute the execution order.
 
     :arg knl: A :class:`loopy.LoopKernel` containing the instructions for which
     to generate a "happens-before" execution order.
+
+    :returns: A :class:`frozenset` of :class:`isl.Map` representing the
+    execution required by the dependencies in a loopy program.
     """
 
     write_read, read_write, write_write = generate_dependency_relations(knl)
     
-    execution_order: frozenset[isl.Set] = frozenset()
+    execution_order: frozenset[isl.Map] = frozenset()
 
     for insn in knl.instructions:
         domain: isl.BasicSet = knl.get_inames_domain(insn.within_inames)
