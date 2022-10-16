@@ -148,7 +148,7 @@ def generate_dependency_relations(knl: LoopKernel) \
 
     return write_read, read_write, write_write
 
-def generate_execution_order(knl: LoopKernel) -> None:
+def generate_execution_order(knl: LoopKernel):
     """Generate the "happens-before" execution order that *must* be respected by
     any transformation. Calls :function:`generate_dependency_relations` to get
     the information needed to compute the execution order.
@@ -168,27 +168,27 @@ def generate_execution_order(knl: LoopKernel) -> None:
         # v FIXME: there must be a better way
         union_of_dependencies = None
         for rel in write_read:
-            if rel.happens_before == insn.id:
-                if union_of_dependencies == None:
-                    union_of_dependencies = rel.relation
-                else:
-                    union_of_dependencies = union_of_dependencies | rel.relation
+            if union_of_dependencies is None:
+                union_of_dependencies = rel.relation
+            else:
+                union_of_dependencies = union_of_dependencies | rel.relation
+
         for rel in read_write:
-            if rel.happens_before == insn.id:
-                if union_of_dependencies == None:
-                    union_of_dependencies = rel.relation
-                else:
-                    union_of_dependencies = union_of_dependencies | rel.relation
+            if union_of_dependencies is None:
+                union_of_dependencies = rel.relation
+            else:
+                union_of_dependencies = union_of_dependencies | rel.relation
+        
         for rel in write_write:
-            if rel.happens_before == insn.id:
-                if union_of_dependencies == None:
-                    union_of_dependencies = rel.relation
-                else:
-                    union_of_dependencies = union_of_dependencies | rel.relation
+            if union_of_dependencies is None:
+                union_of_dependencies = rel.relation
+            else:
+                union_of_dependencies = union_of_dependencies | rel.relation
 
         insn_order = insn_order & union_of_dependencies
+        execution_order = execution_order | frozenset({insn_order})
 
-        execution_order = execution_order | frozenset(insn_order)
+        return execution_order
 
 def verify_execution_order(knl: LoopKernel, existing_happens_before: isl.Map):
     """Verify that a given transformation respects the dependencies in a
