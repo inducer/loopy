@@ -80,23 +80,7 @@ class _BoundsRecord:
     upper_bound_pw_aff: isl.PwAff
     size: isl.PwAff
 
-@dataclass(frozen=True)
-class RelationInfo:
-    insn_id: str
-    var_name: str
-    relation: isl.Map
-
-@dataclass(frozen=True)
-class AccessRelation(RelationInfo):
-    access_type: str
-
-@dataclass(frozen=True)
-class DependencyRelation(RelationInfo):
-    dependent_id: str
-    dependency_type: str
-
 PreambleGenerator = Callable[["PreambleInfo"], Iterator[Tuple[int, str]]]
-
 
 @dataclass(frozen=True)
 class LoopKernel(Taggable):
