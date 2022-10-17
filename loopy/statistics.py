@@ -1655,7 +1655,7 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
 
 def _get_op_map_for_single_kernel(knl, callables_table,
         count_redundant_work,
-        count_within_subscripts, subgroup_size):
+        count_within_subscripts, subgroup_size, within):
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
@@ -1663,7 +1663,7 @@ def _get_op_map_for_single_kernel(knl, callables_table,
             callables_table=callables_table,
             count_redundant_work=count_redundant_work,
             count_within_subscripts=count_within_subscripts,
-            subgroup_size=subgroup_size)
+            subgroup_size=subgroup_size, within=within)
 
     op_counter = ExpressionOpCounter(knl, callables_table, kernel_rec,
             count_within_subscripts)
@@ -1674,26 +1674,27 @@ def _get_op_map_for_single_kernel(knl, callables_table,
             NoOpInstruction, BarrierInstruction)
 
     for insn in knl.instructions:
-        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
-            ops = op_counter(insn.assignees) + op_counter(insn.expression)
-            for key, val in ops.count_map.items():
-                count = _get_insn_count(knl, callables_table, insn.id,
-                            subgroup_size, count_redundant_work,
-                            key.count_granularity)
-                op_map = op_map + ToCountMap({key: val}) * count
+        if within(knl, insn):
+            if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+                ops = op_counter(insn.assignees) + op_counter(insn.expression)
+                for key, val in ops.count_map.items():
+                    count = _get_insn_count(knl, callables_table, insn.id,
+                                subgroup_size, count_redundant_work,
+                                key.count_granularity)
+                    op_map = op_map + ToCountMap({key: val}) * count
 
-        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
-            pass
-        else:
-            raise NotImplementedError("unexpected instruction item type: '%s'"
-                    % type(insn).__name__)
+            elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+                pass
+            else:
+                raise NotImplementedError("unexpected instruction item type: '%s'"
+                        % type(insn).__name__)
 
     return op_map
 
 
 def get_op_map(program, count_redundant_work=False,
                count_within_subscripts=True, subgroup_size=None,
-               entrypoint=None):
+               entrypoint=None, within=None):
 
     """Count the number of operations in a loopy kernel.
 
@@ -1719,6 +1720,9 @@ def get_op_map(program, count_redundant_work=False,
         ``"guess"`` is passed as the subgroup_size, get_mem_access_map will
         attempt to find the sub-group size using the device and, if
         unsuccessful, will make a wild guess.
+
+    :arg within: If not None, limit the result to matching contexts.
+        See :func:`loopy.match.parse_match` for syntax.
 
     :return: A :class:`ToCountMap` of **{** :class:`Op` **:**
         :class:`islpy.PwQPolynomial` **}**.
@@ -1760,6 +1764,9 @@ def get_op_map(program, count_redundant_work=False,
     from loopy.preprocess import preprocess_program, infer_unknown_types
     program = preprocess_program(program)
 
+    from loopy.match import parse_match
+    within = parse_match(within)
+
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
     program = infer_unknown_types(program, expect_completion=True)
@@ -1768,7 +1775,8 @@ def get_op_map(program, count_redundant_work=False,
             program[entrypoint], program.callables_table,
             count_redundant_work=count_redundant_work,
             count_within_subscripts=count_within_subscripts,
-            subgroup_size=subgroup_size)
+            subgroup_size=subgroup_size,
+            within=within)
 
 # }}}
 
@@ -1832,7 +1840,7 @@ def _process_subgroup_size(knl, subgroup_size_requested):
 # {{{ get_mem_access_map
 
 def _get_mem_access_map_for_single_kernel(knl, callables_table,
-        count_redundant_work, subgroup_size):
+        count_redundant_work, subgroup_size, within):
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
@@ -1852,35 +1860,37 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
             NoOpInstruction, BarrierInstruction)
 
     for insn in knl.instructions:
-        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
-            insn_access_map = (
-                        access_counter_g(insn.expression)
-                        + access_counter_l(insn.expression)
-                        ).with_set_attributes(direction="load")
-            for assignee in insn.assignees:
-                insn_access_map = insn_access_map + (
-                        access_counter_g(assignee)
-                        + access_counter_l(assignee)
-                        ).with_set_attributes(direction="store")
+        if within(knl, insn):
+            if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+                insn_access_map = (
+                            access_counter_g(insn.expression)
+                            + access_counter_l(insn.expression)
+                            ).with_set_attributes(direction="load")
+                for assignee in insn.assignees:
+                    insn_access_map = insn_access_map + (
+                            access_counter_g(assignee)
+                            + access_counter_l(assignee)
+                            ).with_set_attributes(direction="store")
 
-            for key, val in insn_access_map.count_map.items():
-                count = _get_insn_count(knl, callables_table, insn.id,
-                            subgroup_size, count_redundant_work,
-                            key.count_granularity)
-                access_map = access_map + ToCountMap({key: val}) * count
+                for key, val in insn_access_map.count_map.items():
+                    count = _get_insn_count(knl, callables_table, insn.id,
+                                subgroup_size, count_redundant_work,
+                                key.count_granularity)
+                    access_map = access_map + ToCountMap({key: val}) * count
 
-        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
-            pass
+            elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+                pass
 
-        else:
-            raise NotImplementedError("unexpected instruction item type: '%s'"
-                    % type(insn).__name__)
+            else:
+                raise NotImplementedError("unexpected instruction item type: '%s'"
+                        % type(insn).__name__)
 
     return access_map
 
 
 def get_mem_access_map(program, count_redundant_work=False,
-                       subgroup_size=None, entrypoint=None):
+                       subgroup_size=None, entrypoint=None,
+                       within=None):
     """Count the number of memory accesses in a loopy kernel.
 
     :arg knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
@@ -1903,6 +1913,9 @@ def get_mem_access_map(program, count_redundant_work=False,
         the subgroup_size, get_mem_access_map will attempt to find the
         sub-group size using the device and, if unsuccessful, will make a wild
         guess.
+
+    :arg within: If not None, limit the result to matching contexts.
+        See :func:`loopy.match.parse_match` for syntax.
 
     :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
         :class:`islpy.PwQPolynomial` **}**.
@@ -1973,6 +1986,10 @@ def get_mem_access_map(program, count_redundant_work=False,
     from loopy.preprocess import preprocess_program, infer_unknown_types
 
     program = preprocess_program(program)
+
+    from loopy.match import parse_match
+    within = parse_match(within)
+
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
     program = infer_unknown_types(program, expect_completion=True)
@@ -1980,7 +1997,8 @@ def get_mem_access_map(program, count_redundant_work=False,
     return _get_mem_access_map_for_single_kernel(
             program[entrypoint], program.callables_table,
             count_redundant_work=count_redundant_work,
-            subgroup_size=subgroup_size)
+            subgroup_size=subgroup_size,
+            within=within)
 
 # }}}
 
