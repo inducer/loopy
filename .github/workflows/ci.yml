@@ -164,6 +164,7 @@ jobs:
                 sudo chown -R $(whoami) /github/home || true
                 sudo chown -R $(whoami) /__w/loopy/ || true
                 sudo chown -R $(whoami) /__w/_temp/ || true
+        -   uses: mxschmitt/action-tmate@v3
         -   uses: actions/checkout@v3
         -   name: "Main script"
             run: |
