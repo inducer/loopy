@@ -1589,6 +1589,41 @@ def test_op_with_tag():
     assert f64_add == 0
 
 
+def test_within_stats():
+    import loopy as lp
+    import numpy as np
+    import pytest
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        out1[i] = 2.0f * i  {tags=writes_float}
+        out2[i] = 3 * i     {tags=writes_int}
+        out3[i] = 7.0f * i  {tags=writes_float}
+        """)
+
+    op_map = lp.get_op_map(knl, subgroup_size="guess", within="tag:writes_float")
+
+    ops_dtype = op_map.group_by("dtype")
+
+    f32ops = ops_dtype[lp.Op(dtype=np.float32)].eval_with_dict({})
+
+    assert f32ops == 20
+
+    with pytest.raises(KeyError):
+        _ = ops_dtype[lp.Op(dtype=np.int32)].eval_with_dict({})
+
+    mem_map = lp.get_mem_access_map(knl, subgroup_size="guess",
+                                    within="tag:writes_float")
+
+    mem_dtype = mem_map.group_by("dtype")
+    mem_ops = mem_dtype[lp.MemAccess(dtype=np.float32)].eval_with_dict({})
+    assert mem_ops == 20
+
+    with pytest.raises(KeyError):
+        _ = ops_dtype[lp.MemAccess(dtype=np.int32)].eval_with_dict({})
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

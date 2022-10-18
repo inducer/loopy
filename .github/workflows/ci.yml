@@ -12,9 +12,9 @@ jobs:
         name: Flake8
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -
-            uses: actions/setup-python@v1
+            uses: actions/setup-python@v4
             with:
                 # matches compat target in setup.py
                 python-version: '3.8'
@@ -27,7 +27,7 @@ jobs:
         name: Pylint
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 sed 's/python=3/python=3.7/' .test-conda-env-py3.yml > .test-conda-env.yml
@@ -39,7 +39,7 @@ jobs:
         name: Mypy
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -52,7 +52,7 @@ jobs:
         name: Conda Pytest
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
@@ -62,7 +62,7 @@ jobs:
         name: Conda Pytest with Intel CL
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://raw.githubusercontent.com/illinois-scicomp/machine-shop-maintenance/main/install-intel-icd.sh
@@ -81,7 +81,7 @@ jobs:
         name: Conda Pytest without arg check
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
@@ -92,7 +92,7 @@ jobs:
         name: Conda Pytest Twice (for cache behavior)
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -105,7 +105,7 @@ jobs:
         name: Conda Examples
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -122,9 +122,9 @@ jobs:
         name: Documentation
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -
-            uses: actions/setup-python@v1
+            uses: actions/setup-python@v4
             with:
                 python-version: '3.x'
         -   name: "Main Script"
@@ -142,7 +142,7 @@ jobs:
         name: Tests for downstream project ${{ matrix.downstream_project }}
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v2
+        -   uses: actions/checkout@v3
         -   name: "Main Script"
             env:
                 DOWNSTREAM_PROJECT: ${{ matrix.downstream_project }}
@@ -157,11 +157,17 @@ jobs:
         container:
             image: 'firedrakeproject/firedrake'
         steps:
-        -   uses: actions/checkout@v1
         -   name: "Main script"
             run: |
-                sudo chown -R $(whoami) /github/home || true
-                sudo chown -R $(whoami) /__w/loopy/ || true
+                cd /home/firedrake
+                export HOME="$(pwd)"
+                mkdir loopy
+                cd loopy
+                git init
+
+                git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+                git fetch origin "$GITHUB_REF"
+                git checkout FETCH_HEAD
 
                 git submodule update --init
 
@@ -179,12 +185,5 @@ jobs:
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/63edfaf2ec8bf06987896569a4f24264df490e9e/firedrake-debug-patch.diff | patch -p1
 
                 pytest --tb=native -rsxw --durations=10 -m 'not parallel' tests/multigrid/
-
-        -   name: "Prepare for tmate"
-            run: |
-                # helps with tmate debugging
-                sudo chmod a+rwX -R $(whoami) /__w/_temp || true
-
-        # -   uses: mxschmitt/action-tmate@v3
 
 # vim: sw=4
