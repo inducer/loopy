@@ -157,17 +157,18 @@ jobs:
         container:
             image: 'firedrakeproject/firedrake'
         steps:
-        -   name: "Fix permissions"
-            run: |
-                sudo mkdir -p /home/runner
-                sudo chown -R $(whoami) /home/runner || true
-                sudo chown -R $(whoami) /github/home || true
-                sudo chown -R $(whoami) /__w/loopy/ || true
-                sudo chown -R $(whoami) /__w/_temp/ || true
-        -   uses: mxschmitt/action-tmate@v3
-        -   uses: actions/checkout@v3
         -   name: "Main script"
             run: |
+                cd /home/firedrake
+                export HOME="$(pwd)"
+                mkdir loopy
+                cd loopy
+                git init
+
+                git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+                git fetch origin "$GITHUB_REF"
+                git checkout FETCH_HEAD
+
                 git submodule update --init
 
                 . /home/firedrake/firedrake/bin/activate
@@ -184,12 +185,5 @@ jobs:
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/63edfaf2ec8bf06987896569a4f24264df490e9e/firedrake-debug-patch.diff | patch -p1
 
                 pytest --tb=native -rsxw --durations=10 -m 'not parallel' tests/multigrid/
-
-        -   name: "Prepare for tmate"
-            run: |
-                # helps with tmate debugging
-                sudo chmod a+rwX -R $(whoami) /__w/_temp || true
-
-        # -   uses: mxschmitt/action-tmate@v3
 
 # vim: sw=4
