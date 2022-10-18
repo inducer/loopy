@@ -89,6 +89,8 @@ Loopy-specific expression types
 
 .. autoclass:: TaggedVariable
 
+.. autoclass:: TaggedExpression
+
 .. autoclass:: Reduction
 
 .. autoclass:: LinearSubscript
@@ -114,9 +116,9 @@ Expression Manipulation Helpers
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin:
-    def map_with_tag(self, expr, *args, **kwargs):
+    def map_tagged_expression(self, expr, *args, **kwargs):
         new_expr = self.rec(expr.expr, *args, **kwargs)
-        return WithTag(expr.tags, new_expr)
+        return TaggedExpression(expr.tags, new_expr)
 
     def map_literal(self, expr, *args, **kwargs):
         return expr
@@ -211,7 +213,7 @@ class PartialEvaluationMapper(
 
 
 class WalkMapperMixin:
-    def map_with_tag(self, expr, *args, **kwargs):
+    def map_tagged_expression(self, expr, *args, **kwargs):
         if not self.visit(expr, *args, **kwargs):
             return
 
@@ -283,7 +285,7 @@ class CallbackMapper(IdentityMapperMixin, CallbackMapperBase):
 
 
 class CombineMapper(CombineMapperBase):
-    def map_with_tag(self, expr, *args, **kwargs):
+    def map_tagged_expression(self, expr, *args, **kwargs):
         return self.rec(expr.expr, *args, **kwargs)
 
     def map_reduction(self, expr, *args, **kwargs):
@@ -311,9 +313,9 @@ class ConstantFoldingMapper(ConstantFoldingMapperBase,
 
 
 class StringifyMapper(StringifyMapperBase):
-    def map_with_tag(self, expr, *args):
+    def map_tagged_expression(self, expr, *args):
         from pymbolic.mapper.stringifier import PREC_NONE
-        return f"WithTag({expr.tags}, {self.rec(expr.expr, PREC_NONE)}"
+        return f"TaggedExpression({expr.tags}, {self.rec(expr.expr, PREC_NONE)}"
 
     def map_literal(self, expr, *args):
         return expr.s
@@ -457,7 +459,7 @@ class DependencyMapper(DependencyMapperBase):
     def map_loopy_function_identifier(self, expr, *args, **kwargs):
         return set()
 
-    def map_with_tag(self, expr, *args, **kwargs):
+    def map_tagged_expression(self, expr, *args, **kwargs):
         deps = self.rec(expr.expr, *args, **kwargs)
         return deps
 
@@ -733,7 +735,7 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     mapper_method = intern("map_tagged_variable")
 
 
-class WithTag(LoopyExpressionBase):
+class TaggedExpression(LoopyExpressionBase):
     """
     Represents a frozenset of tags attached to an :attr:`expr`.
     """
@@ -755,7 +757,7 @@ class WithTag(LoopyExpressionBase):
                 and other.tags == self.tags
                 and other.expr == self.expr)
 
-    mapper_method = intern("map_with_tag")
+    mapper_method = intern("map_tagged_expression")
 
 
 class Reduction(LoopyExpressionBase):

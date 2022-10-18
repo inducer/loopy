@@ -928,7 +928,7 @@ class ExpressionOpCounter(CounterBase):
     map_tagged_variable = map_constant
     map_variable = map_constant
 
-    def map_with_tag(self, expr):
+    def map_tagged_expression(self, expr, *args):
         opmap = self.rec(expr.expr)
         for op in opmap.count_map:
             op.tags = expr.tags

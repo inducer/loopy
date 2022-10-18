@@ -1546,8 +1546,8 @@ class MyCostTagSum(Tag):
     pass
 
 
-def test_op_with_tag():
-    from loopy.symbolic import WithTag
+def test_op_taggedexpression():
+    from loopy.symbolic import TaggedExpression
     from pymbolic.primitives import Subscript, Variable, Sum
 
     n = 500
@@ -1555,12 +1555,12 @@ def test_op_with_tag():
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             [
-                lp.Assignment("c[i]", WithTag(frozenset((MyCostTagSum(),)),
+                lp.Assignment("c[i]", TaggedExpression(frozenset((MyCostTagSum(),)),
                             Sum(
-                                (WithTag(frozenset((MyCostTag1(),)),
-                                Subscript(Variable("a"), Variable("i"))),
-                                WithTag(frozenset((MyCostTag2(),)),
-                                Subscript(Variable("b"), Variable("i")))))))
+                                (TaggedExpression(frozenset((MyCostTag1(),)),
+                                 Subscript(Variable("a"), Variable("i"))),
+                                 TaggedExpression(frozenset((MyCostTag2(),)),
+                                 Subscript(Variable("b"), Variable("i")))))))
             ])
 
     knl = lp.add_dtypes(knl, {"a": np.float64, "b": np.float64})
