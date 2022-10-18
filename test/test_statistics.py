@@ -1588,6 +1588,20 @@ def test_op_taggedexpression():
         tags=[frozenset((MyCostTag2(), MyCostTagSum()))]).eval_and_sum(params)
     assert f64_add == 0
 
+    mem_map = lp.get_mem_access_map(knl, subgroup_size=32)
+
+    mem_ops = mem_map.filter_by(
+        tags=[frozenset((MyCostTag1(),))]).eval_and_sum(params)
+    assert mem_ops == n
+
+    mem_ops = mem_map.filter_by(
+        tags=[frozenset((MyCostTag2(),))]).eval_and_sum(params)
+    assert mem_ops == n
+
+    mem_ops = mem_map.filter_by(
+        tags=[frozenset((MyCostTagSum(),))]).eval_and_sum(params)
+    assert mem_ops == 0
+
 
 def test_within_stats():
     import loopy as lp

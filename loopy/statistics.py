@@ -735,12 +735,16 @@ class MemAccess(ImmutableRecord):
     .. attribute:: kernel_name
 
         A :class:`str` representing the kernel name where the operation occurred.
+
+    .. attribute:: tags
+
+        A :class:`frozenset` of tags to the operation.
     """
 
     def __init__(self, mtype=None, dtype=None, lid_strides=None, gid_strides=None,
                  direction=None, variable=None,
                  *, variable_tags=None,
-                 count_granularity=None, kernel_name=None):
+                 count_granularity=None, kernel_name=None, tags=None):
 
         if count_granularity not in CountGranularity.ALL+[None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
@@ -759,7 +763,7 @@ class MemAccess(ImmutableRecord):
                             gid_strides=gid_strides, direction=direction,
                             variable=variable, variable_tags=variable_tags,
                             count_granularity=count_granularity,
-                            kernel_name=kernel_name)
+                            kernel_name=kernel_name, tags=tags)
 
     def __hash__(self):
         # dicts in gid_strides and lid_strides aren't natively hashable
@@ -767,7 +771,7 @@ class MemAccess(ImmutableRecord):
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return "MemAccess({}, {}, {}, {}, {}, {}, {}, {}, {})".format(
+        return "MemAccess({}, {}, {}, {}, {}, {}, {}, {}, {}, {})".format(
             self.mtype,
             self.dtype,
             None if self.lid_strides is None else dict(
@@ -778,7 +782,8 @@ class MemAccess(ImmutableRecord):
             self.variable,
             "None" if not self.variable_tags else str(self.variable_tags),
             self.count_granularity,
-            repr(self.kernel_name))
+            repr(self.kernel_name),
+            self.tags)
 
 # }}}
 
@@ -834,10 +839,10 @@ class CounterBase(CombineMapper):
     def combine(self, values):
         return sum(values)
 
-    def map_constant(self, expr):
+    def map_constant(self, expr, *args):
         return self.new_zero_poly_map()
 
-    def map_call(self, expr):
+    def map_call(self, expr, *args):
         from loopy.symbolic import ResolvedFunction
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
@@ -858,41 +863,41 @@ class CounterBase(CombineMapper):
             return subst_into_to_count_map(
                     self.param_space,
                     sub_result, subst_dict) \
-                    + self.rec(expr.parameters)
+                    + self.rec(expr.parameters, *args)
 
         else:
             raise NotImplementedError()
 
-    def map_call_with_kwargs(self, expr):
+    def map_call_with_kwargs(self, expr, *args):
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
 
-    def map_sum(self, expr):
+    def map_sum(self, expr, tags):
         if expr.children:
-            return sum(self.rec(child) for child in expr.children)
+            return sum(self.rec(child, tags) for child in expr.children)
         else:
             return self.new_zero_poly_map()
 
     map_product = map_sum
 
-    def map_comparison(self, expr):
-        return self.rec(expr.left)+self.rec(expr.right)
+    def map_comparison(self, expr, *args):
+        return self.rec(expr.left, *args) + self.rec(expr.right, *args)
 
-    def map_if(self, expr):
+    def map_if(self, expr, *args):
         warn_with_kernel(self.knl, "summing_if_branches",
                          "%s counting sum of if-expression branches."
                          % type(self).__name__)
-        return self.rec(expr.condition) + self.rec(expr.then) \
-               + self.rec(expr.else_)
+        return self.rec(expr.condition, *args) + self.rec(expr.then, *args) \
+               + self.rec(expr.else_, *args)
 
-    def map_if_positive(self, expr):
+    def map_if_positive(self, expr, *args):
         warn_with_kernel(self.knl, "summing_if_branches",
                          "%s counting sum of if-expression branches."
                          % type(self).__name__)
-        return self.rec(expr.criterion) + self.rec(expr.then) \
-               + self.rec(expr.else_)
+        return self.rec(expr.criterion, *args) + self.rec(expr.then, *args) \
+               + self.rec(expr.else_, *args)
 
-    def map_common_subexpression(self, expr):
+    def map_common_subexpression(self, expr, *args):
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
 
@@ -900,7 +905,7 @@ class CounterBase(CombineMapper):
     map_derivative = map_common_subexpression
     map_slice = map_common_subexpression
 
-    def map_reduction(self, expr):
+    def map_reduction(self, expr, *args):
         # preprocessing should have removed these
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
@@ -1192,18 +1197,18 @@ def _get_lid_and_gid_strides(knl, array, index):
 # {{{ MemAccessCounterBase
 
 class MemAccessCounterBase(CounterBase):
-    def map_sub_array_ref(self, expr):
+    def map_sub_array_ref(self, expr, *args):
         # generates an array view, considered free
         return self.new_zero_poly_map()
 
-    def map_call(self, expr):
+    def map_call(self, expr, *args):
         from loopy.symbolic import ResolvedFunction
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
 
         from loopy.kernel.function_interface import CallableKernel
         if not isinstance(clbl, CallableKernel):
-            return self.rec(expr.parameters)
+            return self.rec(expr.parameters, *args)
         else:
             return super().map_call(expr)
 
@@ -1215,7 +1220,10 @@ class MemAccessCounterBase(CounterBase):
 class LocalMemAccessCounter(MemAccessCounterBase):
     local_mem_count_granularity = CountGranularity.SUBGROUP
 
-    def count_var_access(self, dtype, name, index):
+    def map_tagged_expression(self, expr, *args):
+        return self.rec(expr.expr, expr.tags)
+
+    def count_var_access(self, dtype, name, index, tags):
         count_map = {}
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
@@ -1243,6 +1251,7 @@ class LocalMemAccessCounter(MemAccessCounterBase):
                 count_map[MemAccess(
                         mtype="local",
                         dtype=dtype,
+                        tags=tags,
                         lid_strides=dict(sorted(lid_strides.items())),
                         gid_strides=dict(sorted(gid_strides.items())),
                         variable=name,
@@ -1251,17 +1260,17 @@ class LocalMemAccessCounter(MemAccessCounterBase):
 
         return self.new_poly_map(count_map)
 
-    def map_variable(self, expr):
+    def map_variable(self, expr, tags):
         return self.count_var_access(
-                    self.type_inf(expr), expr.name, None)
+                    self.type_inf(expr), expr.name, None, tags)
 
     map_tagged_variable = map_variable
 
-    def map_subscript(self, expr):
+    def map_subscript(self, expr, tags=None):
         return (self.count_var_access(self.type_inf(expr),
                                       expr.aggregate.name,
-                                      expr.index)
-                + self.rec(expr.index))
+                                      expr.index, tags)
+                + self.rec(expr.index, tags))
 
 # }}}
 
@@ -1269,7 +1278,10 @@ class LocalMemAccessCounter(MemAccessCounterBase):
 # {{{ GlobalMemAccessCounter
 
 class GlobalMemAccessCounter(MemAccessCounterBase):
-    def map_variable(self, expr):
+    def map_tagged_expression(self, expr, *args):
+        return self.rec(expr.expr, expr.tags)
+
+    def map_variable(self, expr, tags):
         name = expr.name
 
         if name in self.knl.arg_dict:
@@ -1285,12 +1297,12 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
 
         return self.new_poly_map({MemAccess(mtype="global",
                     dtype=self.type_inf(expr), lid_strides={},
-                    gid_strides={}, variable=name,
+                    gid_strides={}, variable=name, tags=tags,
                     count_granularity=CountGranularity.WORKITEM,
                     kernel_name=self.knl.name): self.one}
-                    ) + self.rec(expr.index)
+                    ) + self.rec(expr.index, tags)
 
-    def map_subscript(self, expr):
+    def map_subscript(self, expr, tags=None):
         name = expr.aggregate.name
         try:
             var_tags = expr.aggregate.tags
@@ -1306,16 +1318,16 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
             array = self.knl.temporary_variables[name]
             if array.address_space != AddressSpace.GLOBAL:
                 # This temporary does not have global address space
-                return self.rec(expr.index)
+                return self.rec(expr.index, tags)
             # This temporary has global address space
             is_global_temp = True
         else:
             # This temporary does not have global address space
-            return self.rec(expr.index)
+            return self.rec(expr.index, tags)
 
         if (not is_global_temp) and not isinstance(array, lp.ArrayArg):
             # This array is not in global memory
-            return self.rec(expr.index)
+            return self.rec(expr.index, tags)
 
         index_tuple = expr.index  # could be tuple or scalar index
         if not isinstance(index_tuple, tuple):
@@ -1341,11 +1353,12 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
                             lid_strides=dict(sorted(lid_strides.items())),
                             gid_strides=dict(sorted(gid_strides.items())),
                             variable=name,
+                            tags=tags,
                             variable_tags=var_tags,
                             count_granularity=count_granularity,
                             kernel_name=self.knl.name,
                             ): self.one}
-                          ) + self.rec(expr.index_tuple)
+                          ) + self.rec(expr.index_tuple, tags)
 
 # }}}
 
