@@ -922,19 +922,16 @@ class ExpressionOpCounter(CounterBase):
     def combine(self, values):
         return sum(values)
 
-    def map_constant(self, expr):
+    def map_constant(self, expr, *args):
         return self.new_zero_poly_map()
 
     map_tagged_variable = map_constant
     map_variable = map_constant
 
     def map_tagged_expression(self, expr, *args):
-        opmap = self.rec(expr.expr)
-        for op in opmap.count_map:
-            op.tags = expr.tags
-        return opmap
+        return self.rec(expr.expr, expr.tags)
 
-    def map_call(self, expr):
+    def map_call(self, expr, tags):
         from loopy.symbolic import ResolvedFunction
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
@@ -944,37 +941,40 @@ class ExpressionOpCounter(CounterBase):
             return self.new_poly_map(
                         {Op(dtype=self.type_inf(expr),
                             name="func:"+clbl.name,
+                            tags=tags,
                             count_granularity=self.arithmetic_count_granularity,
                             kernel_name=self.knl.name): self.one}
-                        ) + self.rec(expr.parameters)
+                        ) + self.rec(expr.parameters, tags)
         else:
-            return super().map_call(expr)
+            return super().map_call(expr, tags)
 
-    def map_subscript(self, expr):
+    def map_subscript(self, expr, *args):
         if self.count_within_subscripts:
-            return self.rec(expr.index)
+            return self.rec(expr.index, *args)
         else:
             return self.new_zero_poly_map()
 
-    def map_sub_array_ref(self, expr):
+    def map_sub_array_ref(self, expr, *args):
         # generates an array view, considered free
         return self.new_zero_poly_map()
 
-    def map_sum(self, expr):
+    def map_sum(self, expr, tags):
         assert expr.children
         return self.new_poly_map(
                     {Op(dtype=self.type_inf(expr),
                         name="add",
+                        tags=tags,
                         count_granularity=self.arithmetic_count_granularity,
                         kernel_name=self.knl.name):
                      self.zero + (len(expr.children)-1)}
-                    ) + sum(self.rec(child) for child in expr.children)
+                    ) + sum(self.rec(child, tags) for child in expr.children)
 
-    def map_product(self, expr):
+    def map_product(self, expr, tags):
         from pymbolic.primitives import is_zero
         assert expr.children
         return sum(self.new_poly_map({Op(dtype=self.type_inf(expr),
                                   name="mul",
+                                  tags=tags,
                                   count_granularity=(
                                       self.arithmetic_count_granularity),
                                   kernel_name=self.knl.name): self.one})
@@ -983,97 +983,104 @@ class ExpressionOpCounter(CounterBase):
                    if not is_zero(child + 1)) + \
                    self.new_poly_map({Op(dtype=self.type_inf(expr),
                                   name="mul",
+                                  tags=tags,
                                   count_granularity=(
                                       self.arithmetic_count_granularity),
                                   kernel_name=self.knl.name): -self.one})
 
-    def map_quotient(self, expr, *args):
+    def map_quotient(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="div",
+                              tags=tags,
                               count_granularity=self.arithmetic_count_granularity,
                               kernel_name=self.knl.name): self.one}) \
-                                + self.rec(expr.numerator) \
-                                + self.rec(expr.denominator)
+                                + self.rec(expr.numerator, tags) \
+                                + self.rec(expr.denominator, tags)
 
     map_floor_div = map_quotient
     map_remainder = map_quotient
 
-    def map_power(self, expr):
+    def map_power(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="pow",
+                              tags=tags,
                               count_granularity=self.arithmetic_count_granularity,
                               kernel_name=self.knl.name): self.one}) \
-                                + self.rec(expr.base) \
-                                + self.rec(expr.exponent)
+                                + self.rec(expr.base, tags) \
+                                + self.rec(expr.exponent, tags)
 
-    def map_left_shift(self, expr):
+    def map_left_shift(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="shift",
+                              tags=tags,
                               count_granularity=self.arithmetic_count_granularity,
                               kernel_name=self.knl.name): self.one}) \
-                                + self.rec(expr.shiftee) \
-                                + self.rec(expr.shift)
+                                + self.rec(expr.shiftee, tags) \
+                                + self.rec(expr.shift, tags)
 
     map_right_shift = map_left_shift
 
-    def map_bitwise_not(self, expr):
+    def map_bitwise_not(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="bw",
+                              tags=tags,
                               count_granularity=self.arithmetic_count_granularity,
                               kernel_name=self.knl.name): self.one}) \
-                                + self.rec(expr.child)
+                                + self.rec(expr.child, tags)
 
-    def map_bitwise_or(self, expr):
+    def map_bitwise_or(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="bw",
+                              tags=tags,
                               count_granularity=self.arithmetic_count_granularity,
                               kernel_name=self.knl.name):
                            self.zero + (len(expr.children)-1)}) \
-                                + sum(self.rec(child) for child in expr.children)
+                              + sum(self.rec(child, tags) for child in expr.children)
 
     map_bitwise_xor = map_bitwise_or
     map_bitwise_and = map_bitwise_or
 
-    def map_if(self, expr):
+    def map_if(self, expr, *args):
         warn_with_kernel(self.knl, "summing_if_branches_ops",
                          "ExpressionOpCounter counting ops as sum of "
                          "if-statement branches.")
-        return self.rec(expr.condition) + self.rec(expr.then) \
-               + self.rec(expr.else_)
+        return self.rec(expr.condition, *args) + self.rec(expr.then, *args) \
+               + self.rec(expr.else_, *args)
 
-    def map_if_positive(self, expr):
+    def map_if_positive(self, expr, *args):
         warn_with_kernel(self.knl, "summing_ifpos_branches_ops",
                          "ExpressionOpCounter counting ops as sum of "
                          "if_pos-statement branches.")
-        return self.rec(expr.criterion) + self.rec(expr.then) \
-               + self.rec(expr.else_)
+        return self.rec(expr.criterion, *args) + self.rec(expr.then, *args) \
+               + self.rec(expr.else_, *args)
 
-    def map_min(self, expr):
+    def map_min(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="maxmin",
+                              tags=tags,
                               count_granularity=self.arithmetic_count_granularity,
                               kernel_name=self.knl.name):
                            len(expr.children)-1}) \
-               + sum(self.rec(child) for child in expr.children)
+               + sum(self.rec(child, tags) for child in expr.children)
 
     map_max = map_min
 
-    def map_common_subexpression(self, expr):
+    def map_common_subexpression(self, expr, *args):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
 
-    def map_substitution(self, expr):
+    def map_substitution(self, expr, *args):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "substitution, "
                                   "map_substitution not implemented.")
 
-    def map_derivative(self, expr):
+    def map_derivative(self, expr, *args):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "derivative, "
                                   "map_derivative not implemented.")
 
-    def map_slice(self, expr):
+    def map_slice(self, expr, *args):
         raise NotImplementedError("ExpressionOpCounter encountered slice, "
                                   "map_slice not implemented.")
 
