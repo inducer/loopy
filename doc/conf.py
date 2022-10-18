@@ -47,6 +47,8 @@ intersphinx_mapping = {
 import sys
 sys._BUILDING_SPHINX_DOCS = True
 
+nitpicky = True
+
 nitpick_ignore_regex = [
         ["py:class", r"typing_extensions\.(.+)"],
         ["py:class", r"numpy\.u?int[0-9]+"],
