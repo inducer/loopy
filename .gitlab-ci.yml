@@ -23,7 +23,7 @@ Pytest Nvidia Titan V:
   stage: test
   script:
   - export PYOPENCL_TEST=nvi:titan
-  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export EXTRA_INSTALL="pybind11 numpy mako git+https://github.com/inducer/pycuda.git"
   - export LOOPY_NO_CACHE=1
   - source /opt/enable-intel-cl.sh
   - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
