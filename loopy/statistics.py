@@ -921,6 +921,7 @@ class ExpressionOpCounter(CounterBase):
 
     map_tagged_variable = map_constant
     map_variable = map_constant
+    map_nan = map_constant
 
     def map_call(self, expr):
         from loopy.symbolic import ResolvedFunction
