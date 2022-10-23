@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 from sys import intern
 from functools import cached_property
+from typing import FrozenSet
 
 from warnings import warn
 import islpy as isl
@@ -324,7 +325,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         return result
 
-    def reduction_inames(self):
+    def reduction_inames(self) -> FrozenSet[str]:
         raise NotImplementedError
 
     def sub_array_ref_inames(self):
@@ -726,7 +727,7 @@ class MultiAssignmentBase(InstructionBase):
     @memoize_method
     def reduction_inames(self):
         from loopy.symbolic import get_reduction_inames
-        return get_reduction_inames(self.expression)
+        return frozenset(get_reduction_inames(self.expression))
 
     @memoize_method
     def sub_array_ref_inames(self):
@@ -1327,7 +1328,7 @@ class CInstruction(InstructionBase):
         return frozenset(result)
 
     def reduction_inames(self):
-        return set()
+        return frozenset()
 
     def sub_array_ref_inames(self):
         return frozenset()
