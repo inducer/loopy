@@ -932,6 +932,7 @@ class ExpressionOpCounter(CounterBase):
 
     map_tagged_variable = map_constant
     map_variable = map_constant
+    map_nan = map_constant
 
     def map_tagged_expression(self, expr, *args):
         return self.rec(expr.expr, expr.tags)
