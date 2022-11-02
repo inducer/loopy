@@ -244,18 +244,30 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
             c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
 
+            mul_name = f"{tgt_name}_mul"
+
             def binary_tree_add(start, end):
                 if start + 1 == end:
                     return c_applied[start]
                 mid = (start + end)//2
                 lsum = binary_tree_add(start, mid)
                 rsum = binary_tree_add(mid, end)
-                return p.Variable("%s_add" % tgt_name)(lsum, rsum)
+
+                if isinstance(lsum, p.Call) and isinstance(lsum.function,
+                        p.Variable) and lsum.function.name == mul_name:
+                    return p.Variable(f"{tgt_name}_fma")(*lsum.parameters, rsum)
+
+                elif isinstance(rsum, p.Call) and isinstance(rsum.function,
+                        p.Variable) and rsum.function.name == mul_name:
+                    return p.Variable(f"{tgt_name}_fma")(*rsum.parameters, lsum)
+
+                else:
+                    return p.Variable(f"{tgt_name}_add")(lsum, rsum)
 
             complex_sum = binary_tree_add(0, len(c_applied))
 
             if reals:
-                return p.Variable("%s_radd" % tgt_name)(real_sum, complex_sum)
+                return p.Variable(f"{tgt_name}_radd")(real_sum, complex_sum)
             else:
                 return complex_sum
 
