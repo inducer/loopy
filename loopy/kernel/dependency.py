@@ -10,9 +10,9 @@ from enum import Enum
 class DependencyType(Enum):
     """An enumeration of the types of data dependencies found in a program.
     """
-    WRITE_READ  = 0
-    READ_WRITE  = 1
-    WRITE_WRITE = 2
+    WRITE_AFTER_READ  = 0
+    READ_AFTER_WRITE  = 1
+    WRITE_AFTER_WRITE = 2
 
 class AccessType(Enum):
     """An enumeration of the types of accesses made by statements in a program.
@@ -45,12 +45,12 @@ class HappensBefore:
     """
     
     happens_before: str
-    variable_name: str
+    variable_name: Optional[str]
     relation: isl.Map
-    dependency_type: DependencyType
+    dependency_type: Optional[DependencyType]
 
 @dataclass(frozen=True)
-class AccessRelation:
+class _AccessRelation:
     """A class that stores information about a particular array access in a
     program.
     .. attribute:: id
@@ -104,20 +104,18 @@ def generate_dependency_relations(knl: LoopKernel) \
         return insn.write_dependency_names() - insn.within_inames
 
     def get_dependency_relation(x: isl.Map, y:isl.Map) -> isl.Map:
-        # FIXME: how to generate a 'diagonal' map using what we know about the
-        # space of our domain?
-#        diagonal: isl.Map = isl.Map("{ [i,j] -> [i',j']: i = i' and j = j' }")
-        dependency_relation: isl.Map = x.apply_range(y.reverse())
-#       dependency_relation -= diagonal
+        dependency: isl.Map = x.apply_range(y.reverse())
+        diagonal: isl.Map = dependency.identity(dependency.get_space()) 
+        dependency -= diagonal
 
-        return dependency_relation
+        return dependency
 
-    read_maps: list[AccessRelation] = [AccessRelation(insn.id, var, 
+    read_maps: list[_AccessRelation] = [_AccessRelation(insn.id, var, 
                                                       get_map(var, insn),
                                                       AccessType.READ)
                  for insn in knl.instructions
                  for var in read_var_list(insn)]
-    write_maps: list[AccessRelation] = [AccessRelation(insn.id, var, 
+    write_maps: list[_AccessRelation] = [_AccessRelation(insn.id, var, 
                                                       get_map(var, insn),
                                                       AccessType.WRITE)
                  for insn in knl.instructions
@@ -127,7 +125,7 @@ def generate_dependency_relations(knl: LoopKernel) \
                                         write.variable_name,
                                         get_dependency_relation(write.relation,
                                                                 read.relation),
-                                        DependencyType.WRITE_READ)
+                                        DependencyType.WRITE_AFTER_READ)
                                        for write in write_maps
                                        for read in read_maps
                                        if write.variable_name == read.variable_name]
@@ -135,7 +133,7 @@ def generate_dependency_relations(knl: LoopKernel) \
                                         read.variable_name,
                                         get_dependency_relation(read.relation,
                                                                 write.relation),
-                                        DependencyType.READ_WRITE)
+                                        DependencyType.READ_AFTER_WRITE)
                                        for read in read_maps
                                        for write in write_maps
                                        if read.variable_name == write.variable_name]
@@ -143,7 +141,7 @@ def generate_dependency_relations(knl: LoopKernel) \
                                          write1.variable_name,
                                          get_dependency_relation(write1.relation,
                                          write2.relation),
-                                         DependencyType.WRITE_WRITE)
+                                         DependencyType.WRITE_AFTER_WRITE)
                                         for write1 in write_maps
                                         for write2 in write_maps
                                         if write1.variable_name == write2.variable_name]
