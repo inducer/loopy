@@ -94,7 +94,7 @@ class VectorizabilityChecker(RecursiveMapper):
         rec_pars = [
                 self.rec(child) for child in expr.parameters]
         if any(rec_pars):
-            raise UnvectorizableError("fucntion calls cannot yet be vectorized")
+            raise UnvectorizableError("function calls cannot yet be vectorized")
 
         return False
 
