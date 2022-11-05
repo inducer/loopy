@@ -9,6 +9,7 @@ from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
 
+# TODO this is going away
 class DependencyType(Enum):
     """An enumeration of the types of data dependencies found in a program.
     """
@@ -22,6 +23,7 @@ class AccessType(Enum):
     READ  = 0
     WRITE = 1
 
+# TODO this might be going away
 @dataclass(frozen=True)
 class HappensBefore: 
     """A class representing a "happens-before" relationship between two
@@ -51,6 +53,7 @@ class HappensBefore:
     relation: isl.Map
     dependency_type: Optional[DependencyType]
 
+# TODO this is going away (probably)
 @dataclass(frozen=True)
 class _AccessRelation:
     """A class that stores information about a particular array access in a
@@ -77,8 +80,8 @@ class _AccessRelation:
     relation: isl.Map
     access_type: AccessType
 
-def generate_dependency_relations(knl: LoopKernel) \
-        -> tuple[list[HappensBefore], list[HappensBefore], list[HappensBefore]]:
+def generate_dependency_relations(knl: LoopKernel) -> \
+        tuple[list[HappensBefore], list[HappensBefore], list[HappensBefore]]:
     """Generates :class:`isl.Map` objects representing the data dependencies between
     statements in a loopy program. The :class:`isl.Map` objects are stored in a
     :class:`loopy.Dependency.HappensBefore` object along with the dependee id,
@@ -111,6 +114,10 @@ def generate_dependency_relations(knl: LoopKernel) \
         dependency -= diagonal
 
         return dependency
+
+    # TODO do not compute each dependency type separately, there is no need.
+    # instead, compute all dependencies at once so we do not need to unionize
+    # them later, i.e., in `generate_execution_order`.
 
     read_maps: list[_AccessRelation] = [_AccessRelation(insn.id, var, 
                                                       get_map(var, insn),
@@ -148,7 +155,7 @@ def generate_dependency_relations(knl: LoopKernel) \
                                         for write2 in write_maps
                                         if write1.variable_name == write2.variable_name]
 
-    return write_read, read_write, write_write
+    return write_read, read_write, write_write 
 
 def generate_execution_order(knl: LoopKernel) -> frozenset[isl.Map]:
     """Generate the "happens-before" execution order that *must* be respected by
