@@ -4,6 +4,8 @@ from loopy.symbolic import BatchedAccessMapMapper
 from loopy import LoopKernel
 from loopy import InstructionBase
 
+from functools import reduce
+from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -168,30 +170,18 @@ def generate_execution_order(knl: LoopKernel) -> frozenset[isl.Map]:
         domain: isl.BasicSet = knl.get_inames_domain(insn.within_inames)
         insn_order: isl.Map = domain.lex_lt_set(domain)
 
-        # v FIXME: there must be a better way
-        union_of_dependencies = None
-        for rel in write_read:
-            if union_of_dependencies is None:
-                union_of_dependencies = rel.relation
-            else:
-                union_of_dependencies = union_of_dependencies | rel.relation
-
-        for rel in read_write:
-            if union_of_dependencies is None:
-                union_of_dependencies = rel.relation
-            else:
-                union_of_dependencies = union_of_dependencies | rel.relation
+        union_of_dependencies: isl.Map = reduce(lambda x, 
+                                                y: x.relation | y.relation,
+                                                write_read)
+        union_of_dependencies |= reduce(lambda x, y: x.relation | y.relation,
+                                        read_write)
+        union_of_dependencies |= reduce(lambda x, y: x.relation | y.relation,
+                                        write_write)
         
-        for rel in write_write:
-            if union_of_dependencies is None:
-                union_of_dependencies = rel.relation
-            else:
-                union_of_dependencies = union_of_dependencies | rel.relation
-
-        insn_order = insn_order & union_of_dependencies
+        insn_order: isl.Map = insn_order & union_of_dependencies
         execution_order = execution_order | frozenset({insn_order})
 
-        return execution_order
+    return execution_order
 
 def verify_execution_order(knl: LoopKernel, existing_happens_before: isl.Map):
     """Verify that a given transformation respects the dependencies in a
