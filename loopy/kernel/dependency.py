@@ -4,10 +4,10 @@ from loopy.symbolic import BatchedAccessMapMapper
 from loopy import LoopKernel
 from loopy import InstructionBase
 
+from itertools import product
 from functools import reduce
 from typing import Optional
 from dataclasses import dataclass
-from enum import Enum
 
 @dataclass(frozen=True)
 class HappensBefore: 
@@ -80,34 +80,34 @@ def generate_dependency_relations(knl: LoopKernel) -> list[HappensBefore]:
     def get_map(var: str, insn: InstructionBase) -> isl.Map: 
         return bmap.access_maps[var][insn.within_inames]
 
-    def get_var_list(insn: InstructionBase) -> frozenset[str]:
-        return read_var_list(insn) | write_var_list(insn)
-
-    def read_var_list(insn: InstructionBase) -> frozenset[str]:
+    def read_variables(insn: InstructionBase) -> frozenset[str]:
         return insn.read_dependency_names() - insn.within_inames
 
-    def write_var_list(insn: InstructionBase) -> frozenset[str]: 
+    def write_variables(insn: InstructionBase) -> frozenset[str]: 
         return insn.write_dependency_names() - insn.within_inames
 
-    def get_dependency_relation(x: isl.Map, y:isl.Map) -> isl.Map:
+    def variable_list(insn: InstructionBase) -> frozenset[str]:
+        return read_variables(insn) | write_variables(insn)
+
+    def dependency_relation(x: isl.Map, y:isl.Map) -> isl.Map:
         dependency: isl.Map = x.apply_range(y.reverse())
         diagonal: isl.Map = dependency.identity(dependency.get_space()) 
         dependency -= diagonal
 
         return dependency
 
-    # TODO can we do this without computing access maps and storing them?
+    # TODO can we reduce this code even further by not computing access
+    # relations before we begin computing dependencies?
     accesses: list[_AccessRelation] = [_AccessRelation(insn.id, var,
                                                        get_map(var, insn)) 
                                        for insn in knl.instructions
-                                       for var in get_var_list(insn)]
+                                       for var in variable_list(insn)]
 
     dependencies: list[HappensBefore] = [HappensBefore(dependent.id,
                                    dependee.variable_name,
-                                   get_dependency_relation(dependent.relation,
-                                                           dependee.relation))
-                         for dependent in accesses
-                         for dependee in accesses
+                                   dependency_relation(dependent.relation,
+                                                       dependee.relation))
+                         for dependee, dependent in product(*[accesses,accesses])
                          if dependent.variable_name == dependee.variable_name]
 
     return dependencies  
@@ -132,7 +132,7 @@ def generate_execution_order(knl: LoopKernel) -> frozenset[isl.Map]:
         insn_order: isl.Map = domain.lex_lt_set(domain) & \
                               reduce(lambda x, y: x | y, [dep.relation for dep in
                                                           dependencies])
-        execution_order = execution_order | frozenset({insn_order})
+        execution_order: frozenset[isl.Map] = execution_order | frozenset({insn_order})
 
     return execution_order 
 
