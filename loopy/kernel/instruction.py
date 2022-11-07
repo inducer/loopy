@@ -20,8 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
+from typing import FrozenSet, Optional, Mapping, Tuple, Type, Union
 from sys import intern
 from functools import cached_property
+
+from collections.abc import Mapping as MappingABC
 
 from warnings import warn
 import islpy as isl
@@ -29,7 +33,8 @@ from pytools import ImmutableRecord, memoize_method
 from pytools.tag import Tag, tag_dataclass, Taggable
 
 from loopy.diagnostic import LoopyError
-from loopy.tools import Optional
+from loopy.tools import Optional as LoopyOptional
+from loopy.typing import ExpressionT
 
 
 # {{{ instruction tags
@@ -71,6 +76,37 @@ class UseStreamingStoreTag(Tag):
         program-dependent. No promise of safety is made.
     """
     pass
+
+# }}}
+
+
+# {{{ HappensAfter
+
+@dataclass(frozen=True)
+class HappensAfter:
+    """A class representing a "happens-before" relationship between two
+    statements found in a :class:`loopy.LoopKernel`. Used to validate that a
+    given kernel transformation respects the data dependencies in a given
+    program.
+
+    .. attribute:: variable_name
+
+        If this is a precise dependency, the name of the variable name in
+        :attr:`after_id` that mediates the dependency.
+
+    .. attribute:: instances_rel
+
+        An :class:`isl.Map` representing the happens-after relationship. The
+        input of the map is an iname tuple and the output of the map is a set
+        of iname tuples that must execute after the input.
+
+        As a (deprecated) matter of backward compatibility, this may be *None*,
+        in which case the semantics revert to the (underspecified) statement-level
+        dependencies of prior versions of :mod:`loopy`.
+    """
+
+    variable_name: Optional[str]
+    instances_rel: Optional[isl.Map]
 
 # }}}
 
@@ -198,10 +234,20 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     Inherits from :class:`pytools.tag.Taggable`.
     """
+    id: Optional[str]
+    happens_after: Mapping[str, HappensAfter]
+    depends_on_is_final: bool
+    groups: FrozenSet[str]
+    conflicts_with_groups: FrozenSet[str]
+    no_sync_with: FrozenSet[Tuple[str, str]]
+    predicates: FrozenSet[ExpressionT]
+    within_inames: FrozenSet[str]
+    within_inames_is_final: bool
+    priority: int
 
     # within_inames_is_final is deprecated and will be removed in version 2017.x.
 
-    fields = set("id depends_on depends_on_is_final "
+    fields = set("id depends_on_is_final "
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
@@ -214,12 +260,22 @@ class InstructionBase(ImmutableRecord, Taggable):
     # Names of fields that are sets of pymbolic expressions. Needed for key building
     pymbolic_set_fields = {"predicates"}
 
-    def __init__(self, id, depends_on, depends_on_is_final,
-            groups, conflicts_with_groups,
-            no_sync_with,
-            within_inames_is_final, within_inames,
-            priority,
-            predicates, tags):
+    def __init__(self,
+                 id: Optional[str],
+                 happens_after: Union[
+                     Mapping[str, HappensAfter], FrozenSet[str], str, None],
+                 depends_on_is_final: Optional[bool],
+                 groups: Optional[FrozenSet[str]],
+                 conflicts_with_groups: Optional[FrozenSet[str]],
+                 no_sync_with: Optional[FrozenSet[Tuple[str, str]]],
+                 within_inames_is_final: Optional[bool],
+                 within_inames: Optional[FrozenSet[str]],
+                 priority: Optional[int],
+                 predicates: Optional[FrozenSet[str]],
+                 tags: Optional[FrozenSet[Tag]],
+                 *,
+                 depends_on: Union[FrozenSet[str], str, None]=None,
+                 ) -> None:
 
         if predicates is None:
             predicates = frozenset()
@@ -241,8 +297,45 @@ class InstructionBase(ImmutableRecord, Taggable):
         predicates = frozenset(new_predicates)
         del new_predicates
 
-        if depends_on is None:
-            depends_on = frozenset()
+        # {{{ process happens_after/depends_on
+
+        if happens_after is not None and depends_on is not None:
+            raise TypeError("may not pass both happens_after and depends_on")
+        elif depends_on is not None:
+            happens_after = depends_on
+
+        del depends_on
+
+        if depends_on_is_final and happens_after is None:
+            raise LoopyError("Setting depends_on_is_final to True requires "
+                    "actually specifying happens_after/depends_on")
+
+        if happens_after is None:
+            happens_after = {}
+        elif isinstance(happens_after, str):
+            warn("Passing a string for happens_after/depends_on is deprecated and "
+                 "will stop working in 2024. Instead, pass a full-fledged "
+                 "happens_after data structure.", DeprecationWarning, stacklevel=2)
+
+            happens_after = {
+                    after_id.strip(): HappensAfter(
+                        variable_name=None,
+                        instances_rel=None)
+                    for after_id in happens_after.split(",")
+                    if after_id.strip()}
+        elif isinstance(happens_after, frozenset):
+            happens_after = {
+                    after_id: HappensAfter(
+                        variable_name=None,
+                        instances_rel=None)
+                    for after_id in happens_after}
+        elif isinstance(happens_after, MappingABC):
+            pass
+        else:
+            raise TypeError("'happens_after' has unexpected type: "
+                            f"{type(happens_after)}")
+
+        # }}}
 
         if groups is None:
             groups = frozenset()
@@ -259,16 +352,8 @@ class InstructionBase(ImmutableRecord, Taggable):
         if within_inames_is_final is None:
             within_inames_is_final = False
 
-        if isinstance(depends_on, str):
-            depends_on = frozenset(
-                    s.strip() for s in depends_on.split(",") if s.strip())
-
         if depends_on_is_final is None:
             depends_on_is_final = False
-
-        if depends_on_is_final and not isinstance(depends_on, frozenset):
-            raise LoopyError("Setting depends_on_is_final to True requires "
-                    "actually specifying depends_on")
 
         if tags is None:
             tags = frozenset()
@@ -292,13 +377,12 @@ class InstructionBase(ImmutableRecord, Taggable):
         # assert all(is_interned(pred) for pred in predicates)
 
         assert isinstance(within_inames, frozenset)
-        assert isinstance(depends_on, frozenset) or depends_on is None
         assert isinstance(groups, frozenset)
         assert isinstance(conflicts_with_groups, frozenset)
 
         ImmutableRecord.__init__(self,
                 id=id,
-                depends_on=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
@@ -353,6 +437,10 @@ class InstructionBase(ImmutableRecord, Taggable):
         raise NotImplementedError
 
     # }}}
+
+    @property
+    def depends_on(self):
+        return frozenset(self.happens_after)
 
     @property
     def assignee_name(self):
@@ -462,7 +550,9 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
-        self.depends_on = intern_frozenset_of_ids(self.depends_on)
+        self.happens_after = {
+                intern(after_id): ha
+                for after_id, ha in self.happens_after.items()}
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
@@ -794,30 +884,43 @@ class Assignment(MultiAssignmentBase):
     .. automethod:: __init__
     """
 
+    assignee: ExpressionT
+    expression: ExpressionT
+    temp_var_type: LoopyOptional
+    atomicity: Tuple[VarAtomicity, ...]
+
     fields = MultiAssignmentBase.fields | \
             set("assignee temp_var_type atomicity".split())
     pymbolic_fields = MultiAssignmentBase.pymbolic_fields | {"assignee"}
 
     def __init__(self,
-            assignee, expression,
-            id=None,
-            depends_on=None,
-            depends_on_is_final=None,
-            groups=None,
-            conflicts_with_groups=None,
-            no_sync_with=None,
-            within_inames_is_final=None,
-            within_inames=None,
-            tags=None,
-            temp_var_type=_not_provided, atomicity=(),
-            priority=0, predicates=frozenset()):
+                 assignee: Union[str, ExpressionT],
+                 expression: Union[str, ExpressionT],
+                 id: Optional[str] = None,
+                 happens_after: Union[
+                     Mapping[str, HappensAfter], FrozenSet[str], str, None] = None,
+                 depends_on_is_final: Optional[bool] = None,
+                 groups: Optional[FrozenSet[str]] = None,
+                 conflicts_with_groups: Optional[FrozenSet[str]] = None,
+                 no_sync_with: Optional[FrozenSet[Tuple[str, str]]] = None,
+                 within_inames_is_final: Optional[bool] = None,
+                 within_inames: Optional[FrozenSet[str]] = None,
+                 priority: Optional[int] = None,
+                 predicates: Optional[FrozenSet[str]] = None,
+                 tags: Optional[FrozenSet[Tag]] = None,
+                 temp_var_type: Union[
+                     Type[_not_provided], None, LoopyOptional] = _not_provided,
+                 atomicity: Tuple[VarAtomicity, ...] = (),
+                 *,
+                 depends_on: Union[FrozenSet[str], str, None] = None,
+                 ) -> None:
 
         if temp_var_type is _not_provided:
-            temp_var_type = Optional()
+            temp_var_type = LoopyOptional()
 
         super().__init__(
                 id=id,
-                depends_on=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -826,7 +929,8 @@ class Assignment(MultiAssignmentBase):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags)
+                tags=tags,
+                depends_on=depends_on)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -1002,7 +1106,7 @@ class CallInstruction(MultiAssignmentBase):
         self.expression = expression
 
         if temp_var_types is None:
-            self.temp_var_types = (Optional(),) * len(self.assignees)
+            self.temp_var_types = (LoopyOptional(),) * len(self.assignees)
         else:
             self.temp_var_types = tuple(
                     _check_and_fix_temp_var_type(tvt, stacklevel=3)

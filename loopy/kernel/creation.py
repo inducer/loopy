@@ -1441,32 +1441,6 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
 # }}}
 
 
-# {{{ add_sequential_dependencies
-
-def add_sequential_dependencies(knl):
-    new_insns = []
-    prev_insn = None
-    for insn in knl.instructions:
-        depon = insn.depends_on
-        if depon is None:
-            depon = frozenset()
-
-        if prev_insn is not None:
-            depon = depon | frozenset((prev_insn.id,))
-
-        insn = insn.copy(
-                depends_on=depon,
-                depends_on_is_final=True)
-
-        new_insns.append(insn)
-
-        prev_insn = insn
-
-    return knl.copy(instructions=new_insns)
-
-# }}}
-
-
 # {{{ temporary variable creation
 
 def create_temporaries(knl, default_order):
@@ -2490,7 +2464,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     check_for_duplicate_insn_ids(knl)
 
     if seq_dependencies:
-        knl = add_sequential_dependencies(knl)
+        knl = add_lexicographic_happens_after(knl)
 
     assert len(knl.instructions) == len(inames_to_dup)
 
