@@ -127,7 +127,7 @@ def generate_execution_order(knl: LoopKernel) -> frozenset[isl.Map]:
     dependencies: list[HappensBefore] = generate_dependency_relations(knl)
     execution_order: frozenset[isl.Map] = frozenset()
     for insn in knl.instructions:
-        # TODO replace lexicographical domain with existing happens before
+        # TODO replace lexicographical ordering with existing happens before
         domain: isl.BasicSet = knl.get_inames_domain(insn.within_inames)
         insn_order: isl.Map = domain.lex_lt_set(domain) & \
                               reduce(lambda x, y: x | y, [dep.relation for dep in
