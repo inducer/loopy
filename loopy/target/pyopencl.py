@@ -646,8 +646,8 @@ class PyOpenCLTarget(OpenCLTarget):
         return self
 
     @property
-    def is_executable(self) -> bool:
-        return True
+    def single_subkernel_is_entrypoint(self) -> bool:
+        return False
 
 # }}}
 

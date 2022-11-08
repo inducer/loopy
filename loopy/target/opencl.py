@@ -599,7 +599,7 @@ class OpenCLTarget(CFamilyTarget):
         return NumpyType(vec.types[base.numpy_dtype, count])
 
     @property
-    def is_executable(self) -> bool:
+    def single_subkernel_is_entrypoint(self) -> bool:
         return False
 
 # }}}

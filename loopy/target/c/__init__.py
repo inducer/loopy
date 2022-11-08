@@ -849,9 +849,14 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
             # subkernel launches occur only as part of entrypoint kernels for now
             from loopy.schedule.tools import get_subkernel_arg_info
+            from loopy.kernel.tools import get_subkernels
             skai = get_subkernel_arg_info(kernel, subkernel_name)
+            if (self.target.single_subkernel_is_entrypoint
+                    and len(get_subkernels(kernel)) > 1):
+                raise LoopyError(f"Kernel '{kernel.name}' has more than one"
+                                 f" subkernel, not allowed in {self.target}.")
             passed_names = (skai.passed_names
-                            if self.target.is_executable
+                            if not self.target.single_subkernel_is_entrypoint
                             else [arg.name for arg in kernel.args])
             written_names = skai.written_names
         else:
@@ -1345,8 +1350,8 @@ class CTarget(CFamilyTarget):
         return DTypeRegistryWrapper(result)
 
     @property
-    def is_executable(self) -> bool:
-        return False
+    def single_subkernel_is_entrypoint(self) -> bool:
+        return True
 
 
 class CASTBuilder(CFamilyASTBuilder):
@@ -1392,8 +1397,8 @@ class ExecutableCTarget(CTarget):
         return CFamilyASTBuilder(self)
 
     @property
-    def is_executable(self) -> bool:
-        return True
+    def single_subkernel_is_entrypoint(self) -> bool:
+        return False
 
 # }}}
 

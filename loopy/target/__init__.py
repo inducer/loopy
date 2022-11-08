@@ -161,10 +161,14 @@ class TargetBase():
         raise NotImplementedError()
 
     @abc.abstractproperty
-    def is_executable(self) -> bool:
-        """
-        Returns *True* only if the target allows executing loopy
-        translation units through :attr:`loopy.TranslationUnit.__call__`.
+    def single_subkernel_is_entrypoint(self) -> bool:
+        r"""
+        Returns *True* if *self* does NOT support generating code for
+        linearized kernels with more than one
+        :class:`~loopy.schedule.CallKernel`\ s. This guarantees the
+        :class:`~loopy.schedule.CallKernel` for which we generate code is the
+        entrypoint kernel. This also allows the target to skip the invoker
+        level code.
         """
 
 
