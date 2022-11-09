@@ -693,8 +693,10 @@ class GNULibcCallable(ScalarCallable):
 
             if arg_id_to_dtype[1].numpy_dtype == np.float32:
                 # See e.g.
-                # https://github.com/flang-compiler/flang/blob/master/runtime/libpgmath/lib/common/mthdecls.h
-                # for Bessel function names
+                # https://opensource.apple.com/source/Libm/Libm-2026/Source/Intel/math.h.auto.html
+                # and
+                # https://github.com/flang-compiler/flang/blob/81bebebb38177586f3c004f3c698a00a12bf094b/runtime/libpgmath/lib/common/mthdecls.h#L346-L402
+                # for Bessel function names.
                 import os
                 if os.uname().sysname == "Linux":
                     name_in_target = name[-2:]+"f"
