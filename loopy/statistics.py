@@ -630,7 +630,7 @@ class Op(ImmutableRecord):
        work-group executes on a single compute unit with all work-items within
        the work-group sharing local memory. A sub-group is an
        implementation-dependent grouping of work-items within a work-group,
-       analagous to an NVIDIA CUDA warp.
+       analogous to an NVIDIA CUDA warp.
 
     .. attribute:: kernel_name
 
@@ -1745,7 +1745,7 @@ def get_op_map(program, count_redundant_work=False,
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``"guess"``, or *None* that specifies the sub-group size. An OpenCL
         sub-group is an implementation-dependent grouping of work-items within
-        a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
+        a work-group, analogous to an NVIDIA CUDA warp. subgroup_size is used,
         e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         *None* an attempt to find the sub-group size using the device will be
@@ -1814,7 +1814,7 @@ def get_op_map(program, count_redundant_work=False,
 # }}}
 
 
-# {{{ subgoup size finding
+# {{{ subgroup size finding
 
 def _find_subgroup_size_for_knl(knl):
     from loopy.target.pyopencl import PyOpenCLTarget
@@ -1938,7 +1938,7 @@ def get_mem_access_map(program, count_redundant_work=False,
     :arg subgroup_size: An :class:`int`, :class:`str` ``"guess"``, or
         *None* that specifies the sub-group size. An OpenCL sub-group is an
         implementation-dependent grouping of work-items within a work-group,
-        analagous to an NVIDIA CUDA warp. subgroup_size is used, e.g., when
+        analogous to an NVIDIA CUDA warp. subgroup_size is used, e.g., when
         counting a :class:`MemAccess` whose count_granularity specifies that it
         should only be counted once per sub-group. If set to *None* an attempt
         to find the sub-group size using the device will be made, if this fails
@@ -2096,7 +2096,7 @@ def get_synchronization_map(program, subgroup_size=None, entrypoint=None):
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``"guess"``, or *None* that specifies the sub-group size. An OpenCL
         sub-group is an implementation-dependent grouping of work-items within
-        a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
+        a work-group, analogous to an NVIDIA CUDA warp. subgroup_size is used,
         e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         *None* an attempt to find the sub-group size using the device will be
@@ -2190,7 +2190,7 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
 
     assert entrypoint in program.entrypoints
 
-    # FIMXE: works only for one callable kernel till now.
+    # FIXME: works only for one callable kernel till now.
     if len([in_knl_callable for in_knl_callable in
         program.callables_table.values() if isinstance(in_knl_callable,
             CallableKernel)]) != 1:
