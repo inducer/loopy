@@ -801,14 +801,18 @@ class Sync(ImmutableRecord):
     .. attribute:: kernel_name
 
         A :class:`str` representing the kernel name where the operation occurred.
+
+    .. attribute:: tags
+
+        A :class:`frozenset` of tags attached to the synchronization.
     """
 
-    def __init__(self, kind=None, kernel_name=None):
-        super().__init__(kind=kind, kernel_name=kernel_name)
+    def __init__(self, kind=None, kernel_name=None, tags=None):
+        super().__init__(kind=kind, kernel_name=kernel_name, tags=tags)
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
-        return f"Sync({self.kind}, {self.kernel_name})"
+        return f"Sync({self.kind}, {self.kernel_name}, {self.tags})"
 
 # }}}
 

@@ -1871,7 +1871,7 @@ kernel from the previous example:
 
     >>> sync_map = lp.get_synchronization_map(knl)
     >>> print(sync_map)
-    Sync(kernel_launch, stats_knl): [l, m, n] -> { 1 }
+    Sync(kernel_launch, stats_knl, None): [l, m, n] -> { 1 }
     <BLANKLINE>
 
 We can evaluate this polynomial using :meth:`islpy.PwQPolynomial.eval_with_dict`:
@@ -1931,8 +1931,8 @@ count the barriers using :func:`loopy.get_synchronization_map`:
 
     >>> sync_map = lp.get_synchronization_map(knl)
     >>> print(sync_map)
-    Sync(barrier_local, loopy_kernel): { 1000 }
-    Sync(kernel_launch, loopy_kernel): { 1 }
+    Sync(barrier_local, loopy_kernel, None): { 1000 }
+    Sync(kernel_launch, loopy_kernel, None): { 1 }
     <BLANKLINE>
 
 Based on the kernel code printed above, we would expect each work-item to
