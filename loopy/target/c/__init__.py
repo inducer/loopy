@@ -692,7 +692,16 @@ class GNULibcCallable(ScalarCallable):
                 raise LoopyTypeError(f"'{name}' needs order to be an int-type.")
 
             if arg_id_to_dtype[1].numpy_dtype == np.float32:
-                name_in_target = name[-2:]+"f"
+                # See e.g.
+                # https://opensource.apple.com/source/Libm/Libm-2026/Source/Intel/math.h.auto.html
+                # and
+                # https://github.com/flang-compiler/flang/blob/81bebebb38177586f3c004f3c698a00a12bf094b/runtime/libpgmath/lib/common/mthdecls.h#L346-L402
+                # for Bessel function names.
+                import os
+                if os.uname().sysname == "Linux":
+                    name_in_target = name[-2:]+"f"
+                else:
+                    name_in_target = name[-2:]
             elif arg_id_to_dtype[1].numpy_dtype == np.float64:
                 name_in_target = name[-2:]
             else:
