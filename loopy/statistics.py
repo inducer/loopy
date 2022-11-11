@@ -1218,7 +1218,7 @@ class MemAccessCounterBase(CounterBase):
         if not isinstance(clbl, CallableKernel):
             return self.rec(expr.parameters, tags)
         else:
-            return super().map_call(expr)
+            return super().map_call(expr, tags)
 
 # }}}
 
