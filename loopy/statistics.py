@@ -915,7 +915,7 @@ class CounterBase(CombineMapper):
                 % (type(self).__name__, type(expr).__name__))
 
     def __call__(self, expr):
-        return self.rec(expr, tags={})
+        return self.rec(expr, tags=None)
 
 # }}}
 
@@ -991,7 +991,7 @@ class ExpressionOpCounter(CounterBase):
                                   count_granularity=(
                                       self.arithmetic_count_granularity),
                                   kernel_name=self.knl.name): self.one})
-                   + self.rec(child)
+                   + self.rec(child, tags)
                    for child in expr.children
                    if not is_zero(child + 1)) + \
                    self.new_poly_map({Op(dtype=self.type_inf(expr),
