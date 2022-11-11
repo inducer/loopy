@@ -843,10 +843,10 @@ class CounterBase(CombineMapper):
     def combine(self, values):
         return sum(values)
 
-    def map_constant(self, expr, *args):
+    def map_constant(self, expr, tags):
         return self.new_zero_poly_map()
 
-    def map_call(self, expr, *args):
+    def map_call(self, expr, tags):
         from loopy.symbolic import ResolvedFunction
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
@@ -867,16 +867,16 @@ class CounterBase(CombineMapper):
             return subst_into_to_count_map(
                     self.param_space,
                     sub_result, subst_dict) \
-                    + self.rec(expr.parameters, *args)
+                    + self.rec(expr.parameters, tags)
 
         else:
             raise NotImplementedError()
 
-    def map_call_with_kwargs(self, expr, *args):
+    def map_call_with_kwargs(self, expr, tags):
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
 
-    def map_sum(self, expr, tags=None):
+    def map_sum(self, expr, tags):
         if expr.children:
             return sum(self.rec(child, tags) for child in expr.children)
         else:
@@ -884,24 +884,24 @@ class CounterBase(CombineMapper):
 
     map_product = map_sum
 
-    def map_comparison(self, expr, *args):
-        return self.rec(expr.left, *args) + self.rec(expr.right, *args)
+    def map_comparison(self, expr, tags):
+        return self.rec(expr.left, tags) + self.rec(expr.right, tags)
 
-    def map_if(self, expr, *args):
+    def map_if(self, expr, tags):
         warn_with_kernel(self.knl, "summing_if_branches",
                          "%s counting sum of if-expression branches."
                          % type(self).__name__)
-        return self.rec(expr.condition, *args) + self.rec(expr.then, *args) \
-               + self.rec(expr.else_, *args)
+        return self.rec(expr.condition, tags) + self.rec(expr.then, tags) \
+               + self.rec(expr.else_, tags)
 
-    def map_if_positive(self, expr, *args):
+    def map_if_positive(self, expr, tags):
         warn_with_kernel(self.knl, "summing_if_branches",
                          "%s counting sum of if-expression branches."
                          % type(self).__name__)
-        return self.rec(expr.criterion, *args) + self.rec(expr.then, *args) \
-               + self.rec(expr.else_, *args)
+        return self.rec(expr.criterion, tags) + self.rec(expr.then, tags) \
+               + self.rec(expr.else_, tags)
 
-    def map_common_subexpression(self, expr, *args):
+    def map_common_subexpression(self, expr, tags):
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
 
@@ -909,10 +909,13 @@ class CounterBase(CombineMapper):
     map_derivative = map_common_subexpression
     map_slice = map_common_subexpression
 
-    def map_reduction(self, expr, *args):
+    def map_reduction(self, expr, tags):
         # preprocessing should have removed these
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
+
+    def __call__(self, expr):
+        return self.rec(expr, tags={})
 
 # }}}
 
@@ -931,17 +934,17 @@ class ExpressionOpCounter(CounterBase):
     def combine(self, values):
         return sum(values)
 
-    def map_constant(self, expr, tags=None):
+    def map_constant(self, expr, tags):
         return self.new_zero_poly_map()
 
     map_tagged_variable = map_constant
     map_variable = map_constant
     map_nan = map_constant
 
-    def map_tagged_expression(self, expr, tags=None):
+    def map_tagged_expression(self, expr, tags):
         return self.rec(expr.expr, expr.tags)
 
-    def map_call(self, expr, tags=None):
+    def map_call(self, expr, tags):
         from loopy.symbolic import ResolvedFunction
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
@@ -958,17 +961,17 @@ class ExpressionOpCounter(CounterBase):
         else:
             return super().map_call(expr, tags)
 
-    def map_subscript(self, expr, tags=None):
+    def map_subscript(self, expr, tags):
         if self.count_within_subscripts:
             return self.rec(expr.index, tags)
         else:
             return self.new_zero_poly_map()
 
-    def map_sub_array_ref(self, expr, tags=None):
+    def map_sub_array_ref(self, expr, tags):
         # generates an array view, considered free
         return self.new_zero_poly_map()
 
-    def map_sum(self, expr, tags=None):
+    def map_sum(self, expr, tags):
         assert expr.children
         return self.new_poly_map(
                     {Op(dtype=self.type_inf(expr),
@@ -979,7 +982,7 @@ class ExpressionOpCounter(CounterBase):
                      self.zero + (len(expr.children)-1)}
                     ) + sum(self.rec(child, tags) for child in expr.children)
 
-    def map_product(self, expr, tags=None):
+    def map_product(self, expr, tags):
         from pymbolic.primitives import is_zero
         assert expr.children
         return sum(self.new_poly_map({Op(dtype=self.type_inf(expr),
@@ -998,7 +1001,7 @@ class ExpressionOpCounter(CounterBase):
                                       self.arithmetic_count_granularity),
                                   kernel_name=self.knl.name): -self.one})
 
-    def map_quotient(self, expr, tags=None):
+    def map_quotient(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="div",
                               tags=tags,
@@ -1010,7 +1013,7 @@ class ExpressionOpCounter(CounterBase):
     map_floor_div = map_quotient
     map_remainder = map_quotient
 
-    def map_power(self, expr, tags=None):
+    def map_power(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="pow",
                               tags=tags,
@@ -1019,7 +1022,7 @@ class ExpressionOpCounter(CounterBase):
                                 + self.rec(expr.base, tags) \
                                 + self.rec(expr.exponent, tags)
 
-    def map_left_shift(self, expr, tags=None):
+    def map_left_shift(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="shift",
                               tags=tags,
@@ -1030,7 +1033,7 @@ class ExpressionOpCounter(CounterBase):
 
     map_right_shift = map_left_shift
 
-    def map_bitwise_not(self, expr, tags=None):
+    def map_bitwise_not(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="bw",
                               tags=tags,
@@ -1038,7 +1041,7 @@ class ExpressionOpCounter(CounterBase):
                               kernel_name=self.knl.name): self.one}) \
                                 + self.rec(expr.child, tags)
 
-    def map_bitwise_or(self, expr, tags=None):
+    def map_bitwise_or(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="bw",
                               tags=tags,
@@ -1050,21 +1053,21 @@ class ExpressionOpCounter(CounterBase):
     map_bitwise_xor = map_bitwise_or
     map_bitwise_and = map_bitwise_or
 
-    def map_if(self, expr, tags=None):
+    def map_if(self, expr, tags):
         warn_with_kernel(self.knl, "summing_if_branches_ops",
                          "ExpressionOpCounter counting ops as sum of "
                          "if-statement branches.")
         return self.rec(expr.condition, tags) + self.rec(expr.then, tags) \
                + self.rec(expr.else_, tags)
 
-    def map_if_positive(self, expr, tags=None):
+    def map_if_positive(self, expr, tags):
         warn_with_kernel(self.knl, "summing_ifpos_branches_ops",
                          "ExpressionOpCounter counting ops as sum of "
                          "if_pos-statement branches.")
         return self.rec(expr.criterion, tags) + self.rec(expr.then, tags) \
                + self.rec(expr.else_, tags)
 
-    def map_min(self, expr, tags=None):
+    def map_min(self, expr, tags):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="maxmin",
                               tags=tags,
@@ -1075,22 +1078,22 @@ class ExpressionOpCounter(CounterBase):
 
     map_max = map_min
 
-    def map_common_subexpression(self, expr, tags=None):
+    def map_common_subexpression(self, expr, tags):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
 
-    def map_substitution(self, expr, tags=None):
+    def map_substitution(self, expr, tags):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "substitution, "
                                   "map_substitution not implemented.")
 
-    def map_derivative(self, expr, tags=None):
+    def map_derivative(self, expr, tags):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "derivative, "
                                   "map_derivative not implemented.")
 
-    def map_slice(self, expr, tags=None):
+    def map_slice(self, expr, tags):
         raise NotImplementedError("ExpressionOpCounter encountered slice, "
                                   "map_slice not implemented.")
 
@@ -1202,18 +1205,18 @@ def _get_lid_and_gid_strides(knl, array, index):
 # {{{ MemAccessCounterBase
 
 class MemAccessCounterBase(CounterBase):
-    def map_sub_array_ref(self, expr, *args):
+    def map_sub_array_ref(self, expr, tags):
         # generates an array view, considered free
         return self.new_zero_poly_map()
 
-    def map_call(self, expr, *args):
+    def map_call(self, expr, tags):
         from loopy.symbolic import ResolvedFunction
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
 
         from loopy.kernel.function_interface import CallableKernel
         if not isinstance(clbl, CallableKernel):
-            return self.rec(expr.parameters, *args)
+            return self.rec(expr.parameters, tags)
         else:
             return super().map_call(expr)
 
@@ -1225,7 +1228,7 @@ class MemAccessCounterBase(CounterBase):
 class LocalMemAccessCounter(MemAccessCounterBase):
     local_mem_count_granularity = CountGranularity.SUBGROUP
 
-    def map_tagged_expression(self, expr, tags=None):
+    def map_tagged_expression(self, expr, tags):
         return self.rec(expr.expr, expr.tags)
 
     def count_var_access(self, dtype, name, index, tags):
@@ -1265,13 +1268,13 @@ class LocalMemAccessCounter(MemAccessCounterBase):
 
         return self.new_poly_map(count_map)
 
-    def map_variable(self, expr, tags=None):
+    def map_variable(self, expr, tags):
         return self.count_var_access(
                     self.type_inf(expr), expr.name, None, tags)
 
     map_tagged_variable = map_variable
 
-    def map_subscript(self, expr, tags=None):
+    def map_subscript(self, expr, tags):
         return (self.count_var_access(self.type_inf(expr),
                                       expr.aggregate.name,
                                       expr.index, tags)
@@ -1283,10 +1286,10 @@ class LocalMemAccessCounter(MemAccessCounterBase):
 # {{{ GlobalMemAccessCounter
 
 class GlobalMemAccessCounter(MemAccessCounterBase):
-    def map_tagged_expression(self, expr, tags=None):
+    def map_tagged_expression(self, expr, tags):
         return self.rec(expr.expr, expr.tags)
 
-    def map_variable(self, expr, tags=None):
+    def map_variable(self, expr, tags):
         name = expr.name
 
         if name in self.knl.arg_dict:
@@ -1307,7 +1310,7 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
                     kernel_name=self.knl.name): self.one}
                     ) + self.rec(expr.index, tags)
 
-    def map_subscript(self, expr, tags=None):
+    def map_subscript(self, expr, tags):
         name = expr.aggregate.name
         try:
             var_tags = expr.aggregate.tags
