@@ -2144,7 +2144,7 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
 # }}}
 
 
-# {{{ kernel creation top-level
+# {{{ make_function
 
 def make_function(domains, instructions, kernel_data=None, **kwargs):
     """User-facing kernel creation entrypoint.
@@ -2446,6 +2446,13 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     kernel_args = arg_guesser.convert_names_to_full_args(kernel_args)
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)
 
+    for name, rule in kwargs.pop("substitutions", {}).items():
+        if name in substitutions:
+            raise LoopyError(f"substitution rule '{name}' declared both in-line "
+                             "and via substitutions argument")
+
+        substitutions[name] = rule
+
     kwargs["substitutions"] = substitutions
 
     from pytools.tag import normalize_tags, check_tag_uniqueness
@@ -2553,6 +2560,10 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     from loopy.translation_unit import make_program
     return make_program(knl)
 
+# }}}
+
+
+# {{{ make_kernel
 
 def make_kernel(*args, **kwargs):
     tunit = make_function(*args, **kwargs)
