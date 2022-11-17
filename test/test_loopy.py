@@ -3363,6 +3363,35 @@ def test_translation_unit_pickle():
     assert isinstance(hash(tunit), int)
 
 
+def test_creation_kwargs():
+    # https://github.com/inducer/loopy/issues/705
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        "a[i] = foo() * i",
+        substitutions={"foo": lp.SubstitutionRule("foo", (), 3.14)},
+    )
+
+    assert len(knl.default_entrypoint.substitutions) != 0
+
+    # https://github.com/inducer/loopy/issues/705
+    with pytest.raises(lp.LoopyError):
+        lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            foo := 5
+            a[i] = foo() * i
+            """,
+            substitutions={"foo": lp.SubstitutionRule("foo", (), 3.14)},
+        )
+
+    with pytest.raises(TypeError):
+        knl = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            "a[i] = foo() * i",
+            # not a known kwarg
+            ksdfjlasdf=None)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
