@@ -229,6 +229,32 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if not is_complex:
             return super().map_sum(expr, type_context)
+        elif not self.allow_fp_reordering:
+            if len(expr.children) == 0:
+                return tgt_dtype(0)
+
+            tgt_name = self.complex_type_name(tgt_dtype)
+            result = None
+            lhs_is_complex = False
+
+            for child in expr.children:
+                rhs_is_complex = self.infer_type(child).is_complex()
+                if rhs_is_complex:
+                    child_val = self.rec(child, type_context, tgt_dtype)
+                else:
+                    child_val = self.rec(child, type_context)
+
+                if result is None:
+                    result = child_val
+                elif lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_add")(result, child_val)
+                elif lhs_is_complex and not rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_addr")(result, child_val)
+                elif not lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_radd")(result, child_val)
+                else:
+                    result = p.Sum((result, child_val))
+            return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
@@ -286,6 +312,29 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if not is_complex:
             return super().map_product(expr, type_context)
+        elif not self.allow_fp_reordering:
+            tgt_name = self.complex_type_name(tgt_dtype)
+
+            result = None
+            lhs_is_complex = False
+            for child in expr.children:
+                rhs_is_complex = self.infer_type(child).is_complex()
+                if rhs_is_complex:
+                    child_val = self.rec(child, type_context, tgt_dtype)
+                else:
+                    child_val = self.rec(child, type_context)
+
+                if result is None:
+                    result = child_val
+                elif lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_mul")(result, child_val)
+                elif lhs_is_complex and not rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_mulr")(result, child_val)
+                elif not lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_rmul")(result, child_val)
+                else:
+                    result = p.Product((result, child_val))
+            return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
