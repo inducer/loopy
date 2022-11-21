@@ -720,6 +720,11 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
             raise ValueError("unexpected temporary variable address space: %s"
                     % address_space)
 
+    def wrap_array_arg_decl_for_alignment(self, array_arg_decl: Declarator,
+                                align_bytes: int) -> Declarator:
+        from cgen import AlignedAttribute
+        return AlignedAttribute(align_bytes, array_arg_decl)
+
     def wrap_global_constant(self, decl: Declarator) -> Declarator:
         from cgen.opencl import CLGlobal, CLConstant
         assert isinstance(decl, CLGlobal)

@@ -1023,6 +1023,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         return arg_decl
 
+    def wrap_array_arg_decl_for_alignment(self, array_arg_decl: Declarator,
+                                align_bytes: int) -> Declarator:
+        return array_arg_decl
+
     def get_array_arg_declarator(
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         from cgen import RestrictPointer
@@ -1034,8 +1038,8 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             arg_decl = Const(arg_decl)
 
         if arg.alignment:
-            from cgen import AlignedAttribute
-            arg_decl = AlignedAttribute(arg.alignment, arg_decl)
+            arg_decl = self.wrap_array_arg_decl_for_alignment(arg_decl,
+                                                              arg.alignment)
 
         return arg_decl
 
