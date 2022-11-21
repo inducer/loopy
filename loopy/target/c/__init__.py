@@ -1033,6 +1033,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         if not is_written:
             arg_decl = Const(arg_decl)
 
+        if arg.alignment:
+            from cgen import AlignedAttribute
+            arg_decl = AlignedAttribute(arg.alignment, arg_decl)
+
         return arg_decl
 
     def get_constant_arg_declarator(

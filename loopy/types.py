@@ -67,6 +67,10 @@ class LoopyType:
         raise ValueError("'%s' is not a numpy type"
                 % str(self))
 
+    @property
+    def alignment(self):
+        return None
+
 
 class AtomicType(LoopyType):
     """
@@ -140,6 +144,11 @@ class NumpyType(LoopyType):
 
     def __repr__(self):
         return "np:" + repr(self.dtype)
+
+    @property
+    def alignment(self):
+        return self.dtype.itemsize
+
 
 # }}}
 

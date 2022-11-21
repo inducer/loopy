@@ -675,7 +675,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         this entails a promise that the incoming array obeys this alignment
         restriction.
 
-        Defaults to *None*.
+        Defaults to the alignment of the :class:`loopy.types.LoopyType`.
 
         If an integer N is given, the array would be declared
         with ``__attribute__((aligned(N)))`` in code generation for
@@ -897,6 +897,9 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         if tags is None:
             tags = frozenset()
+
+        if alignment is None and dtype is not None:
+            alignment = dtype.alignment
 
         ImmutableRecord.__init__(self,
                 name=name,
