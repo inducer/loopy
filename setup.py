@@ -102,7 +102,7 @@ setup(name="loopy",
 
       extras_require={
           "pyopencl":  [
-              "pyopencl>=2020.2",
+              "pyopencl>=2022.3",
               ],
           "fortran":  [
               # Note that this is *not* regular 'f2py2e', this is
