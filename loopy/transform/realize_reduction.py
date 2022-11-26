@@ -1811,7 +1811,7 @@ def map_reduction(expr, *, red_realize_ctx, nresults):
                 % ", ".join(expr.inames))
 
     if n_local_par > 1:
-        raise LoopyError("Reduction over '%s' contains more than"
+        raise LoopyError("Reduction over '%s' contains more than "
                 "one parallel iname. It must be split "
                 "(using split_reduction_{in,out}ward) "
                 "before code generation."
