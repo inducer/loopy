@@ -893,6 +893,13 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     from loopy.kernel import LoopKernel
     import pymbolic.primitives as prim
 
+    transform_cache = WriteOncePersistentDict(
+        ("loopy-memoize-cache-"
+            f"{func.__name__}-"
+            f"{key_builder_t.__qualname__}.{key_builder_t.__name__}"
+            f"-v0-{DATA_MODEL_VERSION}"),
+        key_builder=key_builder_t())
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         from loopy import CACHING_ENABLED
@@ -900,12 +907,6 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
         if (not CACHING_ENABLED
                 or kwargs.pop("_no_memoize_on_disk", False)):
             return func(*args, **kwargs)
-
-        transform_cache = WriteOncePersistentDict(
-            ("loopy-memoize-cache-"
-             f"{key_builder_t.__qualname__}-{key_builder_t.__name__}"
-             f"-v0-{DATA_MODEL_VERSION}"),
-            key_builder=key_builder_t())
 
         def _get_persistent_hashable_arg(arg):
             if isinstance(arg, prim.Expression):
