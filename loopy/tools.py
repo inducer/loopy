@@ -914,7 +914,8 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
             else:
                 return arg
 
-        cache_key = (tuple(_get_persistent_hashable_arg(arg)
+        cache_key = (func.__qualname__, func.__name__,
+                     tuple(_get_persistent_hashable_arg(arg)
                            for arg in args),
                      {kw: _get_persistent_hashable_arg(arg)
                       for kw, arg in kwargs.items()})
