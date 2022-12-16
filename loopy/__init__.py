@@ -120,6 +120,9 @@ from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
+from loopy.transform.reduction import (
+    hoist_invariant_multiplicative_terms_in_sum_reduction,
+    extract_multiplicative_terms_in_sum_reduction_as_subst)
 from loopy.transform.callable import (register_callable,
         merge, inline_callable_kernel, rename_callable)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
@@ -246,6 +249,9 @@ __all__ = [
         "save_and_reload_temporaries",
 
         "add_barrier",
+
+        "hoist_invariant_multiplicative_terms_in_sum_reduction",
+        "extract_multiplicative_terms_in_sum_reduction_as_subst",
 
         "register_callable",
         "merge",
