@@ -82,6 +82,13 @@ Manipulating Instructions
 
 .. autofunction:: add_barrier
 
+Manipulating Reductions
+-----------------------
+
+.. autofunction:: hoist_invariant_multiplicative_terms_in_sum_reduction
+
+.. autofunction:: extract_multiplicative_terms_in_sum_reduction_as_subst
+
 Registering Library Routines
 ----------------------------
 

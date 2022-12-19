@@ -1716,6 +1716,48 @@ def test_reindexing_figurate_parametric_shape(ctx_factory):
     lp.auto_test_vs_ref(ref_tunit, ctx, tunit, parameters={"n": 20})
 
 
+def test_sum_redn_algebraic_transforms(ctx_factory):
+    from pymbolic import variables
+    from loopy.symbolic import Reduction
+
+    t_unit = lp.make_kernel(
+        "{[e,i,j,x,r]: 0<=e<N_e and 0<=i,j<35 and 0<=x,r<3}",
+        """
+        y[i] = sum([r,j], J[x, r, e]*D[r,i,j]*u[e,j])
+        """,
+        [lp.GlobalArg("J,D,u", dtype=np.float64, shape=lp.auto),
+         ...],
+    )
+    knl = t_unit.default_entrypoint
+
+    knl = lp.split_reduction_inward(knl, "j")
+    knl = lp.hoist_invariant_multiplicative_terms_in_sum_reduction(
+        knl,
+        reduction_inames="j"
+    )
+    knl = lp.extract_multiplicative_terms_in_sum_reduction_as_subst(
+        knl,
+        within=None,
+        subst_name="grad_without_jacobi_subst",
+        arguments=variables("r i e"),
+        terms_filter=lambda x: isinstance(x, Reduction)
+    )
+
+    transformed_t_unit = t_unit.with_kernel(knl)
+    transformed_t_unit = lp.precompute(
+        transformed_t_unit,
+        "grad_without_jacobi_subst",
+        sweep_inames=["r", "i"],
+        precompute_outer_inames=frozenset({"e"}),
+        temporary_address_space=lp.AddressSpace.PRIVATE)
+
+    x1 = lp.get_op_map(t_unit, subgroup_size=1).eval_and_sum({"N_e": 1})
+    x2 = lp.get_op_map(transformed_t_unit, subgroup_size=1).eval_and_sum({"N_e": 1})
+
+    assert x1 == 33075
+    assert x2 == 7980  # i.e. this demonstrates a 4.14x reduction in flops
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
