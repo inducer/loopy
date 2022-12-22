@@ -254,6 +254,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                     result = p.Variable(f"{tgt_name}_radd")(result, child_val)
                 else:
                     result = p.Sum((result, child_val))
+                lhs_is_complex = lhs_is_complex or rhs_is_complex
             return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
@@ -334,6 +335,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                     result = p.Variable(f"{tgt_name}_rmul")(result, child_val)
                 else:
                     result = p.Product((result, child_val))
+                lhs_is_complex = lhs_is_complex or rhs_is_complex
             return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
