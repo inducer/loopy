@@ -78,8 +78,6 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         self.fortran_abi = fortran_abi
 
-        self.allow_fp_reordering = self.kernel.options.allow_fp_reordering
-
     # {{{ helpers
 
     def with_assignments(self, names_to_vars):
