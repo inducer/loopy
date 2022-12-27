@@ -229,7 +229,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if not is_complex:
             return super().map_sum(expr, type_context)
-        elif not self.allow_fp_reordering:
+        elif not self.kernel.options.allow_fp_reordering:
             if len(expr.children) == 0:
                 return tgt_dtype(0)
 
@@ -280,6 +280,30 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 lsum = binary_tree_add(start, mid)
                 rsum = binary_tree_add(mid, end)
 
+                # FMAs should ideally be recognized by the compiler, but some
+                # compilers fail to do so. For eg:
+                #
+                #    res = complex_add(c, complex_mul(a, b))
+                #
+                # leads to code that looks like below because of the temporary
+                # given by ``complex_mul(a, b)``.
+                #
+                #    tmp.real = a.real * b.real - a.imag * b.imag
+                #    tmp.imag = a.real * b.imag + a.imag * b.real
+                #    res.real = c.real + tmp.real
+                #    res.imag = c.imag + tmp.imag
+                #
+                # clang can fuse across multiple statements like this with
+                # -ffp-contract=fast which is the default for PTX codegen, but
+                # for some unknown reason, clang fails to see the FMAs.
+                #
+                # We need to do this only for complex as we haev temporaries
+                # only in complex. For reals, the code generated looks like
+                #
+                #    res = c + a * b
+                #
+                # and clang is able to generate an FMA for this code.
+
                 if isinstance(lsum, p.Call) and isinstance(lsum.function,
                         p.Variable) and lsum.function.name == mul_name:
                     return p.Variable(f"{tgt_name}_fma")(*lsum.parameters, rsum)
@@ -313,7 +337,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if not is_complex:
             return super().map_product(expr, type_context)
-        elif not self.allow_fp_reordering:
+        elif not self.kernel.options.allow_fp_reordering:
             tgt_name = self.complex_type_name(tgt_dtype)
 
             result = None
