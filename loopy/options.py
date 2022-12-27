@@ -156,8 +156,7 @@ class Options(ImmutableRecord):
         Allow re-ordering of floating point arithmetic. Re-ordering may
         give different results as floating point arithmetic is not
         associative in addition and mulitplication. Default is *True*.
-        Disallowing re-ordering may still allow some re-ordering in the
-        loopy codebase.
+        Note that the implementation of this option is currently incomplete.
 
     .. attribute:: build_options
 
