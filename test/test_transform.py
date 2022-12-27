@@ -1608,6 +1608,25 @@ def test_prefetch_to_same_temp_var(ctx_factory):
     lp.auto_test_vs_ref(ref_tunit, ctx, t_unit)
 
 
+def test_merge_temporary_arrays(ctx_factory):
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        <> a[i] = x[i]    {id=init_a}
+        <> b[i] = y[i]    {id=init_b}
+        out[i] = a[i] + b[i] {id=insn,dep=init_a:init_b}
+        """)
+
+    t_unit = lp.add_dtypes(t_unit, {"x": "float64", "y": "float64"})
+    ref_t_unit = t_unit
+
+    t_unit = lp.merge_temporary_arrays(t_unit, "a, b", "c")
+    assert t_unit.default_entrypoint.temporary_variables["c"].shape == (20,)
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
