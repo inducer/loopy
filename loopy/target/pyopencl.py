@@ -170,11 +170,18 @@ def pyopencl_preamble_generator(preamble_info):
         if has_double:
             yield ("10_include_complex_header", """
                 #define PYOPENCL_DEFINE_CDOUBLE
+                #ifndef PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT
+                #define PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT 1
+                #endif
 
                 #include <pyopencl-complex.h>
                 """)
         else:
             yield ("10_include_complex_header", """
+                #ifndef PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT
+                #define PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT 1
+                #endif
+
                 #include <pyopencl-complex.h>
                 """)
 
