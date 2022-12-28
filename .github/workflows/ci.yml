@@ -71,8 +71,10 @@ jobs:
                 CONDA_ENVIRONMENT=.test-conda-env-py3.yml
                 sed -i "s/- pocl/- intel-opencl-rt/g" "$CONDA_ENVIRONMENT"
                 export PYOPENCL_TEST=intel
-                curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
-                . ./build-and-test-py-project-within-miniconda.sh
+                curl -L -O https://tiker.net/ci-support-v0
+                . ./ci-support-v0
+                build_py_project_in_conda_env
+                test_py_project
 
     pytest_no_arg_check:
         name: Conda Pytest without arg check
