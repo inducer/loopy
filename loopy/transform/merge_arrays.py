@@ -33,9 +33,15 @@ from loopy.translation_unit import for_each_kernel
 import pymbolic.primitives as prim
 from pytools import all_equal
 
+from typing import Text, Sequence, Optional, Union
+
 
 @for_each_kernel
-def merge_temporary_arrays(kernel, array_names, new_name=None, axis_nr=0):
+def merge_temporary_arrays(
+        kernel: LoopKernel,
+        array_names: Union[Text, Sequence[Text]],
+        new_name: Optional[Text] = None,
+        axis_nr: int = 0) -> LoopKernel:
     """Merges temporary arrays into one array along the axis given by *axis_nr*.
 
     :arg array_names: a list of names of temporary variables or arguments. May
