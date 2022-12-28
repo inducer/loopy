@@ -43,6 +43,21 @@ class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
         else:
             return super().map_subscript(expr, expn_state)
 
+    def map_kernel(self, kernel, within=lambda *args: True):
+        new_insns = [
+            # While subst rules are not allowed in assignees, the mapper
+            # may perform tasks entirely unrelated to subst rules, so
+            # we must map assignees, too.
+            insn if not kernel.substitutions and not within(kernel, insn, ()) \
+            and not any(name in self.arg_names for name in \
+                insn.dependency_names()) else
+            self.map_instruction(kernel,
+                insn.with_transformed_expressions(
+                    lambda expr: self(expr, kernel, insn)))  # noqa: B023
+            for insn in kernel.instructions]
+
+        return kernel.copy(instructions=new_insns)
+
 
 # {{{ split_array_dim (deprecated since June 2016)
 
