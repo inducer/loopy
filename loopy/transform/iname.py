@@ -1141,7 +1141,7 @@ def remove_unused_inames(kernel, inames=None):
     # {{{ remove them
 
     domains = kernel.domains
-    for iname in unused_inames:
+    for iname in sorted(unused_inames):
         new_domains = []
 
         for dom in domains:
