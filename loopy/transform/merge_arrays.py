@@ -61,23 +61,27 @@ def merge_temporary_arrays(
     new_aggregate = prim.Variable(new_name)
 
     tvs = []
-    offsets = {}
-    count = 0
     for array_name in array_names:
         tv = kernel.temporary_variables[array_name]
         if tv.shape in [None, auto]:
             raise ValueError(f"Shape of temporary variable '{array_name}' is "
                     "unknown. Cannot merge with unknown shapes")
-        offsets[array_name] = count
-        count += tv.shape[axis_nr]
-
         shape = list(tv.shape)
+        # make the shape value at axis_nr a constant so that we can
+        # check that the rest of the attributes (except name) are equal.
         shape[axis_nr] = 1
         tvs.append(tv.copy(shape=tuple(shape), name=new_name))
 
     if not all_equal(tvs) == 1:
         raise ValueError("Temporary variables need to have the same attribute "
                 "(except shape) in order to merge.")
+
+    offsets = {}
+    count = 0
+    for array_name in array_names:
+        offsets[array_name] = count
+        tv = kernel.temporary_variables[array_name]
+        count += tv.shape[axis_nr]
 
     new_tv = tvs[0]
     new_shape = list(new_tv.shape)
@@ -87,8 +91,6 @@ def merge_temporary_arrays(
     # {{{ adjust arrays
 
     from loopy.transform.padding import ArrayAxisSplitHelper
-
-    count = 0
 
     def modify_array_access(expr):
         idx = expr.index
