@@ -115,7 +115,8 @@ from loopy.transform.padding import (
         find_padding_multiple,
         add_padding)
 
-from loopy.transform.privatize import privatize_temporaries_with_inames
+from loopy.transform.privatize import (privatize_temporaries_with_inames,
+        unprivatize_temporaries_with_inames)
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
@@ -238,6 +239,7 @@ __all__ = [
         "find_padding_multiple", "add_padding",
 
         "privatize_temporaries_with_inames",
+        "unprivatize_temporaries_with_inames",
 
         "to_batched",
 
