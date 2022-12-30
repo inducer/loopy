@@ -74,7 +74,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         if issubclass(dtype.type, (np.bool_, np.number)):
             name = dtype.name
             if dtype.type == np.bool_:
-                name = "bool8"
+                name = "bool_"
             return f"_lpy_np.dtype(_lpy_np.{name})"
         else:
             return ('_lpy_cl_tools.get_or_register_dtype("%s")'

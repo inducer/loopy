@@ -376,13 +376,13 @@ def test_opencl_support_for_bool(ctx_factory):
         """
         y[i] = i%2
         """,
-        [lp.GlobalArg("y", dtype=np.bool8, shape=lp.auto)])
+        [lp.GlobalArg("y", dtype=np.bool_, shape=lp.auto)])
 
     cl_ctx = ctx_factory()
     evt, (out, ) = knl(cl.CommandQueue(cl_ctx))
     out = out.get()
 
-    np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
+    np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool_), 5))
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])

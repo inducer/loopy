@@ -394,7 +394,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         result_type = self.infer_type(expr)
         return type(expr)(
                 self.rec(expr.condition, type_context,
-                         to_loopy_type(np.bool8)),
+                         to_loopy_type(np.bool_)),
                 self.rec(expr.then, type_context, result_type),
                 self.rec(expr.else_, type_context, result_type),
                 )

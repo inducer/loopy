@@ -601,7 +601,7 @@ def test_bool_type_context(ctx_factory):
         k = 8.0 and 7.0
         """,
         [
-            lp.GlobalArg("k", dtype=np.bool8, shape=lp.auto),
+            lp.GlobalArg("k", dtype=np.bool_, shape=lp.auto),
         ])
 
     evt, (out,) = knl(queue)

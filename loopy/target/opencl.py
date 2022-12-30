@@ -47,7 +47,7 @@ from loopy.codegen.result import CodeGenerationResult
 
 class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     """
-    A DType registry that uses int8 for bool8 types.
+    A DType registry that uses int8 for bool_ types.
 
     .. note::
 
@@ -56,7 +56,7 @@ class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     """
     def dtype_to_ctype(self, dtype):
         from loopy.types import NumpyType
-        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool8:
+        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool_:
             return self.wrapped_registry.dtype_to_ctype(
                     NumpyType(np.int8))
         return self.wrapped_registry.dtype_to_ctype(dtype)
@@ -549,7 +549,7 @@ class OpenCLTarget(CFamilyTarget):
             for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
             double-exchange for floating point--not yet supported).
         :arg use_int8_for_bool: Size of *bool* is undefined as per
-            OpenCL spec, if *True* all bool8 variables would be treated
+            OpenCL spec, if *True* all bool_ variables would be treated
             as int8's.
         """
         super().__init__()
