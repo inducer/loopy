@@ -44,7 +44,7 @@ def dtype_to_type_context(target, dtype):
         return "d"
     if isinstance(dtype, NumpyType) and dtype.dtype in [np.float32, np.complex64]:
         return "f"
-    if isinstance(dtype, NumpyType) and dtype.dtype in [np.bool8, np.bool_]:
+    if isinstance(dtype, NumpyType) and dtype.dtype == np.bool_:
         return "b"
     if target.is_vector_dtype(dtype):
         return dtype_to_type_context(

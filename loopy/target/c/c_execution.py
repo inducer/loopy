@@ -75,7 +75,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         if np.dtype(str(dtype)).isbuiltin:
             name = dtype.name
             if dtype.name == "bool":
-                name = "bool8"
+                name = "bool_"
             return f"_lpy_np.dtype(_lpy_np.{name})"
         raise Exception(f"dtype: {dtype} not recognized")
 
