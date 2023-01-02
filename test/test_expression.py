@@ -491,6 +491,18 @@ def test_integer_associativity():
             in lp.generate_code_v2(knl).device_code())
 
 
+def test_floor_div():
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<10 }",
+        "out[i] = (i-1)*(i-2)//2")
+    assert "loopy_floor_div" in lp.generate_code_v2(knl).device_code()
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<10 }",
+        "out[i] = (i*(i+1))//2")
+    assert "loopy_floor_div" not in lp.generate_code_v2(knl).device_code()
+
+
 def test_divide_precedence(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

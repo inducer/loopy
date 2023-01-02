@@ -346,8 +346,14 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
 
 
 def is_nonnegative(expr, over_set):
-    space = over_set.get_space()
     from loopy.symbolic import aff_from_expr
+    from pymbolic.primitives import Product
+
+    if isinstance(expr, Product) and all(
+            is_nonnegative(child, over_set) for child in expr.children):
+        return True
+
+    space = over_set.get_space()
     try:
         aff = aff_from_expr(space, -expr-1)
     except Exception:
