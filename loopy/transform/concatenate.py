@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 __doc__ = """
 .. currentmodule:: loopy
-.. autofunction:: merge_temporary_arrays
+.. autofunction:: concatenate_memory_layout_of_temporaries
 """
 
 from loopy.kernel.data import auto
@@ -37,7 +37,7 @@ from typing import Text, Sequence, Optional, Union
 
 
 @for_each_kernel
-def merge_temporary_arrays(
+def concatenate_memory_layout_of_temporaries(
         kernel: LoopKernel,
         array_names: Union[Text, Sequence[Text]],
         new_name: Optional[Text] = None,
