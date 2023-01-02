@@ -486,7 +486,7 @@ def test_integer_associativity():
     print(lp.generate_code_v2(knl).device_code())
     assert (
             "u[ncomp * indices[i % elemsize + elemsize "
-            "* loopy_floor_div_int32(i, ncomp * elemsize)] "
+            "* (i / (ncomp * elemsize))] "
             "+ loopy_mod_pos_b_int32(i / elemsize, ncomp)]"
             in lp.generate_code_v2(knl).device_code())
 
