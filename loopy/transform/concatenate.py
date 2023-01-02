@@ -39,13 +39,12 @@ from typing import Text, Sequence, Optional, Union
 @for_each_kernel
 def concatenate_memory_layout_of_temporaries(
         kernel: LoopKernel,
-        array_names: Union[Text, Sequence[Text]],
+        array_names: Sequence[Text],
         new_name: Optional[Text] = None,
         axis_nr: int = 0) -> LoopKernel:
     """Merges temporary arrays into one array along the axis given by *axis_nr*.
 
-    :arg array_names: a list of names of temporary variables or arguments. May
-        also be a comma-separated string of these.
+    :arg array_names: a list of names of temporary variables.
 
     :arg axis_nr: the (zero-based) index of the axis of the arrays to be merged.
 
@@ -53,9 +52,6 @@ def concatenate_memory_layout_of_temporaries(
         is generated.
     """
     assert isinstance(kernel, LoopKernel)
-
-    if isinstance(array_names, str):
-        array_names = [i.strip() for i in array_names.split(",") if i.strip()]
 
     var_name_gen = kernel.get_var_name_generator()
     new_name = new_name or var_name_gen('concatenated_array')
