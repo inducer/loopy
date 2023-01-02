@@ -60,9 +60,11 @@ def concatenate_memory_layout_of_temporaries(
     tvs = []
     for array_name in array_names:
         tv = kernel.temporary_variables[array_name]
-        if tv.shape in [None, auto]:
+        if tv.shape is None or tv.shape is auto:
             raise ValueError(f"Shape of temporary variable '{array_name}' is "
                     "unknown. Cannot merge with unknown shapes")
+
+        assert isinstance(tv.shape, tuple)
         shape = list(tv.shape)
         # make the shape value at axis_nr a constant so that we can
         # check that the rest of the attributes (except name) are equal.
@@ -78,6 +80,7 @@ def concatenate_memory_layout_of_temporaries(
     for array_name in array_names:
         offsets[array_name] = count
         tv = kernel.temporary_variables[array_name]
+        assert isinstance(tv.shape, tuple)
         count += tv.shape[axis_nr]
 
     new_tv = tvs[0]
