@@ -49,15 +49,16 @@ def concatenate_memory_layout_of_temporaries(
 
     :arg axis_nr: the (zero-based) index of the axis of the arrays to be merged.
 
-    :arg new_name: new name for the merged temporary. If not given, the name
-        of the first array given by *array_names* is used.
+    :arg new_name: new name for the merged temporary. If not given, a new name
+        is generated.
     """
     assert isinstance(kernel, LoopKernel)
 
     if isinstance(array_names, str):
         array_names = [i.strip() for i in array_names.split(",") if i.strip()]
 
-    new_name = new_name or array_names[0]
+    var_name_gen = kernel.get_var_name_generator()
+    new_name = new_name or var_name_gen('concatenated_array')
     new_aggregate = prim.Variable(new_name)
 
     tvs = []
@@ -101,7 +102,6 @@ def concatenate_memory_layout_of_temporaries(
 
         return new_aggregate.index(tuple(idx))
 
-    var_name_gen = kernel.get_var_name_generator()
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
     aash = ArrayAxisSplitHelper(rule_mapping_context,
