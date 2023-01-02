@@ -33,7 +33,7 @@ from loopy.translation_unit import for_each_kernel
 import pymbolic.primitives as prim
 from pytools import all_equal
 
-from typing import Text, Sequence, Optional, Union
+from typing import Text, Sequence, Optional
 
 
 @for_each_kernel
@@ -54,7 +54,7 @@ def concatenate_memory_layout_of_temporaries(
     assert isinstance(kernel, LoopKernel)
 
     var_name_gen = kernel.get_var_name_generator()
-    new_name = new_name or var_name_gen('concatenated_array')
+    new_name = new_name or var_name_gen("concatenated_array")
     new_aggregate = prim.Variable(new_name)
 
     tvs = []
