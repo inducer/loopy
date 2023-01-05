@@ -22,10 +22,12 @@ THE SOFTWARE.
 
 __doc__ = """
 .. currentmodule:: loopy
-.. autofunction:: concatenate_memory_layout_of_temporaries
+.. autofunction:: concatenate_arrays
 """
 
-from loopy.kernel.data import auto
+from typing import Sequence, Optional, List
+
+from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, auto
 from loopy.symbolic import SubstitutionRuleMappingContext
 from loopy.kernel import LoopKernel
 from loopy.translation_unit import for_each_kernel
@@ -33,16 +35,15 @@ from loopy.translation_unit import for_each_kernel
 import pymbolic.primitives as prim
 from pytools import all_equal
 
-from typing import Text, Sequence, Optional
-
 
 @for_each_kernel
-def concatenate_memory_layout_of_temporaries(
+def concatenate_arrays(
         kernel: LoopKernel,
-        array_names: Sequence[Text],
-        new_name: Optional[Text] = None,
+        array_names: Sequence[str],
+        new_name: Optional[str] = None,
         axis_nr: int = 0) -> LoopKernel:
-    """Merges temporary arrays into one array along the axis given by *axis_nr*.
+    """Merges arrays (temporaries or arguments) into one array along the axis
+    given by *axis_nr*.
 
     :arg array_names: a list of names of temporary variables.
 
@@ -57,40 +58,40 @@ def concatenate_memory_layout_of_temporaries(
     new_name = new_name or var_name_gen("concatenated_array")
     new_aggregate = prim.Variable(new_name)
 
-    tvs = []
+    arrays = []
     for array_name in array_names:
-        tv = kernel.temporary_variables[array_name]
-        if tv.shape is None or tv.shape is auto:
+        ary = kernel.get_var_descriptor(array_name)
+        if ary.shape is None or ary.shape is auto:
             raise ValueError(f"Shape of temporary variable '{array_name}' is "
                     "unknown. Cannot merge with unknown shapes")
 
-        assert isinstance(tv.shape, tuple)
-        shape = list(tv.shape)
+        assert isinstance(ary.shape, tuple)
+        shape = list(ary.shape)
         # make the shape value at axis_nr a constant so that we can
         # check that the rest of the attributes (except name) are equal.
         shape[axis_nr] = 1
-        tvs.append(tv.copy(shape=tuple(shape), name=new_name))
+        arrays.append(ary.copy(shape=tuple(shape), name=new_name))
 
-    if not all_equal(tvs) == 1:
-        raise ValueError("Temporary variables need to have the same attribute "
-                "(except shape) in order to merge.")
+    if not all_equal(arrays):
+        raise ValueError("Arrays must be identical except for shape "
+                "(except for shape) in order to concatenate.")
 
     offsets = {}
-    count = 0
+    axis_length = 0
     for array_name in array_names:
-        offsets[array_name] = count
-        tv = kernel.temporary_variables[array_name]
-        assert isinstance(tv.shape, tuple)
-        count += tv.shape[axis_nr]
+        offsets[array_name] = axis_length
+        ary = kernel.temporary_variables[array_name]
+        assert isinstance(ary.shape, tuple)
+        axis_length += ary.shape[axis_nr]
 
-    new_tv = tvs[0]
-    new_shape = list(new_tv.shape)
-    new_shape[axis_nr] = count
-    new_tv = new_tv.copy(shape=tuple(new_shape))
+    new_ary = arrays[0]
+    new_shape = list(new_ary.shape)
+    new_shape[axis_nr] = axis_length
+    new_ary = new_ary.copy(shape=tuple(new_shape))
 
-    # {{{ adjust arrays
+    # {{{ rewrite subscripts
 
-    from loopy.transform.padding import ArrayAxisSplitHelper
+    from loopy.transform.padding import SubscriptRewriter
 
     def modify_array_access(expr):
         idx = expr.index
@@ -103,12 +104,27 @@ def concatenate_memory_layout_of_temporaries(
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
-    aash = ArrayAxisSplitHelper(rule_mapping_context,
+    aash = SubscriptRewriter(rule_mapping_context,
             array_names, modify_array_access)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
-    new_tvs = {name: tv for name, tv in kernel.temporary_variables.items()
-            if name not in array_names}
-    new_tvs[new_name] = new_tv
+    # }}}
 
-    return kernel.copy(temporary_variables=new_tvs)
+    if isinstance(new_ary, TemporaryVariable):
+        new_tvs = {name: tv for name, tv in kernel.temporary_variables.items()
+                if name not in array_names}
+        new_tvs[new_name] = new_ary
+        return kernel.copy(temporary_variables=new_tvs)
+    elif isinstance(new_ary, ArrayArg):
+        new_args: List[KernelArgument] = []
+        inserted = False
+        for arg in kernel.args:
+            if arg.name in array_names:
+                if not inserted:
+                    new_args.append(new_ary)
+                    inserted = True
+            else:
+                new_args.append(arg)
+        return kernel.copy(args=new_args)
+    else:
+        raise AssertionError()

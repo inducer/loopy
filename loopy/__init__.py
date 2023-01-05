@@ -105,7 +105,7 @@ from loopy.transform.subst import (extract_subst,
 from loopy.transform.precompute import precompute
 from loopy.transform.buffer import buffer_array
 from loopy.transform.fusion import fuse_kernels
-from loopy.transform.concatenate import concatenate_memory_layout_of_temporaries
+from loopy.transform.concatenate import concatenate_arrays
 
 from loopy.transform.arithmetic import (
         fold_constants,
@@ -233,7 +233,7 @@ __all__ = [
 
         "precompute", "buffer_array",
         "fuse_kernels",
-        "concatenate_memory_layout_of_temporaries",
+        "concatenate_arrays",
 
         "fold_constants", "collect_common_factors_on_increment",
 

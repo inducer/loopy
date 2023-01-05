@@ -31,7 +31,7 @@ from loopy.kernel.function_interface import CallableKernel
 from loopy.diagnostic import LoopyError
 
 
-class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
+class SubscriptRewriter(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, arg_names, handler):
         super().__init__(rule_mapping_context)
         self.arg_names = arg_names
@@ -251,7 +251,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
-    aash = ArrayAxisSplitHelper(rule_mapping_context,
+    aash = SubscriptRewriter(rule_mapping_context,
             set(array_to_rest.keys()), split_access_axis)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
@@ -382,7 +382,7 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
-    aash = ArrayAxisSplitHelper(rule_mapping_context,
+    aash = SubscriptRewriter(rule_mapping_context,
             {array_name}, split_access_axis)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
