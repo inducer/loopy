@@ -2567,7 +2567,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
 def make_kernel(*args, **kwargs):
     tunit = make_function(*args, **kwargs)
-    name, = [name for name in tunit.callables_table]
+    name, = tunit.callables_table
     return tunit.with_entrypoints(name)
 
 

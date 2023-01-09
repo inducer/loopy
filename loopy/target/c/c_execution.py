@@ -131,14 +131,9 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         strides = get_strides(arg)
         order = "'C'" if (arg.shape == () or strides[-1] == 1) else "'F'"
 
-        gen("%(name)s = _lpy_np.empty(%(shape)s, "
-                "%(dtype)s, order=%(order)s)"
-                % dict(
-                    name=arg.name,
-                    shape=strify(sym_shape),
-                    dtype=self.python_dtype_str(
-                        gen, arg.dtype.numpy_dtype),
-                    order=order))
+        gen(f"{arg.name} = _lpy_np.empty({strify(sym_shape)}, "
+                f"{self.python_dtype_str(gen, arg.dtype.numpy_dtype)}, "
+                f"order={order})")
 
         expected_strides = tuple(
                 var("_lpy_expected_strides_%s" % i)
@@ -152,12 +147,9 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     [strify(s) for s in sym_shape],
                     [strify(s) for s in sym_strides],
                     [strify(s) for s in expected_strides])
-            gen("assert %(strides_check)s, "
-                    "'Strides of loopy created array %(name)s, "
-                    "do not match expected.'" %
-                    dict(strides_check=strides_check_expr,
-                         name=arg.name,
-                         strides=strify(sym_strides)))
+            gen(f"assert {strides_check_expr}, "
+                    f"'Strides of loopy created array {arg.name}, "
+                    "do not match expected.'")
             for i in range(num_axes):
                 gen("del _lpy_shape_%d" % i)
                 gen("del _lpy_strides_%d" % i)

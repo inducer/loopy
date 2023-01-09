@@ -786,7 +786,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         args = (
                 ["_lpy_cl_kernels", "queue"]
-                + [arg_name for arg_name in kai.passed_arg_names]
+                + list(kai.passed_arg_names)
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Return, Line, Statement as S)
@@ -961,19 +961,17 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             value_arg_code,
             arry_arg_code,
             overflow_args_code,
-            Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
-                "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s, "
-                # using positional args because pybind is slow with kwargs
-                "None, "  # offset
-                "wait_for, "
-                "True, "  # g_times_l
-                "True, "  # allow_empty_ndrange
-                ")"
-                % dict(
-                    pyopencl_module_name=self.target.pyopencl_module_name,
-                    gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
-                    lsize=ecm(lsize, prec=PREC_NONE, type_context="i"))),
+            Assign("_lpy_evt",
+                   f"{self.target.pyopencl_module_name}.enqueue_nd_range_kernel("
+                   "queue, _lpy_knl, "
+                   f"{ecm(gsize, prec=PREC_NONE, type_context='i')}, "
+                   f"{ecm(lsize, prec=PREC_NONE, type_context='i')}, "
+                   # using positional args because pybind is slow with kwargs
+                   "None, "  # offset
+                   "wait_for, "
+                   "True, "  # g_times_l
+                   "True, "  # allow_empty_ndrange
+                   ")"),
             Assign("wait_for", "[_lpy_evt]"),
             Line(),
             Comment("}}}"),
