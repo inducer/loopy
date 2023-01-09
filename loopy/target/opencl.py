@@ -129,10 +129,10 @@ def _create_vector_types():
                 titles.extend((len(names)-len(titles))*[None])
 
             try:
-                dtype = np.dtype(dict(
-                    names=names,
-                    formats=[base_type]*padded_count,
-                    titles=titles))
+                dtype = np.dtype({
+                    "names": names,
+                    "formats": [base_type]*padded_count,
+                    "titles": titles})
             except NotImplementedError:
                 try:
                     dtype = np.dtype([((n, title), base_type)
@@ -492,12 +492,12 @@ def opencl_preamble_generator(preamble_info):
     from loopy.tools import remove_common_indentation
     kernel = preamble_info.kernel
 
+    idx_ctype = kernel.target.dtype_to_typename(kernel.index_dtype)
     yield ("00_declare_gid_lid",
-            remove_common_indentation("""
-                #define lid(N) ((%(idx_ctype)s) get_local_id(N))
-                #define gid(N) ((%(idx_ctype)s) get_group_id(N))
-                """ % dict(idx_ctype=kernel.target.dtype_to_typename(
-                    kernel.index_dtype))))
+            remove_common_indentation(f"""
+                #define lid(N) (({idx_ctype}) get_local_id(N))
+                #define gid(N) (({idx_ctype}) get_group_id(N))
+                """))
 
     for func in preamble_info.seen_functions:
         if func.name == "pow" and func.c_name == "powf32":

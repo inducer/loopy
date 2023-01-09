@@ -729,15 +729,14 @@ class KernelExecutorBase:
         self.entrypoint = entrypoint
 
         kernel = self.t_unit[entrypoint]
-        self.output_names = set(arg.name for arg in kernel.args if arg.is_output)
+        self.output_names = {arg.name for arg in kernel.args if arg.is_output}
 
         from loopy import ArrayArg
-        self.input_array_names = set(
+        self.input_array_names = {
             arg.name for arg in kernel.args
-            if arg.is_input and isinstance(arg, ArrayArg))
+            if arg.is_input and isinstance(arg, ArrayArg)}
 
-        self.has_runtime_typed_args = any(
-            arg.dtype is None for arg in kernel.args)
+        self.has_runtime_typed_args = any(arg.dtype is None for arg in kernel.args)
 
         # We're doing this ahead of time to learn about array separation.
         # This will be done again as part of preprocessing below, and we're

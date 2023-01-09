@@ -81,7 +81,7 @@ __doc__ = """
 
 def get_kernel_parameter_space(kernel):
     return isl.Space.create_from_names(kernel.isl_context,
-            set=[], params=sorted(list(kernel.outer_params()))).params()
+            set=[], params=sorted(kernel.outer_params())).params()
 
 
 def get_kernel_zero_pwqpolynomial(kernel):

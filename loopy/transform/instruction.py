@@ -191,8 +191,7 @@ def remove_instructions(kernel, insn_ids):
     if isinstance(insn_ids, MatchExpressionBase):
         within = insn_ids
 
-        insn_ids = set([insn.id for insn in kernel.instructions if
-            within(kernel, insn)])
+        insn_ids = {insn.id for insn in kernel.instructions if within(kernel, insn)}
 
     assert isinstance(insn_ids, set)
     id_to_insn = kernel.id_to_insn
