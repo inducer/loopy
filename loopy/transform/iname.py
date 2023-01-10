@@ -2327,6 +2327,7 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
         raise LoopyError(f"iname '{new_iname}' conflicts with an existing identifier"
                          " --cannot rename")
 
+    orig_old_inames = old_inames
     if not does_exist:
         # {{{ rename old_inames[0] -> new_iname
         # so that the code below can focus on "merging" inames that already exist
@@ -2404,6 +2405,16 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
             smap.map_kernel(kernel, within=does_insn_involve_iname,
                             map_tvs=False, map_args=False))
 
+    # replace instances where the old inames appear as a param
+    new_domains = []
+    for dom in kernel.domains:
+        for old_iname in orig_old_inames:
+            d = dom.get_var_dict()
+            if old_iname in d and new_iname not in d:
+                var_type, var_num = d[old_iname]
+                dom = dom.set_dim_name(var_type, var_num, new_iname)
+        new_domains.append(dom)
+
     new_instructions = [insn.copy(within_inames=((insn.within_inames
                                                   - frozenset(old_inames))
                                                  | frozenset([new_iname])))
@@ -2412,7 +2423,7 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
                         else insn
                         for insn in kernel.instructions]
 
-    kernel = kernel.copy(instructions=new_instructions)
+    kernel = kernel.copy(instructions=new_instructions, domains=new_domains)
 
     return kernel
 
