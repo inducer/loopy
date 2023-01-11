@@ -1635,7 +1635,7 @@ def _validate_kernel_call_insn(caller, call_insn, callee):
                 raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
                                  f" a {next_iarg_input+1}-th positional "
                                  "argument corresponding"
-                                 f" to '{arg.name}'in the callee.")
+                                 f" to '{arg.name}' in the callee.")
             in_val = arg_id_to_arg[next_iarg_input]
             next_iarg_input += 1
             if isinstance(arg, ArrayBase):
