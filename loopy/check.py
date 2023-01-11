@@ -1768,6 +1768,9 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
 
     from islpy import align_two
 
+    if kernel.options.disable_implemented_domains_check:
+        return True
+
     last_idomains = None
     last_insn_inames = None
 

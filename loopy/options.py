@@ -171,6 +171,8 @@ class Options(ImmutableRecord):
 
     .. attribute:: disable_global_barriers
 
+    .. attribute:: disable_implemented_domains_check
+
     .. attribute:: enforce_variable_access_ordered
 
         If *True*, require that
@@ -267,6 +269,8 @@ class Options(ImmutableRecord):
                     "enforce_array_accesses_within_bounds", True),
                 insert_gbarriers=kwargs.get(
                     "insert_gbarriers", False),
+                disable_implemented_domains_check=kwargs.get(
+                    "disable_implemented_domains_check", False),
                 )
 
     # {{{ legacy compatibility
