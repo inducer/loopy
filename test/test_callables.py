@@ -1405,6 +1405,7 @@ def test_inline_deps(ctx_factory):
 
 
 def test_inline_stride():
+    # https://github.com/inducer/loopy/issues/728
     child_knl = lp.make_function(
             [],
             """
