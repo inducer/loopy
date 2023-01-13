@@ -1430,6 +1430,37 @@ def test_inline_stride():
     lp.generate_code_v2(knl).device_code()
 
 
+@pytest.mark.xfail
+@pytest.mark.parametrize("inline", [False, True])
+def test_inames_with_holes(ctx_factory, inline):
+    child_knl = lp.make_function(
+            ["{[i]: 0<=i<3}"],
+            """
+            g[i] = 1
+            """, name="foo")
+    parent_knl = lp.make_kernel(
+            ["{[j]:0<=j<5 and j%4<2}"],
+            """
+            [j]: z[j] = foo()
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="z",
+                    dtype=np.float64,
+                    shape=(5,)),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "foo")
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    evt, (out,) = knl(queue)
+    assert np.allclose(out.get(), np.array([1, 1, 0, 0, 1], dtype=np.float64))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
