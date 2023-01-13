@@ -127,6 +127,9 @@ class Tree(Generic[NodeT]):
     def is_a_node(self, node: NodeT) -> bool:
         return node in self._child_to_parent
 
+    def __contains__(self, node: NodeT) -> bool:
+        return self.is_a_node(node)
+
     def add_node(self, node: NodeT, parent: NodeT) -> "Tree[NodeT]":
         """
         Returns a :class:`Tree` with added node *node* having a parent
