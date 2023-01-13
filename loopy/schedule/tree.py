@@ -19,23 +19,33 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+
+from dataclasses import dataclass
+from typing import Generic, Hashable, Iterator, List, Optional, Tuple, TypeVar
+
+from immutables import Map
+
+
 # {{{ tree data structure
 
-T = TypeVar("T")
+NodeT = TypeVar("NodeT", bound=Hashable)
 
 
 @dataclass(frozen=True)
-class Tree(Generic[T]):
+class Tree(Generic[NodeT]):
     """
-    An immutable tree implementation.
+    An immutable n-ary tree containing nodes of type :class:`NodeT`.
+
     .. automethod:: ancestors
     .. automethod:: parent
     .. automethod:: children
-    .. automethod:: create_node
+    .. automethod:: add_node
     .. automethod:: depth
-    .. automethod:: rename_node
+    .. automethod:: replace_node
     .. automethod:: move_node
+
     .. note::
+
        Almost all the operations are implemented recursively. NOT suitable for
        deep trees. At the very least if the Python implementation is CPython
        this allocates a new stack frame for each iteration of the operation.
@@ -49,7 +59,7 @@ class Tree(Generic[T]):
                     Map({root: None}))
 
     @property
-    def root(self) -> T:
+    def root(self) -> NodeT:
         guess = set(self._child_to_parent).pop()
         parent_of_guess = self.parent(guess)
         while parent_of_guess is not None:
@@ -74,7 +84,10 @@ class Tree(Generic[T]):
 
         return frozenset([parent]) | self.ancestors(parent)
 
-    def parent(self, node: T) -> OptionalT[T]:
+    def parent(self, node: NodeT) -> Optional[NodeT]:
+        """
+        Returns the parent of *node*.
+        """
         if not self.is_a_node(node):
             raise ValueError(f"'{node}' not in tree.")
 
@@ -86,7 +99,10 @@ class Tree(Generic[T]):
 
         return self._parent_to_children[node]
 
-    def depth(self, node: T) -> int:
+    def depth(self, node: NodeT) -> int:
+        """
+        Returns the depth of *node*.
+        """
         if not self.is_a_node(node):
             raise ValueError(f"'{node}' not in tree.")
 
@@ -99,22 +115,22 @@ class Tree(Generic[T]):
 
         return 1 + self.depth(parent_of_node)
 
-    def is_root(self, node: T) -> bool:
+    def is_root(self, node: NodeT) -> bool:
         if not self.is_a_node(node):
             raise ValueError(f"'{node}' not in tree.")
 
         return self.parent(node) is None
 
-    def is_leaf(self, node: T) -> bool:
+    def is_leaf(self, node: NodeT) -> bool:
         if not self.is_a_node(node):
             raise ValueError(f"'{node}' not in tree.")
 
         return len(self.children(node)) == 0
 
-    def is_a_node(self, node: T) -> bool:
+    def is_a_node(self, node: NodeT) -> bool:
         return node in self._child_to_parent
 
-    def add_node(self, node: T, parent: T) -> "Tree[T]":
+    def add_node(self, node: NodeT, parent: NodeT) -> "Tree[NodeT]":
         """
         Returns a :class:`Tree` with added node *node* having a parent
         *parent*.
@@ -129,9 +145,9 @@ class Tree(Generic[T]):
                      .set(node, frozenset())),
                     self._child_to_parent.set(node, parent))
 
-    def rename_node(self, node: T, new_id: T) -> "Tree[T]":
+    def replace_node(self, node: NodeT, new_id: NodeT) -> "Tree[NodeT]":
         """
-        Returns a copy of *self* with *node* renamed to *new_id*.
+        Returns a copy of *self* with *node* replaced with *new_id*.
         """
         if not self.is_a_node(node):
             raise ValueError(f"'{node}' not present in tree.")
@@ -173,7 +189,7 @@ class Tree(Generic[T]):
         return Tree(new_parent_to_children,
                     new_child_to_parent)
 
-    def move_node(self, node: T, new_parent: OptionalT[T]) -> "Tree[T]":
+    def move_node(self, node: NodeT, new_parent: Optional[NodeT]) -> "Tree[NodeT]":
         """
         Returns a copy of *self* with node *node* as a child of *new_parent*.
         """
@@ -228,7 +244,7 @@ class Tree(Generic[T]):
                 ├── D
                 └── E
         """
-        def rec(node):
+        def rec(node: NodeT) -> List[str]:
             children_result = [rec(c) for c in self.children(node)]
 
             def post_process_non_last_child(child):
@@ -245,7 +261,7 @@ class Tree(Generic[T]):
 
         return "\n".join(rec(self.root))
 
-    def nodes(self) -> Iterator[T]:
+    def nodes(self) -> Iterator[NodeT]:
         return iter(self._child_to_parent.keys())
 
 # }}}
