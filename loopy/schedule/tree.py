@@ -72,8 +72,7 @@ class Tree(Generic[NodeT]):
         """
         Returns a :class:`tuple` of nodes that are ancestors of *node*.
         """
-        if not self.is_a_node(node):
-            raise ValueError(f"'{node}' not in tree.")
+        assert self.is_a_node(node)
 
         if self.is_root(node):
             # => root
@@ -88,8 +87,7 @@ class Tree(Generic[NodeT]):
         """
         Returns the parent of *node*.
         """
-        if not self.is_a_node(node):
-            raise ValueError(f"'{node}' not in tree.")
+        assert self.is_a_node(node)
 
         return self._child_to_parent[node]
 
@@ -97,8 +95,7 @@ class Tree(Generic[NodeT]):
         """
         Returns the children of *node*.
         """
-        if not self.is_a_node(node):
-            raise ValueError(f"'{node}' not in tree.")
+        assert self.is_a_node(node)
 
         return self._parent_to_children[node]
 
@@ -106,8 +103,7 @@ class Tree(Generic[NodeT]):
         """
         Returns the depth of *node*.
         """
-        if not self.is_a_node(node):
-            raise ValueError(f"'{node}' not in tree.")
+        assert self.is_a_node(node)
 
         if self.is_root(node):
             # => None
@@ -119,14 +115,12 @@ class Tree(Generic[NodeT]):
         return 1 + self.depth(parent_of_node)
 
     def is_root(self, node: NodeT) -> bool:
-        if not self.is_a_node(node):
-            raise ValueError(f"'{node}' not in tree.")
+        assert self.is_a_node(node)
 
         return self.parent(node) is None
 
     def is_leaf(self, node: NodeT) -> bool:
-        if not self.is_a_node(node):
-            raise ValueError(f"'{node}' not in tree.")
+        assert self.is_a_node(node)
 
         return len(self.children(node)) == 0
 
