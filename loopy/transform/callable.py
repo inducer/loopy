@@ -135,8 +135,8 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
             sar = self.callee_arg_to_call_param[expr.aggregate.name]  # SubArrayRef
 
             index_tuple = self.rec(expr.index_tuple, expn_state)
-            subs_map = {iname: index_tuple[i] for i, iname in
-                    enumerate(sar.swept_inames)}
+            subs_map = {iname: idx for idx, iname in
+                    zip(index_tuple, sar.swept_inames)}
             new_indices = tuple(substitute(idx, subs_map) for idx in
                     sar.subscript.index_tuple)
 
