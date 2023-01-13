@@ -1894,7 +1894,8 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True,
                 if error_if_used:
                     raise LoopyError(msg)
 
-                insn = insn.copy(depends_on=new_deps)
+#                insn = insn.copy(depends_on=new_deps)
+                insn = insn.copy(happens_after=new_deps)
                 changed = True
 
         new_insns.append(insn)
