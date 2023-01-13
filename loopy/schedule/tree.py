@@ -209,14 +209,17 @@ class Tree(Generic[T]):
     def __str__(self) -> str:
         """
         Stringifies the tree by using the box-drawing unicode characters.
-        ::
-            >>> from loopy.tools import Tree
+
+        .. doctest::
+
+            >>> from loopy.schedule.tree import Tree
             >>> tree = (Tree.from_root("Root")
             ...         .add_node("A", "Root")
             ...         .add_node("B", "Root")
             ...         .add_node("D", "B")
             ...         .add_node("E", "B")
             ...         .add_node("C", "A"))
+
             >>> print(tree)
             Root
             ├── A
