@@ -1458,6 +1458,31 @@ def test_inline_predicate():
     assert code.count("if (a)") == 1
 
 
+def test_inline_constant_access():
+    child_knl = lp.make_function(
+            [],
+            """
+            g[0] = 2*e[0] + 3*f[0] {id=a}
+            g[1] = 2*e[1] + 3*f[1] {dep=a}
+            """, name="linear_combo")
+    parent_knl = lp.make_kernel(
+            ["{[j]:0<=j<n}", "{[i]:0<=i<n}"],
+            """
+            [i]: z[i, j] = linear_combo([i]: x[i, j], [i]: y[i,j])
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="x, y, z",
+                    dtype=np.float64,
+                    shape=(3, "n")),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "linear_combo")
+    knl = lp.tag_array_axes(knl, ["x", "y", "z"], "sep,C")
+    lp.generate_code_v2(knl).device_code()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
