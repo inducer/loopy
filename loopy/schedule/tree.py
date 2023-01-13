@@ -50,12 +50,12 @@ class Tree(Generic[NodeT]):
        deep trees. At the very least if the Python implementation is CPython
        this allocates a new stack frame for each iteration of the operation.
     """
-    _parent_to_children: Map[T, FrozenSet[T]]
-    _child_to_parent: Map[T, OptionalT[T]]
+    _parent_to_children: Map[NodeT, Tuple[NodeT, ...]]
+    _child_to_parent: Map[NodeT, Optional[NodeT]]
 
     @staticmethod
-    def from_root(root: T):
-        return Tree(Map({root: frozenset()}),
+    def from_root(root: NodeT) -> "Tree[NodeT]":
+        return Tree(Map({root: tuple()}),
                     Map({root: None}))
 
     @property
@@ -68,21 +68,21 @@ class Tree(Generic[NodeT]):
 
         return guess
 
-    def ancestors(self, node: T) -> FrozenSet[T]:
+    def ancestors(self, node: NodeT) -> Tuple[NodeT, ...]:
         """
-        Returns a :class:`frozenset` of nodes that are ancestors of *node*.
+        Returns a :class:`tuple` of nodes that are ancestors of *node*.
         """
         if not self.is_a_node(node):
             raise ValueError(f"'{node}' not in tree.")
 
         if self.is_root(node):
             # => root
-            return frozenset()
+            return tuple()
 
         parent = self._child_to_parent[node]
         assert parent is not None
 
-        return frozenset([parent]) | self.ancestors(parent)
+        return (parent,) + self.ancestors(parent)
 
     def parent(self, node: NodeT) -> Optional[NodeT]:
         """
@@ -93,7 +93,10 @@ class Tree(Generic[NodeT]):
 
         return self._child_to_parent[node]
 
-    def children(self, node: T) -> FrozenSet[T]:
+    def children(self, node: NodeT) -> Tuple[NodeT, ...]:
+        """
+        Returns the children of *node*.
+        """
         if not self.is_a_node(node):
             raise ValueError(f"'{node}' not in tree.")
 
@@ -141,8 +144,8 @@ class Tree(Generic[NodeT]):
         siblings = self._parent_to_children[parent]
 
         return Tree((self._parent_to_children
-                     .set(parent, siblings | frozenset([node]))
-                     .set(node, frozenset())),
+                     .set(parent, siblings + (node,))
+                     .set(node, tuple())),
                     self._child_to_parent.set(node, parent))
 
     def replace_node(self, node: NodeT, new_id: NodeT) -> "Tree[NodeT]":
@@ -180,9 +183,10 @@ class Tree(Generic[NodeT]):
             # update the child's name in the parent's children
             new_parent_to_children = (new_parent_to_children
                                       .delete(parent)
-                                      .set(parent, ((self.children(parent)
+                                      .set(parent, tuple(
+                                                    frozenset(self.children(parent))
                                                     - frozenset([node]))
-                                                    | frozenset([new_id]))))
+                                                    + (new_id,)))
 
         # }}}
 
@@ -211,8 +215,8 @@ class Tree(Generic[NodeT]):
         parent = self.parent(node)
         assert parent is not None  # parent=root handled as a special case
         siblings = self.children(parent)
-        parents_new_children = siblings - frozenset([node])
-        new_parents_children = self.children(new_parent) | frozenset([node])
+        parents_new_children = tuple(frozenset(siblings) - frozenset([node]))
+        new_parents_children = self.children(new_parent) + (node,)
 
         new_child_to_parent = self._child_to_parent.set(node, new_parent)
         new_parent_to_children = (self._parent_to_children
