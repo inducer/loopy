@@ -14,6 +14,12 @@ class HappensAfter:
     instances_rel: Optional[Map]
 
 class AccessMapMapper(WalkMapper):
+    """
+    TODO Update this documentation so it reflects proper formatting
+
+    Used instead of BatchedAccessMapMapper to get single access maps for each
+    instruction. 
+    """
 
     def __init__(self, kernel, var_names):
         self.kernel = kernel
@@ -55,6 +61,12 @@ class AccessMapMapper(WalkMapper):
             self.access_maps[insn_id][arg_name][inames] = access_map
 
 def compute_happens_after(knl: LoopKernel) -> LoopKernel: 
+    """
+    TODO Update documentation to reflect the proper format.
+
+    Determine dependency relations that exist between instructions. Similar to
+    apply_single_writer_dependency_heuristic. Extremely rough draft.
+    """
     writer_map = knl.writer_map()
     variables = knl.all_variable_names - knl.inames.keys()
 
