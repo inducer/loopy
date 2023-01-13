@@ -1423,7 +1423,7 @@ def test_inline_stride():
                     dtype=np.float64,
                     shape=("n", "n")),
                 ...],
-            assumptions="n>=1",
+            assumptions="n>=2",
             )
     knl = lp.merge([parent_knl, child_knl])
     knl = lp.inline_callable_kernel(knl, "linear_combo")
