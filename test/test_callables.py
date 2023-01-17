@@ -1458,6 +1458,37 @@ def test_inline_predicate():
     assert code.count("if (a)") == 1
 
 
+def test_subarray_ref_with_repeated_indices(ctx_factory):
+    # https://github.com/inducer/loopy/pull/735#discussion_r1071690388
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+    child_knl = lp.make_function(
+            ["{[i]: 0<=i<10}"],
+            """
+            g[i] = 1
+            """, name="ones")
+
+    parent_knl = lp.make_kernel(
+            ["{[i]:0<=i<10}", "{[j]: 0<=j<10}"],
+            """
+            z[i, j] = 0                {id = a}
+            [i]: z[i, i] = ones()  {dep=a,dup=i}
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="z",
+                    dtype=np.float64,
+                    is_input=False,
+                    shape=(10, 10)),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "ones")
+    evt, (z_dev,) = knl(cq)
+    assert np.allclose(z_dev.get(), np.eye(10))
+
+
 def test_inline_constant_access():
     child_knl = lp.make_function(
             [],
