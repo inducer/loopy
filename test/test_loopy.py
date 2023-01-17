@@ -3392,6 +3392,39 @@ def test_creation_kwargs():
             ksdfjlasdf=None)
 
 
+def test_global_temps_with_multiple_base_storages(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/737
+
+    n = 10
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[r0, r1]: 0<=r0,r1< %s}" % n,
+        """
+        tmp0 = sum(r0, r0**2)
+        ... gbarrier
+        tmp1 = sum(r1, r1**3)
+        ... gbarrier
+        out = tmp0 + tmp1
+        """,
+        [lp.TemporaryVariable("tmp0",
+                              shape=lp.auto,
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base1"),
+         lp.TemporaryVariable("tmp1",
+                              shape=lp.auto,
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base2"),
+         ...],
+        seq_dependencies=True
+    )
+
+    _, (out,) = knl(cq)
+
+    assert out == sum(i**2 for i in range(n)) + sum(i**3 for i in range(n))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
