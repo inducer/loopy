@@ -1430,6 +1430,34 @@ def test_inline_stride():
     lp.generate_code_v2(knl).device_code()
 
 
+def test_inline_predicate():
+    # https://github.com/inducer/loopy/issues/739
+    twice = lp.make_function(
+        "{[i]: 0<=i<10}",
+        """
+        y[i] = 2*x[i]
+        """,
+        name="twice")
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<10 and 0<=j<10}",
+        """
+        <> y[i] = 0  {id=y,dup=i}
+        <> x[i] = 1  {id=x,dup=i}
+        for j
+            <> a = (j%2 == 0)
+            y[i] = i                         {dep=y,if=a,id=y2}
+            [i]: z[i, j] = twice([i]: x[i])  {if=a,dep=y}
+        end
+        """)
+
+    knl = lp.add_dtypes(knl, {"z": np.float64})
+    knl = lp.merge([knl, twice])
+    knl = lp.inline_callable_kernel(knl, "twice")
+    code = lp.generate_code_v2(knl).device_code()
+    assert code.count("if (a)") == 1
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -417,13 +417,15 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     noop_start = NoOpInstruction(
         id=ing(callee_label+"_start"),
         within_inames=call_insn.within_inames,
-        depends_on=call_insn.depends_on
+        depends_on=call_insn.depends_on,
+        predicates=call_insn.predicates,
     )
     noop_end = NoOpInstruction(
         id=call_insn.id,
         within_inames=call_insn.within_inames,
         depends_on=frozenset(insn_id_map.values()),
         depends_on_is_final=True,
+        predicates=call_insn.predicates,
     )
 
     # }}}
