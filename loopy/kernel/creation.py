@@ -340,7 +340,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 result["within_inames_is_final"] = True
 
             result["within_inames"] = intern_frozenset_of_ids(
-                    opt_value.split(":"))
+                    [s for s in opt_value.split(":") if s])
 
         elif opt_key == "if" and opt_value is not None:
             predicates = opt_value.split(":")
