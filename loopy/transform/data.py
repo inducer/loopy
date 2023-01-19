@@ -1025,7 +1025,7 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
             assert isinstance(tv.dtype, LoopyType)
 
             if tv.address_space is auto:
-                raise LoopyError("Ahen allocating base storage for temporary "
+                raise LoopyError("When allocating base storage for temporary "
                         f"'{tv.name}', the address space of the temporary "
                         "was not yet determined (set to 'auto').")
 
@@ -1084,7 +1084,7 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
             warn("Base storage allocation was performed implicitly during "
                     "preprocessing. This is deprecated and will stop working "
                     "in 2023. Call loopy.allocate_temporaries_for_base_storage "
-                    "explicitly to aovid this warning.", DeprecationWarning)
+                    "explicitly to avoid this warning.", DeprecationWarning)
 
         return kernel.copy(temporary_variables=new_tvs)
     else:
