@@ -1627,6 +1627,24 @@ def test_concatenate_arrays(ctx_factory):
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
+def test_remove_inames_from_insn():
+    t_unit = lp.make_kernel(
+        "{[i, j]: 0<=i<10 and 0<=j<20}",
+        """
+        for i
+          <> a[j] = 1       {id=a}
+          b[i] = a[2*i]  {dep=a}
+        end
+        """)
+
+    t_unit = lp.add_dtypes(t_unit, {"b": "int32"})
+    t_unit = lp.split_iname(t_unit, "i", 2, inner_tag="l.0")
+    t_unit = lp.split_iname(t_unit, "j", 2, inner_tag="l.0")
+    t_unit = lp.remove_inames_from_insn(t_unit, "i_inner", "id:a")
+    # Check that the instruction a does not have multiple tagged inames
+    lp.generate_code_v2(t_unit).device_code()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
