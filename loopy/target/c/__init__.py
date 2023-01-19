@@ -899,14 +899,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
-        for tv in sorted(
-                kernel.temporary_variables.values(),
-                key=lambda key_tv: key_tv.name):
+        for tv_name in sorted(sub_knl_temps):
+            tv = kernel.temporary_variables[tv_name]
             if not tv.base_storage:
                 # global temp vars are mapped to arguments or global
                 # declarations, no need to declare locally.
-                if tv.address_space != AddressSpace.GLOBAL and (
-                        tv.name in sub_knl_temps):
+                if tv.address_space != AddressSpace.GLOBAL:
                     decl = self.get_temporary_var_declarator(codegen_state, tv)
 
                     if tv.initializer is not None:
