@@ -3119,6 +3119,20 @@ def test_tunit_to_python():
     t_unit = lp.merge([t_unit, mysin])
     lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
 
+    knl_explicit_iname = lp.make_kernel(
+        ["{[i]: 0<=i<10}", "{[j]: 0<=j<10}"],
+        ["""
+        for i
+            a[j] = 0       {id=a}
+            b[i, j] = a[j] {dep=a}
+        end"""],
+        kernel_data=[
+            lp.TemporaryVariable("a", dtype=np.int32),
+            lp.GlobalArg("b"),
+        ])
+    # contains check to assert roundtrip equivalence
+    lp.t_unit_to_python(knl_explicit_iname)
+
 
 def test_global_tv_with_base_storage_across_gbarrier(ctx_factory):
     # see https://github.com/inducer/loopy/pull/466 for context
