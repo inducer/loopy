@@ -1707,8 +1707,7 @@ def add_inames_to_insn(kernel, inames, insn_match):
     :arg insn_match: An instruction match as understood by
         :func:`loopy.match.parse_match`.
 
-    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
-        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
+    :returns: a :class:`LoopKernel` with the *inames* added to
         the instructions matched by *insn_match*.
 
     .. versionadded:: 2016.3
@@ -1729,6 +1728,49 @@ def add_inames_to_insn(kernel, inames, insn_match):
         if match(kernel, insn):
             new_instructions.append(
                     insn.copy(within_inames=insn.within_inames | inames))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
+# }}}
+
+
+# {{{ remove_inames_from_insn
+
+@for_each_kernel
+def remove_inames_from_insn(kernel, inames, insn_match):
+    """
+    :arg inames: a frozenset of inames that will be added to the
+        instructions matched by *insn_match*, or a comma-separated
+        string that parses to such a tuple.
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *inames* removed from
+        the instructions matched by *insn_match*.
+
+    .. versionadded:: 2023.0
+    """
+
+    if isinstance(inames, str):
+        inames = frozenset(s.strip() for s in inames.split(","))
+
+    if not isinstance(inames, frozenset):
+        raise TypeError("'inames' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if match(kernel, insn):
+            new_inames = set(insn.within_inames)
+            for iname in inames:
+                new_inames.discard(iname)
+            new_instructions.append(
+                    insn.copy(within_inames=frozenset(new_inames)))
         else:
             new_instructions.append(insn)
 
