@@ -1,11 +1,11 @@
+import islpy as isl
 import pymbolic.primitives as p
 
 from dataclasses import dataclass
 from islpy import Map
-from typing import FrozenSet, Optional, List
+from typing import Optional
 
 from loopy import LoopKernel
-from loopy import InstructionBase
 from loopy.symbolic import WalkMapper
 
 @dataclass(frozen=True)
@@ -18,10 +18,10 @@ class AccessMapMapper(WalkMapper):
     TODO Update this documentation so it reflects proper formatting
 
     Used instead of BatchedAccessMapMapper to get single access maps for each
-    instruction. 
+    instruction.
     """
 
-    def __init__(self, kernel, var_names):
+    def __init__(self, kernel: LoopKernel, var_names: set):
         self.kernel = kernel
         self._var_names = var_names
 
@@ -29,14 +29,13 @@ class AccessMapMapper(WalkMapper):
         self.access_maps = defaultdict(lambda:
                            defaultdict(lambda:
                            defaultdict(lambda: None)))
-        
+
         super.__init__()
 
-    def map_subscript(self, expr, inames, insn_id):    
+    def map_subscript(self, expr: p.expression, inames: frozenset, insn_id: str):
 
         domain = self.kernel.get_inames_domain(inames)
 
-        # why do we need this?
         WalkMapper.map_subscript(self, expr, inames)
 
         assert isinstance(expr.aggregate, p.Variable)
@@ -47,8 +46,6 @@ class AccessMapMapper(WalkMapper):
         arg_name = expr.aggregate.name
         subscript = expr.index_tuple
 
-        descriptor = self.kernel.get_var_descriptor(arg_name)
-
         from loopy.diagnostic import UnableToDetermineAccessRangeError
         from loopy.symbolic import get_access_map
 
@@ -56,11 +53,11 @@ class AccessMapMapper(WalkMapper):
             access_map = get_access_map(domain, subscript)
         except UnableToDetermineAccessRangeError:
             return
-        
+
         if self.access_maps[insn_id][arg_name][inames] is None:
             self.access_maps[insn_id][arg_name][inames] = access_map
 
-def compute_happens_after(knl: LoopKernel) -> LoopKernel: 
+def compute_happens_after(knl: LoopKernel) -> LoopKernel:
     """
     TODO Update documentation to reflect the proper format.
 
@@ -70,8 +67,14 @@ def compute_happens_after(knl: LoopKernel) -> LoopKernel:
     writer_map = knl.writer_map()
     variables = knl.all_variable_names - knl.inames.keys()
 
+    # initialize the mapper
     amap = AccessMapMapper(knl, variables)
 
+    for insn in knl.instructions:
+        amap(insn.assignee, insn.within_inames)
+        amap(insn.expression, insn.within_inames)
+
+    # compute data dependencies
     dep_map = {
         insn.id: insn.read_dependency_names() - insn.within_inames
         for insn in knl.instructions
@@ -87,7 +90,7 @@ def compute_happens_after(knl: LoopKernel) -> LoopKernel:
             for writer in (writer_map.get(var, set()) - { current_insn }):
 
                 # get relation for current instruction and a write instruction
-                cur_relation = amap.access_maps[current_insn][var][inames] 
+                cur_relation = amap.access_maps[current_insn][var][inames]
                 write_relation = amap.access_maps[writer][var][inames]
 
                 # compute the dependency relation
@@ -99,8 +102,8 @@ def compute_happens_after(knl: LoopKernel) -> LoopKernel:
 
                 # add to the new list of dependencies
                 new_happens_after |= happens_after_mapping
-        
-        # update happens_after of our current instruction with the mapping 
+
+        # update happens_after of our current instruction with the mapping
         insn = insn.copy(happens_after=new_happens_after)
         new_insns.append(insn)
 
@@ -108,5 +111,40 @@ def compute_happens_after(knl: LoopKernel) -> LoopKernel:
     return knl.copy(instructions=new_insns)
 
 def add_lexicographic_happens_after(knl: LoopKernel) -> None:
-    pass
+    """
+    TODO properly format this documentation.
+
+    Creates a dependency relation between two instructions based on a
+    lexicographic ordering of the statements in a program.
+
+    For example, the C-like execution order (i.e. sequential ordering) of a
+    program.
+    """
+
+    # we want to modify the output dimension and OUT = 3
+    dim_type = isl.dim_type(3)
+
+    # generate an unordered mapping from statement instances to points in the
+    # loop domain
+    insn_number = 0
+    schedules = {}
+    for insn in knl.instructions:
+        domain = knl.get_inames_domain(insn.within_inames)
+
+        # if we do not set the dim name, the name is set as None
+        domain = domain.insert_dims(dim_type, 0, 1).set_dim_name(dim_type, 0,
+                                                                 insn.id)
+
+        space = domain.get_space()
+        domain = domain.add_constraint(
+            isl.Constraint.eq_from_names(space, {1: -1*insn_number, insn.id: 1})
+        )
+
+        # this may not be the final way we keep track of the schedules
+        schedule = isl.Map.from_domain_and_range(domain, domain)
+        schedules[insn.id] = schedule
+
+        insn_number += 1
+
+        # determine a lexicographic order on the space the schedules belong to
 
