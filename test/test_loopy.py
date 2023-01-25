@@ -3456,6 +3456,23 @@ def test_t_unit_to_python_with_substs():
     lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
 
 
+def test_type_inference_of_clbls_in_substitutions(ctx_factory):
+    # Regression for https://github.com/inducer/loopy/issues/746
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        subst_0(_0) := abs(10.0 * (_0-5))
+
+        y[i] = subst_0(i)
+        """)
+
+    evt, (out,) = knl(cq)
+    np.testing.assert_allclose(out.get(), np.abs(10.0*(np.arange(10)-5)))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
