@@ -3443,6 +3443,19 @@ def test_global_temps_with_multiple_base_storages(ctx_factory):
     assert out == sum(i**2 for i in range(n)) + sum(i**3 for i in range(n))
 
 
+def test_t_unit_to_python_with_substs():
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        subst_0(i) := abs(10.0 * (i-5))
+        subst_1(i) := abs(10.0 * (i**2-5))
+
+        y[i] = subst_0(i) + subst_1(i)
+        """)
+
+    lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
