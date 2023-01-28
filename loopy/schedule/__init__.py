@@ -1802,6 +1802,10 @@ class DependencyTracker:
 
                 race_var = race_var_base
 
+                if not src_race_vars:
+                    # no race variables
+                    continue
+
                 # Only one (non-base_storage) race variable name: Data is not
                 # being passed between aliases, so we may look at indices.
                 if src_race_vars == tgt_race_vars and len(src_race_vars) == 1:
