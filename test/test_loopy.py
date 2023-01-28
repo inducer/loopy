@@ -3527,6 +3527,42 @@ def test_einsum_parsing(ctx_factory):
                         parameters={"Ni": 10, "Nj": 10, "Nk": 10})
 
 
+def test_no_barrier_err_for_global_temps_with_base_storage(ctx_factory):
+    # Regression for https://github.com/inducer/loopy/issues/748
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i, j<16}",
+        """
+        for i
+            tmp1[i] = i
+            tmp2[i] = tmp1[i] + 2
+        end
+        ... gbarrier
+        for j
+            out[j] = tmp1[j] + tmp2[j]
+        end
+        """,
+        [lp.TemporaryVariable("tmp1",
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base1",
+                              shape=lp.auto),
+         lp.TemporaryVariable("tmp2",
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base2",
+                              shape=lp.auto),
+         ...],
+        seq_dependencies=True
+    )
+    knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
+    knl = lp.split_iname(knl, "j", 4, inner_tag="l.0", outer_tag="g.0")
+
+    _, (out,) = knl(cq, out_host=True)
+
+    np.testing.assert_allclose(2*np.arange(16) + 2, out)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
