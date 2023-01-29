@@ -20,23 +20,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
+from typing import Optional
+
 import islpy as isl
 from islpy import dim_type
 
 import pymbolic.primitives as p
 
-from dataclasses import dataclass
-from typing import Optional
-
 from loopy import LoopKernel
 from loopy.symbolic import WalkMapper
 from loopy.translation_unit import for_each_kernel
-from loopy.typing import ExpressionT
+
 
 @dataclass(frozen=True)
 class HappensAfter:
     variable_name: Optional[str]
     instances_rel: Optional[isl.Map]
+
 
 class AccessMapMapper(WalkMapper):
     """
@@ -55,9 +56,9 @@ class AccessMapMapper(WalkMapper):
                            defaultdict(lambda:
                            defaultdict(lambda: None)))
 
-        super.__init__()
+        super().__init__()
 
-    def map_subscript(self, expr: ExpressionT, inames: frozenset, insn_id: str):
+    def map_subscript(self, expr: p.Subscript, inames: frozenset, insn_id: str):
 
         domain = self.kernel.get_inames_domain(inames)
 
@@ -82,58 +83,112 @@ class AccessMapMapper(WalkMapper):
         if self.access_maps[insn_id][arg_name][inames] is None:
             self.access_maps[insn_id][arg_name][inames] = access_map
 
-def compute_happens_after(knl: LoopKernel) -> LoopKernel:
-    """
-    TODO Update documentation to reflect the proper format.
 
-    Determine dependency relations that exist between instructions. Similar to
-    apply_single_writer_dependency_heuristic. Extremely rough draft.
+@for_each_kernel
+def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
     """
+    TODO Update documentation to reflect the proper format
+
+    Relax the lexicographic dependencies generated in
+    `add_lexicographic_happens_after` according to data dependencies in the
+    program.
+    """
+
     writer_map = knl.writer_map()
-    variables = knl.all_variable_names - knl.inames.keys()
 
-    # initialize the mapper
-    amap = AccessMapMapper(knl, variables)
-
-    for insn in knl.instructions:
-        amap(insn.assignee, insn.within_inames)
-        amap(insn.expression, insn.within_inames)
-
-    # compute data dependencies
-    dep_map = {
+    reads = {
         insn.id: insn.read_dependency_names() - insn.within_inames
         for insn in knl.instructions
     }
+    writes = {
+        insn.id: insn.write_dependency_names() - insn.within_inames
+        for insn in knl.instructions
+    }
+
+    variables = knl.all_variable_names()
+
+    amap = AccessMapMapper(knl, variables)
+    for insn in knl.instructions:
+        amap(insn.assignee, insn.within_inames, insn.id)
+        amap(insn.expression, insn.within_inames, insn.id)
+
+    def get_relation(insn_id: Optional[str], variable: str,
+                     inames: frozenset) -> isl.Map:
+        return amap.access_maps[insn_id][variable][inames]
+
+    def get_unordered_deps(R: isl.Map, S: isl.Map) -> isl.Map:
+        return S.apply_range(R.reverse())
 
     new_insns = []
-    for insn in knl.instructions:
-        current_insn = insn.id
-        inames = insn.within_inames
+    for cur_insn in knl.instructions:
 
-        new_happens_after = []
-        for var in dep_map[insn.id]:
-            for writer in (writer_map.get(var, set()) - { current_insn }):
+        new_insn = cur_insn.copy()
 
-                # get relation for current instruction and a write instruction
-                cur_relation = amap.access_maps[current_insn][var][inames]
-                write_relation = amap.access_maps[writer][var][inames]
+        # handle read-write case
+        for var in reads[cur_insn.id]:
+            for writer in writer_map.get(var, set()) - {cur_insn.id}:
 
-                # compute the dependency relation
-                dep_relation = cur_relation.apply_range(write_relation.reverse())
+                write_insn = writer
+                for insn in knl.instructions:
+                    if writer == insn.id:
+                        write_insn = insn.copy()
 
-                # create the mapping from writer -> (variable, dependency rel'n)
-                happens_after = HappensAfter(var, dep_relation)
-                happens_after_mapping = { writer: happens_after }
+                # writer precedes current read instruction
+                if writer in cur_insn.happens_after:
+                    read_rel = get_relation(cur_insn.id, var,
+                                            cur_insn.within_inames)
+                    write_rel = get_relation(write_insn.id, var,
+                                             write_insn.within_inames)
 
-                # add to the new list of dependencies
-                new_happens_after |= happens_after_mapping
+                    read_write = get_unordered_deps(read_rel, write_rel)
+                    write_read = get_unordered_deps(write_rel, read_rel)
+                    unordered_deps_full = read_write | write_read
 
-        # update happens_after of our current instruction with the mapping
-        insn = insn.copy(happens_after=new_happens_after)
-        new_insns.append(insn)
+                    lex_map = cur_insn.happens_after[writer].instances_rel
 
-    # return the kernel with the new instructions
+                    deps = unordered_deps_full & lex_map
+
+                    new_insn.happens_after.update(
+                        {writer: HappensAfter(var, deps)}
+                    )
+
+                # TODO implement writer does not precede read insn
+                else:
+                    pass
+
+        # handle write-write case
+        for var in writes[cur_insn.id]:
+            for writer in writer_map.get(var, set()) - {cur_insn.id}:
+
+                write_insn = writer
+                for insn in knl.instructions:
+                    if writer == insn.id:
+                        write_insn = insn.copy()
+
+                if writer in cur_insn.happens_after:
+                    before_write_rel = get_relation(cur_insn.id, var,
+                                                    cur_insn.within_inames)
+                    after_write_rel = get_relation(write_insn.id, var,
+                                                   write_insn.within_inames)
+
+                    unordered_deps = get_unordered_deps(before_write_rel,
+                                                        after_write_rel)
+
+                    lex_map = cur_insn.happens_after[writer].instances_rel
+                    deps = unordered_deps & lex_map
+
+                    new_insn.happens_after.update(
+                        {writer: HappensAfter(var, deps)}
+                    )
+
+                # TODO implement writer does not precede current writer
+                else:
+                    pass
+
+        new_insns.append(new_insn)
+
     return knl.copy(instructions=new_insns)
+
 
 @for_each_kernel
 def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
@@ -154,13 +209,13 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
         # the first instruction does not have anything preceding it
         if iafter == 0:
             new_insns.append(insn_after)
-        
+
         # all other instructions "happen after" the instruction before it
         else:
 
             # not currently used
             # unshared_before = insn_before.within_inames
-            
+
             # get information about the preceding instruction
             insn_before = knl.instructions[iafter - 1]
             shared_inames = insn_after.within_inames & insn_before.within_inames
@@ -172,12 +227,12 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
                     domain_before, domain_after
             )
 
-            # update inames so they are unique 
+            # update inames so they are unique
             for idim in range(happens_before.dim(dim_type.out)):
                 happens_before = happens_before.set_dim_name(
                         dim_type.out, idim,
                         happens_before.get_dim_name(dim_type.out, idim) + "'")
-            
+
             # generate a set containing all inames (from both domains)
             n_inames_before = happens_before.dim(dim_type.in_)
             happens_before_set = happens_before.move_dims(
@@ -207,12 +262,12 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
             # start with an empty set
             lex_set = isl.Set.empty(happens_before_set.space)
             for iinnermost, innermost_iname in enumerate(shared_inames_order):
-                
+
                 innermost_set = affs[innermost_iname].lt_set(
                         affs[innermost_iname+"'"]
                 )
-                
-                for  outer_iname in shared_inames_order[:iinnermost]:
+
+                for outer_iname in shared_inames_order[:iinnermost]:
                     innermost_set = innermost_set & (
                             affs[outer_iname].eq_set(affs[outer_iname + "'"])
                             )
@@ -230,8 +285,8 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
             happens_before = happens_before & lex_map
 
             # create HappensAfter and add the relation to it
-            new_happens_after = { 
-                insn_before.id: HappensAfter(None, happens_before) 
+            new_happens_after = {
+                insn_before.id: HappensAfter(None, happens_before)
             }
 
             insn_after = insn_after.copy(happens_after=new_happens_after)
@@ -241,3 +296,4 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
 
     return knl.copy(instructions=new_insns)
 
+# vim: foldmethod=marker
