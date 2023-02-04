@@ -29,6 +29,7 @@ from islpy import dim_type
 import pymbolic.primitives as p
 
 from loopy import LoopKernel
+from loopy import InstructionBase
 from loopy.symbolic import WalkMapper
 from loopy.translation_unit import for_each_kernel
 
@@ -95,6 +96,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
     """
 
     writer_map = knl.writer_map()
+    reader_map = knl.reader_map()
 
     reads = {
         insn.id: insn.read_dependency_names() - insn.within_inames
@@ -106,17 +108,16 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
     }
 
     variables = knl.all_variable_names()
-
     amap = AccessMapMapper(knl, variables)
     for insn in knl.instructions:
         amap(insn.assignee, insn.within_inames, insn.id)
         amap(insn.expression, insn.within_inames, insn.id)
 
-    def get_relation(insn_id: Optional[str], variable: str,
-                     inames: frozenset) -> isl.Map:
-        return amap.access_maps[insn_id][variable][inames]
+    def get_relation(insn: InstructionBase, variable: Optional[str]) -> isl.Map:
+        return amap.access_maps[insn.id][variable][insn.within_inames]
 
     def get_unordered_deps(R: isl.Map, S: isl.Map) -> isl.Map:
+        # equivalent to the composition R^{-1} o S
         return S.apply_range(R.reverse())
 
     new_insns = []
@@ -124,64 +125,91 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
 
         new_insn = cur_insn.copy()
 
-        # handle read-write case
+        # handle read-after-write case
         for var in reads[cur_insn.id]:
             for writer in writer_map.get(var, set()) - {cur_insn.id}:
 
+                # grab writer from knl.instructions
                 write_insn = writer
                 for insn in knl.instructions:
                     if writer == insn.id:
                         write_insn = insn.copy()
+                        break
 
-                # writer precedes current read instruction
+                # writer is immediately before reader
                 if writer in cur_insn.happens_after:
-                    read_rel = get_relation(cur_insn.id, var,
-                                            cur_insn.within_inames)
-                    write_rel = get_relation(write_insn.id, var,
-                                             write_insn.within_inames)
+                    read_rel = get_relation(cur_insn, var)
+                    write_rel = get_relation(write_insn, var)
 
                     read_write = get_unordered_deps(read_rel, write_rel)
-                    write_read = get_unordered_deps(write_rel, read_rel)
-                    unordered_deps_full = read_write | write_read
 
                     lex_map = cur_insn.happens_after[writer].instances_rel
 
-                    deps = unordered_deps_full & lex_map
+                    deps = lex_map & read_write
 
                     new_insn.happens_after.update(
                         {writer: HappensAfter(var, deps)}
                     )
 
-                # TODO implement writer does not precede read insn
+                # TODO
                 else:
                     pass
 
-        # handle write-write case
+        # handle write-after-read and write-after-write
         for var in writes[cur_insn.id]:
+
+            # TODO write-after-read
+            for reader in reader_map.get(var, set()) - {cur_insn.id}:
+
+                read_insn = reader
+                for insn in knl.instructions:
+                    if reader == insn.id:
+                        read_insn = insn.copy()
+                        break
+
+                if reader in cur_insn.happens_after:
+                    write_rel = get_relation(cur_insn, var)
+                    read_rel = get_relation(read_insn, var)
+
+                    write_read = get_unordered_deps(write_rel, read_rel)
+
+                    lex_map = cur_insn.happens_after[reader].instances_rel
+
+                    deps = lex_map & write_read
+
+                    new_insn.happens_after.update(
+                        {reader: HappensAfter(var, deps)}
+                    )
+
+                # TODO
+                else:
+                    pass
+
+            # write-after-write
             for writer in writer_map.get(var, set()) - {cur_insn.id}:
 
-                write_insn = writer
+                other_writer = writer
                 for insn in knl.instructions:
                     if writer == insn.id:
-                        write_insn = insn.copy()
+                        other_writer = insn.copy()
+                        break
 
+                # other writer is immediately before current writer
                 if writer in cur_insn.happens_after:
-                    before_write_rel = get_relation(cur_insn.id, var,
-                                                    cur_insn.within_inames)
-                    after_write_rel = get_relation(write_insn.id, var,
-                                                   write_insn.within_inames)
+                    before_write_rel = get_relation(other_writer, var)
+                    after_write_rel = get_relation(cur_insn, var)
 
-                    unordered_deps = get_unordered_deps(before_write_rel,
-                                                        after_write_rel)
+                    write_write = get_unordered_deps(after_write_rel,
+                                                     before_write_rel)
 
                     lex_map = cur_insn.happens_after[writer].instances_rel
-                    deps = unordered_deps & lex_map
+
+                    deps = lex_map & write_write
 
                     new_insn.happens_after.update(
                         {writer: HappensAfter(var, deps)}
                     )
 
-                # TODO implement writer does not precede current writer
                 else:
                     pass
 
@@ -206,60 +234,49 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
 
     for iafter, insn_after in enumerate(knl.instructions):
 
-        # the first instruction does not have anything preceding it
         if iafter == 0:
             new_insns.append(insn_after)
 
-        # all other instructions "happen after" the instruction before it
         else:
 
-            # not currently used
-            # unshared_before = insn_before.within_inames
-
-            # get information about the preceding instruction
             insn_before = knl.instructions[iafter - 1]
             shared_inames = insn_after.within_inames & insn_before.within_inames
 
-            # generate a map from the preceding insn to the current insn
             domain_before = knl.get_inames_domain(insn_before.within_inames)
             domain_after = knl.get_inames_domain(insn_after.within_inames)
             happens_before = isl.Map.from_domain_and_range(
                     domain_before, domain_after
             )
 
-            # update inames so they are unique
             for idim in range(happens_before.dim(dim_type.out)):
                 happens_before = happens_before.set_dim_name(
                         dim_type.out, idim,
-                        happens_before.get_dim_name(dim_type.out, idim) + "'")
+                        happens_before.get_dim_name(dim_type.out, idim) + "'"
+                )
 
-            # generate a set containing all inames (from both domains)
             n_inames_before = happens_before.dim(dim_type.in_)
             happens_before_set = happens_before.move_dims(
                     dim_type.out, 0,
                     dim_type.in_, 0,
                     n_inames_before).range()
 
-            # verify the order of the inames
             shared_inames_order_before = [
                     domain_before.get_dim_name(dim_type.out, idim)
                     for idim in range(domain_before.dim(dim_type.out))
                     if domain_before.get_dim_name(dim_type.out, idim)
                     in shared_inames
-                    ]
+            ]
             shared_inames_order_after = [
                     domain_after.get_dim_name(dim_type.out, idim)
                     for idim in range(domain_after.dim(dim_type.out))
                     if domain_after.get_dim_name(dim_type.out, idim)
                     in shared_inames
-                    ]
+            ]
             assert shared_inames_order_after == shared_inames_order_before
             shared_inames_order = shared_inames_order_after
 
-            # generate lexicographical map from space of preceding to current insn
             affs = isl.affs_from_space(happens_before_set.space)
 
-            # start with an empty set
             lex_set = isl.Set.empty(happens_before_set.space)
             for iinnermost, innermost_iname in enumerate(shared_inames_order):
 
@@ -270,28 +287,23 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
                 for outer_iname in shared_inames_order[:iinnermost]:
                     innermost_set = innermost_set & (
                             affs[outer_iname].eq_set(affs[outer_iname + "'"])
-                            )
+                    )
 
-                # update the set
                 lex_set = lex_set | innermost_set
 
-            # create the map
             lex_map = isl.Map.from_range(lex_set).move_dims(
                     dim_type.in_, 0,
                     dim_type.out, 0,
                     n_inames_before)
 
-            # update happens_before map
             happens_before = happens_before & lex_map
 
-            # create HappensAfter and add the relation to it
             new_happens_after = {
                 insn_before.id: HappensAfter(None, happens_before)
             }
 
             insn_after = insn_after.copy(happens_after=new_happens_after)
 
-            # update instructions
             new_insns.append(insn_after)
 
     return knl.copy(instructions=new_insns)
