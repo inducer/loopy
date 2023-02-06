@@ -20,7 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from dataclasses import dataclass
 from typing import Optional
 
 import islpy as isl
@@ -32,20 +31,21 @@ from loopy import LoopKernel
 from loopy import InstructionBase
 from loopy.symbolic import WalkMapper
 from loopy.translation_unit import for_each_kernel
-
-
-@dataclass(frozen=True)
-class HappensAfter:
-    variable_name: Optional[str]
-    instances_rel: Optional[isl.Map]
+from loopy.kernel.instruction import HappensAfter
 
 
 class AccessMapMapper(WalkMapper):
-    """
-    TODO Update this documentation so it reflects proper formatting
+    """A subclass of :class:`loopy.symbolic.WalkMapper` used to generate
+    individual array access maps of instructions. Similar to
+    :class:`loopy.symbolic.BatchedAccessMapMapper`, except that it generates
+    single access maps instead of combined access maps.
 
-    Used instead of BatchedAccessMapMapper to get single access maps for each
-    instruction.
+    .. attribute:: access_maps
+
+        A dict containing the access map of a particular array as accessed by an
+        instruction. These maps can be found via
+
+        access_maps[insn_id][variable_name][inames]
     """
 
     def __init__(self, kernel: LoopKernel, var_names: set):
@@ -87,12 +87,14 @@ class AccessMapMapper(WalkMapper):
 
 @for_each_kernel
 def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
-    """
-    TODO Update documentation to reflect the proper format
+    """Determine precise data dependencies between dynamic statement instances
+    using the access relations of statements. Relies on there being an existing
+    lexicographic ordering of statements.
 
-    Relax the lexicographic dependencies generated in
-    `add_lexicographic_happens_after` according to data dependencies in the
-    program.
+    :arg knl:
+
+        A :class:`loopy.LoopKernel` containing instructions to find the
+        statement instance level dependencies of.
     """
 
     writer_map = knl.writer_map()
@@ -116,9 +118,9 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
     def get_relation(insn: InstructionBase, variable: Optional[str]) -> isl.Map:
         return amap.access_maps[insn.id][variable][insn.within_inames]
 
-    def get_unordered_deps(R: isl.Map, S: isl.Map) -> isl.Map:
+    def get_unordered_deps(r: isl.Map, s: isl.Map) -> isl.Map:
         # equivalent to the composition R^{-1} o S
-        return S.apply_range(R.reverse())
+        return s.apply_range(r.reverse())
 
     new_insns = []
     for cur_insn in knl.instructions:
@@ -220,14 +222,9 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
 
 @for_each_kernel
 def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
-    """
-    TODO update documentation to follow the proper format
-
-    Determine a coarse "happens-before" relationship between an instruction and
-    the instruction immediately preceeding it. This strict execution order is
-    relaxed in accordance with the data dependency relations.
-
-    See `loopy.dependency.compute_happens_after` for data dependency generation.
+    """Compute an initial lexicographic happens-after ordering of the statments
+    in a :class:`loopy.LoopKernel`. Statements are ordered in a sequential
+    (C-like) manner.
     """
 
     new_insns = []
