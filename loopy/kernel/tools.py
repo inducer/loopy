@@ -2157,12 +2157,11 @@ def _union_amaps(amaps):
 
 def get_insn_access_map(kernel, insn_id, var):
     from loopy.transform.subst import expand_subst
-    from loopy.match import Id
     from loopy.symbolic import get_access_map
 
     insn = kernel.id_to_insn[insn_id]
 
-    kernel = expand_subst(kernel, within=Id(insn_id))
+    kernel = expand_subst(kernel)
     indices = list(_IndexCollector(var)((insn.expression,
                                          insn.assignees,
                                          tuple(insn.predicates))))

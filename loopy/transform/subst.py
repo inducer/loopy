@@ -25,7 +25,7 @@ from loopy.symbolic import (
 from loopy.diagnostic import LoopyError
 from loopy.transform.iname import remove_any_newly_unused_inames
 
-from pytools import ImmutableRecord
+from pytools import ImmutableRecord, memoize_on_first_arg
 from pymbolic import var
 
 from loopy.translation_unit import (for_each_kernel,
@@ -506,6 +506,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 # {{{ expand_subst
 
 @for_each_kernel
+@memoize_on_first_arg
 def expand_subst(kernel, within=None):
     """
     Returns an instance of :class:`loopy.LoopKernel` with the substitutions
