@@ -1739,11 +1739,11 @@ def add_inames_to_insn(kernel, inames, insn_match):
 # {{{ remove_inames_from_insn
 
 @for_each_kernel
-def remove_inames_from_insn(kernel, inames, insn_match):
+def remove_inames_from_insn(kernel: LoopKernel, inames: FrozenSet[str],
+        insn_match) -> LoopKernel:
     """
     :arg inames: a frozenset of inames that will be added to the
-        instructions matched by *insn_match*, or a comma-separated
-        string that parses to such a tuple.
+        instructions matched by *insn_match*.
     :arg insn_match: An instruction match as understood by
         :func:`loopy.match.parse_match`.
 
@@ -1758,9 +1758,6 @@ def remove_inames_from_insn(kernel, inames, insn_match):
 
     .. versionadded:: 2023.0
     """
-
-    if isinstance(inames, str):
-        inames = frozenset(s.strip() for s in inames.split(","))
 
     if not isinstance(inames, frozenset):
         raise TypeError("'inames' must be a frozenset")
