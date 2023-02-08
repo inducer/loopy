@@ -1769,9 +1769,12 @@ def remove_inames_from_insn(kernel: LoopKernel, inames: FrozenSet[str],
 
     for insn in kernel.instructions:
         if match(kernel, insn):
-            new_inames = set(insn.within_inames) - inames
+            new_inames = insn.within_inames - inames
+            if new_inames == insn.within_inames:
+                raise LoopyError(f"Inames {inames} not found in instruction "
+                    "{insn.id}")
             new_instructions.append(
-                    insn.copy(within_inames=frozenset(new_inames)))
+                    insn.copy(within_inames=new_inames))
         else:
             new_instructions.append(insn)
 
