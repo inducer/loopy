@@ -28,6 +28,7 @@ from loopy.symbolic import (
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
+from typing import FrozenSet
 
 from loopy.translation_unit import (TranslationUnit,
                                     for_each_kernel)
