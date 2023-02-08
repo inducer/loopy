@@ -1750,6 +1750,12 @@ def remove_inames_from_insn(kernel, inames, insn_match):
     :returns: a :class:`LoopKernel` with the *inames* removed from
         the instructions matched by *insn_match*.
 
+    This transformation is useful when an iname is added to an
+    instruction in a sub-kernel by an inlining call because the
+    kernel invocation itself has the iname. When the instruction
+    does not depend on the iname, this transformation can be used
+    for removing that iname.
+
     .. versionadded:: 2023.0
     """
 
