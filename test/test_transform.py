@@ -1640,7 +1640,7 @@ def test_remove_inames_from_insn():
     t_unit = lp.add_dtypes(t_unit, {"b": "int32"})
     t_unit = lp.split_iname(t_unit, "i", 2, inner_tag="l.0")
     t_unit = lp.split_iname(t_unit, "j", 2, inner_tag="l.0")
-    t_unit = lp.remove_inames_from_insn(t_unit, "i_inner", "id:a")
+    t_unit = lp.remove_inames_from_insn(t_unit, frozenset(["i_inner"]), "id:a")
     # Check that the instruction a does not have multiple tagged inames
     lp.generate_code_v2(t_unit).device_code()
 
