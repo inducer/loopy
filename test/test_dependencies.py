@@ -27,7 +27,7 @@ import loopy as lp
 def test_lex_dependencies():
     knl = lp.make_kernel(
             [
-                "{[a,b]:0<=a,b<7}",
+                "{[a,b]: 0<=a,b<7}",
                 "{[i,j]: 0<=i,j<n and 0<=a,b<5}",
                 "{[k,l]: 0<=k,l<n and 0<=a,b<3}"
                 ],
@@ -39,6 +39,25 @@ def test_lex_dependencies():
     from loopy.kernel.dependency import add_lexicographic_happens_after
 
     add_lexicographic_happens_after(knl)
+
+
+def test_data_dependencies():
+    knl = lp.make_kernel(
+            [
+                "{[a,b]: 0<=a,b<7}",
+                "{[i,j]: 0<=i,j<n and 0<=a,b<5}",
+                "{[k,l]: 0<=k,l<n and 0<=a,b<3}"
+                ],
+            """
+            v[a,b,i,j] = 2*v[a,b,i,j]
+            v[a,b,k,l] = 2*v[a,b,k,l]
+            """)
+
+    from loopy.kernel.dependency import add_lexicographic_happens_after,\
+                                        compute_data_dependencies
+
+    knl = add_lexicographic_happens_after(knl)
+    compute_data_dependencies(knl)
 
 
 if __name__ == "__main__":

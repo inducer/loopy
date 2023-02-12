@@ -138,29 +138,47 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                         write_insn = insn.copy()
                         break
 
+                read_rel = get_relation(cur_insn, var)
+                write_rel = get_relation(write_insn, var)
+                read_write = get_unordered_deps(read_rel, write_rel)
+
                 # writer is immediately before reader
                 if writer in cur_insn.happens_after:
-                    read_rel = get_relation(cur_insn, var)
-                    write_rel = get_relation(write_insn, var)
-
-                    read_write = get_unordered_deps(read_rel, write_rel)
-
                     lex_map = cur_insn.happens_after[writer].instances_rel
 
                     deps = lex_map & read_write
-
                     new_insn.happens_after.update(
                         {writer: HappensAfter(var, deps)}
                     )
 
-                # TODO
+                # writer is not immediately before reader
                 else:
-                    pass
+                    # generate a lexicographical map between the instructions
+                    lex_map = read_write.lex_lt_map(read_write)
 
-        # handle write-after-read and write-after-write
+                    if lex_map.space != read_write.space:
+
+                        # names may not be unique, make out names unique
+                        for i in range(lex_map.dim(dim_type.out)):
+                            iname = lex_map.get_dim_name(dim_type.out, i) + "'"
+                            lex_map = lex_map.set_dim_name(dim_type.out, i,
+                                                           iname)
+                        for i in range(read_write.dim(dim_type.out)):
+                            iname = read_write.get_dim_name(dim_type.out, i)+"'"
+                            read_write = read_write.set_dim_name(dim_type.out,
+                                                                 i, iname)
+
+                        lex_map, read_write = isl.align_two(lex_map, read_write)
+
+                    deps = lex_map & read_write
+                    new_insn.happens_after.update(
+                            {writer: HappensAfter(var, deps)}
+                    )
+
+    # handle write-after-read and write-after-write
         for var in writes[cur_insn.id]:
 
-            # TODO write-after-read
+            # write-after-read
             for reader in reader_map.get(var, set()) - {cur_insn.id}:
 
                 read_insn = reader
@@ -169,23 +187,43 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                         read_insn = insn.copy()
                         break
 
+                write_rel = get_relation(cur_insn, var)
+                read_rel = get_relation(read_insn, var)
+
+                # calculate dependency map
+                write_read = get_unordered_deps(write_rel, read_rel)
+
+                # reader is immediately before writer
                 if reader in cur_insn.happens_after:
-                    write_rel = get_relation(cur_insn, var)
-                    read_rel = get_relation(read_insn, var)
-
-                    write_read = get_unordered_deps(write_rel, read_rel)
-
                     lex_map = cur_insn.happens_after[reader].instances_rel
-
                     deps = lex_map & write_read
 
                     new_insn.happens_after.update(
                         {reader: HappensAfter(var, deps)}
                     )
 
-                # TODO
+                # reader is not immediately before writer
                 else:
-                    pass
+                    lex_map = write_read.lex_lt_map(write_read)
+
+                    if lex_map.space != write_read.space:
+
+                        # inames may not be unique, make out inames unique
+                        for i in range(lex_map.dim(dim_type.out)):
+                            iname = lex_map.get_dim_name(dim_type.out, i) + "'"
+                            lex_map = lex_map.set_dim_name(dim_type.out, i,
+                                                           iname)
+                        for i in range(write_read.dim(dim_type.out)):
+                            iname = write_read.get_dim_name(dim_type.out, i)+"'"
+                            write_read = write_read.set_dim_name(dim_type.out,
+                                                                 i, iname)
+
+                        lex_map, write_read = isl.align_two(lex_map, write_read)
+
+                    deps = lex_map & write_read
+                    new_insn.happens_after.update(
+                            {reader: HappensAfter(var, deps)}
+                    )
 
             # write-after-write
             for writer in writer_map.get(var, set()) - {cur_insn.id}:
@@ -196,14 +234,14 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                         other_writer = insn.copy()
                         break
 
+                before_write_rel = get_relation(other_writer, var)
+                after_write_rel = get_relation(cur_insn, var)
+
+                write_write = get_unordered_deps(after_write_rel,
+                                                 before_write_rel)
+
                 # other writer is immediately before current writer
                 if writer in cur_insn.happens_after:
-                    before_write_rel = get_relation(other_writer, var)
-                    after_write_rel = get_relation(cur_insn, var)
-
-                    write_write = get_unordered_deps(after_write_rel,
-                                                     before_write_rel)
-
                     lex_map = cur_insn.happens_after[writer].instances_rel
 
                     deps = lex_map & write_write
@@ -212,8 +250,29 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                         {writer: HappensAfter(var, deps)}
                     )
 
+                # there is not a writer immediately before current writer
                 else:
-                    pass
+                    lex_map = write_write.lex_lt_map(write_write)
+
+                    if lex_map.space != write_write.space:
+
+                        # make inames unique
+                        for i in range(lex_map.dim(dim_type.out)):
+                            iname = lex_map.get_dim_name(dim_type.out, i) + "'"
+                            lex_map = lex_map.set_dim_name(dim_type.out, i,
+                                                           iname)
+                        for i in range(write_write.dim(dim_type.out)):
+                            iname = write_write.get_dim_name(dim_type.out, i)+"'"
+                            write_write = write_write.set_dim_name(dim_type.out,
+                                                                   i, iname)
+
+                        lex_map, write_write = isl.align_two(lex_map,
+                                                             write_write)
+
+                    deps = lex_map & write_write
+                    new_insn.happens_after.update(
+                            {writer: HappensAfter(var, deps)}
+                    )
 
         new_insns.append(new_insn)
 
