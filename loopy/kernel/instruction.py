@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from typing import FrozenSet, Optional, Mapping, Tuple, Type, Union
 from sys import intern
 from functools import cached_property
-from typing import FrozenSet
 
 from collections.abc import Mapping as MappingABC
 
@@ -275,7 +274,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                  predicates: Optional[FrozenSet[str]],
                  tags: Optional[FrozenSet[Tag]],
                  *,
-                 depends_on: Union[FrozenSet[str], str, None]=None,
+                 depends_on: Union[FrozenSet[str], str, None] = None,
                  ) -> None:
 
         if predicates is None:

@@ -2465,6 +2465,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     check_for_duplicate_insn_ids(knl)
 
     if seq_dependencies:
+        from loopy.kernel.dependency import add_lexicographic_happens_after
         knl = add_lexicographic_happens_after(knl)
 
     assert len(knl.instructions) == len(inames_to_dup)
