@@ -3473,6 +3473,16 @@ def test_type_inference_of_clbls_in_substitutions(ctx_factory):
     np.testing.assert_allclose(out.get(), np.abs(10.0*(np.arange(10)-5)))
 
 
+def test_einsum_parsing(ctx_factory):
+    ctx = ctx_factory()
+
+    # See <https://github.com/inducer/loopy/issues/753>
+    knl = lp.make_einsum("ik, kj -> ij", ["A", "B"])
+    knl = lp.add_dtypes(knl, {"A": np.float32, "B": np.float32})
+    lp.auto_test_vs_ref(knl, ctx, knl,
+                        parameters={"Ni": 10, "Nj": 10, "Nk": 10})
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
