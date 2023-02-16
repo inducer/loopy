@@ -1066,7 +1066,7 @@ class CallInstruction(MultiAssignmentBase):
 
         super().__init__(
                 id=id,
-                depends_on=depends_on,
+                happens_after=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -1248,7 +1248,7 @@ def modify_assignee_for_array_call(assignee):
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
 
     if temp_var_types is None:
-        temp_var_types = (Optional(),) * len(assignees)
+        temp_var_types = (LoopyOptional(),) * len(assignees)
 
     if len(assignees) != 1 or is_array_call(assignees, expression):
         atomicity = kwargs.pop("atomicity", ())
@@ -1366,7 +1366,7 @@ class CInstruction(InstructionBase):
 
         InstructionBase.__init__(self,
                 id=id,
-                depends_on=depends_on,
+                happens_after=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1524,7 +1524,7 @@ class NoOpInstruction(_DataObliviousInstruction):
             predicates=None, tags=None):
         super().__init__(
                 id=id,
-                depends_on=depends_on,
+                happens_after=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -1588,7 +1588,7 @@ class BarrierInstruction(_DataObliviousInstruction):
 
         super().__init__(
                 id=id,
-                depends_on=depends_on,
+                happens_after=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
