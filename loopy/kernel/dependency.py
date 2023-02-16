@@ -122,6 +122,14 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
         # equivalent to the composition R^{-1} o S
         return s.apply_range(r.reverse())
 
+    def make_out_inames_unique(relation: isl.Map) -> isl.Map:
+        ndim = relation.dim(dim_type.out)
+        for i in range(ndim):
+            iname = relation.get_dim_name(dim_type.out, i) + "'"
+            relation = relation.set_dim_name(dim_type.out, i, iname)
+
+        return relation
+
     new_insns = []
     for cur_insn in knl.instructions:
 
@@ -157,17 +165,9 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                     lex_map = read_write.lex_lt_map(read_write)
 
                     if lex_map.space != read_write.space:
-
                         # names may not be unique, make out names unique
-                        for i in range(lex_map.dim(dim_type.out)):
-                            iname = lex_map.get_dim_name(dim_type.out, i) + "'"
-                            lex_map = lex_map.set_dim_name(dim_type.out, i,
-                                                           iname)
-                        for i in range(read_write.dim(dim_type.out)):
-                            iname = read_write.get_dim_name(dim_type.out, i)+"'"
-                            read_write = read_write.set_dim_name(dim_type.out,
-                                                                 i, iname)
-
+                        lex_map = make_out_inames_unique(lex_map)
+                        read_write = make_out_inames_unique(read_write)
                         lex_map, read_write = isl.align_two(lex_map, read_write)
 
                     deps = lex_map & read_write
@@ -197,7 +197,6 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                 if reader in cur_insn.happens_after:
                     lex_map = cur_insn.happens_after[reader].instances_rel
                     deps = lex_map & write_read
-
                     new_insn.happens_after.update(
                         {reader: HappensAfter(var, deps)}
                     )
@@ -207,17 +206,9 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                     lex_map = write_read.lex_lt_map(write_read)
 
                     if lex_map.space != write_read.space:
-
                         # inames may not be unique, make out inames unique
-                        for i in range(lex_map.dim(dim_type.out)):
-                            iname = lex_map.get_dim_name(dim_type.out, i) + "'"
-                            lex_map = lex_map.set_dim_name(dim_type.out, i,
-                                                           iname)
-                        for i in range(write_read.dim(dim_type.out)):
-                            iname = write_read.get_dim_name(dim_type.out, i)+"'"
-                            write_read = write_read.set_dim_name(dim_type.out,
-                                                                 i, iname)
-
+                        lex_map = make_out_inames_unique(lex_map)
+                        write_read = make_out_inames_unique(write_read)
                         lex_map, write_read = isl.align_two(lex_map, write_read)
 
                     deps = lex_map & write_read
@@ -243,9 +234,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                 # other writer is immediately before current writer
                 if writer in cur_insn.happens_after:
                     lex_map = cur_insn.happens_after[writer].instances_rel
-
                     deps = lex_map & write_write
-
                     new_insn.happens_after.update(
                         {writer: HappensAfter(var, deps)}
                     )
@@ -255,17 +244,9 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                     lex_map = write_write.lex_lt_map(write_write)
 
                     if lex_map.space != write_write.space:
-
                         # make inames unique
-                        for i in range(lex_map.dim(dim_type.out)):
-                            iname = lex_map.get_dim_name(dim_type.out, i) + "'"
-                            lex_map = lex_map.set_dim_name(dim_type.out, i,
-                                                           iname)
-                        for i in range(write_write.dim(dim_type.out)):
-                            iname = write_write.get_dim_name(dim_type.out, i)+"'"
-                            write_write = write_write.set_dim_name(dim_type.out,
-                                                                   i, iname)
-
+                        lex_map = make_out_inames_unique(lex_map)
+                        write_write = make_out_inames_unique(write_write)
                         lex_map, write_write = isl.align_two(lex_map,
                                                              write_write)
 
