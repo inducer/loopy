@@ -105,6 +105,7 @@ from loopy.transform.subst import (extract_subst,
 from loopy.transform.precompute import precompute
 from loopy.transform.buffer import buffer_array
 from loopy.transform.fusion import fuse_kernels
+from loopy.transform.concatenate import concatenate_arrays
 
 from loopy.transform.arithmetic import (
         fold_constants,
@@ -115,7 +116,8 @@ from loopy.transform.padding import (
         find_padding_multiple,
         add_padding)
 
-from loopy.transform.privatize import privatize_temporaries_with_inames
+from loopy.transform.privatize import (privatize_temporaries_with_inames,
+        unprivatize_temporaries_with_inames)
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
@@ -231,6 +233,7 @@ __all__ = [
 
         "precompute", "buffer_array",
         "fuse_kernels",
+        "concatenate_arrays",
 
         "fold_constants", "collect_common_factors_on_increment",
 
@@ -238,6 +241,7 @@ __all__ = [
         "find_padding_multiple", "add_padding",
 
         "privatize_temporaries_with_inames",
+        "unprivatize_temporaries_with_inames",
 
         "to_batched",
 
@@ -527,6 +531,9 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
     """
     arg_spec, out_spec = spec.split("->")
     arg_specs = arg_spec.split(",")
+
+    out_spec = out_spec.strip()
+    arg_specs = [arg_spec.strip() for arg_spec in arg_specs]
 
     if len(arg_names) != len(arg_specs):
         raise ValueError(

@@ -486,9 +486,21 @@ def test_integer_associativity():
     print(lp.generate_code_v2(knl).device_code())
     assert (
             "u[ncomp * indices[i % elemsize + elemsize "
-            "* loopy_floor_div_int32(i, ncomp * elemsize)] "
+            "* (i / (ncomp * elemsize))] "
             "+ loopy_mod_pos_b_int32(i / elemsize, ncomp)]"
             in lp.generate_code_v2(knl).device_code())
+
+
+def test_floor_div():
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<10 }",
+        "out[i] = (i-1)*(i-2)//2")
+    assert "loopy_floor_div" in lp.generate_code_v2(knl).device_code()
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<10 }",
+        "out[i] = (i*(i+1))//2")
+    assert "loopy_floor_div" not in lp.generate_code_v2(knl).device_code()
 
 
 def test_divide_precedence(ctx_factory):
@@ -601,7 +613,7 @@ def test_bool_type_context(ctx_factory):
         k = 8.0 and 7.0
         """,
         [
-            lp.GlobalArg("k", dtype=np.bool8, shape=lp.auto),
+            lp.GlobalArg("k", dtype=np.bool_, shape=lp.auto),
         ])
 
     evt, (out,) = knl(queue)

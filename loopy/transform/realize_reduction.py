@@ -154,18 +154,18 @@ class _ReductionRealizationContext:
                 surrounding_insn_add_no_sync_with=set())
 
     def get_insn_kwargs(self):
-        return dict(
-                within_inames=(
+        return {
+                "within_inames": (
                     self.surrounding_within_inames
                     | frozenset(self.surrounding_insn_add_within_inames)),
-                within_inames_is_final=True,
-                depends_on=(
+                "within_inames_is_final": True,
+                "depends_on": (
                     self.surrounding_depends_on
                     | frozenset(self.surrounding_insn_add_depends_on)),
-                no_sync_with=(
+                "no_sync_with": (
                     self.surrounding_no_sync_with
                     | frozenset(self.surrounding_insn_add_no_sync_with)),
-                predicates=self.surrounding_predicates)
+                "predicates": self.surrounding_predicates}
 
 # }}}
 
@@ -795,9 +795,9 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
     new_instructions = (
             list(new_or_updated_instructions.values())
-            + list(insn
+            + [insn
                 for insn in kernel.instructions
-                if insn.id not in new_or_updated_instructions))
+                if insn.id not in new_or_updated_instructions])
 
     return kernel.copy(temporary_variables=new_temporary_variables,
                        instructions=new_instructions)
@@ -815,7 +815,7 @@ class RealizeReductionCallbackMapper(ReductionCallbackMapper):
         return self.callback(expr, **kwargs)
 
     def map_if(self, expr, *, red_realize_ctx, nresults):
-        common_kwargs = dict(nresults=nresults)
+        common_kwargs = {"nresults": nresults}
 
         # {{{ generate code for condition
 
@@ -1811,7 +1811,7 @@ def map_reduction(expr, *, red_realize_ctx, nresults):
                 % ", ".join(expr.inames))
 
     if n_local_par > 1:
-        raise LoopyError("Reduction over '%s' contains more than"
+        raise LoopyError("Reduction over '%s' contains more than "
                 "one parallel iname. It must be split "
                 "(using split_reduction_{in,out}ward) "
                 "before code generation."

@@ -1347,7 +1347,7 @@ class CInstruction(InstructionBase):
 
     def __init__(self,
             iname_exprs, code,
-            read_variables=frozenset(), assignees=tuple(),
+            read_variables=frozenset(), assignees=(),
             id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,

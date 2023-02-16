@@ -86,10 +86,10 @@ def _create_vector_types():
                 titles.extend((len(names)-len(titles))*[None])
 
             try:
-                dtype = np.dtype(dict(
-                    names=names,
-                    formats=[base_type]*count,
-                    titles=titles))
+                dtype = np.dtype({
+                    "names": names,
+                    "formats": [base_type]*count,
+                    "titles": titles})
             except NotImplementedError:
                 try:
                     dtype = np.dtype([((n, title), base_type)

@@ -340,7 +340,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 result["within_inames_is_final"] = True
 
             result["within_inames"] = intern_frozenset_of_ids(
-                    opt_value.split(":"))
+                    [s for s in opt_value.split(":") if s])
 
         elif opt_key == "if" and opt_value is not None:
             predicates = opt_value.split(":")
@@ -2119,7 +2119,7 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
 # }}}
 
 
-# {{{ kernel creation top-level
+# {{{ make_function
 
 def make_function(domains, instructions, kernel_data=None, **kwargs):
     """User-facing kernel creation entrypoint.
@@ -2421,6 +2421,13 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     kernel_args = arg_guesser.convert_names_to_full_args(kernel_args)
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)
 
+    for name, rule in kwargs.pop("substitutions", {}).items():
+        if name in substitutions:
+            raise LoopyError(f"substitution rule '{name}' declared both in-line "
+                             "and via substitutions argument")
+
+        substitutions[name] = rule
+
     kwargs["substitutions"] = substitutions
 
     from pytools.tag import normalize_tags, check_tag_uniqueness
@@ -2529,10 +2536,14 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     from loopy.translation_unit import make_program
     return make_program(knl)
 
+# }}}
+
+
+# {{{ make_kernel
 
 def make_kernel(*args, **kwargs):
     tunit = make_function(*args, **kwargs)
-    name, = [name for name in tunit.callables_table]
+    name, = tunit.callables_table
     return tunit.with_entrypoints(name)
 
 

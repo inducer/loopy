@@ -1333,11 +1333,8 @@ def generate_loop_schedules_internal(
                 - sched_state.ilp_inames
                 - sched_state.vec_inames
                 )
-            priority_tiers = [t for t in
-                              get_priority_tiers(wanted,
-                                                 sched_state.kernel.loop_priority
-                                                 )
-                              ]
+            priority_tiers = list(
+                    get_priority_tiers(wanted, sched_state.kernel.loop_priority))
 
             # Update the loop priority set, because some constraints may have
             # have been contradictary.
@@ -1750,8 +1747,7 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
                     sched_item.synchronization_kind, kind):
                 insn_ids_alive_at_scope[-1].clear()
         else:
-            insn_ids_alive_at_scope[-1] |= {
-                    insn_id for insn_id in sched_item_to_insn_id(sched_item)}
+            insn_ids_alive_at_scope[-1] |= set(sched_item_to_insn_id(sched_item))
 
     assert len(insn_ids_alive_at_scope) == 1
     return insn_ids_alive_at_scope[-1]

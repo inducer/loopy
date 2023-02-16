@@ -373,8 +373,7 @@ class TranslationUnit(ImmutableRecord):
         # NOTE: _hash_value may vanish during pickling
         if getattr(self, "_hash_value", None) is None:
             from loopy.tools import LoopyKeyBuilder
-            from pytools.persistent_dict import new_hash
-            key_hash = new_hash()
+            key_hash = LoopyKeyBuilder.new_hash()
             self.update_persistent_hash(key_hash, LoopyKeyBuilder())
             self._hash_value = hash(key_hash.digest())
 

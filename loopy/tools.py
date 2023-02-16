@@ -732,6 +732,11 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
             option += ("dep="+":".join(insn.depends_on)+", ")
         if insn.tags:
             option += ("tags="+":".join(insn.tags)+", ")
+        if insn.within_inames is not None:
+            if insn.within_inames_is_final:
+                option += ("inames="+":".join(insn.within_inames)+", ")
+            else:
+                option += ("inames=+"+":".join(insn.within_inames)+", ")
 
         if isinstance(insn, MultiAssignmentBase):
             if insn.atomicity:
@@ -757,6 +762,10 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
         % endfor
         ],
         '''
+        % for name, rule in sorted(kernel.substitutions.items(), key=lambda x: x[0]):
+        ${name}(${", ".join(rule.arguments)}) := ${str(rule.expression)}
+        %endfor
+
         % for id, opts in options.items():
         <% insn = kernel.id_to_insn[id] %>
         % if isinstance(insn, lp.MultiAssignmentBase):
@@ -893,6 +902,13 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     from loopy.kernel import LoopKernel
     import pymbolic.primitives as prim
 
+    transform_cache = WriteOncePersistentDict(
+        ("loopy-memoize-cache-"
+            f"{func.__name__}-"
+            f"{key_builder_t.__qualname__}.{key_builder_t.__name__}"
+            f"-v0-{DATA_MODEL_VERSION}"),
+        key_builder=key_builder_t())
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         from loopy import CACHING_ENABLED
@@ -901,19 +917,14 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
                 or kwargs.pop("_no_memoize_on_disk", False)):
             return func(*args, **kwargs)
 
-        transform_cache = WriteOncePersistentDict(
-            ("loopy-memoize-cache-"
-             f"{key_builder_t.__qualname__}-{key_builder_t.__name__}"
-             f"-v0-{DATA_MODEL_VERSION}"),
-            key_builder=key_builder_t())
-
         def _get_persistent_hashable_arg(arg):
             if isinstance(arg, prim.Expression):
                 return PymbolicExpressionHashWrapper(arg)
             else:
                 return arg
 
-        cache_key = (tuple(_get_persistent_hashable_arg(arg)
+        cache_key = (func.__qualname__, func.__name__,
+                     tuple(_get_persistent_hashable_arg(arg)
                            for arg in args),
                      {kw: _get_persistent_hashable_arg(arg)
                       for kw, arg in kwargs.items()})

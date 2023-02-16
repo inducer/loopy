@@ -611,7 +611,7 @@ class TypedCSE(LoopyExpressionBase, p.CommonSubexpression):
         return (self.child, self.dtype, self.prefix)
 
     def get_extra_properties(self):
-        return dict(dtype=self.dtype)
+        return {"dtype": self.dtype}
 
 
 class TypeAnnotation(LoopyExpressionBase):

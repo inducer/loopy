@@ -170,11 +170,18 @@ def pyopencl_preamble_generator(preamble_info):
         if has_double:
             yield ("10_include_complex_header", """
                 #define PYOPENCL_DEFINE_CDOUBLE
+                #ifndef PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT
+                #define PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT 1
+                #endif
 
                 #include <pyopencl-complex.h>
                 """)
         else:
             yield ("10_include_complex_header", """
+                #ifndef PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT
+                #define PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT 1
+                #endif
+
                 #include <pyopencl-complex.h>
                 """)
 
@@ -229,6 +236,33 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if not is_complex:
             return super().map_sum(expr, type_context)
+        elif not self.kernel.options.allow_fp_reordering:
+            if len(expr.children) == 0:
+                return tgt_dtype(0)
+
+            tgt_name = self.complex_type_name(tgt_dtype)
+            result = None
+            lhs_is_complex = False
+
+            for child in expr.children:
+                rhs_is_complex = self.infer_type(child).is_complex()
+                if rhs_is_complex:
+                    child_val = self.rec(child, type_context, tgt_dtype)
+                else:
+                    child_val = self.rec(child, type_context)
+
+                if result is None:
+                    result = child_val
+                elif lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_add")(result, child_val)
+                elif lhs_is_complex and not rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_addr")(result, child_val)
+                elif not lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_radd")(result, child_val)
+                else:
+                    result = p.Sum((result, child_val))
+                lhs_is_complex = lhs_is_complex or rhs_is_complex
+            return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
@@ -244,18 +278,54 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
             c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
 
+            mul_name = f"{tgt_name}_mul"
+
             def binary_tree_add(start, end):
                 if start + 1 == end:
                     return c_applied[start]
                 mid = (start + end)//2
                 lsum = binary_tree_add(start, mid)
                 rsum = binary_tree_add(mid, end)
-                return p.Variable("%s_add" % tgt_name)(lsum, rsum)
+
+                # FMAs should ideally be recognized by the compiler, but some
+                # compilers fail to do so. For eg:
+                #
+                #    res = complex_add(c, complex_mul(a, b))
+                #
+                # leads to code that looks like below because of the temporary
+                # given by ``complex_mul(a, b)``.
+                #
+                #    tmp.real = a.real * b.real - a.imag * b.imag
+                #    tmp.imag = a.real * b.imag + a.imag * b.real
+                #    res.real = c.real + tmp.real
+                #    res.imag = c.imag + tmp.imag
+                #
+                # clang can fuse across multiple statements like this with
+                # -ffp-contract=fast which is the default for PTX codegen, but
+                # for some unknown reason, clang fails to see the FMAs.
+                #
+                # We need to do this only for complex as we haev temporaries
+                # only in complex. For reals, the code generated looks like
+                #
+                #    res = c + a * b
+                #
+                # and clang is able to generate an FMA for this code.
+
+                if isinstance(lsum, p.Call) and isinstance(lsum.function,
+                        p.Variable) and lsum.function.name == mul_name:
+                    return p.Variable(f"{tgt_name}_fma")(*lsum.parameters, rsum)
+
+                elif isinstance(rsum, p.Call) and isinstance(rsum.function,
+                        p.Variable) and rsum.function.name == mul_name:
+                    return p.Variable(f"{tgt_name}_fma")(*rsum.parameters, lsum)
+
+                else:
+                    return p.Variable(f"{tgt_name}_add")(lsum, rsum)
 
             complex_sum = binary_tree_add(0, len(c_applied))
 
             if reals:
-                return p.Variable("%s_radd" % tgt_name)(real_sum, complex_sum)
+                return p.Variable(f"{tgt_name}_radd")(real_sum, complex_sum)
             else:
                 return complex_sum
 
@@ -274,6 +344,30 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if not is_complex:
             return super().map_product(expr, type_context)
+        elif not self.kernel.options.allow_fp_reordering:
+            tgt_name = self.complex_type_name(tgt_dtype)
+
+            result = None
+            lhs_is_complex = False
+            for child in expr.children:
+                rhs_is_complex = self.infer_type(child).is_complex()
+                if rhs_is_complex:
+                    child_val = self.rec(child, type_context, tgt_dtype)
+                else:
+                    child_val = self.rec(child, type_context)
+
+                if result is None:
+                    result = child_val
+                elif lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_mul")(result, child_val)
+                elif lhs_is_complex and not rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_mulr")(result, child_val)
+                elif not lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_rmul")(result, child_val)
+                else:
+                    result = p.Product((result, child_val))
+                lhs_is_complex = lhs_is_complex or rhs_is_complex
+            return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
@@ -692,7 +786,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         args = (
                 ["_lpy_cl_kernels", "queue"]
-                + [arg_name for arg_name in kai.passed_arg_names]
+                + list(kai.passed_arg_names)
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Return, Line, Statement as S)
@@ -867,19 +961,17 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             value_arg_code,
             arry_arg_code,
             overflow_args_code,
-            Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
-                "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s, "
-                # using positional args because pybind is slow with kwargs
-                "None, "  # offset
-                "wait_for, "
-                "True, "  # g_times_l
-                "True, "  # allow_empty_ndrange
-                ")"
-                % dict(
-                    pyopencl_module_name=self.target.pyopencl_module_name,
-                    gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
-                    lsize=ecm(lsize, prec=PREC_NONE, type_context="i"))),
+            Assign("_lpy_evt",
+                   f"{self.target.pyopencl_module_name}.enqueue_nd_range_kernel("
+                   "queue, _lpy_knl, "
+                   f"{ecm(gsize, prec=PREC_NONE, type_context='i')}, "
+                   f"{ecm(lsize, prec=PREC_NONE, type_context='i')}, "
+                   # using positional args because pybind is slow with kwargs
+                   "None, "  # offset
+                   "wait_for, "
+                   "True, "  # g_times_l
+                   "True, "  # allow_empty_ndrange
+                   ")"),
             Assign("wait_for", "[_lpy_evt]"),
             Line(),
             Comment("}}}"),

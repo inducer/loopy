@@ -47,7 +47,7 @@ from loopy.codegen.result import CodeGenerationResult
 
 class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     """
-    A DType registry that uses int8 for bool8 types.
+    A DType registry that uses int8 for bool_ types.
 
     .. note::
 
@@ -56,7 +56,7 @@ class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     """
     def dtype_to_ctype(self, dtype):
         from loopy.types import NumpyType
-        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool8:
+        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool_:
             return self.wrapped_registry.dtype_to_ctype(
                     NumpyType(np.int8))
         return self.wrapped_registry.dtype_to_ctype(dtype)
@@ -129,10 +129,10 @@ def _create_vector_types():
                 titles.extend((len(names)-len(titles))*[None])
 
             try:
-                dtype = np.dtype(dict(
-                    names=names,
-                    formats=[base_type]*padded_count,
-                    titles=titles))
+                dtype = np.dtype({
+                    "names": names,
+                    "formats": [base_type]*padded_count,
+                    "titles": titles})
             except NotImplementedError:
                 try:
                     dtype = np.dtype([((n, title), base_type)
@@ -492,12 +492,12 @@ def opencl_preamble_generator(preamble_info):
     from loopy.tools import remove_common_indentation
     kernel = preamble_info.kernel
 
+    idx_ctype = kernel.target.dtype_to_typename(kernel.index_dtype)
     yield ("00_declare_gid_lid",
-            remove_common_indentation("""
-                #define lid(N) ((%(idx_ctype)s) get_local_id(N))
-                #define gid(N) ((%(idx_ctype)s) get_group_id(N))
-                """ % dict(idx_ctype=kernel.target.dtype_to_typename(
-                    kernel.index_dtype))))
+            remove_common_indentation(f"""
+                #define lid(N) (({idx_ctype}) get_local_id(N))
+                #define gid(N) (({idx_ctype}) get_group_id(N))
+                """))
 
     for func in preamble_info.seen_functions:
         if func.name == "pow" and func.c_name == "powf32":
@@ -549,7 +549,7 @@ class OpenCLTarget(CFamilyTarget):
             for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
             double-exchange for floating point--not yet supported).
         :arg use_int8_for_bool: Size of *bool* is undefined as per
-            OpenCL spec, if *True* all bool8 variables would be treated
+            OpenCL spec, if *True* all bool_ variables would be treated
             as int8's.
         """
         super().__init__()

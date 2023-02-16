@@ -206,7 +206,7 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
                                 "_lpy_np."+(
                                     tv.dtype.numpy_dtype.name
                                     if tv.dtype.numpy_dtype.name != "bool"
-                                    else "bool8")
+                                    else "bool_")
                                 )))
 
         return result

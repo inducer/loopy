@@ -452,8 +452,7 @@ def build_loop_nest(codegen_state, schedule_index):
                 def gen_code(inner_codegen_state):  # noqa pylint:disable=function-redefined
                     condition_exprs = [
                             constraint_to_cond_expr(cns)
-                            for cns in bounds_checks] + [
-                                pred_chk for pred_chk in pred_checks]
+                            for cns in bounds_checks] + list(pred_checks)
 
                     prev_result = prev_gen_code(inner_codegen_state)
 
