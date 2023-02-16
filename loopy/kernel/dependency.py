@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Optional
+from typing import Optional, FrozenSet, Tuple, DefaultDict, Set
 
 import islpy as isl
 from islpy import dim_type
@@ -29,10 +29,10 @@ import pymbolic.primitives as p
 
 from loopy import LoopKernel
 from loopy import InstructionBase
+from loopy.kernel.instruction import HappensAfter
 from loopy.symbolic import WalkMapper
 from loopy.translation_unit import for_each_kernel
-from loopy.kernel.instruction import HappensAfter
-
+from loopy.symbolic import get_access_map
 
 class AccessMapMapper(WalkMapper):
     """A subclass of :class:`loopy.symbolic.WalkMapper` used to generate
@@ -46,20 +46,27 @@ class AccessMapMapper(WalkMapper):
         instruction. These maps can be found via
 
         access_maps[insn_id][variable_name][inames]
+
+    .. warning::
+        This implementation of finding and storing access maps for instructions
+        is subject to change.
     """
 
-    def __init__(self, kernel: LoopKernel, var_names: set):
+    def __init__(self, kernel: LoopKernel, variable_names: Set):
         self.kernel = kernel
-        self._var_names = var_names
-
+        self._variable_names = variable_names
+        
+        # possibly not the final implementation of this
         from collections import defaultdict
-        self.access_maps = defaultdict(lambda:
+        Dict = DefaultDict
+        self.access_maps: Dict[str, Dict[str, Dict[FrozenSet, isl.Map]]] = \
+                           defaultdict(lambda:
                            defaultdict(lambda:
                            defaultdict(lambda: None)))
 
         super().__init__()
 
-    def map_subscript(self, expr: p.Subscript, inames: frozenset, insn_id: str):
+    def map_subscript(self, expr: p.Subscript, inames: FrozenSet, insn_id: str):
 
         domain = self.kernel.get_inames_domain(inames)
 
@@ -67,22 +74,20 @@ class AccessMapMapper(WalkMapper):
 
         assert isinstance(expr.aggregate, p.Variable)
 
-        if expr.aggregate.name not in self._var_names:
+        variable_name = expr.aggregate.name
+        subscript = expr.index_tuple
+        if variable_name not in self._variable_names:
             return
 
-        arg_name = expr.aggregate.name
-        subscript = expr.index_tuple
-
         from loopy.diagnostic import UnableToDetermineAccessRangeError
-        from loopy.symbolic import get_access_map
 
         try:
             access_map = get_access_map(domain, subscript)
         except UnableToDetermineAccessRangeError:
             return
 
-        if self.access_maps[insn_id][arg_name][inames] is None:
-            self.access_maps[insn_id][arg_name][inames] = access_map
+        if self.access_maps[insn_id][variable_name][inames] is None:
+            self.access_maps[insn_id][variable_name][inames] = access_map
 
 
 @for_each_kernel

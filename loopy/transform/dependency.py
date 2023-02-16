@@ -25,5 +25,5 @@ from loopy.translation_unit import for_each_kernel
 
 
 @for_each_kernel
-def narrow_dependencies(kernel: LoopKernel) -> LoopKernel:
+def narrow_dependencies(kernel: LoopKernel) -> None:
     pass
