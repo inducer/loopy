@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Optional, FrozenSet, Tuple, DefaultDict, Set
+from typing import Optional, FrozenSet, Set
 
 import islpy as isl
 from islpy import dim_type
@@ -33,6 +33,7 @@ from loopy.kernel.instruction import HappensAfter
 from loopy.symbolic import WalkMapper
 from loopy.translation_unit import for_each_kernel
 from loopy.symbolic import get_access_map
+
 
 class AccessMapMapper(WalkMapper):
     """A subclass of :class:`loopy.symbolic.WalkMapper` used to generate
@@ -55,14 +56,16 @@ class AccessMapMapper(WalkMapper):
     def __init__(self, kernel: LoopKernel, variable_names: Set):
         self.kernel = kernel
         self._variable_names = variable_names
-        
+
         # possibly not the final implementation of this
         from collections import defaultdict
-        Dict = DefaultDict
-        self.access_maps: Dict[str, Dict[str, Dict[FrozenSet, isl.Map]]] = \
-                           defaultdict(lambda:
-                           defaultdict(lambda:
-                           defaultdict(lambda: None)))
+        from typing import DefaultDict as Dict
+        self.access_maps: Dict[Optional[str],\
+                          Dict[Optional[str],\
+                          Dict[FrozenSet, isl.Map]]] =\
+                                                  defaultdict(lambda:
+                                                  defaultdict(lambda:
+                                                  defaultdict(lambda: None)))
 
         super().__init__()
 
