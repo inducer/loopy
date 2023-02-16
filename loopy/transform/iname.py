@@ -1781,6 +1781,44 @@ def remove_inames_from_insn(kernel: LoopKernel, inames: FrozenSet[str],
 
     return kernel.copy(instructions=new_instructions)
 
+
+@for_each_kernel
+def remove_predicates_from_insn(kernel, predicates, insn_match):
+    """
+    :arg predicates: a frozenset of predicates that will be added to the
+        instructions matched by *insn_match*
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *predicates* removed from
+        the instructions matched by *insn_match*.
+
+    This transformation is useful when a predicate is added to an
+    instruction in a sub-kernel by an inlining call because the
+    kernel invocation itself has the iname. When the instruction
+    does not depend on the predicate, this transformation can be used
+    for removing that predicate.
+
+    .. versionadded:: 2023.0
+    """
+    if not isinstance(predicates, frozenset):
+        raise TypeError("'predicates' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if match(kernel, insn):
+            new_predicates = insn.predicates - predicates
+            new_instructions.append(
+                insn.copy(predicates=frozenset(new_predicates)))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
 # }}}
 
 

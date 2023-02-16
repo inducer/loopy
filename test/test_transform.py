@@ -1645,6 +1645,29 @@ def test_remove_inames_from_insn():
     lp.generate_code_v2(t_unit).device_code()
 
 
+def test_remove_predicates_from_insn():
+    import pymbolic.primitives as prim
+
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        <> cond = i > 5  {id=cond}
+        a[i] = 1         {if=cond,id=a,dep=cond}
+        """)
+
+    ref_t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        <> cond = i > 5  {id=cond}
+        a[i] = 1         {id=a,dep=cond}
+        """)
+
+    cond = prim.Variable("cond")
+    t_unit = lp.remove_predicates_from_insn(t_unit, frozenset([cond]), "id:a")
+
+    assert t_unit == ref_t_unit
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
