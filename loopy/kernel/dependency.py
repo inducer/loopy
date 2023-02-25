@@ -60,8 +60,8 @@ class AccessMapMapper(WalkMapper):
         # possibly not the final implementation of this
         from collections import defaultdict
         from typing import DefaultDict as Dict
-        self.access_maps: Dict[Optional[str],\
-                          Dict[Optional[str],\
+        self.access_maps: Dict[Optional[str],
+                          Dict[Optional[str],
                           Dict[FrozenSet, isl.Map]]] =\
                                                   defaultdict(lambda:
                                                   defaultdict(lambda:
@@ -148,11 +148,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
             for writer in writer_map.get(var, set()) - {cur_insn.id}:
 
                 # grab writer from knl.instructions
-                write_insn = writer
-                for insn in knl.instructions:
-                    if writer == insn.id:
-                        write_insn = insn.copy()
-                        break
+                write_insn = knl.id_to_insn[writer]
 
                 read_rel = get_relation(cur_insn, var)
                 write_rel = get_relation(write_insn, var)
@@ -189,11 +185,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
             # write-after-read
             for reader in reader_map.get(var, set()) - {cur_insn.id}:
 
-                read_insn = reader
-                for insn in knl.instructions:
-                    if reader == insn.id:
-                        read_insn = insn.copy()
-                        break
+                read_insn = knl.id_to_insn[reader]
 
                 write_rel = get_relation(cur_insn, var)
                 read_rel = get_relation(read_insn, var)
@@ -227,11 +219,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
             # write-after-write
             for writer in writer_map.get(var, set()) - {cur_insn.id}:
 
-                other_writer = writer
-                for insn in knl.instructions:
-                    if writer == insn.id:
-                        other_writer = insn.copy()
-                        break
+                other_writer = knl.id_to_insn[writer]
 
                 before_write_rel = get_relation(other_writer, var)
                 after_write_rel = get_relation(cur_insn, var)
