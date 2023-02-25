@@ -127,6 +127,7 @@ from loopy.transform.add_barrier import add_barrier
 from loopy.transform.reduction import (
     hoist_invariant_multiplicative_terms_in_sum_reduction,
     extract_multiplicative_terms_in_sum_reduction_as_subst)
+from loopy.transform.domain import decouple_domain
 from loopy.transform.callable import (register_callable,
         merge, inline_callable_kernel, rename_callable)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
@@ -264,6 +265,7 @@ __all__ = [
 
         "hoist_invariant_multiplicative_terms_in_sum_reduction",
         "extract_multiplicative_terms_in_sum_reduction_as_subst",
+        "decouple_domain",
 
         "register_callable",
         "merge",
