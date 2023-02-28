@@ -99,9 +99,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
     using the access relations of statements. Relies on there being an existing
     lexicographic ordering of statements.
 
-    :arg knl:
-
-        A :class:`loopy.LoopKernel` containing instructions to find the
+    :arg knl: A :class:`loopy.LoopKernel` containing instructions to find the
         statement instance level dependencies of.
     """
 
@@ -141,7 +139,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
     new_insns = []
     for cur_insn in knl.instructions:
 
-        new_insn = cur_insn.copy()
+        new_happens_after = {}
 
         # handle read-after-write case
         for var in reads[cur_insn.id]:
@@ -159,9 +157,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                     lex_map = cur_insn.happens_after[writer].instances_rel
 
                     deps = lex_map & read_write
-                    new_insn.happens_after.update(
-                        {writer: HappensAfter(var, deps)}
-                    )
+                    new_happens_after |= {writer: HappensAfter(var, deps)}
 
                 # writer is not immediately before reader
                 else:
@@ -172,12 +168,13 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                         # names may not be unique, make out names unique
                         lex_map = make_out_inames_unique(lex_map)
                         read_write = make_out_inames_unique(read_write)
+
+                        # align maps
                         lex_map, read_write = isl.align_two(lex_map, read_write)
 
                     deps = lex_map & read_write
-                    new_insn.happens_after.update(
-                            {writer: HappensAfter(var, deps)}
-                    )
+
+                    new_happens_after |= {writer: HappensAfter(var, deps)}
 
     # handle write-after-read and write-after-write
         for var in writes[cur_insn.id]:
@@ -197,9 +194,8 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                 if reader in cur_insn.happens_after:
                     lex_map = cur_insn.happens_after[reader].instances_rel
                     deps = lex_map & write_read
-                    new_insn.happens_after.update(
-                        {reader: HappensAfter(var, deps)}
-                    )
+
+                    new_happens_after |= {reader: HappensAfter(var, deps)}
 
                 # reader is not immediately before writer
                 else:
@@ -209,12 +205,13 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                         # inames may not be unique, make out inames unique
                         lex_map = make_out_inames_unique(lex_map)
                         write_read = make_out_inames_unique(write_read)
+
+                        # align maps
                         lex_map, write_read = isl.align_two(lex_map, write_read)
 
                     deps = lex_map & write_read
-                    new_insn.happens_after.update(
-                            {reader: HappensAfter(var, deps)}
-                    )
+
+                    new_happens_after |= {reader: HappensAfter(var, deps)}
 
             # write-after-write
             for writer in writer_map.get(var, set()) - {cur_insn.id}:
@@ -231,9 +228,8 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                 if writer in cur_insn.happens_after:
                     lex_map = cur_insn.happens_after[writer].instances_rel
                     deps = lex_map & write_write
-                    new_insn.happens_after.update(
-                        {writer: HappensAfter(var, deps)}
-                    )
+
+                    new_happens_after |= {writer: HappensAfter(var, deps)}
 
                 # there is not a writer immediately before current writer
                 else:
@@ -243,15 +239,16 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                         # make inames unique
                         lex_map = make_out_inames_unique(lex_map)
                         write_write = make_out_inames_unique(write_write)
+
+                        # align maps
                         lex_map, write_write = isl.align_two(lex_map,
                                                              write_write)
 
                     deps = lex_map & write_write
-                    new_insn.happens_after.update(
-                            {writer: HappensAfter(var, deps)}
-                    )
 
-        new_insns.append(new_insn)
+                    new_happens_after |= {writer: HappensAfter(var, deps)}
+
+        new_insns.append(cur_insn.copy(happens_after=new_happens_after))
 
     return knl.copy(instructions=new_insns)
 
