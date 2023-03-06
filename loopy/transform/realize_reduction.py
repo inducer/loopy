@@ -2013,7 +2013,19 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                         | red_realize_ctx.surrounding_insn_add_within_inames))
 
             kwargs.pop("id")
-            kwargs.pop("depends_on")
+            kwargs.pop("happens_after")
+
+            #
+            # TODO is this the best way of handling this?
+            #
+            try:
+                kwargs.pop("depends_on")
+            except KeyError:
+                from warnings import warn
+                warn("depends_on is deprecated and will no longer be used in "
+                     "2024. Instead use happens_after", DeprecationWarning,
+                     stacklevel=2)
+
             kwargs.pop("expression")
             kwargs.pop("assignee", None)
             kwargs.pop("assignees", None)

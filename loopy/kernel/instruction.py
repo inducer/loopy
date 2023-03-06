@@ -300,7 +300,19 @@ class InstructionBase(ImmutableRecord, Taggable):
         # {{{ process happens_after/depends_on
 
         if happens_after is not None and depends_on is not None:
-            raise TypeError("may not pass both happens_after and depends_on")
+            #
+            # TODO come up with a better way of handling the fact that
+            # depends_on and happens_after co-exist in multiple situations. Most
+            # of the time it seems to be the case that instructions are
+            # initialized with happens_after = {} and other parts of loopy are
+            # still using depends_on as an argument when updating instructions.
+            #
+            # a particular case where this occurs is during parse_instructions()
+            #
+            happens_after = depends_on
+            warn("depends_on is deprecated and will stop working in 2024. "
+                 "Instead, use happens_after", DeprecationWarning, stacklevel=2)
+            # raise TypeError("may not pass both happens_after and depends_on")
         elif depends_on is not None:
             happens_after = depends_on
 

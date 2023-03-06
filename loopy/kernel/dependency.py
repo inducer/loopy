@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Optional, FrozenSet, Set
+from typing import Optional, FrozenSet, Set, Mapping
 
 import islpy as isl
 from islpy import dim_type
@@ -139,7 +139,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
     new_insns = []
     for cur_insn in knl.instructions:
 
-        new_happens_after = {}
+        new_happens_after: Mapping[str, HappensAfter] = {}
 
         # handle read-after-write case
         for var in reads[cur_insn.id]:
