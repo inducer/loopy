@@ -31,8 +31,6 @@ from pyopencl.tools import \
     pytest_generate_tests_for_pyopencl as pytest_generate_tests  # noqa
 
 
-import pudb
-
 def test_make_einsum_error_handling():
     with pytest.raises(ValueError):
         lp.make_einsum("ij,j->j", ("a",))
