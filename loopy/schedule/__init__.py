@@ -52,14 +52,14 @@ __doc__ = """
 """
 
 
-SelfT = TypeVar("SelfT")
+_SchedItemSelfT = TypeVar("_SchedItemSelfT", bound="ScheduleItem")
 
 
 # {{{ schedule items
 
 @dataclass(frozen=True)
 class ScheduleItem:
-    def copy(self: SelfT, **kwargs: Any) -> SelfT:
+    def copy(self: _SchedItemSelfT, **kwargs: Any) -> _SchedItemSelfT:
         return replace(self, **kwargs)
 
 
