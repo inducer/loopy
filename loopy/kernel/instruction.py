@@ -300,19 +300,27 @@ class InstructionBase(ImmutableRecord, Taggable):
         # {{{ process happens_after/depends_on
 
         if happens_after is not None and depends_on is not None:
-            #
-            # TODO come up with a better way of handling the fact that
-            # depends_on and happens_after co-exist in multiple situations. Most
-            # of the time it seems to be the case that instructions are
-            # initialized with happens_after = {} and other parts of loopy are
-            # still using depends_on as an argument when updating instructions.
-            #
-            # a particular case where this occurs is during parse_instructions()
-            #
-            happens_after = depends_on
-            warn("depends_on is deprecated and will stop working in 2024. "
-                 "Instead, use happens_after", DeprecationWarning, stacklevel=2)
-            # raise TypeError("may not pass both happens_after and depends_on")
+            # There are many points at which depends_on is explicitly specified
+            # during kernel creation. For example, see:
+            #   1. loopy.kernel.creation:838
+            #   2. loopy.transform.precompute:323
+            # Thus, it seems we cannot escape situations in which depends_on and
+            # happens_after are both set.
+            warn("Using depends_on is deprecated and will stop working in "
+                 "2024. Use happens_after instead.", DeprecationWarning,
+                 stacklevel=2)
+
+            assert isinstance(depends_on, frozenset)
+            ids_not_in_happens_after = frozenset(happens_after) - depends_on
+            new_happens_after: Mapping = {
+                    after_id: HappensAfter(
+                        variable_name=None,
+                        instances_rel=None)
+                    for after_id in ids_not_in_happens_after
+            }
+
+            happens_after |= new_happens_after
+
         elif depends_on is not None:
             happens_after = depends_on
 
