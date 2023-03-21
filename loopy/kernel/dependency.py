@@ -143,7 +143,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
 
         # handle read-after-write case
         for var in reads[cur_insn.id]:
-            for writer in writer_map.get(var, set()):
+            for writer in writer_map.get(var, set()) - {cur_insn.id}:
 
                 # grab writer from knl.instructions
                 write_insn = knl.id_to_insn[writer]
@@ -180,7 +180,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
         for var in writes[cur_insn.id]:
 
             # write-after-read
-            for reader in reader_map.get(var, set()):
+            for reader in reader_map.get(var, set()) - {cur_insn.id}:
 
                 read_insn = knl.id_to_insn[reader]
 
@@ -214,7 +214,7 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                     new_happens_after |= {reader: HappensAfter(var, deps)}
 
             # write-after-write
-            for writer in writer_map.get(var, set()):
+            for writer in writer_map.get(var, set()) - {cur_insn.id}:
 
                 other_writer = knl.id_to_insn[writer]
 
@@ -249,89 +249,6 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                     new_happens_after |= {writer: HappensAfter(var, deps)}
 
         new_insns.append(cur_insn.copy(happens_after=new_happens_after))
-
-    return knl.copy(instructions=new_insns)
-
-
-@for_each_kernel
-def add_lexicographic_happens_before(knl: LoopKernel) -> LoopKernel:
-    """Compute initial lexicographic happens-before ordering of statements in a
-    :class:`loopy.LoopKernel`.
-    """
-
-    new_insns = []
-    n_insns = len(knl.instructions)
-    for ibefore, insn_before in enumerate(knl.instructions):
-        if ibefore == n_insns - 1:
-            new_insns.append(insn_before)
-
-        else:
-            insn_after = knl.instructions[ibefore + 1]
-            shared_inames = insn_after.within_inames & insn_before.within_inames
-
-            domain_before = knl.get_inames_domain(insn_before.within_inames)
-            domain_after = knl.get_inames_domain(insn_after.within_inames)
-            happens_before = isl.Map.from_domain_and_range(
-                    domain_before, domain_after
-            )
-
-            for idim in range(happens_before.dim(dim_type.out)):
-                happens_before = happens_before.set_dim_name(
-                        dim_type.out, idim,
-                        happens_before.get_dim_name(dim_type.out, idim) + "'")
-
-            n_inames_before = happens_before.dim(dim_type.in_)
-            happens_before_set = happens_before.move_dims(
-                    dim_type.out, 0,
-                    dim_type.in_, 0,
-                    n_inames_before).range()
-
-            shared_inames_order_before = [
-                    domain_before.get_dim_name(dim_type.out, idim)
-                    for idim in range(domain_before.dim(dim_type.out))
-                    if domain_before.get_dim_name(dim_type.out, idim)
-                    in shared_inames
-            ]
-            shared_inames_order_after = [
-                    domain_after.get_dim_name(dim_type.out, idim)
-                    for idim in range(domain_after.dim(dim_type.out))
-                    if domain_after.get_dim_name(dim_type.out, idim)
-                    in shared_inames
-            ]
-
-            assert shared_inames_order_before == shared_inames_order_after
-            shared_inames_order = shared_inames_order_before
-
-            affs = isl.affs_from_space(happens_before_set.space)
-
-            lex_set = isl.Set.empty(happens_before_set.space)
-            for iinnermost, innermost_iname in enumerate(shared_inames_order):
-                innermost_set = affs[innermost_iname].lt_set(
-                        affs[innermost_iname + "'"]
-                )
-
-                for outer_iname in shared_inames_order[:iinnermost]:
-                    innermost_set = innermost_set & (
-                            affs[outer_iname].eq_set(affs[outer_iname + "'"])
-                    )
-
-                lex_set = lex_set | innermost_set
-
-            lex_map = isl.Map.from_range(lex_set).move_dims(
-                    dim_type.in_, 0,
-                    dim_type.out, 0,
-                    n_inames_before
-            )
-
-            happens_before = happens_before & lex_map
-
-            new_happens_before = {
-                    insn_after.id: HappensAfter(None, happens_before)
-            }
-
-            insn_before = insn_before.copy(happens_after=new_happens_before)
-
-            new_insns.append(insn_before)
 
     return knl.copy(instructions=new_insns)
 
