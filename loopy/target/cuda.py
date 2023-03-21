@@ -255,6 +255,10 @@ class CudaTarget(CFamilyTarget):
 
     # }}}
 
+    @property
+    def single_subkernel_is_entrypoint(self) -> bool:
+        return False
+
 # }}}
 
 

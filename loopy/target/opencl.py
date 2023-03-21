@@ -598,6 +598,10 @@ class OpenCLTarget(CFamilyTarget):
     def vector_dtype(self, base, count):
         return NumpyType(vec.types[base.numpy_dtype, count])
 
+    @property
+    def single_subkernel_is_entrypoint(self) -> bool:
+        return False
+
 # }}}
 
 

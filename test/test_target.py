@@ -777,6 +777,24 @@ def test_passing_bajillions_of_svm_args(ctx_factory, with_gbarrier):
         assert (res[f"c{iargset}"].get() == iargset * multiplier + iargset).all()
 
 
+def test_non_executable_targets_respect_args():
+    # See https://github.com/inducer/loopy/issues/648
+    t_unit = lp.make_kernel(
+        "{ : }",
+        """
+        a[0] = 1729
+        """,
+        [lp.GlobalArg("a,b,c,d,e",
+                      shape=(10,),
+                      dtype="float64")],
+        target=lp.CTarget()
+    )
+    code_str = lp.generate_code_v2(t_unit).device_code()
+
+    for var in ["b", "c", "d", "e"]:
+        assert code_str.find(f"double const *__restrict__ {var}") != -1
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

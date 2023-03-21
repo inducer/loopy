@@ -645,6 +645,10 @@ class PyOpenCLTarget(OpenCLTarget):
                 "stop working in 2022.", DeprecationWarning, stacklevel=2)
         return self
 
+    @property
+    def single_subkernel_is_entrypoint(self) -> bool:
+        return False
+
 # }}}
 
 

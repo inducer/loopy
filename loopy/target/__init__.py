@@ -49,6 +49,7 @@ THE SOFTWARE.
 
 from typing import (Any, Tuple, Generic, TypeVar, Sequence, ClassVar, Optional,
         TYPE_CHECKING)
+import abc
 
 if TYPE_CHECKING:
     from loopy.typing import ExpressionT
@@ -158,6 +159,17 @@ class TargetBase():
             kernel executor caching.
         """
         raise NotImplementedError()
+
+    @abc.abstractproperty
+    def single_subkernel_is_entrypoint(self) -> bool:
+        r"""
+        Returns *True* if *self* does NOT support generating code for
+        linearized kernels with more than one
+        :class:`~loopy.schedule.CallKernel`\ s. This guarantees the
+        :class:`~loopy.schedule.CallKernel` for which we generate code is the
+        entrypoint kernel. This also allows the target to skip the invoker
+        level code.
+        """
 
 
 class ASTBuilderBase(Generic[ASTType]):
