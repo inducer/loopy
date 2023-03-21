@@ -10,6 +10,7 @@
 .. autoclass:: OpenCLTarget
 .. autoclass:: PyOpenCLTarget
 .. autoclass:: ISPCTarget
+.. autoclass:: VectorizationFallback
 
 References to Canonical Names
 -----------------------------
@@ -48,7 +49,9 @@ THE SOFTWARE.
 
 
 from typing import (Any, Tuple, Generic, TypeVar, Sequence, ClassVar, Optional,
-        TYPE_CHECKING)
+        TYPE_CHECKING, Type)
+import abc
+from enum import Enum, unique
 
 if TYPE_CHECKING:
     from loopy.typing import ExpressionT
@@ -59,11 +62,40 @@ if TYPE_CHECKING:
 ASTType = TypeVar("ASTType")
 
 
-class TargetBase():
+@unique
+class VectorizationFallback(Enum):
+    """
+    Directs :mod:`loopy`\'s code-generation pipeline how the code should be
+    generated if an instruction cannot be vectorized.
+
+    :attr UNROLL: Unrolls the instances the unvectorizable statement.
+    :attr UNROLL: Wraps the statement around a loop with an ``omp simd``
+        pragma-directive.
+    """
+    UNROLL = 0
+    OMP_SIMD = 1
+
+
+class TargetBase(abc.ABC):
     """Base class for all targets, i.e. different combinations of code that
     loopy can generate.
 
     Objects of this type must be picklable.
+
+    .. attribute:: vectorization_fallback
+
+        An instance of :class:`VectorizationFallback`.
+
+    .. attribute:: allows_non_constant_indexing_for_vec_types
+
+        An instance of :class:`bool` that is *True* only if the target
+        allows vector-typed variables to be indexed via a non-constant
+        expression.
+
+    .. attribute:: broadcasts_scalar_assignment_to_vec_types
+
+        An instance of :class:`bool` that is *True* only if the target
+        allows vector-typed variables to be assigned to scalar expressions.
     """
 
     # {{{ persistent hashing
@@ -159,6 +191,25 @@ class TargetBase():
         """
         raise NotImplementedError()
 
+    @abc.abstractproperty
+    def is_executable(self) -> bool:
+        """
+        Returns *True* only if the target allows executing loopy
+        translation units through :attr:`loopy.TranslationUnit.__call__`.
+        """
+
+    @abc.abstractproperty
+    def vectorization_fallback(self):
+        pass
+
+    @abc.abstractproperty
+    def allows_non_constant_indexing_for_vec_types(self):
+        pass
+
+    @abc.abstractproperty
+    def broadcasts_scalar_assignment_to_vec_types(self):
+        pass
+
 
 class ASTBuilderBase(Generic[ASTType]):
     """An interface for generating (host or device) ASTs.
@@ -228,6 +279,12 @@ class ASTBuilderBase(Generic[ASTType]):
     @property
     def ast_block_scope_class(self):
         raise NotImplementedError()
+
+    @abc.abstractproperty
+    def ast_comment_class(self) -> Type[ASTType]:
+        """
+        Returns the type of a comment node in the AST being built.
+        """
 
     def get_expression_to_code_mapper(self, codegen_state: CodeGenerationState):
         raise NotImplementedError()

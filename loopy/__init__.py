@@ -43,7 +43,8 @@ from loopy.kernel.data import (
         AddressSpace,
         TemporaryVariable,
         SubstitutionRule,
-        CallMangleInfo)
+        CallMangleInfo,
+        VectorizeTag)
 from loopy.kernel.function_interface import (
         CallableKernel, ScalarCallable)
 from loopy.translation_unit import (
@@ -152,10 +153,12 @@ from loopy.auto_test import auto_test_vs_ref
 from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
-from loopy.target import TargetBase, ASTBuilderBase
+from loopy.target import TargetBase, ASTBuilderBase, VectorizationFallback
 from loopy.target.c import (CFamilyTarget, CTarget, ExecutableCTarget,
                             generate_header, CWithGNULibcTarget,
                             ExecutableCWithGNULibcTarget)
+from loopy.target.c_vector_extensions import (CVectorExtensionsTarget,
+                                              ExecutableCVectorExtensionsTarget)
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
@@ -192,7 +195,7 @@ __all__ = [
         "AddressSpace",
         "TemporaryVariable",
         "SubstitutionRule",
-        "CallMangleInfo",
+        "CallMangleInfo", "VectorizeTag",
 
         "make_kernel", "UniqueName", "make_function",
 
@@ -302,9 +305,10 @@ __all__ = [
 
         "LoopyError", "LoopyWarning",
 
-        "TargetBase",
+        "TargetBase", "VectorizationFallback",
         "CFamilyTarget", "CTarget", "ExecutableCTarget", "generate_header",
         "CWithGNULibcTarget", "ExecutableCWithGNULibcTarget",
+        "CVectorExtensionsTarget", "ExecutableCVectorExtensionsTarget",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
         "ASTBuilderBase",

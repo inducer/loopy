@@ -76,14 +76,13 @@ class VectorizabilityChecker(RecursiveMapper):
         return reduce(and_, vectorizabilities)
 
     def map_sum(self, expr):
-        return any(self.rec(child) for child in expr.children)
+        return any([self.rec(child) for child in expr.children])
 
     map_product = map_sum
 
     def map_quotient(self, expr):
-        return (self.rec(expr.numerator)
-                or
-                self.rec(expr.denominator))
+        return any([self.rec(expr.numerator),
+                    self.rec(expr.denominator)])
 
     def map_linear_subscript(self, expr):
         return False
@@ -175,6 +174,15 @@ class VectorizabilityChecker(RecursiveMapper):
     def map_reduction(self, expr):
         # FIXME: Do this more carefully
         raise UnvectorizableError()
+
+    def map_if(self, expr):
+        # TODO: For OpenCL-target this should be possible, see
+        # https://www.khronos.org/registry/OpenCL/specs/2.2/html/OpenCL_C.html#operators-ternary-selection
+        raise UnvectorizableError("Emitting vector instructions with masks not"
+                                  " (yet) supported.")
+
+    def map_type_cast(self, expr):
+        raise UnvectorizableError("Type casting on vector types not supported.")
 
 # }}}
 

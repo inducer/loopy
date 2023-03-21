@@ -850,7 +850,9 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             # subkernel launches occur only as part of entrypoint kernels for now
             from loopy.schedule.tools import get_subkernel_arg_info
             skai = get_subkernel_arg_info(kernel, subkernel_name)
-            passed_names = skai.passed_names
+            passed_names = (skai.passed_names
+                            if self.target.is_executable
+                            else [arg.name for arg in kernel.args])
             written_names = skai.written_names
         else:
             name = Value("static void", name)
@@ -958,6 +960,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def ast_block_class(self):
         from cgen import Block
         return Block
+
+    @property
+    def ast_comment_class(self):
+        from cgen import Comment
+        return Comment
 
     @property
     def ast_block_scope_class(self):
@@ -1263,6 +1270,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         from cgen import Comment
         return Comment(s)
 
+    def emit_pragma(self, s):
+        from cgen import Pragma
+        return Pragma(s)
+
     @property
     def can_implement_conditionals(self):
         return True
@@ -1340,6 +1351,23 @@ class CTarget(CFamilyTarget):
         fill_registry_with_c99_complex_types(result)
         return DTypeRegistryWrapper(result)
 
+    @property
+    def is_executable(self) -> bool:
+        return False
+
+    @property
+    def allows_non_constant_indexing_for_vec_types(self):
+        return False
+
+    @property
+    def broadcasts_scalar_assignment_to_vec_types(self):
+        return False
+
+    @property
+    def vectorization_fallback(self):
+        from loopy.target import VectorizationFallback
+        return VectorizationFallback.UNROLL
+
 
 class CASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
@@ -1382,6 +1410,10 @@ class ExecutableCTarget(CTarget):
     def get_host_ast_builder(self):
         # enable host code generation
         return CFamilyASTBuilder(self)
+
+    @property
+    def is_executable(self) -> bool:
+        return True
 
 # }}}
 
