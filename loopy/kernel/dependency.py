@@ -20,115 +20,58 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Optional, FrozenSet, Set, Mapping
+from typing import Mapping
 
 import islpy as isl
 from islpy import dim_type
 
-import pymbolic.primitives as p
-
 from loopy import LoopKernel
-from loopy import InstructionBase
 from loopy.kernel.instruction import HappensAfter
-from loopy.symbolic import WalkMapper
+from loopy.symbolic import ArrayAccessFinder
 from loopy.translation_unit import for_each_kernel
 from loopy.symbolic import get_access_map
 
-
-class AccessMapMapper(WalkMapper):
-    """A subclass of :class:`loopy.symbolic.WalkMapper` used to generate
-    individual array access maps of instructions. Similar to
-    :class:`loopy.symbolic.BatchedAccessMapMapper`, except that it generates
-    single access maps instead of combined access maps.
-
-    .. attribute:: access_maps
-
-        A dict containing the access map of a particular array as accessed by an
-        instruction. These maps can be found via
-
-        access_maps[insn_id][variable_name][inames]
-
-    .. warning::
-        This implementation of finding and storing access maps for instructions
-        is subject to change.
-    """
-
-    def __init__(self, kernel: LoopKernel, variable_names: Set):
-        self.kernel = kernel
-        self._variable_names = variable_names
-
-        # possibly not the final implementation of this
-        from collections import defaultdict
-        from typing import DefaultDict as Dict
-        self.access_maps: Dict[Optional[str],
-                          Dict[Optional[str],
-                          Dict[FrozenSet, isl.Map]]] =\
-                                                  defaultdict(lambda:
-                                                  defaultdict(lambda:
-                                                  defaultdict(lambda: None)))
-
-        super().__init__()
-
-    def map_subscript(self, expr: p.Subscript, inames: FrozenSet, insn_id: str):
-
-        domain = self.kernel.get_inames_domain(inames)
-
-        WalkMapper.map_subscript(self, expr, inames)
-
-        assert isinstance(expr.aggregate, p.Variable)
-
-        variable_name = expr.aggregate.name
-        subscript = expr.index_tuple
-        if variable_name not in self._variable_names:
-            return
-
-        from loopy.diagnostic import UnableToDetermineAccessRangeError
-
-        try:
-            access_map = get_access_map(domain, subscript)
-        except UnableToDetermineAccessRangeError:
-            return
-
-        if self.access_maps[insn_id][variable_name][inames] is None:
-            self.access_maps[insn_id][variable_name][inames] = access_map
+import operator
+from functools import reduce
 
 
 @for_each_kernel
-def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
-    """Determine precise data dependencies between dynamic statement instances
-    using the access relations of statements. Relies on there being an existing
-    lexicographic ordering of statements.
+def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
+    """Compute statement-instance-level data dependencies between statements in
+    a program. Relies on an existing lexicographic ordering, i.e. computed by
+    add_lexicographic_happens_after.
 
-    :arg knl: A :class:`loopy.LoopKernel` containing instructions to find the
-        statement instance level dependencies of.
+    In particular, this function computes three dependency relations:
+        1. The flow dependency relation, aka read-after-write
+        2. The anti-dependecny relation, aka write-after-reads
+        3. The output dependency relation, aka write-after-write
+
+    The full dependency relation between a two statements in a program is the
+    union of these three dependency relations.
     """
 
     writer_map = knl.writer_map()
     reader_map = knl.reader_map()
 
     reads = {
-        insn.id: insn.read_dependency_names() - insn.within_inames
-        for insn in knl.instructions
+            insn.id: insn.read_dependency_names() - insn.within_inames
+            for insn in knl.instructions
     }
+
     writes = {
-        insn.id: insn.write_dependency_names() - insn.within_inames
-        for insn in knl.instructions
+            insn.id: insn.write_dependency_names() - insn.within_inames
+            for insn in knl.instructions
     }
-
-    variables = knl.all_variable_names()
-    amap = AccessMapMapper(knl, variables)
-    for insn in knl.instructions:
-        amap(insn.assignee, insn.within_inames, insn.id)
-        amap(insn.expression, insn.within_inames, insn.id)
-
-    def get_relation(insn: InstructionBase, variable: Optional[str]) -> isl.Map:
-        return amap.access_maps[insn.id][variable][insn.within_inames]
 
     def get_unordered_deps(r: isl.Map, s: isl.Map) -> isl.Map:
-        # equivalent to the composition R^{-1} o S
+        """Equivalent to computing the relation R^{-1} o S
+        """
         return s.apply_range(r.reverse())
 
-    def make_out_inames_unique(relation: isl.Map) -> isl.Map:
+    def make_inames_unique(relation: isl.Map) -> isl.Map:
+        """Make the inames of a particular map unique by adding a single quote
+        to each iname in the range of the map
+        """
         ndim = relation.dim(dim_type.out)
         for i in range(ndim):
             iname = relation.get_dim_name(dim_type.out, i) + "'"
@@ -136,119 +79,198 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
 
         return relation
 
+    access_finder = ArrayAccessFinder()
     new_insns = []
-    for cur_insn in knl.instructions:
+    for insn in knl.instructions:
 
         new_happens_after: Mapping[str, HappensAfter] = {}
 
-        # handle read-after-write case
-        for var in reads[cur_insn.id]:
-            for writer in writer_map.get(var, set()) - {cur_insn.id}:
-
-                # grab writer from knl.instructions
+        # compute flow dependencies
+        for variable in reads[insn.id]:
+            for writer in writer_map.get(variable, set()):
                 write_insn = knl.id_to_insn[writer]
 
-                read_rel = get_relation(cur_insn, var)
-                write_rel = get_relation(write_insn, var)
-                read_write = get_unordered_deps(read_rel, write_rel)
+                read_domain = knl.get_inames_domain(insn.within_inames)
+                write_domain = knl.get_inames_domain(write_insn.within_inames)
 
-                # writer is immediately before reader
-                if writer in cur_insn.happens_after:
-                    lex_map = cur_insn.happens_after[writer].instances_rel
+                read_subscripts = access_finder(insn.expression)
+                write_subscripts = access_finder(write_insn.assignee)
 
-                    deps = lex_map & read_write
-                    new_happens_after |= {writer: HappensAfter(var, deps)}
+                assert isinstance(read_subscripts, set)
+                assert isinstance(write_subscripts, set)
 
-                # writer is not immediately before reader
+                read_maps = []
+                for sub in read_subscripts:
+                    if sub.aggregate.name == variable:
+                        read_maps.append(
+                                get_access_map(read_domain, sub.index_tuple)
+                        )
+
+                write_maps = []
+                for sub in write_subscripts:
+                    if sub.aggregate.name == variable:
+                        write_maps.append(
+                                get_access_map(write_domain, sub.index_tuple)
+                        )
+
+                assert len(read_maps) > 0
+                assert len(write_maps) > 0
+
+                read_map = reduce(operator.or_, read_maps)
+                write_map = reduce(operator.or_, write_maps)
+
+                read_write = get_unordered_deps(read_map, write_map)
+
+                if writer in insn.happens_after:
+                    lex_map = insn.happens_after[writer].instances_rel
+
                 else:
-                    # generate a lexicographical map between the instructions
                     lex_map = read_write.lex_lt_map(read_write)
 
                     if lex_map.space != read_write.space:
-                        # names may not be unique, make out names unique
-                        lex_map = make_out_inames_unique(lex_map)
-                        read_write = make_out_inames_unique(read_write)
+                        lex_map = make_inames_unique(lex_map)
+                        read_write = make_inames_unique(read_write)
 
-                        # align maps
                         lex_map, read_write = isl.align_two(lex_map, read_write)
 
-                    deps = lex_map & read_write
+                flow_dependencies = read_write & lex_map
 
-                    new_happens_after |= {writer: HappensAfter(var, deps)}
+                if not flow_dependencies.is_empty():
+                    if writer in new_happens_after:
+                        old_rel = new_happens_after[writer].instances_rel
+                        flow_dependencies |= old_rel
 
-    # handle write-after-read and write-after-write
-        for var in writes[cur_insn.id]:
+                    new_happens_after |= {
+                            writer: HappensAfter(variable,
+                                                 flow_dependencies)
+                    }
 
-            # write-after-read
-            for reader in reader_map.get(var, set()) - {cur_insn.id}:
+        # compute anti and output dependencies
+        for variable in writes[insn.id]:
 
+            # compute anti dependencies
+            for reader in reader_map.get(variable, set()):
                 read_insn = knl.id_to_insn[reader]
 
-                write_rel = get_relation(cur_insn, var)
-                read_rel = get_relation(read_insn, var)
+                read_domain = knl.get_inames_domain(read_insn.within_inames)
+                write_domain = knl.get_inames_domain(insn.within_inames)
 
-                # calculate dependency map
-                write_read = get_unordered_deps(write_rel, read_rel)
+                read_subscripts = access_finder(read_insn.expression)
+                write_subscripts = access_finder(insn.assignee)
 
-                # reader is immediately before writer
-                if reader in cur_insn.happens_after:
-                    lex_map = cur_insn.happens_after[reader].instances_rel
-                    deps = lex_map & write_read
+                assert isinstance(read_subscripts, set)
+                assert isinstance(write_subscripts, set)
 
-                    new_happens_after |= {reader: HappensAfter(var, deps)}
+                read_maps = []
+                for sub in read_subscripts:
+                    if sub.aggregate.name == variable:
+                        read_maps.append(
+                                get_access_map(read_domain, sub.index_tuple)
+                        )
 
-                # reader is not immediately before writer
+                write_maps = []
+                for sub in write_subscripts:
+                    if sub.aggregate.name == variable:
+                        write_maps.append(
+                                get_access_map(write_domain, sub.index_tuple)
+                        )
+
+                assert len(read_maps) > 0
+                assert len(write_maps) > 0
+
+                read_map = reduce(operator.or_, read_maps)
+                write_map = reduce(operator.or_, write_maps)
+
+                write_read = get_unordered_deps(write_map, read_map)
+
+                if reader in insn.happens_after:
+                    lex_map = insn.happens_after[reader].instances_rel
+
                 else:
                     lex_map = write_read.lex_lt_map(write_read)
 
                     if lex_map.space != write_read.space:
-                        # inames may not be unique, make out inames unique
-                        lex_map = make_out_inames_unique(lex_map)
-                        write_read = make_out_inames_unique(write_read)
+                        lex_map = make_inames_unique(lex_map)
+                        write_read = make_inames_unique(lex_map)
 
-                        # align maps
                         lex_map, write_read = isl.align_two(lex_map, write_read)
 
-                    deps = lex_map & write_read
+                anti_dependencies = write_read & lex_map
 
-                    new_happens_after |= {reader: HappensAfter(var, deps)}
+                if not anti_dependencies.is_empty():
+                    if reader in new_happens_after:
+                        old_rel = new_happens_after[reader].instances_rel
 
-            # write-after-write
-            for writer in writer_map.get(var, set()) - {cur_insn.id}:
+                        anti_dependencies |= old_rel
 
-                other_writer = knl.id_to_insn[writer]
+                    new_happens_after |= {
+                            reader: HappensAfter(variable, anti_dependencies)
+                    }
 
-                before_write_rel = get_relation(other_writer, var)
-                after_write_rel = get_relation(cur_insn, var)
+            # compute output dependencies
+            for writer in writer_map.get(variable, set()):
+                before_write = knl.id_to_insn[writer]
 
-                write_write = get_unordered_deps(after_write_rel,
-                                                 before_write_rel)
+                before_domain = knl.get_inames_domain(
+                        before_write.within_inames
+                )
+                after_domain = knl.get_inames_domain(insn.within_inames)
 
-                # other writer is immediately before current writer
-                if writer in cur_insn.happens_after:
-                    lex_map = cur_insn.happens_after[writer].instances_rel
-                    deps = lex_map & write_write
+                before_subscripts = access_finder(before_write.assignee)
+                after_subscripts = access_finder(insn.assignee)
 
-                    new_happens_after |= {writer: HappensAfter(var, deps)}
+                assert isinstance(before_subscripts, set)
+                assert isinstance(after_subscripts, set)
 
-                # there is not a writer immediately before current writer
+                before_maps = []
+                for sub in before_subscripts:
+                    if sub.aggregate.name == variable:
+                        before_maps.append(
+                                get_access_map(before_domain, sub.index_tuple)
+                        )
+
+                after_maps = []
+                for sub in after_subscripts:
+                    if sub.aggregate.name == variable:
+                        after_maps.append(
+                                get_access_map(after_domain, sub.index_tuple)
+                        )
+
+                assert len(before_maps) > 0
+                assert len(after_maps) > 0
+
+                before_map = reduce(operator.or_, before_maps)
+                after_map = reduce(operator.or_, before_maps)
+
+                write_write = get_unordered_deps(after_map, before_map)
+
+                if writer in insn.happens_after:
+                    lex_map = insn.happens_after[writer].instances_rel
+
                 else:
                     lex_map = write_write.lex_lt_map(write_write)
 
                     if lex_map.space != write_write.space:
-                        # make inames unique
-                        lex_map = make_out_inames_unique(lex_map)
-                        write_write = make_out_inames_unique(write_write)
+                        lex_map = make_inames_unique(lex_map)
+                        write_write = make_inames_unique(write_write)
 
-                        # align maps
-                        lex_map, write_write = isl.align_two(lex_map,
-                                                             write_write)
+                        lex_map, write_write = isl.align_two(
+                                lex_map, write_write
+                        )
 
-                    deps = lex_map & write_write
+                output_dependencies = write_write & lex_map
 
-                    new_happens_after |= {writer: HappensAfter(var, deps)}
+                if not output_dependencies.is_empty():
+                    if writer in new_happens_after[writer]:
+                        old_rel = new_happens_after[writer].instances_rel
 
-        new_insns.append(cur_insn.copy(happens_after=new_happens_after))
+                        output_dependencies |= old_rel
+
+                    new_happens_after |= {
+                            writer: HappensAfter(variable, output_dependencies)
+                    }
+
+        new_insns.append(insn.copy(happens_after=new_happens_after))
 
     return knl.copy(instructions=new_insns)
 
