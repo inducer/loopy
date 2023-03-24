@@ -80,7 +80,7 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
     else:
         insns_before = None
 
-    barrier_to_add = BarrierInstruction(depends_on=insns_before,
+    barrier_to_add = BarrierInstruction(happens_after=insns_before,
                                         depends_on_is_final=True,
                                         id=id,
                                         within_inames=within_inames,

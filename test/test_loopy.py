@@ -2027,7 +2027,7 @@ def test_unscheduled_insn_detection():
     prog = lp.linearize(prog)
     insn1, = lp.find_instructions(prog, "id:insn1")
     insns = prog["loopy_kernel"].instructions[:]
-    insns.append(insn1.copy(id="insn2", depends_on=frozenset({"insn1"})))
+    insns.append(insn1.copy(id="insn2", happens_after=frozenset({"insn1"})))
     prog = prog.with_kernel(prog["loopy_kernel"].copy(instructions=insns))
 
     from loopy.diagnostic import UnscheduledInstructionError

@@ -436,7 +436,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
         for insn_id in kernel_insn_ids[to_kernel]:
             insn = id_to_insn[insn_id]
             if var_name in insn.dependency_names():
-                insn = insn.copy(depends_on=insn.depends_on | from_writer_ids)
+                insn = insn.copy(happens_after=insn.depends_on | from_writer_ids)
 
             id_to_insn[insn_id] = insn
 

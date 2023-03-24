@@ -391,7 +391,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
                 within_inames=(
                     frozenset(within_inames)
                     | frozenset(non1_init_inames)),
-                depends_on=frozenset(),
+                happens_after=frozenset(),
                 depends_on_is_final=True)
 
     # }}}
@@ -422,7 +422,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         if insn.id in aar.modified_insn_ids:
             new_insns.append(
                     insn.copy(
-                        depends_on=(
+                        happens_after=(
                             none_to_empty_set(insn.depends_on)
                             | frozenset([init_insn_id]))))
         else:
@@ -464,7 +464,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         from loopy.kernel.data import Assignment
         store_instruction = Assignment(
                     id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
-                    depends_on=frozenset(aar.modified_insn_ids),
+                    happens_after=frozenset(aar.modified_insn_ids),
                     no_sync_with=frozenset([(init_insn_id, "any")]),
                     assignee=store_target,
                     expression=store_expression,
@@ -481,7 +481,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         # new_insns_with_redirected_deps: if an insn depends on a modified
         # insn, then it should also depend on the store insn.
         new_insns_with_redirected_deps = [
-            insn.copy(depends_on=(insn.depends_on | {store_instruction.id}))
+            insn.copy(happens_after=(insn.depends_on | {store_instruction.id}))
             if insn.depends_on & aar.modified_insn_ids
             else insn
             for insn in new_insns

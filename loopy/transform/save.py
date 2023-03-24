@@ -561,7 +561,7 @@ class TemporarySaver:
                 self.subkernel_to_surrounding_inames[subkernel]
                 | frozenset(hw_inames + dim_inames)),
             within_inames_is_final=True,
-            depends_on=depends_on)
+            happens_after=depends_on)
 
         if mode == "save":
             self.temporary_to_save_ids[temporary].add(save_or_load_insn_id)
@@ -575,7 +575,7 @@ class TemporarySaver:
         for insn_id in update_deps:
             insn = self.insns_to_update.get(insn_id, self.kernel.id_to_insn[insn_id])
             self.insns_to_update[insn_id] = insn.copy(
-                depends_on=insn.depends_on | frozenset([save_or_load_insn_id]))
+                happens_after=insn.depends_on | frozenset([save_or_load_insn_id]))
 
         self.updated_temporary_variables[promoted_temporary.name] = (
             promoted_temporary.as_kernel_temporary(self.kernel))

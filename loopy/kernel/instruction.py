@@ -300,19 +300,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         # {{{ process happens_after/depends_on
 
         if happens_after is not None and depends_on is not None:
-            #
-            # TODO come up with a better way of handling the fact that
-            # depends_on and happens_after co-exist in multiple situations. Most
-            # of the time it seems to be the case that instructions are
-            # initialized with happens_after = {} and other parts of loopy are
-            # still using depends_on as an argument when updating instructions.
-            #
-            # a particular case where this occurs is during parse_instructions()
-            #
-            happens_after = depends_on
-            warn("depends_on is deprecated and will stop working in 2024. "
-                 "Instead, use happens_after", DeprecationWarning, stacklevel=2)
-            # raise TypeError("may not pass both happens_after and depends_on")
+            raise TypeError("may not pass both happens_after and depends_on")
         elif depends_on is not None:
             happens_after = depends_on
 
@@ -1065,7 +1053,7 @@ class CallInstruction(MultiAssignmentBase):
     def __init__(self,
             assignees, expression,
             id=None,
-            depends_on=None,
+            happens_after=None,
             depends_on_is_final=None,
             groups=None,
             conflicts_with_groups=None,
@@ -1078,7 +1066,7 @@ class CallInstruction(MultiAssignmentBase):
 
         super().__init__(
                 id=id,
-                happens_after=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -1360,7 +1348,7 @@ class CInstruction(InstructionBase):
     def __init__(self,
             iname_exprs, code,
             read_variables=frozenset(), assignees=(),
-            id=None, depends_on=None, depends_on_is_final=None,
+            id=None, happens_after=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
@@ -1378,7 +1366,7 @@ class CInstruction(InstructionBase):
 
         InstructionBase.__init__(self,
                 id=id,
-                happens_after=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
@@ -1528,7 +1516,7 @@ class NoOpInstruction(_DataObliviousInstruction):
         ... nop
     """
 
-    def __init__(self, id=None, depends_on=None, depends_on_is_final=None,
+    def __init__(self, id=None, happens_after=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
@@ -1536,7 +1524,7 @@ class NoOpInstruction(_DataObliviousInstruction):
             predicates=None, tags=None):
         super().__init__(
                 id=id,
-                happens_after=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -1587,7 +1575,7 @@ class BarrierInstruction(_DataObliviousInstruction):
     fields = _DataObliviousInstruction.fields | {"synchronization_kind",
                                                      "mem_kind"}
 
-    def __init__(self, id, depends_on=None, depends_on_is_final=None,
+    def __init__(self, id, happens_after=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
@@ -1600,7 +1588,7 @@ class BarrierInstruction(_DataObliviousInstruction):
 
         super().__init__(
                 id=id,
-                happens_after=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,

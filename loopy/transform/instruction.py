@@ -131,7 +131,7 @@ def add_dependency(kernel, insn_match, depends_on):
         else:
             new_deps = new_deps | added_deps
 
-        return insn.copy(depends_on=new_deps)
+        return insn.copy(happens_after=new_deps)
 
     result = map_instructions(kernel, insn_match, add_dep)
 
@@ -245,7 +245,7 @@ def remove_instructions(kernel, insn_ids):
                 if insn_id not in insn_ids)
 
         new_insns.append(
-                insn.copy(depends_on=new_deps, no_sync_with=new_no_sync_with))
+                insn.copy(happens_after=new_deps, no_sync_with=new_no_sync_with))
 
     return kernel.copy(
             instructions=new_insns)
@@ -278,7 +278,7 @@ def replace_instruction_ids_in_insn(insn, replacements):
 
     if changed:
         return insn.copy(
-                depends_on=frozenset(new_depends_on + extra_depends_on),
+                happens_after=frozenset(new_depends_on + extra_depends_on),
                 no_sync_with=frozenset(new_no_sync_with))
     else:
         return insn

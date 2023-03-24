@@ -230,7 +230,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                     within_inames=insn.within_inames - ilp_inames | {
                         new_pack_inames[i].name for i in p.swept_inames} | (
                             new_ilp_inames),
-                    depends_on=insn.depends_on,
+                    happens_after=insn.depends_on,
                     id=ing(insn.id+"_pack"),
                     depends_on_is_final=True
                 ))
@@ -243,7 +243,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                             new_unpack_inames[i].name for i in p.swept_inames} | (
                                 new_ilp_inames),
                         id=ing(insn.id+"_unpack"),
-                        depends_on=frozenset([insn.id]),
+                        happens_after=frozenset([insn.id]),
                         depends_on_is_final=True
                     ))
 
@@ -280,7 +280,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
             new_assignees = tuple(subst_mapper(new_id_to_parameters[-i-1])
                     for i, _ in enumerate(insn.assignees))
             new_call_insn = new_call_insn.copy(
-                    depends_on=new_call_insn.depends_on | {
+                    happens_after=new_call_insn.depends_on | {
                         pack.id for pack in packing_insns},
                     within_inames=new_call_insn.within_inames - ilp_inames | (
                         new_ilp_inames),
@@ -306,7 +306,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                     for old_insn_id in insn.depends_on & set(old_insn_to_new_insns):
                         new_depends_on |= frozenset(i.id for i
                                 in old_insn_to_new_insns[old_insn_id])
-                new_instructions.append(insn.copy(depends_on=new_depends_on))
+                new_instructions.append(insn.copy(happens_after=new_depends_on))
         kernel = kernel.copy(
             domains=kernel.domains + new_domains,
             instructions=new_instructions,

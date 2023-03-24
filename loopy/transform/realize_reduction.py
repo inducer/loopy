@@ -136,7 +136,7 @@ class _ReductionRealizationContext:
 
     # }}}
 
-    def new_subinstruction(self, *, within_inames, depends_on,
+    def new_subinstruction(self, *, within_inames, happens_after,
             no_sync_with=None, predicates=None):
         if no_sync_with is None:
             no_sync_with = self.surrounding_no_sync_with
@@ -145,7 +145,7 @@ class _ReductionRealizationContext:
 
         return replace(self,
                 surrounding_within_inames=within_inames,
-                surrounding_depends_on=depends_on,
+                surrounding_depends_on=happens_after,
                 surrounding_no_sync_with=no_sync_with,
                 surrounding_predicates=predicates,
 
@@ -159,7 +159,7 @@ class _ReductionRealizationContext:
                     self.surrounding_within_inames
                     | frozenset(self.surrounding_insn_add_within_inames)),
                 "within_inames_is_final": True,
-                "depends_on": (
+                "happens_after": (
                     self.surrounding_depends_on
                     | frozenset(self.surrounding_insn_add_depends_on)),
                 "no_sync_with": (
@@ -668,7 +668,8 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
         insn = new_or_updated_instructions.get(insn_id, insn)
         new_or_updated_instructions[insn_id] = (
                 insn.copy(
-                    depends_on=insn.depends_on | frozenset(new_depends_on_params)))
+                    happens_after=insn.depends_on | frozenset(
+                                                    new_depends_on_params)))
 
     # }}}
 
@@ -737,7 +738,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                         assignees=(assignee,),
                         expression=new_assignee,
                         id=new_assignment_id,
-                        depends_on=frozenset([last_added_insn_id]),
+                        happens_after=frozenset([last_added_insn_id]),
                         depends_on_is_final=True,
                         no_sync_with=(
                             insn.no_sync_with | frozenset([(insn.id, "any")])),
@@ -943,7 +944,7 @@ def expand_inner_reduction(
             id=id,
             assignees=temp_vars,
             expression=expr,
-            depends_on=depends_on,
+            happens_after=depends_on,
             within_inames=within_inames,
             within_inames_is_final=True,
             predicates=predicates)
@@ -983,7 +984,7 @@ def map_reduction_seq(red_realize_ctx, expr, nresults, arg_dtypes, reduction_dty
             assignees=acc_vars,
             within_inames=red_realize_ctx.surrounding_within_inames,
             within_inames_is_final=True,
-            depends_on=frozenset(),
+            happens_after=frozenset(),
             expression=expression,
 
             # Do not inherit predicates: Those might read variables
@@ -1005,7 +1006,7 @@ def map_reduction_seq(red_realize_ctx, expr, nresults, arg_dtypes, reduction_dty
             within_inames=(
                 red_realize_ctx.surrounding_within_inames
                 | frozenset(expr.inames)),
-            depends_on=(
+            happens_after=(
                 frozenset({init_id})
                 | red_realize_ctx.surrounding_depends_on))
 
@@ -1155,7 +1156,7 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
                 red_realize_ctx.surrounding_within_inames
                 | frozenset([base_exec_iname])),
             within_inames_is_final=True,
-            depends_on=frozenset(),
+            happens_after=frozenset(),
             # Do not inherit predicates: Those might read variables
             # that may not yet be set, and we don't have a great way
             # of figuring out what the dependencies of the accumulator
@@ -1177,7 +1178,7 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
                 red_realize_ctx.surrounding_within_inames
                 | frozenset([base_exec_iname])),
             within_inames_is_final=True,
-            depends_on=frozenset(),
+            happens_after={},
             predicates=red_realize_ctx.surrounding_predicates,
             )
     red_realize_ctx.additional_insns.append(init_neutral_insn)
@@ -1188,7 +1189,7 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
             within_inames=(
                     red_realize_ctx.surrounding_within_inames
                     | frozenset([red_iname])),
-            depends_on=(
+            happens_after=(
                 red_realize_ctx.surrounding_depends_on
                 | frozenset([init_id, init_neutral_id])),
             no_sync_with=(
@@ -1286,7 +1287,7 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
                     red_realize_ctx.surrounding_within_inames
                     | frozenset([stage_exec_iname])),
                 within_inames_is_final=True,
-                depends_on=frozenset([prev_id]),
+                happens_after=frozenset([prev_id]),
                 predicates=red_realize_ctx.surrounding_predicates,
                 )
 
@@ -1416,7 +1417,7 @@ def map_scan_seq(red_realize_ctx, expr, nresults, arg_dtypes,
                 red_realize_ctx.surrounding_within_inames
                 - frozenset((scan_param.sweep_iname,) + expr.inames)),
             within_inames_is_final=True,
-            depends_on=init_insn_depends_on,
+            happens_after=init_insn_depends_on,
             expression=expression,
             # Do not inherit predicates: Those might read variables
             # that may not yet be set, and we don't have a great way
@@ -1436,7 +1437,7 @@ def map_scan_seq(red_realize_ctx, expr, nresults, arg_dtypes,
             within_inames=(
                 red_realize_ctx.surrounding_within_inames
                 | frozenset({scan_param.scan_iname})),
-            depends_on=red_realize_ctx.surrounding_depends_on)
+            happens_after=red_realize_ctx.surrounding_depends_on)
 
     reduction_expr = red_realize_ctx.mapper(
             expr.expr, red_realize_ctx=scan_red_realize_ctx,
@@ -1466,7 +1467,7 @@ def map_scan_seq(red_realize_ctx, expr, nresults, arg_dtypes,
                 | frozenset(
                     scan_red_realize_ctx.surrounding_insn_add_within_inames)
                 | {track_iname}),
-            depends_on=(
+            happens_after=(
                 frozenset(scan_insn_depends_on)
                 | frozenset(scan_red_realize_ctx.surrounding_insn_add_depends_on)
                 ),
@@ -1579,7 +1580,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
             expression=neutral,
             within_inames=base_iname_deps | frozenset([base_exec_iname]),
             within_inames_is_final=True,
-            depends_on=frozenset(),
+            happens_after=frozenset(),
             # Do not inherit predicates: Those might read variables
             # that may not yet be set, and we don't have a great way
             # of figuring out what the dependencies of the accumulator
@@ -1599,7 +1600,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
             within_inames=(
                 red_realize_ctx.surrounding_within_inames
                 | frozenset({scan_param.scan_iname})),
-            depends_on=red_realize_ctx.surrounding_depends_on)
+            happens_after=red_realize_ctx.surrounding_depends_on)
 
     reduction_expr = red_realize_ctx.mapper(
             expr.expr, red_realize_ctx=transfer_red_realize_ctx,
@@ -1643,7 +1644,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
                     | transfer_red_realize_ctx.surrounding_insn_add_within_inames
                     | frozenset({scan_param.sweep_iname})),
                 within_inames_is_final=True,
-                depends_on=(
+                happens_after=(
                     transfer_insn_depends_on
                     | transfer_red_realize_ctx.surrounding_insn_add_depends_on),
                 no_sync_with=(
@@ -1684,7 +1685,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
                     within_inames=(
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=True,
-                    depends_on=prev_ids,
+                    happens_after=prev_ids,
                     predicates=red_realize_ctx.surrounding_predicates,
                     )
 
@@ -1722,7 +1723,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
                 within_inames=(
                     base_iname_deps | frozenset([stage_exec_iname])),
                 within_inames_is_final=True,
-                depends_on=prev_ids,
+                happens_after=prev_ids,
                 predicates=red_realize_ctx.surrounding_predicates,
                 )
 
@@ -2014,18 +2015,6 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
             kwargs.pop("id")
             kwargs.pop("happens_after")
-
-            #
-            # TODO is this the best way of handling this?
-            #
-            try:
-                kwargs.pop("depends_on")
-            except KeyError:
-                from warnings import warn
-                warn("depends_on is deprecated and will no longer be used in "
-                     "2024. Instead use happens_after", DeprecationWarning,
-                     stacklevel=2)
-
             kwargs.pop("expression")
             kwargs.pop("assignee", None)
             kwargs.pop("assignees", None)
@@ -2040,7 +2029,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                 replacement_insns = [
                         Assignment(
                             id=result_assignment_ids[i],
-                            depends_on=(
+                            happens_after=(
                                 result_assignment_dep_on
                                 | (frozenset([result_assignment_ids[i-1]])
                                     if i else frozenset())),
@@ -2059,7 +2048,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                 replacement_insns = [
                         make_assignment(
                             id=insn.id,
-                            depends_on=result_assignment_dep_on,
+                            happens_after=result_assignment_dep_on,
                             assignees=insn.assignees,
                             expression=new_expr,
                             **kwargs)
@@ -2087,7 +2076,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                 if global_barrier is not None:
                     gb_dep = frozenset([global_barrier])
                     additional_insns = [addl_insn.copy(
-                        depends_on=addl_insn.depends_on | gb_dep)
+                        happens_after=addl_insn.depends_on | gb_dep)
                         for addl_insn in additional_insns]
 
             # }}}
