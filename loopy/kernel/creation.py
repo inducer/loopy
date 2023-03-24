@@ -36,7 +36,6 @@ from loopy.kernel.data import (
         SubstitutionRule, AddressSpace, ValueArg)
 from loopy.translation_unit import for_each_kernel
 from loopy.diagnostic import LoopyError, warn_with_kernel
-from loopy.kernel.instruction import HappensAfter
 import islpy as isl
 from islpy import dim_type
 from pytools import ProcessLogger
