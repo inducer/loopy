@@ -777,6 +777,17 @@ def test_passing_bajillions_of_svm_args(ctx_factory, with_gbarrier):
         assert (res[f"c{iargset}"].get() == iargset * multiplier + iargset).all()
 
 
+def test_no_uint_in_cuda_code():
+    # https://github.com/inducer/compyte/pull/44
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i] = a[i] + b[i]", target=lp.CudaTarget())
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.dtype(np.uint32)})
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.dtype(np.uint32)})
+    assert "uint" not in lp.generate_code_v2(knl).device_code()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
