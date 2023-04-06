@@ -839,8 +839,7 @@ def parse_instructions(instructions, defines):
                         happens_after=(
                             (insn.depends_on
                                 | insn_options_stack[-1]["happens_after"])
-                            if insn_options_stack[-1]["happens_after"] is \
-                                                                       not None
+                            if insn_options_stack[-1]["happens_after"] is not None
                             else insn.happens_after),
                         tags=(
                             insn.tags
@@ -1877,9 +1876,9 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True,
                             - {insn.id})
 
             # }}}
-            
+
             happens_after = insn.happens_after
-            
+
             if not isinstance(happens_after, frozenset):
                 happens_after = frozenset(happens_after)
 

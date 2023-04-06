@@ -66,7 +66,10 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
     def get_unordered_deps(r: isl.Map, s: isl.Map) -> isl.Map:
         """Equivalent to computing the relation R^{-1} o S
         """
-        return s.apply_range(r.reverse())
+        dependency = s.apply_range(r.reverse())
+
+        # do not return a map with self dependencies
+        return dependency - dependency.identity(dependency.get_space())
 
     def make_inames_unique(relation: isl.Map) -> isl.Map:
         """Make the inames of a particular map unique by adding a single quote
@@ -113,13 +116,10 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
                                 get_access_map(write_domain, sub.index_tuple)
                         )
 
-                assert len(read_maps) > 0
-                assert len(write_maps) > 0
-
                 read_map = reduce(operator.or_, read_maps)
                 write_map = reduce(operator.or_, write_maps)
 
-                read_write = get_unordered_deps(read_map, write_map)
+                read_write = get_unordered_deps(write_map, read_map)
 
                 if writer in insn.happens_after:
                     lex_map = insn.happens_after[writer].instances_rel
@@ -140,10 +140,10 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
                         old_rel = new_happens_after[writer].instances_rel
                         flow_dependencies |= old_rel
 
-                    new_happens_after |= {
+                    new_happens_after.update({
                             writer: HappensAfter(variable,
                                                  flow_dependencies)
-                    }
+                    })
 
         # compute anti and output dependencies
         for variable in writes[insn.id]:
@@ -175,13 +175,10 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
                                 get_access_map(write_domain, sub.index_tuple)
                         )
 
-                assert len(read_maps) > 0
-                assert len(write_maps) > 0
-
                 read_map = reduce(operator.or_, read_maps)
                 write_map = reduce(operator.or_, write_maps)
 
-                write_read = get_unordered_deps(write_map, read_map)
+                write_read = get_unordered_deps(read_map, write_map)
 
                 if reader in insn.happens_after:
                     lex_map = insn.happens_after[reader].instances_rel
@@ -203,9 +200,9 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
 
                         anti_dependencies |= old_rel
 
-                    new_happens_after |= {
+                    new_happens_after.update({
                             reader: HappensAfter(variable, anti_dependencies)
-                    }
+                    })
 
             # compute output dependencies
             for writer in writer_map.get(variable, set()):
@@ -236,13 +233,10 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
                                 get_access_map(after_domain, sub.index_tuple)
                         )
 
-                assert len(before_maps) > 0
-                assert len(after_maps) > 0
-
                 before_map = reduce(operator.or_, before_maps)
                 after_map = reduce(operator.or_, before_maps)
 
-                write_write = get_unordered_deps(after_map, before_map)
+                write_write = get_unordered_deps(before_map, after_map)
 
                 if writer in insn.happens_after:
                     lex_map = insn.happens_after[writer].instances_rel
@@ -261,14 +255,14 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
                 output_dependencies = write_write & lex_map
 
                 if not output_dependencies.is_empty():
-                    if writer in new_happens_after[writer]:
+                    if writer in new_happens_after:
                         old_rel = new_happens_after[writer].instances_rel
 
                         output_dependencies |= old_rel
 
-                    new_happens_after |= {
+                    new_happens_after.update({
                             writer: HappensAfter(variable, output_dependencies)
-                    }
+                    })
 
         new_insns.append(insn.copy(happens_after=new_happens_after))
 
@@ -359,5 +353,35 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
             new_insns.append(insn_after)
 
     return knl.copy(instructions=new_insns)
+
+
+def print_dependency_info(knl: LoopKernel) -> None:
+
+    dependencies = []
+    for insn in knl.instructions:
+        dep_string = f"{insn.id} depends on "
+
+        if not insn.happens_after:
+            dep_string += "nothing"
+
+        else:
+            for dep in insn.happens_after:
+
+                dep_string += f"{dep} "
+
+                if insn.happens_after[dep].variable_name is None:
+                    dep_string += ""
+
+                else:
+                    dep_string += "at variable "
+                    dep_string += f"'{insn.happens_after[dep].variable_name}' "
+
+                dep_string += "with relation \n"
+                dep_string += f"{insn.happens_after[dep].instances_rel}\n"
+
+        dependencies.append(dep_string)
+
+    for s in dependencies:
+        print(s)
 
 # vim: foldmethod=marker
