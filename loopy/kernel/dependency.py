@@ -20,22 +20,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-# TODO
-#   1. Array access discovery needs work
-#   2. Can we reduce the length of the code without making things more
-#   complicated
-#
-#   Problem with BatchedAccessMapMapper is that it we cannot distinguish between
-#   accesses of particular instructions.
-#
-#   Problem with AccessMapMapper is that it misses important array access
-#   information. Most importantly, it did not detect when an instruction
-#   accessed an array multiple times in the same statement
-#
-#       For example a[i,j] = a[i+1,j+1] - a[i-1,j-1]
-#
-#   Probably an implementation that is "in the middle" would work for this case
-
 from typing import Mapping
 
 import islpy as isl
@@ -295,8 +279,9 @@ def print_dependency_info(knl: LoopKernel) -> None:
                     dep_string += f"'{insn.happens_after[dep].variable_name}' "
 
                 dep_string += "with relation \n"
-                dep_string += f"{insn.happens_after[dep].instances_rel}\n"
+                dep_string += f"{insn.happens_after[dep].instances_rel}\n\n"
 
+        dep_string += ((80*"-") + "\n")
         dependencies.append(dep_string)
 
     for s in dependencies:
