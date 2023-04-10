@@ -37,7 +37,7 @@ import pymbolic.primitives as p
 
 
 class AccessMapFinder(WalkMapper):
-    """Finds and stores relations representing the accesses of an array by
+    """Finds and stores relations representing the accesses to an array by
     statement instances. Access maps can be found using an instruction's ID and
     a variable's name. Essentially a specialized version of
     BatchedAccessMapMapper.
