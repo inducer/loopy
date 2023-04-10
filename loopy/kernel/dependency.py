@@ -271,10 +271,7 @@ def print_dependency_info(knl: LoopKernel) -> None:
 
                 dep_string += f"{dep} "
 
-                if insn.happens_after[dep].variable_name is None:
-                    dep_string += ""
-
-                else:
+                if insn.happens_after[dep].variable_name is not None:
                     dep_string += "at variable "
                     dep_string += f"'{insn.happens_after[dep].variable_name}' "
 
