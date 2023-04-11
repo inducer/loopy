@@ -70,13 +70,16 @@ class AccessMapFinder(WalkMapper):
                 domain, subscript, self.kernel.assumptions
         )
 
-        if self.access_maps[insn.id][arg_name]:
+        if self.access_maps[insn.id][arg_name] is not None:
             self.access_maps[insn.id][arg_name] |= access_map
         else:
             self.access_maps[insn.id][arg_name] = access_map
 
     def map_linear_subscript(self, expr, insn):
-        self.rec(expr.index, insn)
+        raise NotImplementedError("linear subscripts cannot be used with "
+                                  "precise dependency finding. Try using "
+                                  "multidimensional accesses to use this "
+                                  "feature.")
 
     def map_reduction(self, expr, insn):
         return WalkMapper.map_reduction(self, expr, insn)
@@ -84,11 +87,23 @@ class AccessMapFinder(WalkMapper):
     def map_type_cast(self, expr, inames):
         return self.rec(expr.child, inames)
 
-    # TODO implement this
     def map_sub_array_ref(self, expr, insn):
-        raise NotImplementedError("functionality for sub-array reference "
-                                  "access map finding has not yet been "
-                                  "implemented")
+        arg_name = expr.aggregate.name
+
+        total_inames = insn.inames | {iname.name for iname in expr.swept_inames}
+
+        self.rec(expr.subscript, insn)
+
+        amap = self.access_maps[arg_name].pop(total_inames)
+        assert amap is not None  # stop complaints
+        for iname in expr.swept_inames:
+            dt, pos = amap.get_var_dict()[iname.name]
+            amap = amap.project_out(dt, pos, 1)
+
+        if self.access_maps[arg_name][insn.id] is not None:
+            self.access_maps[arg_name][insn.id] |= amap
+        else:
+            self.access_maps[arg_name][insn.id] = amap
 
 
 @for_each_kernel
