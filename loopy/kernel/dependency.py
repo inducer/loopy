@@ -45,17 +45,15 @@ class AccessMapFinder(WalkMapper):
 
     def __init__(self, knl: LoopKernel) -> None:
         self.kernel = knl
-        self.access_maps = defaultdict(lambda: defaultdict(lambda: None))
+        self._access_maps = defaultdict(lambda: defaultdict(lambda: None))
 
         super().__init__()
 
     def get_map(self, insn_id: str, variable_name: str) -> isl.Map:
-        try:
-            return self.access_maps[insn_id][variable_name]
-        except KeyError:
-            raise RuntimeError("error while trying to retrieve an access map "
-                               "for instruction %s and array %s"
-                               % (insn_id, variable_name))
+        """Retrieve an access map indexed by an instruction ID and variable
+        name.
+        """
+        return self._access_maps[insn_id][variable_name]
 
     def map_subscript(self, expr, insn):
         domain = self.kernel.get_inames_domain(insn.within_inames)
@@ -70,10 +68,10 @@ class AccessMapFinder(WalkMapper):
                 domain, subscript, self.kernel.assumptions
         )
 
-        if self.access_maps[insn.id][arg_name] is not None:
-            self.access_maps[insn.id][arg_name] |= access_map
+        if self._access_maps[insn.id][arg_name] is not None:
+            self._access_maps[insn.id][arg_name] |= access_map
         else:
-            self.access_maps[insn.id][arg_name] = access_map
+            self._access_maps[insn.id][arg_name] = access_map
 
     def map_linear_subscript(self, expr, insn):
         raise NotImplementedError("linear subscripts cannot be used with "
@@ -94,16 +92,16 @@ class AccessMapFinder(WalkMapper):
 
         self.rec(expr.subscript, insn)
 
-        amap = self.access_maps[arg_name].pop(total_inames)
+        amap = self._access_maps[arg_name].pop(total_inames)
         assert amap is not None  # stop complaints
         for iname in expr.swept_inames:
             dt, pos = amap.get_var_dict()[iname.name]
             amap = amap.project_out(dt, pos, 1)
 
-        if self.access_maps[arg_name][insn.id] is not None:
-            self.access_maps[arg_name][insn.id] |= amap
+        if self._access_maps[arg_name][insn.id] is not None:
+            self._access_maps[arg_name][insn.id] |= amap
         else:
-            self.access_maps[arg_name][insn.id] = amap
+            self._access_maps[arg_name][insn.id] = amap
 
 
 @for_each_kernel
@@ -156,6 +154,11 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
 
             # dependency computation
             for after_insn in accessed_by:
+                # avoid read-after-read
+                reads = reader_map.get(variable, set())
+                if before_insn in reads and after_insn in reads:
+                    continue
+
                 before_map = amf.get_map(before_insn.id, variable)
                 after_map = amf.get_map(after_insn, variable)
 
@@ -279,7 +282,7 @@ def print_dependency_info(knl: LoopKernel) -> None:
         dep_string = f"{insn.id} depends on \n"
 
         if not insn.happens_after:
-            dep_string += "nothing"
+            dep_string += "nothing\n"
 
         else:
             for dep in insn.happens_after:
