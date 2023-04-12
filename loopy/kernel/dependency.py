@@ -27,6 +27,7 @@ from islpy import dim_type
 
 from loopy import LoopKernel
 from loopy.kernel.instruction import HappensAfter
+from loopy.symbolic import UnableToDetermineAccessRangeError
 from loopy.symbolic import UncachedWalkMapper as WalkMapper
 from loopy.translation_unit import for_each_kernel
 from loopy.symbolic import get_access_map
@@ -46,6 +47,8 @@ class AccessMapFinder(WalkMapper):
     def __init__(self, knl: LoopKernel) -> None:
         self.kernel = knl
         self._access_maps = pmap({})
+        from collections import defaultdict
+        self.bad_subscripts = defaultdict(list)
 
         super().__init__()
 
@@ -64,9 +67,13 @@ class AccessMapFinder(WalkMapper):
         arg_name = expr.aggregate.name
         subscript = expr.index_tuple
 
-        access_map = get_access_map(
-                domain, subscript, self.kernel.assumptions
-        )
+        try:
+            access_map = get_access_map(
+                    domain, subscript, self.kernel.assumptions
+            )
+        except UnableToDetermineAccessRangeError:
+            self.bad_subscripts[arg_name].append(expr)
+            return
 
         # analyze what we have in our access map dict before storing map
         insn_to_args = self._access_maps.get(insn.id)
@@ -100,7 +107,8 @@ class AccessMapFinder(WalkMapper):
         return self.rec(expr.child, insn)
 
     def map_sub_array_ref(self, expr, insn):
-        pass
+        raise NotImplementedError("subarray references are a WIP for "
+                                  "precise dependency finding.")
 
 
 @for_each_kernel
