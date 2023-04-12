@@ -32,6 +32,8 @@ import islpy as isl
 from pytools import ImmutableRecord, memoize_method
 from pytools.tag import Tag, tag_dataclass, Taggable
 
+import pyrsistent as ps
+
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional as LoopyOptional
 from loopy.typing import ExpressionT
@@ -311,7 +313,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                     "actually specifying happens_after/depends_on")
 
         if happens_after is None:
-            happens_after = {}
+            happens_after = ps.pmap({})
         elif isinstance(happens_after, str):
             warn("Passing a string for happens_after/depends_on is deprecated and "
                  "will stop working in 2024. Instead, pass a full-fledged "
@@ -330,7 +332,8 @@ class InstructionBase(ImmutableRecord, Taggable):
                         instances_rel=None)
                     for after_id in happens_after}
         elif isinstance(happens_after, MappingABC):
-            pass
+            if isinstance(happens_after, dict):
+                happens_after = ps.pmap(happens_after)
         else:
             raise TypeError("'happens_after' has unexpected type: "
                             f"{type(happens_after)}")

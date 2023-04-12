@@ -25,8 +25,6 @@ from typing import Mapping
 import islpy as isl
 from islpy import dim_type
 
-from collections import defaultdict
-
 from loopy import LoopKernel
 from loopy.kernel.instruction import HappensAfter
 from loopy.symbolic import UncachedWalkMapper as WalkMapper
@@ -34,6 +32,8 @@ from loopy.translation_unit import for_each_kernel
 from loopy.symbolic import get_access_map
 
 import pymbolic.primitives as p
+
+from pyrsistent import pmap
 
 
 class AccessMapFinder(WalkMapper):
@@ -45,7 +45,7 @@ class AccessMapFinder(WalkMapper):
 
     def __init__(self, knl: LoopKernel) -> None:
         self.kernel = knl
-        self._access_maps = defaultdict(lambda: defaultdict(lambda: None))
+        self._access_maps = pmap({})
 
         super().__init__()
 
@@ -68,40 +68,39 @@ class AccessMapFinder(WalkMapper):
                 domain, subscript, self.kernel.assumptions
         )
 
-        if self._access_maps[insn.id][arg_name] is not None:
-            self._access_maps[insn.id][arg_name] |= access_map
+        # analyze what we have in our access map dict before storing map
+        insn_to_args = self._access_maps.get(insn.id)
+        if insn_to_args is not None:
+            existing_relation = insn_to_args.get(arg_name)
+
+            if existing_relation is not None:
+                access_map |= existing_relation
+
+            self._access_maps = self._access_maps.set(
+                    insn.id, self._access_maps[insn.id].set(
+                        arg_name, access_map
+                    )
+            )
+
         else:
-            self._access_maps[insn.id][arg_name] = access_map
+            self._access_maps = self._access_maps.set(
+                    insn.id, pmap({arg_name: access_map})
+            )
 
     def map_linear_subscript(self, expr, insn):
         raise NotImplementedError("linear subscripts cannot be used with "
-                                  "precise dependency finding. Try using "
+                                  "precise dependency finding. Use "
                                   "multidimensional accesses to use this "
                                   "feature.")
 
     def map_reduction(self, expr, insn):
         return WalkMapper.map_reduction(self, expr, insn)
 
-    def map_type_cast(self, expr, inames):
-        return self.rec(expr.child, inames)
+    def map_type_cast(self, expr, insn):
+        return self.rec(expr.child, insn)
 
     def map_sub_array_ref(self, expr, insn):
-        arg_name = expr.aggregate.name
-
-        total_inames = insn.inames | {iname.name for iname in expr.swept_inames}
-
-        self.rec(expr.subscript, insn)
-
-        amap = self._access_maps[arg_name].pop(total_inames)
-        assert amap is not None  # stop complaints
-        for iname in expr.swept_inames:
-            dt, pos = amap.get_var_dict()[iname.name]
-            amap = amap.project_out(dt, pos, 1)
-
-        if self._access_maps[arg_name][insn.id] is not None:
-            self._access_maps[arg_name][insn.id] |= amap
-        else:
-            self._access_maps[arg_name][insn.id] = amap
+        pass
 
 
 @for_each_kernel
@@ -115,7 +114,12 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
         # equivalent to R^{-1} o S
         dependency = frm.apply_range(to.reverse())
 
-        return dependency - dependency.identity(dependency.get_space())
+        if dependency.dim(dim_type.out) == dependency.dim(dim_type.in_):
+            identity = dependency.identity(dependency.get_space())
+        else:
+            raise RuntimeError("input and output dimensions do not match")
+
+        return dependency - identity
 
     def make_inames_unique(relation: isl.Map) -> isl.Map:
         """Add a single quote to the output inames of an isl.Map
@@ -129,10 +133,13 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
     writer_map = knl.writer_map()
     reader_map = knl.reader_map()
 
-    # consider all accesses since we union all dependencies anyway
-    accesses = {
-            insn.id: (insn.read_dependency_names() |
-                      insn.write_dependency_names()) - insn.within_inames
+    writes = {
+            insn.id: insn.write_dependency_names() - insn.within_inames
+            for insn in knl.instructions
+    }
+
+    reads = {
+            insn.id: insn.read_dependency_names() - insn.within_inames
             for insn in knl.instructions
     }
 
@@ -147,17 +154,10 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
 
         assert isinstance(before_insn.id, str)  # stop complaints
 
-        for variable in accesses[before_insn.id]:
-            # get all instruction ids that also access the current variable
-            accessed_by = reader_map.get(variable, set()) | \
-                          writer_map.get(variable, set())
+        for variable in writes[before_insn.id]:
 
             # dependency computation
-            for after_insn in accessed_by:
-                # avoid read-after-read
-                reads = reader_map.get(variable, set())
-                if before_insn in reads and after_insn in reads:
-                    continue
+            for after_insn in reader_map.get(variable, set()):
 
                 before_map = amf.get_map(before_insn.id, variable)
                 after_map = amf.get_map(after_insn, variable)
@@ -183,7 +183,65 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                         after_insn: HappensAfter(variable, deps)
                     })
 
-        new_insns.append(before_insn.copy(happens_after=new_happens_after))
+            # dependency computation
+            for after_insn in writer_map.get(variable, set()):
+
+                before_map = amf.get_map(before_insn.id, variable)
+                after_map = amf.get_map(after_insn, variable)
+
+                unordered_deps = get_unordered_deps(before_map, after_map)
+
+                # may not permanently construct lex maps this way
+                lex_map = unordered_deps.lex_lt_map(unordered_deps)
+
+                # may not be needed if we can resolve issues above
+                if lex_map.space != unordered_deps.space:
+                    lex_map = make_inames_unique(lex_map)
+                    unordered_deps = make_inames_unique(unordered_deps)
+
+                    lex_map, unordered_deps = isl.align_two(
+                            lex_map, unordered_deps
+                    )
+
+                deps = unordered_deps & lex_map
+
+                if not deps.is_empty():
+                    new_happens_after.update({
+                        after_insn: HappensAfter(variable, deps)
+                    })
+
+        for variable in reads[before_insn.id]:
+
+            # dependency computation
+            for after_insn in writer_map.get(variable, set()):
+
+                before_map = amf.get_map(before_insn.id, variable)
+                after_map = amf.get_map(after_insn, variable)
+
+                unordered_deps = get_unordered_deps(before_map, after_map)
+
+                # may not permanently construct lex maps this way
+                lex_map = unordered_deps.lex_lt_map(unordered_deps)
+
+                # may not be needed if we can resolve issues above
+                if lex_map.space != unordered_deps.space:
+                    lex_map = make_inames_unique(lex_map)
+                    unordered_deps = make_inames_unique(unordered_deps)
+
+                    lex_map, unordered_deps = isl.align_two(
+                            lex_map, unordered_deps
+                    )
+
+                deps = unordered_deps & lex_map
+
+                if not deps.is_empty():
+                    new_happens_after.update({
+                        after_insn: HappensAfter(variable, deps)
+                    })
+
+        new_insns.append(before_insn.copy(
+            happens_after=pmap(new_happens_after)
+        ))
 
     return knl.copy(instructions=new_insns)
 
@@ -267,7 +325,7 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
                 insn_before.id: HappensAfter(None, happens_before)
             }
 
-            insn_after = insn_after.copy(happens_after=new_happens_after)
+            insn_after = insn_after.copy(happens_after=pmap(new_happens_after))
 
             new_insns.append(insn_after)
 
