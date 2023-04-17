@@ -32,8 +32,6 @@ import islpy as isl
 from pytools import ImmutableRecord, memoize_method
 from pytools.tag import Tag, tag_dataclass, Taggable
 
-import pyrsistent as ps
-
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional as LoopyOptional
 from loopy.typing import ExpressionT
@@ -313,7 +311,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                     "actually specifying happens_after/depends_on")
 
         if happens_after is None:
-            happens_after = ps.pmap({})
+            happens_after = {}
         elif isinstance(happens_after, str):
             warn("Passing a string for happens_after/depends_on is deprecated and "
                  "will stop working in 2024. Instead, pass a full-fledged "
@@ -333,7 +331,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                     for after_id in happens_after}
         elif isinstance(happens_after, MappingABC):
             if isinstance(happens_after, dict):
-                happens_after = ps.pmap(happens_after)
+                happens_after = happens_after
         else:
             raise TypeError("'happens_after' has unexpected type: "
                             f"{type(happens_after)}")
@@ -1065,7 +1063,8 @@ class CallInstruction(MultiAssignmentBase):
             within_inames=None,
             tags=None,
             temp_var_types=None,
-            priority=0, predicates=frozenset()):
+            priority=0, predicates=frozenset(),
+            depends_on=None):
 
         super().__init__(
                 id=id,
@@ -1078,7 +1077,8 @@ class CallInstruction(MultiAssignmentBase):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags)
+                tags=tags,
+                depends_on=depends_on)
 
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
@@ -1356,7 +1356,8 @@ class CInstruction(InstructionBase):
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=0,
-            predicates=frozenset(), tags=None):
+            predicates=frozenset(), tags=None,
+            depends_on=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -1375,7 +1376,8 @@ class CInstruction(InstructionBase):
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                priority=priority, predicates=predicates, tags=tags)
+                priority=priority, predicates=predicates, tags=tags,
+                depends_on=depends_on)
 
         # {{{ normalize iname_exprs
 
@@ -1524,7 +1526,7 @@ class NoOpInstruction(_DataObliviousInstruction):
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
-            predicates=None, tags=None):
+            predicates=None, tags=None, depends_on=None):
         super().__init__(
                 id=id,
                 happens_after=happens_after,
@@ -1536,7 +1538,8 @@ class NoOpInstruction(_DataObliviousInstruction):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags)
+                tags=tags,
+                depends_on=depends_on)
 
     def __str__(self):
         first_line = "%s: ... nop" % self.id
@@ -1584,7 +1587,8 @@ class BarrierInstruction(_DataObliviousInstruction):
             within_inames_is_final=None, within_inames=None,
             priority=None,
             predicates=None, tags=None, synchronization_kind="global",
-            mem_kind="local"):
+            mem_kind="local",
+            depends_on=None):
 
         if predicates:
             raise LoopyError("conditional barriers are not supported")
@@ -1600,8 +1604,8 @@ class BarrierInstruction(_DataObliviousInstruction):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags
-                )
+                tags=tags,
+                depends_on=depends_on)
 
         self.synchronization_kind = synchronization_kind
         self.mem_kind = mem_kind

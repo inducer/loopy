@@ -26,11 +26,10 @@ import islpy as isl
 from islpy import dim_type
 
 from loopy import LoopKernel
-from loopy.kernel.instruction import HappensAfter
-from loopy.symbolic import UnableToDetermineAccessRangeError
-from loopy.symbolic import UncachedWalkMapper as WalkMapper
+from loopy.kernel.instruction import HappensAfter, MultiAssignmentBase
 from loopy.translation_unit import for_each_kernel
-from loopy.symbolic import get_access_map
+from loopy.symbolic import UnableToDetermineAccessRangeError, get_access_map
+from loopy.symbolic import UncachedWalkMapper as WalkMapper
 
 import pymbolic.primitives as p
 
@@ -47,7 +46,7 @@ class AccessMapFinder(WalkMapper):
     def __init__(self, knl: LoopKernel) -> None:
         self.kernel = knl
         self._access_maps = pmap({})
-        from collections import defaultdict
+        from collections import defaultdict  # FIXME remove this
         self.bad_subscripts = defaultdict(list)
 
         super().__init__()
@@ -72,6 +71,7 @@ class AccessMapFinder(WalkMapper):
                     domain, subscript, self.kernel.assumptions
             )
         except UnableToDetermineAccessRangeError:
+            # may not have enough info to generate access map at current point
             self.bad_subscripts[arg_name].append(expr)
             return
 
