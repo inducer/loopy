@@ -26,7 +26,7 @@ import islpy as isl
 from islpy import dim_type
 
 from loopy import LoopKernel
-from loopy.kernel.instruction import HappensAfter, MultiAssignmentBase
+from loopy.kernel.instruction import HappensAfter
 from loopy.translation_unit import for_each_kernel
 from loopy.symbolic import UnableToDetermineAccessRangeError, get_access_map
 from loopy.symbolic import UncachedWalkMapper as WalkMapper
@@ -34,6 +34,10 @@ from loopy.symbolic import UncachedWalkMapper as WalkMapper
 import pymbolic.primitives as p
 
 from pyrsistent import pmap
+from pyrsistent import PMap
+
+from loopy.typing import Expression
+from typing import List, Dict
 
 
 class AccessMapFinder(WalkMapper):
@@ -45,9 +49,9 @@ class AccessMapFinder(WalkMapper):
 
     def __init__(self, knl: LoopKernel) -> None:
         self.kernel = knl
-        self._access_maps = pmap({})
+        self._access_maps: PMap[str, PMap[str, isl.Map]] = pmap({})
         from collections import defaultdict  # FIXME remove this
-        self.bad_subscripts = defaultdict(list)
+        self.bad_subscripts: Dict[str, List[Expression]] = defaultdict(list)
 
         super().__init__()
 
@@ -187,9 +191,11 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                 deps = unordered_deps & lex_map
 
                 if not deps.is_empty():
-                    new_happens_after.update({
-                        after_insn: HappensAfter(variable, deps)
-                    })
+                    new_happens_after = dict(
+                            list(new_happens_after.items())
+                            +
+                            [(after_insn, HappensAfter(variable, deps))]
+                    )
 
             # dependency computation
             for after_insn in writer_map.get(variable, set()):
@@ -214,9 +220,11 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                 deps = unordered_deps & lex_map
 
                 if not deps.is_empty():
-                    new_happens_after.update({
-                        after_insn: HappensAfter(variable, deps)
-                    })
+                    new_happens_after = dict(
+                            list(new_happens_after.items())
+                            +
+                            [(after_insn, HappensAfter(variable, deps))]
+                    )
 
         for variable in reads[before_insn.id]:
 
@@ -243,12 +251,14 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
                 deps = unordered_deps & lex_map
 
                 if not deps.is_empty():
-                    new_happens_after.update({
-                        after_insn: HappensAfter(variable, deps)
-                    })
+                    new_happens_after = dict(
+                            list(new_happens_after.items())
+                            +
+                            [(after_insn, HappensAfter(variable, deps))]
+                    )
 
         new_insns.append(before_insn.copy(
-            happens_after=pmap(new_happens_after)
+            happens_after=new_happens_after
         ))
 
     return knl.copy(instructions=new_insns)

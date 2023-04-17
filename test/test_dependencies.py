@@ -54,10 +54,10 @@ def test_data_dependencies():
             """)
 
     from loopy.kernel.dependency import add_lexicographic_happens_after,\
-                                        narrow_dependencies
+                                        compute_data_dependencies
 
     knl = add_lexicographic_happens_after(knl)
-    narrow_dependencies(knl)
+    compute_data_dependencies(knl)
 
 
 if __name__ == "__main__":
