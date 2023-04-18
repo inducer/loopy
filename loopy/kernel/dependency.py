@@ -1,3 +1,8 @@
+"""
+.. autoclass:: AccessMapFinder
+.. autofunction:: compute_data_dependencies
+"""
+
 __copyright__ = "Copyright (C) 2023 Addison Alvey-Blanco"
 
 __license__ = """
@@ -343,7 +348,7 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
                 insn_before.id: HappensAfter(None, happens_before)
             }
 
-            insn_after = insn_after.copy(happens_after=pmap(new_happens_after))
+            insn_after = insn_after.copy(happens_after=new_happens_after)
 
             new_insns.append(insn_after)
 

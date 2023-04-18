@@ -260,6 +260,7 @@ Instructions
 
 .. {{{
 
+.. autoclass:: HappensAfter
 .. autoclass:: InstructionBase
 
 .. _assignments:
@@ -456,6 +457,10 @@ Loopy's expressions are a slight superset of the expressions supported by
 
 TODO: Functions
 TODO: Reductions
+
+Dependencies
+^^^^^^^^^^^^
+.. automodule:: loopy.kernel.dependency
 
 Function Call Instructions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

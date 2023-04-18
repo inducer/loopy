@@ -96,7 +96,7 @@ class HappensAfter:
 
     .. attribute:: instances_rel
 
-        An :class:`isl.Map` representing the happens-after relationship. The
+        An :class:`islpy.Map` representing the happens-after relationship. The
         input of the map is an iname tuple and the output of the map is a set
         of iname tuples that must execute after the input.
 
@@ -397,6 +397,22 @@ class InstructionBase(ImmutableRecord, Taggable):
                 tags=tags)
 
         Taggable.__init__(self, tags)
+
+    def get_copy_kwargs(self, **kwargs):
+        passed_depends_on = "depends_on" in kwargs
+
+        if passed_depends_on:
+            assert "happens_after" not in kwargs
+
+        kwargs = super().get_copy_kwargs(**kwargs)
+
+        if passed_depends_on:
+            # warn that this is deprecated
+            warn("depends_on is deprecated and will stop working in 2024. "
+                 "Instead, use happens_after.", DeprecationWarning, stacklevel=2)
+            del kwargs["happens_after"]
+
+        return kwargs
 
     # {{{ abstract interface
 

@@ -29,6 +29,7 @@ from loopy.translation_unit import for_each_kernel
 # {{{ imported user interface
 
 from loopy.kernel.instruction import (
+        HappensAfter,
         LegacyStringInstructionTag, UseStreamingStoreTag,
         MemoryOrdering,
         MemoryScope,
@@ -172,6 +173,7 @@ __all__ = [
         "LoopKernel",
         "KernelState",
 
+        "HappensAfter",
         "LegacyStringInstructionTag", "UseStreamingStoreTag",
         "MemoryOrdering",
         "MemoryScope",
