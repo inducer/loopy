@@ -2159,10 +2159,10 @@ def get_one_linearized_kernel(kernel, callables_table):
         try:
             result = schedule_cache[sched_cache_key]
 
-            logger.debug("%s: schedule cache hit" % kernel.name)
+            logger.debug(f"{kernel.name}: schedule cache hit")
             from_cache = True
         except KeyError:
-            pass
+            logger.debug(f"{kernel.name}: schedule cache miss")
 
     if not from_cache:
         with ProcessLogger(logger, "%s: schedule" % kernel.name):
