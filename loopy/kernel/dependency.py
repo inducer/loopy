@@ -73,8 +73,7 @@ class AccessMapFinder(WalkMapper):
         assert isinstance(expr.aggregate, p.Variable)
 
         arg_name = expr.aggregate.name
-        subscript = expr.index_tuple
-
+        subscript = expr.index_tuple 
         try:
             access_map = get_access_map(
                     domain, subscript, self.kernel.assumptions
@@ -175,7 +174,6 @@ def compute_data_dependencies(knl: LoopKernel) -> LoopKernel:
 
             # dependency computation
             for after_insn in reader_map.get(variable, set()):
-
                 before_map = amf.get_map(before_insn.id, variable)
                 after_map = amf.get_map(after_insn, variable)
 
