@@ -117,13 +117,7 @@ class AccessMapFinder(WalkMapper):
         return self.rec(expr.child, insn_id)
 
     def map_sub_array_ref(self, expr, insn_id):
-        arg_name = expr.subscript.aggregate.name
-
-        if arg_name in self.bad_subscripts:
-            return
-
-        inames = self.kernel.id_to_insn[insn_id].within_inames
-        total_inames = inames | {iname.name for iname in expr.swept_inames}
+        raise NotImplementedError("Not yet implemented")
 
 @for_each_kernel
 def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
