@@ -22,6 +22,8 @@ THE SOFTWARE.
 
 import sys
 import loopy as lp
+from loopy.kernel.dependency import add_lexicographic_happens_after, \
+                                    narrow_dependencies
 
 
 def test_lex_dependencies():
@@ -36,9 +38,7 @@ def test_lex_dependencies():
             v[a,b,k,l] = 2*v[a,b,k,l]
             """)
 
-    from loopy.kernel.dependency import add_lexicographic_happens_after
-
-    add_lexicographic_happens_after(knl)
+    knl = add_lexicographic_happens_after(knl)
 
 
 def test_data_dependencies():
@@ -53,11 +53,20 @@ def test_data_dependencies():
             v[a,b,k,l] = 2*v[a,b,k,l]
             """)
 
-    from loopy.kernel.dependency import add_lexicographic_happens_after,\
-                                        compute_data_dependencies
+    knl = add_lexicographic_happens_after(knl)
+    knl = narrow_dependencies(knl)
+
+
+def test_scalar_dependencies():
+    knl = lp.make_kernel(
+            "{ [i]: i = 0 }",
+            """
+            a = 3
+            b = a*2
+            """)
 
     knl = add_lexicographic_happens_after(knl)
-    compute_data_dependencies(knl)
+    knl = narrow_dependencies(knl)
 
 
 if __name__ == "__main__":

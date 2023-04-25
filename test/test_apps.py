@@ -228,7 +228,7 @@ def test_rob_stroud_bernstein():
                 qpts=np.float32,
                 coeffs=np.float32,
                 tmp=np.float32,
-                ))
+                )) 
     print(lp.generate_code_v2(knl))
 
 
