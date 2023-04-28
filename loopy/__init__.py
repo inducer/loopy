@@ -122,6 +122,7 @@ from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 from loopy.transform.add_barrier import add_barrier
+from loopy.transform.domain import decouple_domain
 from loopy.transform.callable import (register_callable,
         merge, inline_callable_kernel, rename_callable)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
@@ -250,6 +251,8 @@ __all__ = [
         "save_and_reload_temporaries",
 
         "add_barrier",
+
+        "decouple_domain",
 
         "register_callable",
         "merge",

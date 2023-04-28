@@ -1627,6 +1627,25 @@ def test_concatenate_arrays(ctx_factory):
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
+def test_decouple_domain(ctx_factory):
+    ctx = ctx_factory()
+    t_unit = lp.make_kernel(
+        "{[i,j]: 0<=i, j<10}",
+        """
+        x[i] = i
+        y[j] = 2*j
+        """,
+        name="foo",
+    )
+    ref_t_unit = t_unit
+    t_unit = lp.decouple_domain(t_unit, {"j"}, set())
+    assert (ref_t_unit["foo"].get_home_domain_index("i")
+                == ref_t_unit["foo"].get_home_domain_index("j"))
+    assert (t_unit["foo"].get_home_domain_index("i")
+                != t_unit["foo"].get_home_domain_index("j"))
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
