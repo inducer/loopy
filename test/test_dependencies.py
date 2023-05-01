@@ -23,8 +23,8 @@ THE SOFTWARE.
 import sys
 import loopy as lp
 from loopy.kernel.dependency import add_lexicographic_happens_after, \
-                                    narrow_dependencies
-
+                                    find_data_dependencies
+from loopy.transform.dependency import narrow_dependencies
 
 def test_lex_dependencies():
     knl = lp.make_kernel(
@@ -41,31 +41,42 @@ def test_lex_dependencies():
     knl = add_lexicographic_happens_after(knl)
 
 
-def test_data_dependencies():
+def test_find_dependencies():
+    k = lp.make_kernel([
+        "{ [i] : 0 <= i < m }",
+        "{ [j] : 0 <= j < length }"],
+        """
+        for i
+            <> rowstart = rowstarts[i]
+            <> rowend = rowstarts[i+1]
+            <> length = rowend - rowstart
+            y[i] = sum(j, values[rowstart+j] * x[colindices[rowstart + j]])
+        end
+        """, name="spmv")
+
+    import numpy as np
+    k = lp.add_and_infer_dtypes(k, {
+        "values,x": np.float64, "rowstarts,colindices": k["spmv"].index_dtype
+        })
+
+    k = find_data_dependencies(k)
+    pu.db
+
+
+def test_narrow_dependencies():
+    pu.db
     knl = lp.make_kernel(
-            [
-                "{[a,b]: 0<=a,b<7}",
-                "{[i,j]: 0<=i,j<n and 0<=a,b<5}",
-                "{[k,l]: 0<=k,l<n and 0<=a,b<3}"
-                ],
+            "{ [i,j]: 0 <= i < n }",
             """
-            v[a,b,i,j] = 2*v[a,b,i,j]
-            v[a,b,k,l] = 2*v[a,b,k,l]
+            a = i
+            b = a
+            d = b
+            e = i - n
+            c = e + b
             """)
 
     knl = add_lexicographic_happens_after(knl)
-    knl = narrow_dependencies(knl)
-
-
-def test_scalar_dependencies():
-    knl = lp.make_kernel(
-            "{ [i]: i = 0 }",
-            """
-            a = 3
-            b = a*2
-            """)
-
-    knl = add_lexicographic_happens_after(knl)
+    knl = find_data_dependencies(knl)
     knl = narrow_dependencies(knl)
 
 

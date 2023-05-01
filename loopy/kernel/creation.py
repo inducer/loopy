@@ -2523,9 +2523,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     knl = apply_default_order_to_args(knl, default_order)
     knl = resolve_dependencies(knl)
 
-    from loopy.kernel.dependency import narrow_dependencies
-    knl = narrow_dependencies(knl)
-
     # precise dependency semantics should not rely on this
     if not seq_dependencies:
         knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=False)
