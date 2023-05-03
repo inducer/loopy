@@ -953,6 +953,5 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
 
     return wrapper
 
-# }}}
 
 # vim: fdm=marker
