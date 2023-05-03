@@ -3119,6 +3119,20 @@ def test_tunit_to_python():
     t_unit = lp.merge([t_unit, mysin])
     lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
 
+    knl_explicit_iname = lp.make_kernel(
+        ["{[i]: 0<=i<10}", "{[j]: 0<=j<10}"],
+        ["""
+        for i
+            a[j] = 0       {id=a}
+            b[i, j] = a[j] {dep=a}
+        end"""],
+        kernel_data=[
+            lp.TemporaryVariable("a", dtype=np.int32),
+            lp.GlobalArg("b"),
+        ])
+    # contains check to assert roundtrip equivalence
+    lp.t_unit_to_python(knl_explicit_iname)
+
 
 def test_global_tv_with_base_storage_across_gbarrier(ctx_factory):
     # see https://github.com/inducer/loopy/pull/466 for context
@@ -3390,6 +3404,83 @@ def test_creation_kwargs():
             "a[i] = foo() * i",
             # not a known kwarg
             ksdfjlasdf=None)
+
+
+def test_global_temps_with_multiple_base_storages(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/737
+
+    n = 10
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+        "{[r0, r1]: 0<=r0,r1< %s}" % n,
+        """
+        tmp0 = sum(r0, r0**2)
+        ... gbarrier
+        tmp1 = sum(r1, r1**3)
+        ... gbarrier
+        out = tmp0 + tmp1
+        """,
+        [lp.TemporaryVariable("tmp0",
+                              shape=lp.auto,
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base1"),
+         lp.TemporaryVariable("tmp1",
+                              shape=lp.auto,
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base2"),
+         ...],
+        seq_dependencies=True
+    )
+
+    prg = lp.infer_unknown_types(prg)
+    prg = lp.allocate_temporaries_for_base_storage(prg)
+    print(prg)
+
+    _, (out,) = prg(cq)
+
+    assert out == sum(i**2 for i in range(n)) + sum(i**3 for i in range(n))
+
+
+def test_t_unit_to_python_with_substs():
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        subst_0(i) := abs(10.0 * (i-5))
+        subst_1(i) := abs(10.0 * (i**2-5))
+
+        y[i] = subst_0(i) + subst_1(i)
+        """)
+
+    lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
+
+
+def test_type_inference_of_clbls_in_substitutions(ctx_factory):
+    # Regression for https://github.com/inducer/loopy/issues/746
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        subst_0(_0) := abs(10.0 * (_0-5))
+
+        y[i] = subst_0(i)
+        """)
+
+    evt, (out,) = knl(cq)
+    np.testing.assert_allclose(out.get(), np.abs(10.0*(np.arange(10)-5)))
+
+
+def test_einsum_parsing(ctx_factory):
+    ctx = ctx_factory()
+
+    # See <https://github.com/inducer/loopy/issues/753>
+    knl = lp.make_einsum("ik, kj -> ij", ["A", "B"])
+    knl = lp.add_dtypes(knl, {"A": np.float32, "B": np.float32})
+    lp.auto_test_vs_ref(knl, ctx, knl,
+                        parameters={"Ni": 10, "Nj": 10, "Nk": 10})
 
 
 if __name__ == "__main__":

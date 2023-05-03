@@ -79,23 +79,14 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
         name, tag = parse_tagged_name(expr.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
-            expanded_expr = self.subst_expander(expr)
-            if expr in self.calls_to_new_names:
-                return type(expr)(
-                        ResolvedFunction(self.calls_to_new_names[expr]),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters))
-            elif expanded_expr in self.calls_to_new_names:
-                # FIXME: This is killing the substitution.
-                # Maybe using a RuleAwareIdentityMapper for TypeInferenceMapper
-                # would help.
+            expanded_expr = self.subst_expander(expn_state.apply_arg_context(expr))
+            if expanded_expr in self.calls_to_new_names:
                 return type(expr)(
                         ResolvedFunction(self.calls_to_new_names[expanded_expr]),
                         tuple(self.rec(child, expn_state)
-                            for child in expanded_expr.parameters))
+                              for child in expr.parameters))
             else:
-                return super().map_call(
-                        expr, expn_state)
+                return super().map_call(expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 

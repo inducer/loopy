@@ -777,6 +777,39 @@ def test_passing_bajillions_of_svm_args(ctx_factory, with_gbarrier):
         assert (res[f"c{iargset}"].get() == iargset * multiplier + iargset).all()
 
 
+def test_no_uint_in_cuda_code():
+    # https://github.com/inducer/compyte/pull/44
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i] = a[i] + b[i]", target=lp.CudaTarget())
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.dtype(np.uint32)})
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.dtype(np.uint32)})
+    assert "uint" not in lp.generate_code_v2(knl).device_code()
+
+
+def test_ispc_private_var():
+    # https://github.com/inducer/loopy/issues/763
+    knl = lp.make_kernel(
+            "{ [k]: 0<=k<K }",
+            """
+            <float32> b = 6.0 * float_pos[k]
+            output[k] = 2.0 * b
+            """, [lp.ValueArg("K", is_input=True),
+                  lp.GlobalArg("float_pos", np.float32, shape=lp.auto,
+                               is_input=True, is_output=False),
+                  lp.GlobalArg("output", np.uint8, shape=lp.auto, is_input=False,
+                               is_output=True)],
+            target=lp.ISPCTarget(), assumptions="1<K")
+
+    knl = lp.split_iname(knl, "k", 8, inner_tag="l.0")
+    knl = lp.set_temporary_address_space(knl, "b", "private")
+
+    cg_result = lp.generate_code_v2(knl)
+
+    print(cg_result.device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

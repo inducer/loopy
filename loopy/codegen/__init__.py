@@ -577,10 +577,11 @@ def generate_code_v2(program):
         try:
             result = code_gen_cache[input_program]
             logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
-                         " code generation cache hit")
+                          " code generation cache hit")
             return result
         except KeyError:
-            pass
+            logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
+                          " code generation cache miss")
 
     # }}}
 

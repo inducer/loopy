@@ -2200,9 +2200,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
         if isinstance(tag, GroupInameTag)],
         default=-1) + 1
 
-    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalInameTag)
+    contains_auto_local_tag = any(isinstance(tag, AutoFitLocalInameTag)
         for iname in kernel.inames.values()
-        for tag in iname.tags])
+        for tag in iname.tags)
 
     if contains_auto_local_tag:
         raise LoopyError("Kernels containing l.auto tags are invalid"

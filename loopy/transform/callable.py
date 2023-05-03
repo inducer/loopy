@@ -29,7 +29,6 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         Assignment, CInstruction, _DataObliviousInstruction)
 from loopy.symbolic import (
-        simplify_using_aff,
         RuleAwareIdentityMapper,
         RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext)
 from loopy.kernel.function_interface import (
@@ -130,43 +129,16 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
     def map_subscript(self, expr, expn_state):
         if expr.aggregate.name in self.callee_knl.arg_dict:
-            from loopy.symbolic import get_start_subscript_from_sar
-            from loopy.symbolic import simplify_via_aff
             from pymbolic.primitives import Subscript, Variable
+            from pymbolic import substitute
 
             sar = self.callee_arg_to_call_param[expr.aggregate.name]  # SubArrayRef
 
-            callee_arg = self.callee_knl.arg_dict[expr.aggregate.name]
-            if sar.subscript.aggregate.name in self.caller_knl.arg_dict:
-                caller_arg = self.caller_knl.arg_dict[sar.subscript.aggregate.name]
-            else:
-                caller_arg = self.caller_knl.temporary_variables[
-                        sar.subscript.aggregate.name]
-
-            flatten_index = 0
-            for i, idx in enumerate(get_start_subscript_from_sar(sar,
-                    self.caller_knl).index_tuple):
-                flatten_index += idx*caller_arg.dim_tags[i].stride
-
-            flatten_index += sum(
-                idx * self.rec(tag.stride, expn_state)
-                for idx, tag in zip(self.rec(expr.index_tuple, expn_state),
-                                    callee_arg.dim_tags))
-
-            flatten_index = simplify_via_aff(flatten_index)
-
-            new_indices = []
-            for dim_tag in caller_arg.dim_tags:
-                if dim_tag.stride != 0:
-                    ind = flatten_index // dim_tag.stride
-                else:
-                    # argument has 0-stride i.e. doesn't matter how we index into it.
-                    ind = 0
-                flatten_index -= (dim_tag.stride * ind)
-                new_indices.append(ind)
-
-            new_indices = tuple(simplify_using_aff(
-                self.callee_knl, i) for i in new_indices)
+            index_tuple = self.rec(expr.index_tuple, expn_state)
+            subs_map = {iname: idx for idx, iname in
+                    zip(index_tuple, sar.swept_inames)}
+            new_indices = tuple(substitute(idx, subs_map) for idx in
+                    sar.subscript.index_tuple)
 
             return Subscript(Variable(sar.subscript.aggregate.name), new_indices)
         else:
@@ -417,13 +389,15 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     noop_start = NoOpInstruction(
         id=ing(callee_label+"_start"),
         within_inames=call_insn.within_inames,
-        depends_on=call_insn.depends_on
+        depends_on=call_insn.depends_on,
+        predicates=call_insn.predicates,
     )
     noop_end = NoOpInstruction(
         id=call_insn.id,
         within_inames=call_insn.within_inames,
         depends_on=frozenset(insn_id_map.values()),
         depends_on_is_final=True,
+        predicates=call_insn.predicates,
     )
 
     # }}}

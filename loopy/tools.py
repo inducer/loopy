@@ -732,6 +732,11 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
             option += ("dep="+":".join(insn.depends_on)+", ")
         if insn.tags:
             option += ("tags="+":".join(insn.tags)+", ")
+        if insn.within_inames is not None:
+            if insn.within_inames_is_final:
+                option += ("inames="+":".join(insn.within_inames)+", ")
+            else:
+                option += ("inames=+"+":".join(insn.within_inames)+", ")
 
         if isinstance(insn, MultiAssignmentBase):
             if insn.atomicity:
@@ -757,6 +762,10 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
         % endfor
         ],
         '''
+        % for name, rule in sorted(kernel.substitutions.items(), key=lambda x: x[0]):
+        ${name}(${", ".join(rule.arguments)}) := ${str(rule.expression)}
+        %endfor
+
         % for id, opts in options.items():
         <% insn = kernel.id_to_insn[id] %>
         % if isinstance(insn, lp.MultiAssignmentBase):

@@ -1423,7 +1423,7 @@ def test_inline_stride():
                     dtype=np.float64,
                     shape=("n", "n")),
                 ...],
-            assumptions="n>=1",
+            assumptions="n>=2",
             )
     knl = lp.merge([parent_knl, child_knl])
     knl = lp.inline_callable_kernel(knl, "linear_combo")
@@ -1459,6 +1459,89 @@ def test_inames_with_holes(ctx_factory, inline):
 
     evt, (out,) = knl(queue)
     assert np.allclose(out.get(), np.array([1, 1, 0, 0, 1], dtype=np.float64))
+
+def test_inline_predicate():
+    # https://github.com/inducer/loopy/issues/739
+    twice = lp.make_function(
+        "{[i]: 0<=i<10}",
+        """
+        y[i] = 2*x[i]
+        """,
+        name="twice")
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<10 and 0<=j<10}",
+        """
+        <> y[i] = 0  {id=y,dup=i}
+        <> x[i] = 1  {id=x,dup=i}
+        for j
+            <> a = (j%2 == 0)
+            y[i] = i                         {dep=y,if=a,id=y2}
+            [i]: z[i, j] = twice([i]: x[i])  {if=a,dep=y}
+        end
+        """)
+
+    knl = lp.add_dtypes(knl, {"z": np.float64})
+    knl = lp.merge([knl, twice])
+    knl = lp.inline_callable_kernel(knl, "twice")
+    code = lp.generate_code_v2(knl).device_code()
+    assert code.count("if (a)") == 1
+
+
+def test_subarray_ref_with_repeated_indices(ctx_factory):
+    # https://github.com/inducer/loopy/pull/735#discussion_r1071690388
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+    child_knl = lp.make_function(
+            ["{[i]: 0<=i<10}"],
+            """
+            g[i] = 1
+            """, name="ones")
+
+    parent_knl = lp.make_kernel(
+            ["{[i]:0<=i<10}", "{[j]: 0<=j<10}"],
+            """
+            z[i, j] = 0                {id = a}
+            [i]: z[i, i] = ones()  {dep=a,dup=i}
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="z",
+                    dtype=np.float64,
+                    is_input=False,
+                    shape=(10, 10)),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "ones")
+    evt, (z_dev,) = knl(cq)
+    assert np.allclose(z_dev.get(), np.eye(10))
+
+
+def test_inline_constant_access():
+    child_knl = lp.make_function(
+            [],
+            """
+            g[0] = 2*e[0] + 3*f[0] {id=a}
+            g[1] = 2*e[1] + 3*f[1] {dep=a}
+            """, name="linear_combo")
+    parent_knl = lp.make_kernel(
+            ["{[j]:0<=j<n}", "{[i]:0<=i<n}"],
+            """
+            [i]: z[i, j] = linear_combo([i]: x[i, j], [i]: y[i,j])
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="x, y, z",
+                    dtype=np.float64,
+                    shape=(3, "n")),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "linear_combo")
+    knl = lp.tag_array_axes(knl, ["x", "y", "z"], "sep,C")
+    lp.generate_code_v2(knl).device_code()
 
 
 if __name__ == "__main__":
