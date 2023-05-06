@@ -344,7 +344,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
         elif opt_key == "if" and opt_value is not None:
             predicates = opt_value.split(":")
-            new_predicates = set()
+            new_predicates = set(result["predicates"])
 
             for pred in predicates:
                 from pymbolic.primitives import LogicalNot
