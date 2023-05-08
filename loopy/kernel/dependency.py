@@ -1,6 +1,5 @@
 """
 .. autofunction:: add_lexicographic_happens_after
-.. autofunction:: find_data_dependencies
 """
 
 __copyright__ = "Copyright (C) 2023 Addison Alvey-Blanco"
@@ -31,63 +30,6 @@ from islpy import dim_type
 from loopy import LoopKernel
 from loopy.kernel.instruction import HappensAfter
 from loopy.translation_unit import for_each_kernel
-
-
-@for_each_kernel
-def find_data_dependencies(knl: LoopKernel) -> LoopKernel:
-    """Compute coarse-grained dependencies between statements in a Loopy program.
-    Finds data dependencies based on the Bernstein Condition, i.e., statement S2
-    depends on statement S1 if the union of true, anti, and flow dependencies
-    between the two statements is non-empty and the instructions actually
-    execute.
-    """
-
-    reader_map = knl.reader_map()
-    writer_map = knl.writer_map()
-
-    readers = {insn.id: insn.read_dependency_names() - insn.within_inames
-               for insn in knl.instructions}
-    writers = {insn.id: insn.write_dependency_names() - insn.within_inames
-               for insn in knl.instructions}
-
-    ordered_insns = {insn.id: i for i, insn in enumerate(knl.instructions)}
-
-    new_insns = []
-    for insn in knl.instructions:
-        happens_after = insn.happens_after
-
-        # read after write
-        for variable in readers[insn.id]:
-            for writer in writer_map.get(variable, set()) - {insn.id}:
-                if ordered_insns[writer] < ordered_insns[insn.id]:
-                    happens_after = dict(
-                            list(happens_after.items())
-                            + [(writer, HappensAfter(variable, None))])
-
-        for variable in writers[insn.id]:
-            # write after read
-            for reader in reader_map.get(variable, set()) - {insn.id}:
-                if ordered_insns[reader] < ordered_insns[insn.id]:
-                    happens_after = dict(
-                            list(happens_after.items())
-                            + [(reader, HappensAfter(variable, None))])
-
-            # write after write
-            for writer in writer_map.get(variable, set()) - {insn.id}:
-                if ordered_insns[writer] < ordered_insns[insn.id]:
-                    happens_after = dict(
-                            list(happens_after.items())
-                            + [(writer, HappensAfter(variable, None))])
-
-        # remove dependencies that do not specify a variable name
-        happens_after = {
-                insn_id: dependency
-                for insn_id, dependency in happens_after.items()
-                if dependency.variable_name is not None}
-
-        new_insns.append(insn.copy(happens_after=happens_after))
-
-    return knl.copy(instructions=new_insns)
 
 
 @for_each_kernel

@@ -56,7 +56,7 @@ class AccessMapFinder(WalkMapper):
 
         super().__init__()
 
-    def get_map(self, insn_id: str, variable_name: str) -> isl.Map | None:
+    def get_map(self, insn_id: str, variable_name: str) -> isl.Map:
         """Retrieve an access map indexed by an instruction ID and variable
         name.
         """
@@ -123,20 +123,35 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
     between statements by using the affine array accesses of each statement. The
     :attr:`loopy.Instruction.happens_after` of each instruction is updated
     accordingly.
-
-    .. note:: Requires an existing :attr:`loopy.Instruction.happens_after` to be
-    defined.
     """
 
-    def make_inames_unique(relation: isl.Map) -> isl.Map:
-        """Append a single quote to all inames in the output of a map to ensure
-        input/output inames do not match
+    from loopy.kernel.instruction import InstructionBase
+    from typing import Sequence
+    def propagate_dependencies(subset_insns: Sequence[InstructionBase],
+                               dependencies: isl.Map) -> isl.Map:
+        """Use existing lexicographic happens after to adjust dependencies
+        between two statements based on the lexicographic order.
         """
-        for idim in range(relation.dim(dim_type.out)):
-            iname = relation.get_dim_name(dim_type.out, idim) + "'"
-            relation = relation.set_dim_name(dim_type.out, iname)
+        insn = subset_insns[0]
+        id_before = subset_insns[1].id
+        assert isinstance(id_before, str)
 
-        return relation
+        lex_map: isl.Map = insn.happens_after[id_before].instances_rel
+
+        for i in range(1, len(subset_insns)-1):
+            insn = subset_insns[i]
+            id_before = subset_insns[i+1].id
+            assert isinstance(id_before, str)
+
+            update = insn.happens_after[id_before].instances_rel
+
+            lex_map = lex_map.apply_range(update)
+
+        if dependencies is not None:
+            return dependencies & lex_map
+        else:
+            return lex_map
+
 
     # precompute access maps for each instruction
     amf = AccessMapFinder(knl)
@@ -144,97 +159,170 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
         amf(insn.assignee, insn.id)
         amf(insn.expression, insn.id)
 
-    # determine transitive dependencies between statements
-    transitive_deps = {}
+    writer_map = knl.writer_map()
+    reader_map = knl.reader_map()
 
-    deps_dag = {insn.id: insn.depends_on for insn in knl.instructions}
+    writers = {insn.id: insn.write_dependency_names() - insn.within_inames
+               for insn in knl.instructions}
+    readers = {insn.id: insn.read_dependency_names() - insn.within_inames
+               for insn in knl.instructions}
 
-    from pytools.graph import compute_topological_order
-    t_sort = compute_topological_order(deps_dag)
+    # {{{ compute precise dependencies
+    # NOTE this is not permanent
+    enum_insns = {insn.id: n for n, insn in enumerate(knl.instructions)}
 
-    for insn_id in t_sort:
-        transitive_deps[insn_id] = reduce(
-                frozenset.union,
-                (transitive_deps.get(dep, frozenset([dep]))
-                      for dep in
-                      knl.id_to_insn[insn_id].depends_on),
-                frozenset())
-
-    # compute and store precise dependencies
     new_insns = []
     for insn in knl.instructions:
         happens_after = insn.happens_after
+        assert isinstance(insn.id, str)
 
-        # get access maps
-        for dependency, variable in happens_after:
-            assert isinstance(insn.id, str) # stop complaints
-
-            after_map = amf.get_map(insn.id, variable)
-            before_map = amf.get_map(dependency, variable)
-
-            # scalar case(s)
-            if before_map is None or after_map is None:
-                warn("unable to determine the access map for %s. Defaulting to "
-                     "a conservative dependency relation between %s and %s" %
-                     (dependency, insn.id, dependency))
-
-                # clean up any deps that do not contain a variable name
-                happens_after = {insn_id: dep
-                                 for insn_id, dep in happens_after.items()
-                                 if dep.variable_name is not None}
-
-                continue
-
-            dims = [before_map.dim(dim_type.out),
-                    before_map.dim(dim_type.in_),
-                    after_map.dim(dim_type.out),
-                    after_map.dim(dim_type.in_)]
-
-            for i in range(len(dims)):
-                if i == 0 or i == 1:
-                    scalar_insn = dependency
-                else:
-                    scalar_insn = insn.id
-
-                if dims[i] == 0:
-                    warn("found evidence of a scalar access in %s. Defaulting "
-                         "to a conservative dependency relation between "
-                         "%s and %s" % (scalar_insn, dependency, insn.id))
-
-                    # clean up any deps that do not contain a variable name
-                    happens_after = {insn_id: dep
-                                     for insn_id, dep in happens_after.items()
-                                     if dep.variable_name is not None}
-
+        # read-after-write
+        for variable in readers[insn.id]:
+            for writer in writer_map.get(variable, set()) - {insn.id}:
+                # NOTE not permanent
+                if enum_insns[insn.id] < enum_insns[writer]:
                     continue
 
-            # non-scalar accesses
-            dep_map = after_map.apply_range(before_map.reverse())
-            dep_map -= dep_map.identity(dep_map.get_space())
+                before_map = amf.get_map(writer, variable)
+                after_map = amf.get_map(insn.id, variable)
 
-            if insn.happens_after[dependency] is not None:
-                lex_map = insn.happens_after[dependency].instances_rel
-            else:
-                lex_map = dep_map.lex_lt_map(dep_map)
+                # handle scalar / no map found cases
+                if after_map is None or before_map is None:
+                    warn("found evidence of a scalar access. Defaulting to a "
+                         f"conservative dependency relation between {insn.id} "
+                         f"and {writer}")
 
-            assert lex_map is not None
-            if lex_map.space != dep_map.space:
-                lex_map = make_inames_unique(lex_map)
-                dep_map = make_inames_unique(dep_map)
+                    if writer in insn.happens_after:
+                        dep_map = insn.happens_after[writer].instances_rel
 
-                lex_map, dep_map = isl.align_two(lex_map, dep_map)
+                    else:
+                        ibefore = enum_insns[writer]
+                        iafter = enum_insns[insn.id]
 
-            dep_map = dep_map & lex_map
+                        subset_insns = knl.instructions[ibefore:iafter+1][::-1]
 
-            happens_after = dict(
-                    list(happens_after.items())
-                    + [HappensAfter(variable, dep_map)])
+                        dep_map = propagate_dependencies(subset_insns, None)
 
-        # clean up any deps that do not contain a variable name
-        happens_after = {insn_id: dep
-                         for insn_id, dep in happens_after.items()
-                         if dep.variable_name is not None}
+                # non-scalar dependencies
+                else:
+                    dep_map = after_map.apply_range(before_map.reverse())
+
+                    # immediately preceding statement in program listing
+                    if writer in happens_after:
+                        lex_map = happens_after[writer].instances_rel
+                        dep_map = lex_map & dep_map
+
+                    else:
+                        ibefore = enum_insns[writer]
+                        iafter = enum_insns[insn.id]
+
+                        subset_insns = knl.instructions[ibefore:iafter+1][::-1]
+
+                        dep_map = propagate_dependencies(subset_insns, dep_map)
+
+                happens_after = dict(
+                        list(happens_after.items())
+                        + [(writer, HappensAfter(variable, dep_map))])
+
+        for variable in writers[insn.id]:
+            # write-after-read
+            for reader in reader_map.get(variable, set()) - {insn.id}:
+                # NOTE not permanent
+                if enum_insns[insn.id] < enum_insns[reader]:
+                    continue
+
+                before_map = amf.get_map(reader, variable)
+                after_map = amf.get_map(insn.id, variable)
+
+                # handle scalar / no map found cases
+                if after_map is None or before_map is None:
+                    warn("found evidence of a scalar access. Defaulting to a "
+                         f"conservative dependency relation between {insn.id} "
+                         f"and {reader}")
+
+                    if reader in insn.happens_after:
+                        dep_map = insn.happens_after[reader].instances_rel
+
+                    else:
+                        ibefore = enum_insns[reader]
+                        iafter = enum_insns[insn.id]
+
+                        subset_insns = knl.instructions[ibefore:iafter+1][::-1]
+
+                        dep_map = propagate_dependencies(subset_insns, None)
+
+                # non-scalar dependencies
+                else:
+                    dep_map = after_map.apply_range(before_map.reverse())
+
+                    # immediately preceding statement in program listing
+                    if reader in happens_after:
+                        lex_map = happens_after[reader].instances_rel
+                        dep_map = lex_map & dep_map
+
+                    else:
+                        ibefore = enum_insns[reader]
+                        iafter = enum_insns[insn.id]
+
+                        subset_insns = knl.instructions[ibefore:iafter+1][::-1]
+
+                        dep_map = propagate_dependencies(subset_insns, dep_map)
+
+                happens_after = dict(
+                        list(happens_after.items())
+                        + [(reader, HappensAfter(variable, dep_map))])
+
+            # write-after-read
+            for writer in writer_map.get(variable, set()) - {insn.id}:
+                # NOTE not permanent
+                if enum_insns[insn.id] < enum_insns[writer]:
+                    continue
+
+                before_map = amf.get_map(writer, variable)
+                after_map = amf.get_map(insn.id, variable)
+
+                # handle scalar / no map found cases
+                if after_map is None or before_map is None:
+                    warn("found evidence of a scalar access. Defaulting to a "
+                         f"conservative dependency relation between {insn.id} "
+                         f"and {writer}")
+
+                    if writer in insn.happens_after:
+                        dep_map = insn.happens_after[writer].instances_rel
+
+                    else:
+                        ibefore = enum_insns[writer]
+                        iafter = enum_insns[insn.id]
+
+                        subset_insns = knl.instructions[ibefore:iafter+1][::-1]
+
+                        dep_map = propagate_dependencies(subset_insns, None)
+
+                # non-scalar dependencies
+                else:
+                    dep_map = after_map.apply_range(before_map.reverse())
+
+                    # immediately preceding statement in program listing
+                    if writer in happens_after:
+                        lex_map = happens_after[writer].instances_rel
+                        dep_map = lex_map & dep_map
+
+                    else:
+                        ibefore = enum_insns[writer]
+                        iafter = enum_insns[insn.id]
+
+                        subset_insns = knl.instructions[ibefore:iafter+1][::-1]
+
+                        dep_map = propagate_dependencies(subset_insns, dep_map)
+
+                happens_after = dict(
+                        list(happens_after.items())
+                        + [(writer, HappensAfter(variable, dep_map))])
 
         new_insns.append(insn.copy(happens_after=happens_after))
+    # }}}
+
+    # {{{ handle transitive dependencies
+    # }}}
 
     return knl.copy(instructions=new_insns)

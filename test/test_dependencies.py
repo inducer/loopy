@@ -22,8 +22,7 @@ THE SOFTWARE.
 
 import sys
 import loopy as lp
-from loopy.kernel.dependency import add_lexicographic_happens_after, \
-                                    find_data_dependencies
+from loopy.kernel.dependency import add_lexicographic_happens_after
 from loopy.transform.dependency import narrow_dependencies
 
 def test_lex_dependencies():
@@ -41,44 +40,48 @@ def test_lex_dependencies():
     knl = add_lexicographic_happens_after(knl)
 
 
-def test_find_dependencies():
-    k = lp.make_kernel([
-        "{ [i] : 0 <= i < m }",
-        "{ [j] : 0 <= j < length }"],
-        """
-        for i
-            <> rowstart = rowstarts[i]
-            <> rowend = rowstarts[i+1]
-            <> length = rowend - rowstart
-            y[i] = sum(j, values[rowstart+j] * x[colindices[rowstart + j]])
-        end
-        """, name="spmv")
-
-    import numpy as np
-    k = lp.add_and_infer_dtypes(k, {
-        "values,x": np.float64, "rowstarts,colindices": k["spmv"].index_dtype
-        })
-
-    k = find_data_dependencies(k)
-    pu.db
-
-
-def test_narrow_dependencies():
-    pu.db
+def test_scalar_dependencies():
     knl = lp.make_kernel(
-            "{ [i,j]: 0 <= i < n }",
+            "{ [i]: 0 <= i < n }",
             """
-            a = i
-            b = a
-            d = b
-            e = i - n
-            c = e + b
+            <> a = 10*i
+            b = 9*n + i
+            c[0] = i
+            """)
+
+    knl = narrow_dependencies(knl)
+
+def test_narrow_simple():
+    knl = lp.make_kernel(
+            "{ [i,j,k]: 0 <= i,j,k < n }",
+            """
+            a[i,j] = 2*k
+            b[j,k] = i*j + k
+            c[k,j] = a[i,j]
             """)
 
     knl = add_lexicographic_happens_after(knl)
-    knl = find_data_dependencies(knl)
     knl = narrow_dependencies(knl)
 
+def test_narrow_deps_spmv():
+    knl = lp.make_kernel([
+            "{ [i] : 0 <= i < m }",
+            "{ [j] : 0 <= j < length }"],
+            """
+            for i
+                <> rowstart = rowstarts[i]
+                <> rowend = rowstarts[i+1]
+                <> length = rowend - rowstart
+                y[i] = sum(j, values[rowstart+j] * x[colindices[rowstart + j]])
+            end
+            """, name="spmv")
+
+    import numpy as np
+    knl = lp.add_and_infer_dtypes(knl, {
+        "values,x": np.float64, "rowstarts,colindices": knl["spmv"].index_dtype
+        })
+    knl = add_lexicographic_happens_after(knl)
+    knl = narrow_dependencies(knl)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
