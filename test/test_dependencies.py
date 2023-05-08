@@ -25,6 +25,7 @@ import loopy as lp
 from loopy.kernel.dependency import add_lexicographic_happens_after
 from loopy.transform.dependency import narrow_dependencies
 
+
 def test_lex_dependencies():
     knl = lp.make_kernel(
             [
@@ -51,6 +52,7 @@ def test_scalar_dependencies():
 
     knl = narrow_dependencies(knl)
 
+
 def test_narrow_simple():
     knl = lp.make_kernel(
             "{ [i,j,k]: 0 <= i,j,k < n }",
@@ -62,6 +64,7 @@ def test_narrow_simple():
 
     knl = add_lexicographic_happens_after(knl)
     knl = narrow_dependencies(knl)
+
 
 def test_narrow_deps_spmv():
     knl = lp.make_kernel([
@@ -82,6 +85,7 @@ def test_narrow_deps_spmv():
         })
     knl = add_lexicographic_happens_after(knl)
     knl = narrow_dependencies(knl)
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

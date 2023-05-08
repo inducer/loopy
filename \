@@ -25,18 +25,20 @@ THE SOFTWARE.
 """
 
 import islpy as isl
+from islpy import dim_type
 
 from loopy.kernel.instruction import HappensAfter
-from loopy.kernel import LoopKernel, InstructionBase
+from loopy.kernel import LoopKernel
 from loopy.translation_unit import for_each_kernel
 from loopy.symbolic import WalkMapper, get_access_map, \
                            UnableToDetermineAccessRangeError
 from loopy.typing import Expression
 
 import pymbolic.primitives as p
-from typing import List, Dict, Sequence
+from typing import List, Dict
 from pyrsistent import pmap, PMap
 from warnings import warn
+from functools import reduce
 
 
 class AccessMapFinder(WalkMapper):
