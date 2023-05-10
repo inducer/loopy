@@ -556,7 +556,7 @@ class LoopKernel(Taggable):
         return frozenset(self.inames.keys())
 
     @memoize_method
-    def all_params(self):
+    def all_params(self) -> FrozenSet[str]:
         all_inames = self.all_inames()
 
         result = set()
