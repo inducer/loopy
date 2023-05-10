@@ -32,8 +32,17 @@ from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_on_first_arg
 
 
+# These 'id' arguments are here because Set has a __hash__ supplied by isl,
+# which ignores names. This may lead to incorrect things being returned from
+# the cache. Passing Set id()s breaks that cache aliasing.
+# This should be removed once there is a proper solution for the cache
+# aliasing, such as what's under discussion in
+# https://github.com/inducer/islpy/pull/103/.
 @memoize_on_first_arg
-def _get_new_implemented_domain(kernel, chk_domain, implemented_domain):
+def _get_new_implemented_domain(
+        kernel,
+        id_chk_domain, chk_domain,
+        id_implemented_domain, implemented_domain):
 
     chk_domain, implemented_domain = isl.align_two(
             chk_domain, implemented_domain)
@@ -51,7 +60,9 @@ def to_codegen_result(
             check_inames, (dim_type.set,))
 
     chk_domain, new_implemented_domain = _get_new_implemented_domain(
-            codegen_state.kernel, chk_domain, codegen_state.implemented_domain)
+            codegen_state.kernel,
+            id(chk_domain), chk_domain,
+            id(codegen_state.implemented_domain), codegen_state.implemented_domain)
 
     if chk_domain.is_empty():
         return None
