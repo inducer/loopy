@@ -421,10 +421,12 @@ def get_opencl_callables():
     *identifier* is known in OpenCL.
     """
     opencl_function_ids = (
-            {"max", "min", "dot", "pow", "abs", "acos", "asin",
-            "atan", "cos", "cosh", "sin", "sinh", "pow", "atan2", "tanh", "exp",
-            "log", "log10", "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-            "fabs", "tan", "erf", "erfc"}
+            {"dot", "abs",
+             "cos", "cosh", "sin", "sinh", "tan", "tanh",
+             "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
+             "pow", "exp", "log", "log10", "sqrt", "ceil", "floor",
+             "max", "min", "fmax", "fmin",
+             "fabs",  "erf", "erfc"}
             | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
             | set(VECTOR_LITERAL_FUNCS))
 
