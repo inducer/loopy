@@ -339,6 +339,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
             fdecl = Extern("C", fdecl)
 
         from loopy.schedule import get_insn_ids_for_block_at
+        assert codegen_state.kernel.linearization is not None
         _, local_grid_size = \
                 codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                         get_insn_ids_for_block_at(
