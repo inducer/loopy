@@ -22,7 +22,8 @@ THE SOFTWARE.
 
 import sys
 from dataclasses import dataclass, replace
-from typing import Any, TypeVar
+from typing import (FrozenSet, Sequence, AbstractSet, Any, Set, TypeVar,
+                    Mapping, Dict, Tuple, Iterator)
 
 from pytools import ImmutableRecord
 import islpy as isl
@@ -31,6 +32,7 @@ from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kern
 from pytools import MinRecursionLimit, ProcessLogger
 
 from pytools.persistent_dict import WriteOncePersistentDict
+from loopy.kernel import LoopKernel
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -123,7 +125,9 @@ class Barrier(ScheduleItem):
 
 # {{{ schedule utilities
 
-def gather_schedule_block(schedule, start_idx):
+def gather_schedule_block(
+        schedule: Sequence[ScheduleItem], start_idx: int
+        ) -> Tuple[Sequence[ScheduleItem], int]:
     assert isinstance(schedule[start_idx], BeginBlockItem)
     level = 0
 
@@ -142,7 +146,9 @@ def gather_schedule_block(schedule, start_idx):
     raise AssertionError()
 
 
-def generate_sub_sched_items(schedule, start_idx):
+def generate_sub_sched_items(
+        schedule: Sequence[ScheduleItem], start_idx: int
+        ) -> Iterator[Tuple[int, ScheduleItem]]:
     if not isinstance(schedule[start_idx], BeginBlockItem):
         yield start_idx, schedule[start_idx]
 
@@ -167,7 +173,9 @@ def generate_sub_sched_items(schedule, start_idx):
     raise AssertionError()
 
 
-def get_insn_ids_for_block_at(schedule, start_idx):
+def get_insn_ids_for_block_at(
+        schedule: Sequence[ScheduleItem], start_idx: int
+        ) -> FrozenSet[str]:
     return frozenset(
             sub_sched_item.insn_id
             for i, sub_sched_item in generate_sub_sched_items(
@@ -175,7 +183,9 @@ def get_insn_ids_for_block_at(schedule, start_idx):
             if isinstance(sub_sched_item, RunInstruction))
 
 
-def find_used_inames_within(kernel, sched_index):
+def find_used_inames_within(
+        kernel: LoopKernel, sched_index: int) -> AbstractSet[str]:
+    assert kernel.linearization is not None
     sched_item = kernel.linearization[sched_index]
 
     if isinstance(sched_item, BeginBlockItem):
@@ -196,7 +206,7 @@ def find_used_inames_within(kernel, sched_index):
     return result
 
 
-def find_loop_nest_with_map(kernel):
+def find_loop_nest_with_map(kernel: LoopKernel) -> Mapping[str, AbstractSet[str]]:
     """Returns a dictionary mapping inames to other inames that are
     always nested with them.
     """
@@ -219,11 +229,11 @@ def find_loop_nest_with_map(kernel):
     return result
 
 
-def find_loop_nest_around_map(kernel):
+def find_loop_nest_around_map(kernel: LoopKernel) -> Mapping[str, AbstractSet[str]]:
     """Returns a dictionary mapping inames to other inames that are
     always nested around them.
     """
-    result = {}
+    result: Dict[str, Set[str]] = {}
 
     all_inames = kernel.all_inames()
 
@@ -259,12 +269,16 @@ def find_loop_nest_around_map(kernel):
     return result
 
 
-def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
+def find_loop_insn_dep_map(
+        kernel: LoopKernel,
+        loop_nest_with_map: Mapping[str, AbstractSet[str]],
+        loop_nest_around_map: Mapping[str, AbstractSet[str]]
+        ) -> Mapping[str, AbstractSet[str]]:
     """Returns a dictionary mapping inames to other instruction ids that need to
     be scheduled before the iname should be eligible for scheduling.
     """
 
-    result = {}
+    result: Dict[str, Set[str]] = {}
 
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag
     for insn in kernel.instructions:
@@ -329,8 +343,8 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
     return result
 
 
-def group_insn_counts(kernel):
-    result = {}
+def group_insn_counts(kernel: LoopKernel) -> Mapping[str, int]:
+    result: Dict[str, int] = {}
 
     for insn in kernel.instructions:
         for grp in insn.groups:
@@ -339,7 +353,9 @@ def group_insn_counts(kernel):
     return result
 
 
-def gen_dependencies_except(kernel, insn_id, except_insn_ids):
+def gen_dependencies_except(
+        kernel: LoopKernel, insn_id: str, except_insn_ids: AbstractSet[str]
+        ) -> Iterator[str]:
     insn = kernel.id_to_insn[insn_id]
     for dep_id in insn.depends_on:
 
@@ -351,7 +367,10 @@ def gen_dependencies_except(kernel, insn_id, except_insn_ids):
         yield from gen_dependencies_except(kernel, dep_id, except_insn_ids)
 
 
-def get_priority_tiers(wanted, priorities):
+def get_priority_tiers(
+        wanted: AbstractSet[int],
+        priorities: AbstractSet[Sequence[int]]
+        ) -> Iterator[AbstractSet[int]]:
     # Get highest priority tier candidates: These are the first inames
     # of all the given priority constraints
     candidates = set()
@@ -393,7 +412,7 @@ def get_priority_tiers(wanted, priorities):
     yield from get_priority_tiers(wanted, priorities)
 
 
-def sched_item_to_insn_id(sched_item):
+def sched_item_to_insn_id(sched_item: ScheduleItem) -> Iterator[str]:
     # Helper for use in generator expressions, i.e.
     # (... for insn_id in sched_item_to_insn_id(item) ...)
     if isinstance(sched_item, RunInstruction):

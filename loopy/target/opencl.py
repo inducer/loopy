@@ -654,6 +654,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         fdecl = CLKernel(fdecl)
 
         from loopy.schedule import get_insn_ids_for_block_at
+        assert codegen_state.kernel.linearization is not None
         _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(
                     codegen_state.kernel.linearization, schedule_index),
