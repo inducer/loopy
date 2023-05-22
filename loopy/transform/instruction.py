@@ -296,7 +296,7 @@ def replace_instruction_ids(kernel, replacements):
     :arg replacements: a :class:`dict` mapping old insn ids to an
         iterable of new insn ids.
         The first entry of the iterable is used for replacement
-        purposes. Additional insn ids after the first are added to
+        purposes. Additional insn ids after the first are added to the
         dependency list of instructions that have a dependency on the old insn id.
     """
 
