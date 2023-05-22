@@ -261,6 +261,11 @@ def replace_instruction_ids_in_insn(insn, replacements):
     extra_depends_on = []
     new_no_sync_with = []
 
+    if insn.id in replacements:
+        insn = insn.copy(id=replacements[insn.id][0])
+
+    new_depends_on = list(insn.depends_on)
+    extra_depends_on = []
     for idep, dep in enumerate(insn.depends_on):
         if dep in replacements:
             new_deps = list(replacements[dep])
@@ -285,6 +290,16 @@ def replace_instruction_ids_in_insn(insn, replacements):
 
 
 def replace_instruction_ids(kernel, replacements):
+    """Return a new kernel with the ids of instructions and dependencies
+    replaced according to the provided mapping.
+
+    :arg replacements: a :class:`dict` mapping old insn ids to an
+    iterable of new insn ids. In the case the list has more than one
+    entry, the first entry of the iterable is used for replacement
+    purposes. Additional insn ids after the first are added to
+    dependency list of instructions that have a dependency on the old insn id.
+    """
+
     if not replacements:
         return kernel
 
