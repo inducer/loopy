@@ -20,9 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Sequence, Mapping, List, Tuple
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
+from loopy.kernel.instruction import InstructionBase
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.symbolic import RuleAwareIdentityMapper
 
@@ -255,11 +257,13 @@ def remove_instructions(kernel, insn_ids):
 
 # {{{ replace_instruction_ids
 
-def replace_instruction_ids_in_insn(insn, replacements):
+def replace_instruction_ids_in_insn(
+        insn: InstructionBase, replacements: Mapping[str, Sequence[str]]
+        ) -> InstructionBase:
     changed = False
     new_depends_on = list(insn.depends_on)
-    extra_depends_on = []
-    new_no_sync_with = []
+    extra_depends_on: List[str] = []
+    new_no_sync_with: List[Tuple[str, str]] = []
 
     if insn.id in replacements:
         insn = insn.copy(id=replacements[insn.id][0])
@@ -289,7 +293,9 @@ def replace_instruction_ids_in_insn(insn, replacements):
         return insn
 
 
-def replace_instruction_ids(kernel, replacements):
+def replace_instruction_ids(
+        kernel: LoopKernel, replacements: Mapping[str, Sequence[str]]
+        ) -> LoopKernel:
     """Return a new kernel with the ids of instructions and dependencies
     replaced according to the provided mapping.
 
