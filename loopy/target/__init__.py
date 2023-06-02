@@ -271,6 +271,9 @@ class ASTBuilderBase(Generic[ASTType]):
     def emit_comment(self, s):
         raise NotImplementedError()
 
+    def emit_noop_with_comment(self, s):
+        raise NotImplementedError()
+
     # }}}
 
     def process_ast(self, node):

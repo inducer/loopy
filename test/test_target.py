@@ -29,6 +29,7 @@ import pyopencl.clmath
 import pyopencl.clrandom
 import pyopencl.tools
 import pytest
+import pymbolic.primitives as prim
 
 from loopy.target.c import CTarget
 from loopy.target.opencl import OpenCLTarget
@@ -702,6 +703,16 @@ def test_empty_array_stride_check(ctx_factory):
 
     with pytest.raises(ValueError):
         einsum(cq, a=np.random.randn(3, 2, 5).copy(order="F"), x=np.random.randn(5))
+
+
+def test_no_op_with_predicate(ctx_factory):
+    ctx = ctx_factory()
+
+    predicate = prim.Comparison(prim.Variable("a"), ">", 0)
+    knl = lp.make_kernel([],
+        ["<> a = 1", lp.NoOpInstruction(predicates=[predicate])])
+    code = lp.generate_code_v2(knl).device_code()
+    cl.Program(ctx, code).build()
 
 
 def test_empty_array_stride_check_fortran(ctx_factory):

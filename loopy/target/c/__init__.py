@@ -1263,6 +1263,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         from cgen import Comment
         return Comment(s)
 
+    def emit_noop_with_comment(self, s):
+        from cgen import Line
+        return Line(f"; /*{s}*/")
+
     @property
     def can_implement_conditionals(self):
         return True
