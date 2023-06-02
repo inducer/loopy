@@ -297,7 +297,7 @@ def generate_c_instruction_code(codegen_state, insn):
 def generate_nop_instruction_code(codegen_state, insn):
     if codegen_state.vectorization_info is not None:
         raise UnvectorizableError("C instructions cannot be vectorized")
-    return codegen_state.ast_builder.emit_comment(
+    return codegen_state.ast_builder.emit_noop_with_comment(
         "no-op (insn=%s)" % (insn.id))
 
 # vim: foldmethod=marker
