@@ -24,6 +24,7 @@ THE SOFTWARE.
 """
 
 import islpy as isl
+from functools import partial
 
 from loopy.codegen.result import merge_codegen_results, wrap_in_if
 from loopy.schedule import (
@@ -72,7 +73,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
     elif isinstance(sched_item, EnterLoop):
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
                 ForceSequentialTag, LoopedIlpTag, VectorizeTag,
-                InameImplementationTag,
+                InameImplementationTag, UnrollPragmaTag,
                 InOrderSequentialSequentialTag, filter_iname_tags_by_type)
 
         tags = kernel.iname_tags_of_type(sched_item.iname, InameImplementationTag)
@@ -87,9 +88,14 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             func = generate_unroll_loop
         elif filter_iname_tags_by_type(tags, VectorizeTag):
             func = generate_vectorize_loop
+        elif filter_iname_tags_by_type(tags, UnrollPragmaTag):
+            unroll_tags = filter_iname_tags_by_type(tags, UnrollPragmaTag)
+            pragmas = [codegen_state.ast_builder.emit_unroll_pragma(tag.value)
+                    for tag in unroll_tags]
+            func = partial(generate_sequential_loop_dim_code, pragmas=pragmas)
         elif not tags or filter_iname_tags_by_type(tags, (LoopedIlpTag,
                     ForceSequentialTag, InOrderSequentialSequentialTag)):
-            func = generate_sequential_loop_dim_code
+            func = partial(generate_sequential_loop_dim_code, pragmas=[])
         else:
             raise RuntimeError("encountered (invalid) EnterLoop "
                     "for '%s', tagged '%s'"

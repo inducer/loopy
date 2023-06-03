@@ -261,6 +261,24 @@ class UnrollTag(InameImplementationTag):
         return "unr"
 
 
+class UnrollPragmaTag(InameImplementationTag):
+    __slots__ = ["value"]
+
+    def __init__(self, value=None):
+        ImmutableRecord.__init__(self,
+                value=value)
+
+    @property
+    def key(self):
+        return (type(self).__name__, self.value)
+
+    def __str__(self):
+        if self.value:
+            return f"unr_pragma.{self.value}"
+        else:
+            return "unr_pragma"
+
+
 class ForceSequentialTag(InameImplementationTag):
     def __str__(self):
         return "forceseq"
@@ -294,6 +312,11 @@ def parse_tag(tag):
         return UnrolledIlpTag()
     elif tag == "ilp.seq":
         return LoopedIlpTag()
+    elif tag == "unr_pragma":
+        return UnrollPragmaTag()
+    elif tag.startswith("unr_pragma."):
+        offset = len("unr_pragma.")
+        return UnrollPragmaTag(int(tag[offset:]))
     elif tag.startswith("g."):
         return GroupInameTag(int(tag[2:]))
     elif tag.startswith("l."):

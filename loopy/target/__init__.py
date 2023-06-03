@@ -265,6 +265,9 @@ class ASTBuilderBase(Generic[ASTType]):
             static_lbound, static_ubound, inner):
         raise NotImplementedError()
 
+    def emit_unroll_pragma(self, value):
+        raise NotImplementedError()
+
     @property
     def can_implement_conditionals(self):
         return False

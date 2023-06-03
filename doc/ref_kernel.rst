@@ -200,6 +200,8 @@ Tag                             Meaning
 ``"l.N"``                       Local (intra-group) axis N ("local")
 ``"g.N"``                       Group-number axis N ("group")
 ``"unr"``                       Unroll
+``"unr_pragma"``                Unroll using compiler directives
+``"unr_pragma.N"``              Unroll at most N times using compiler directives
 ``"ilp"`` | ``"ilp.unr"``       Unroll using instruction-level parallelism
 ``"ilp.seq"``                   Realize parallel iname as innermost loop
 ``"like.INAME"``                Can be used when tagging inames to tag like another

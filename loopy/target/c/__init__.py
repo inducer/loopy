@@ -1241,6 +1241,13 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 "++%s" % iname,
                 inner)
 
+    def emit_unroll_pragma(self, value):
+        from cgen import Pragma
+        if value:
+            return Pragma(f"unroll {value}")
+        else:
+            return Pragma("unroll")
+
     def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
         decl = POD(self, dtype, name)
 
