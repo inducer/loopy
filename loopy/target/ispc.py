@@ -476,17 +476,17 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, pragmas):
         ecm = codegen_state.expression_to_code_mapper
 
         from loopy.target.c import POD
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For, InlineInitializer
+        from cgen import For, InlineInitializer, Block
 
         from cgen.ispc import ISPCUniform
 
-        return For(
+        loop = For(
                 InlineInitializer(
                     ISPCUniform(POD(self, iname_dtype, iname)),
                     ecm(lbound, PREC_NONE, "i")),
@@ -495,6 +495,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
+
+        return Block(list(pragmas) + [loop])
 
     # }}}
 

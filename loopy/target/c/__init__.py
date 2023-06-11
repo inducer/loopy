@@ -1220,15 +1220,15 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                                 in_knl_callable_as_call))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, pragmas):
         ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic import var
         from pymbolic.primitives import Comparison
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For, InlineInitializer
+        from cgen import For, InlineInitializer, Block
 
-        return For(
+        loop = For(
                 InlineInitializer(
                     POD(self, iname_dtype, iname),
                     ecm(lbound, PREC_NONE, "i")),
@@ -1240,6 +1240,8 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
+
+        return Block(list(pragmas) + [loop])
 
     def emit_unroll_pragma(self, value):
         from cgen import Pragma
