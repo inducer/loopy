@@ -1768,7 +1768,7 @@ def test_ilp_and_conditionals(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-@pytest.mark.parametrize("unr_tag", ["unr", "unr_pragma"])
+@pytest.mark.parametrize("unr_tag", ["unr", "unr_hint"])
 def test_unr_and_conditionals(ctx_factory, unr_tag):
     ctx = ctx_factory()
 

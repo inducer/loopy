@@ -261,7 +261,7 @@ class UnrollTag(InameImplementationTag):
         return "unr"
 
 
-class UnrollPragmaTag(InameImplementationTag):
+class UnrollHintTag(InameImplementationTag):
     __slots__ = ["value"]
 
     def __init__(self, value=None):
@@ -274,9 +274,9 @@ class UnrollPragmaTag(InameImplementationTag):
 
     def __str__(self):
         if self.value:
-            return f"unr_pragma.{self.value}"
+            return f"unr_hint.{self.value}"
         else:
-            return "unr_pragma"
+            return "unr_hint"
 
 
 class ForceSequentialTag(InameImplementationTag):
@@ -312,11 +312,11 @@ def parse_tag(tag):
         return UnrolledIlpTag()
     elif tag == "ilp.seq":
         return LoopedIlpTag()
-    elif tag == "unr_pragma":
-        return UnrollPragmaTag()
-    elif tag.startswith("unr_pragma."):
-        offset = len("unr_pragma.")
-        return UnrollPragmaTag(int(tag[offset:]))
+    elif tag == "unr_hint":
+        return UnrollHintTag()
+    elif tag.startswith("unr_hint."):
+        offset = len("unr_hint.")
+        return UnrollHintTag(int(tag[offset:]))
     elif tag.startswith("g."):
         return GroupInameTag(int(tag[2:]))
     elif tag.startswith("l."):

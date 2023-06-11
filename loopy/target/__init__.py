@@ -262,10 +262,10 @@ class ASTBuilderBase(Generic[ASTType]):
         raise NotImplementedError()
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner, pragmas):
+            static_lbound, static_ubound, inner, hints):
         raise NotImplementedError()
 
-    def emit_unroll_pragma(self, value):
+    def emit_unroll_hint(self, value):
         raise NotImplementedError()
 
     @property

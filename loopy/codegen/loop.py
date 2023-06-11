@@ -345,7 +345,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
 
 # {{{ sequential loop
 
-def generate_sequential_loop_dim_code(codegen_state, sched_index, pragmas):
+def generate_sequential_loop_dim_code(codegen_state, sched_index, hints):
     kernel = codegen_state.kernel
 
     ecm = codegen_state.expression_to_code_mapper
@@ -479,7 +479,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index, pragmas):
                         codegen_state, loop_iname, kernel.index_dtype,
                         pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions)),
                         pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
-                        inner_ast, pragmas)))
+                        inner_ast, hints)))
 
     return merge_codegen_results(codegen_state, result)
 

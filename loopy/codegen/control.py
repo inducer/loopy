@@ -73,7 +73,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
     elif isinstance(sched_item, EnterLoop):
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
                 ForceSequentialTag, LoopedIlpTag, VectorizeTag,
-                InameImplementationTag, UnrollPragmaTag,
+                InameImplementationTag, UnrollHintTag,
                 InOrderSequentialSequentialTag, filter_iname_tags_by_type)
 
         tags = kernel.iname_tags_of_type(sched_item.iname, InameImplementationTag)
@@ -88,14 +88,14 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             func = generate_unroll_loop
         elif filter_iname_tags_by_type(tags, VectorizeTag):
             func = generate_vectorize_loop
-        elif filter_iname_tags_by_type(tags, UnrollPragmaTag):
-            unroll_tags = filter_iname_tags_by_type(tags, UnrollPragmaTag)
-            pragmas = [codegen_state.ast_builder.emit_unroll_pragma(tag.value)
+        elif filter_iname_tags_by_type(tags, UnrollHintTag):
+            unroll_tags = filter_iname_tags_by_type(tags, UnrollHintTag)
+            hints = [codegen_state.ast_builder.emit_unroll_hint(tag.value)
                     for tag in unroll_tags]
-            func = partial(generate_sequential_loop_dim_code, pragmas=pragmas)
+            func = partial(generate_sequential_loop_dim_code, hints=hints)
         elif not tags or filter_iname_tags_by_type(tags, (LoopedIlpTag,
                     ForceSequentialTag, InOrderSequentialSequentialTag)):
-            func = partial(generate_sequential_loop_dim_code, pragmas=[])
+            func = partial(generate_sequential_loop_dim_code, hints=[])
         else:
             raise RuntimeError("encountered (invalid) EnterLoop "
                     "for '%s', tagged '%s'"

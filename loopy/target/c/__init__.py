@@ -1220,7 +1220,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                                 in_knl_callable_as_call))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner, pragmas):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic import var
@@ -1241,9 +1241,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 "++%s" % iname,
                 inner)
 
-        return Block(list(pragmas) + [loop])
+        if hints:
+            return Block(list(hints) + [loop])
+        else:
+            return loop
 
-    def emit_unroll_pragma(self, value):
+    def emit_unroll_hint(self, value):
         from cgen import Pragma
         if value:
             return Pragma(f"unroll {value}")

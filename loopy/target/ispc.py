@@ -476,7 +476,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner, pragmas):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
         from loopy.target.c import POD
@@ -496,7 +496,10 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 "++%s" % iname,
                 inner)
 
-        return Block(list(pragmas) + [loop])
+        if hints:
+            return Block(list(hints) + [loop])
+        else:
+            return loop
 
     # }}}
 
