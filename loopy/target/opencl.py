@@ -788,7 +788,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         if value:
             return Line(f"__attribute__((opencl_unroll_hint({value})))")
         else:
-            return Line(f"__attribute__((opencl_unroll_hint))")
+            return Line("__attribute__((opencl_unroll_hint))")
 
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
