@@ -119,8 +119,7 @@ def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
     """Attempt to relax the dependency requirements between instructions in
     a loopy program. Computes the precise, statement-instance level dependencies
     between statements by using the affine array accesses of each statement. The
-    :attr:`loopy.Instruction.happens_after` of each instruction is updated
-    accordingly.
+    happens_after of each instruction is updated accordingly.
     """
 
     # precompute access maps for each instruction

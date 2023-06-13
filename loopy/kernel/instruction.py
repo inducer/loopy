@@ -91,8 +91,7 @@ class HappensAfter:
 
     .. attribute:: variable_name
 
-        If this is a precise dependency, the name of the variable name in
-        :attr:`after_id` that mediates the dependency.
+       The name of the variable responsible for the dependency. 
 
     .. attribute:: instances_rel
 
