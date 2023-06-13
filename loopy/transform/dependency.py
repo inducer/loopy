@@ -1,6 +1,5 @@
 """
 .. autoclass:: AccessMapFinder
-.. autofunction:: narrow_dependencies
 """
 __copyright__ = "Copyright (C) 2022 Addison Alvey-Blanco"
 
