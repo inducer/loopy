@@ -110,13 +110,3 @@ class AccessMapFinder(WalkMapper):
 
     def map_sub_array_ref(self, expr, insn_id):
         raise NotImplementedError("Not yet implemented")
-
-
-@for_each_kernel
-def narrow_dependencies(knl: LoopKernel):
-    """Attempt to relax the dependency requirements between instructions in
-    a loopy program. Computes the precise, statement-instance level dependencies
-    between statements by using the affine array accesses of each statement. The
-    happens_after of each instruction is updated accordingly.
-    """
-    pass
