@@ -26,17 +26,15 @@ THE SOFTWARE.
 
 import islpy as isl
 
-from loopy.kernel.instruction import HappensAfter
-from loopy.kernel import LoopKernel, InstructionBase
+from loopy.kernel import LoopKernel
 from loopy.translation_unit import for_each_kernel
 from loopy.symbolic import WalkMapper, get_access_map, \
                            UnableToDetermineAccessRangeError
 from loopy.typing import Expression
 
 import pymbolic.primitives as p
-from typing import List, Dict, Sequence
+from typing import List, Dict
 from pyrsistent import pmap, PMap
-from warnings import warn
 
 
 class AccessMapFinder(WalkMapper):
@@ -115,29 +113,10 @@ class AccessMapFinder(WalkMapper):
 
 
 @for_each_kernel
-def narrow_dependencies(knl: LoopKernel) -> LoopKernel:
+def narrow_dependencies(knl: LoopKernel):
     """Attempt to relax the dependency requirements between instructions in
     a loopy program. Computes the precise, statement-instance level dependencies
     between statements by using the affine array accesses of each statement. The
     happens_after of each instruction is updated accordingly.
     """
-
-    # precompute access maps for each instruction
-    amf = AccessMapFinder(knl)
-    for insn in knl.instructions:
-        amf(insn.assignee, insn.id)
-        amf(insn.expression, insn.id)
-
-    writer_map = knl.writer_map()
-    reader_map = knl.reader_map()
-
-    writers = {insn.id: insn.write_dependency_names() - insn.within_inames
-               for insn in knl.instructions}
-    readers = {insn.id: insn.read_dependency_names() - insn.within_inames
-               for insn in knl.instructions}
-
-    pu.db
-
-    new_insns = []
-
-    return knl.copy(instructions=new_insns)
+    pass
