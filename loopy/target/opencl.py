@@ -268,9 +268,9 @@ class OpenCLCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
 
             if dtype.kind == "c":
                 raise LoopyTypeError(f"'{name}' does not support complex numbers")
@@ -289,9 +289,9 @@ class OpenCLCallable(ScalarCallable):
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
-            common_dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                        if (id >= 0 and dtype is not None)])
+            common_dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if (id >= 0 and dtype is not None)])
 
             if common_dtype.kind in ["u", "i", "f"]:
                 if common_dtype.kind == "f":
@@ -332,9 +332,9 @@ class OpenCLCallable(ScalarCallable):
                 if not -1 <= id <= 1:
                     raise LoopyError(f"'{name}' can take only 2 arguments.")
 
-            common_dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                        if (id >= 0 and dtype is not None)])
+            common_dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if (id >= 0 and dtype is not None)])
 
             if common_dtype == np.float64:
                 name = "powf64"
@@ -366,9 +366,9 @@ class OpenCLCallable(ScalarCallable):
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
                             callables_table)
 
-            dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in
-                        arg_id_to_dtype.items() if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
 
             if dtype.kind == "c":
                 raise LoopyError("%s does not support complex numbers"
