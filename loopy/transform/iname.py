@@ -2404,7 +2404,19 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False, within=None)
 
 
 def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
-    return rename_inames(kernel, [old_iname], new_iname, existing_ok, within)
+    """
+    Single iname version of :func:`loopy.transform.iname.rename_inames`. Unlike
+    that function, this function ensures the new iname has the same tags as the
+    old iname.
+    """
+    tags = kernel.inames[old_iname].tags
+    from itertools import product
+    from loopy import tag_inames
+
+    tags = kernel.inames[old_iname].tags
+    kernel = rename_inames(kernel, [old_iname], new_iname, existing_ok, within)
+    kernel = tag_inames(kernel, product([new_iname], tags))
+    return kernel
 
 # }}}
 
