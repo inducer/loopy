@@ -80,7 +80,7 @@ def test_empty_reduction(ctx_factory):
     knl = lp.preprocess_kernel(knl)
     print(knl)
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
     evt, (a,) = knl(queue)
 
     assert (a.get() == 0).all()
@@ -114,9 +114,8 @@ def test_nested_dependent_reduction(ctx_factory):
     assert (a == tgt_result).all()
 
 
-def test_multi_nested_dependent_reduction(ctx_factory):
+def test_multi_nested_dependent_reduction():
     dtype = np.dtype(np.int32)
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             [
@@ -140,15 +139,14 @@ def test_multi_nested_dependent_reduction(ctx_factory):
                 lp.ValueArg("nboxes", np.int32),
                 ],
             assumptions="ntgts>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(lp.generate_code_v2(knl).device_code())
     # FIXME: Actually test functionality.
 
 
-def test_recursive_nested_dependent_reduction(ctx_factory):
+def test_recursive_nested_dependent_reduction():
     dtype = np.dtype(np.int32)
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             [
@@ -173,7 +171,7 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
                 lp.ValueArg("nboxes", np.int32),
                 ],
             assumptions="ntgts>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(lp.generate_code_v2(knl).device_code())
     # FIXME: Actually test functionality.
@@ -309,7 +307,7 @@ def test_argmax(ctx_factory):
 
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
     print(lp.preprocess_kernel(knl))
-    knl = lp.set_options(knl, write_cl=True, highlight_cl=True)
+    knl = lp.set_options(knl, write_code=True, allow_terminal_colors=True)
 
     a = np.random.randn(10000).astype(dtype)
     evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
@@ -491,13 +489,40 @@ def test_reduction_in_conditional(ctx_factory):
         y[i] = 1729 if (sum(j, j) == 0) else sum(k, k)
         """)
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     knl = lp.preprocess_program(knl)
 
     evt, (out,) = knl(cq)
 
     assert (out == 45).all()
+
+
+def test_realize_reduction_insn_id_filter_list(ctx_factory):
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+        "{[i, j, k]: 0<=i,j,k<10}",
+        """
+        a = sum(i, 8*i)    {id=w_a}
+        b = sum(j, j*j)    {id=w_b}
+        c = sum(k, sin(3.14*k)) {id=w_c}
+        """)
+    ref_t_unit = t_unit
+
+    knl = t_unit.default_entrypoint
+    assert knl.id_to_insn["w_a"].reduction_inames() == frozenset({"i"})
+    assert knl.id_to_insn["w_b"].reduction_inames() == frozenset({"j"})
+    assert knl.id_to_insn["w_c"].reduction_inames() == frozenset({"k"})
+
+    t_unit = lp.realize_reduction(t_unit, insn_id_filter=["w_a", "w_b"])
+
+    knl = t_unit.default_entrypoint
+    assert knl.id_to_insn["w_a"].reduction_inames() == frozenset()
+    assert knl.id_to_insn["w_b"].reduction_inames() == frozenset()
+    assert knl.id_to_insn["w_c"].reduction_inames() == frozenset({"k"})
+
+    lp.auto_test_vs_ref(t_unit, ctx, ref_t_unit)
 
 
 if __name__ == "__main__":

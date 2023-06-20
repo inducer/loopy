@@ -52,6 +52,8 @@ Influencing data access
 
 .. automodule:: loopy.transform.privatize
 
+.. autofunction:: allocate_temporaries_for_base_storage
+
 Padding Data
 ------------
 

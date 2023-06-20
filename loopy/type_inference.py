@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pymbolic.mapper import CombineMapper
+from loopy.symbolic import CombineMapper
 import numpy as np
 
 from loopy.tools import is_integer
@@ -79,23 +79,14 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
         name, tag = parse_tagged_name(expr.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
-            expanded_expr = self.subst_expander(expr)
-            if expr in self.calls_to_new_names:
-                return type(expr)(
-                        ResolvedFunction(self.calls_to_new_names[expr]),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters))
-            elif expanded_expr in self.calls_to_new_names:
-                # FIXME: This is killing the substitution.
-                # Maybe using a RuleAwareIdentityMapper for TypeInferenceMapper
-                # would help.
+            expanded_expr = self.subst_expander(expn_state.apply_arg_context(expr))
+            if expanded_expr in self.calls_to_new_names:
                 return type(expr)(
                         ResolvedFunction(self.calls_to_new_names[expanded_expr]),
                         tuple(self.rec(child, expn_state)
-                            for child in expanded_expr.parameters))
+                              for child in expr.parameters))
             else:
-                return super().map_call(
-                        expr, expn_state)
+                return super().map_call(expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
@@ -198,6 +189,7 @@ class TypeInferenceMapper(CombineMapper):
         self.symbols_with_unknown_types = set()
         self.clbl_inf_ctx = clbl_inf_ctx
         self.old_calls_to_new_calls = {}
+        super().__init__()
 
     def __call__(self, expr, return_tuple=False, return_dtype_set=False):
         kwargs = {}
@@ -612,6 +604,7 @@ class TypeReader(TypeInferenceMapper):
         self.kernel = kernel
         self.callables = callables
         self.new_assignments = new_assignments
+        CombineMapper.__init__(self)
 
     # {{{ disabled interface
 
@@ -853,6 +846,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     from loopy.kernel.data import TemporaryVariable, KernelArgument
 
     old_calls_to_new_calls = {}
+    touched_variable_names = set()
 
     for var_chain in sccs:
         changed_during_last_queue_run = False
@@ -894,6 +888,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                 if new_dtype != item.dtype:
                     debug("     changed from: %s", item.dtype)
                     changed_during_last_queue_run = True
+                    touched_variable_names.add(name)
 
                     if isinstance(item, TemporaryVariable):
                         new_temp_vars[name] = item.copy(dtype=new_dtype)
@@ -998,6 +993,18 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     end_time = time.time()
     logger.debug("type inference took {dur:.2f} seconds".format(
             dur=end_time - start_time))
+
+    if kernel._separation_info():
+        sep_names = set(kernel._separation_info()) | {
+                sep_info.subarray_names.values()
+                for sep_info in kernel._separation_info().values()}
+
+        touched_sep_names = sep_names & touched_variable_names
+        if touched_sep_names:
+            raise LoopyError("Type inference must not touch variables subject to "
+                    "separation after separation has been performed. "
+                    "Untyped separation-related variables: "
+                    f"{', '.join(touched_sep_names)}")
 
     pre_type_specialized_knl = unexpanded_kernel.copy(
             temporary_variables=new_temp_vars,

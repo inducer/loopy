@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 from loopy.tools import (empty_aligned, address_from_numpy,
         build_ispc_shared_lib, cptr_from_numpy)
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 def transform(knl, vars, stream_dtype):

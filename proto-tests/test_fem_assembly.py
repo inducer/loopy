@@ -1,11 +1,9 @@
 import numpy as np
-import pyopencl as cl
+import pyopencl as cl  # noqa
 import loopy as lp
 
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
-
-
+        as pytest_generate_tests  # noqa
 
 
 def test_laplacian_stiffness(ctx_factory):
@@ -13,22 +11,22 @@ def test_laplacian_stiffness(ctx_factory):
     ctx = ctx_factory()
     order = "C"
 
-    dim = 2 # (baked into code)
+    dim = 2  # (baked into code)
 
-    Nq = 40 # num. quadrature points (baked into code)
-    Nb = 20 # num. basis functions (baked into code)
-    Nc = 100 # num. cells (run-time symbolic)
+    Nq = 40  # num. quadrature points (baked into code)  # noqa
+    Nb = 20  # num. basis functions (baked into code)  # noqa
+    Nc = 100  # num. cells (run-time symbolic)  # noqa
 
     from pymbolic import var
-    Nc_sym = var("Nc")
+    Nc_sym = var("Nc")  # noqa
 
     knl = lp.make_kernel(ctx.devices[0],
-            "[Nc] -> {[K,i,j,q, dx_axis, ax_b]: 0<=K<Nc and 0<=i,j<%(Nb)d and 0<=q<%(Nq)d "
+            "[Nc] -> {[K,i,j,q, dx_axis, ax_b]: 0<=K<Nc and 0<=i,j<%(Nb)d and 0<=q<%(Nq)d "  # noqa
             "and 0<= dx_axis, ax_b < %(dim)d}"
             % dict(Nb=Nb, Nq=Nq, dim=dim),
             [
                 "dPsi(ij, dxi) := sum_float32(@ax_b,"
-                    "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])",
+                    "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])",  # noqa
                 "A[K, i, j] = sum_float32(q, w[q] * jacDet[K,q] * ("
                     "sum_float32(dx_axis, dPsi$one(i,dx_axis)*dPsi$two(j,dx_axis))))"
                 ],
@@ -55,7 +53,7 @@ def test_laplacian_stiffness(ctx_factory):
         # This (mostly) reproduces the unlabeled code snippet on pg. 4.
 
         knl = lp.tag_inames(knl, {"dx_axis": "unr"})
-        Ncloc = 16
+        Ncloc = 16  # noqa
         knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
         return knl, ["Ko", "Kloc", "i", "j", "q", "ax_b_insn"]
@@ -63,7 +61,7 @@ def test_laplacian_stiffness(ctx_factory):
     def variant_fig32(knl):
         # This (mostly) reproduces Figure 3.2.
 
-        Ncloc = 16
+        Ncloc = 16  # noqa
         knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
         knl = lp.precompute(knl, "dPsi", np.float32, ["i", "q", "dx_axis"],
@@ -74,10 +72,10 @@ def test_laplacian_stiffness(ctx_factory):
     def variant_fig33(knl):
         # This is meant to (mostly) reproduce Figure 3.3.
 
-        Ncloc = 16
+        Ncloc = 16  # noqa
         knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
-        knl = lp.precompute(knl, "dPsi$one", np.float32, ["dx_axis"], default_tag=None)
+        knl = lp.precompute(knl, "dPsi$one", np.float32, ["dx_axis"], default_tag=None)  # noqa
         knl = lp.tag_inames(knl, {"j": "ilp.seq"})
 
         return knl, ["Ko", "Kloc"]
@@ -90,7 +88,7 @@ def test_laplacian_stiffness(ctx_factory):
         # help, too. :)
 
         knl = lp.tag_inames(knl, {"dx_axis": "unr"})
-        Ncloc = 16
+        Ncloc = 16  # noqa
         knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc",
                 outer_tag="g.0")
@@ -105,7 +103,7 @@ def test_laplacian_stiffness(ctx_factory):
         # fix that. (FIXME)
 
         knl = lp.tag_inames(knl, {"dx_axis": "unr"})
-        Ncloc = 16
+        Ncloc = 16  # noqa
         knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc",
                 outer_tag="g.0")
@@ -132,8 +130,6 @@ def test_laplacian_stiffness(ctx_factory):
                 parameters={"Nc": Nc}, print_ref_code=True)
 
 
-
-
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
@@ -141,4 +137,3 @@ if __name__ == "__main__":
     else:
         from py.test.cmdline import main
         main([__file__])
-

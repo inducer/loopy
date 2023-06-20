@@ -26,6 +26,7 @@ import pyopencl.clrandom  # noqa: F401
 import loopy as lp
 import pytest
 import sys
+from pytools import ImmutableRecord
 
 
 from pyopencl.tools import (  # noqa: F401
@@ -170,7 +171,7 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
 
     knl = lp.merge([caller_knl, callee_knl])
 
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     if inline:
         knl = lp.inline_callable_kernel(knl, "linear_combo")
@@ -228,8 +229,8 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
         knl = lp.inline_callable_kernel(knl, "callee_fn2")
         knl = lp.inline_callable_kernel(knl, "callee_fn3")
 
-    knl = lp.set_options(knl, "write_cl")
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, write_code=True)
+    knl = lp.set_options(knl, return_dict=True)
     evt, out_dict = knl(queue, x1=x1, x2=x2, x3=x3)
 
     y1 = out_dict["y1"].get()
@@ -286,8 +287,8 @@ def test_multi_arg_array_call(ctx_factory):
     evt, out_dict = knl(queue, b=b)
     tol = 1e-15
     from numpy.linalg import norm
-    assert(norm(out_dict["min_val"] - np.min(b)) < tol)
-    assert(norm(out_dict["min_index"] - np.argmin(b)) < tol)
+    assert norm(out_dict["min_val"] - np.min(b)) < tol
+    assert norm(out_dict["min_index"] - np.argmin(b)) < tol
 
 
 @pytest.mark.parametrize("inline", [False, True])
@@ -327,8 +328,8 @@ def test_packing_unpacking(ctx_factory, inline):
         knl = lp.inline_callable_kernel(knl, "callee_fn1")
         knl = lp.inline_callable_kernel(knl, "callee_fn2")
 
-    knl = lp.set_options(knl, "write_cl")
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, write_code=True)
+    knl = lp.set_options(knl, return_dict=True)
     evt, out_dict = knl(queue, x1=x1, x2=x2)
 
     y1 = out_dict["y1"].get()
@@ -698,11 +699,41 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
         """)
 
     knl = lp.merge([knl, call_sin])
-    knl = lp.set_options(knl, "write_cl")
+    knl = lp.set_options(knl, write_code=True)
     if inline:
         knl = lp.inline_callable_kernel(knl, "call_sin")
 
     evt, (out,) = knl(cq, real_x=np.asarray(3.0, dtype=float))
+
+
+@pytest.mark.parametrize("inline", [False, True])
+def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
+    ctx = cl.create_some_context()
+    cq = cl.CommandQueue(ctx)
+    x_in = np.random.rand()
+
+    twice = lp.make_function(
+        "{ : }",
+        """
+        y = 2*x
+        """,
+        name="twice")
+
+    knl = lp.make_kernel(
+        "{ : }",
+        """
+        []: Y[0, 0] = twice(X)
+        """)
+
+    knl = lp.add_dtypes(knl, {"X": np.float64})
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    evt, (out,) = knl(cq, X=x_in)
+
+    np.testing.assert_allclose(out.get(), 2*x_in)
 
 
 def test_symbol_mangler_in_call(ctx_factory):
@@ -891,7 +922,7 @@ def test_non1_step_slices(ctx_factory, start, inline):
 
     t_unit = lp.merge([t_unit, callee])
 
-    t_unit = lp.set_options(t_unit, "return_dict")
+    t_unit = lp.set_options(t_unit, return_dict=True)
 
     if inline:
         t_unit = lp.inline_callable_kernel(t_unit, "squared_arange")
@@ -1159,6 +1190,8 @@ def test_inlining_does_not_require_barrier(inline):
             ],
         iname_slab_increments={"j_outer": (0, 0)})
 
+    # }}}
+
     loopy_kernel_knl = lp.tag_inames(loopy_kernel_knl, "j_outer:g.0")
     t_unit = lp.merge([fft_knl, loopy_kernel_knl])
     if inline:
@@ -1166,6 +1199,319 @@ def test_inlining_does_not_require_barrier(inline):
 
     # generate code to ensure that we don't emit spurious missing barrier
     print(lp.generate_code_v2(t_unit).device_code())
+
+
+def test_inlining_w_zero_stride_callee_args(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/594
+    ctx = ctx_factory()
+
+    times_two = lp.make_function(
+        "{[j1, j2, j3]: 0<=j1,j2,j3<1}",
+        """
+        out[j1, j2, j3] = 2 * inp[j1, j2, j3]
+        """,
+        name="times_two")
+
+    knl = lp.make_kernel(
+        "{[i1, i2, i3]: 0<=i1,i2,i3<1}",
+        """
+        tmp[0, 0, 0] = 2.0
+        [i1,i2,i3]: y[i1,i2,i3] = times_two([i1,i2,i3]: tmp[0,i2,i3])
+        """,
+        [lp.TemporaryVariable("tmp", strides=(0, 1, 1)), ...])
+
+    ref_knl = lp.merge([knl, times_two])
+    knl = lp.inline_callable_kernel(ref_knl, "times_two")
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_call_kernel_w_preds(ctx_factory, inline):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    twice = lp.make_function(
+        "{ [i] : 0<=i<10 }",
+        """
+        x[i] = 2*x[i]
+        """, name="twice")
+
+    knl = lp.make_kernel(
+        "{[i] : 0<=i<10}",
+        """
+        for i
+            if i >= 5
+                x[i, :] = twice(x[i, :])
+            end
+        end
+        """,
+        [lp.GlobalArg("x",
+                      shape=(10, 10),),
+         ...])
+
+    knl = lp.merge([knl, twice])
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "twice")
+
+    evt, (out,) = knl(cq, x=np.ones((10, 10)))
+
+    np.testing.assert_allclose(out[:5], 1)
+    np.testing.assert_allclose(out[5:], 2)
+
+
+# {{{ test_inlining_does_not_lose_preambles
+
+class OurPrintfDefiner(ImmutableRecord):
+    def __call__(self, *args, **kwargs):
+        return (("42", r"#define OURPRINTF printf"),)
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_inlining_does_not_lose_preambles(ctx_factory, inline):
+    # loopy.git<=95cc206 would miscompile this
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    callee = lp.make_function(
+        "{ : }",
+        [
+            lp.CInstruction("",
+                            r"""
+                            MYPRINTF("Foo bar!\n");
+                            """, assignees=())
+        ],
+        preambles=[("1729", r"#define MYPRINTF OURPRINTF")],
+        preamble_generators=[OurPrintfDefiner()],
+        name="print_foo")
+
+    caller = lp.make_kernel(
+        "{ : }",
+        """
+        print_foo()
+        """,
+        name="print_foo_caller")
+
+    knl = lp.merge([caller, callee])
+    knl = lp.set_options(knl, "write_code")
+
+    if inline:
+        knl = lp.inline_callable_kernel(knl, "print_foo")
+
+    # run to make sure there is no compilation error
+    knl(cq)
+
+# }}}
+
+
+@pytest.mark.parametrize("inline", [True, False])
+def test_c_instruction_in_callee(ctx_factory, inline):
+    from loopy.symbolic import parse
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    n = np.random.randint(3, 8)
+
+    knl = lp.make_function(
+        "{[i]: 0<=i<10}",
+        [lp.CInstruction(iname_exprs=("i", "i"),
+                         code="break;",
+                         predicates={parse("i >= n")},
+                         id="break",),
+         lp.Assignment("out_callee", "i", depends_on=frozenset(["break"]))
+         ],
+        [lp.ValueArg("n", dtype="int32"), ...],
+        name="circuit_breaker")
+
+    t_unit = lp.make_kernel(
+        "{ : }",
+        """
+        []: result[0] = circuit_breaker(N)
+        """,
+        [lp.ValueArg("N", dtype="int32"), ...],)
+
+    t_unit = lp.merge([t_unit, knl])
+
+    if inline:
+        t_unit = lp.inline_callable_kernel(t_unit, "circuit_breaker")
+
+    _, (out,) = t_unit(cq, N=n)
+
+    assert out.get() == (n-1)
+
+
+def test_global_temp_var_with_base_storage(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i, i2] : 0<=i,i2<3}",
+        """
+        a[i] = 5
+        b[i] = a[i] + 1
+        ... gbarrier
+        c[i2] = b[i2] + 2
+        d[i2] = c[i2] + 3
+        """, [
+            lp.TemporaryVariable("a", dtype=np.int32, shape=(3,),
+                address_space=lp.AddressSpace.GLOBAL, base_storage="bs"),
+            lp.TemporaryVariable("b", dtype=np.int32, shape=(3,),
+                address_space=lp.AddressSpace.GLOBAL, base_storage="bs"),
+            lp.TemporaryVariable("c", dtype=np.int32, shape=(3,),
+                address_space=lp.AddressSpace.GLOBAL, base_storage="bs"),
+            ...
+        ],
+        seq_dependencies=True)
+
+    knl = lp.allocate_temporaries_for_base_storage(knl, aliased=False)
+
+    cl_prg = cl.Program(ctx, lp.generate_code_v2(knl).device_code()).build()
+    assert [knl.num_args for knl in cl_prg.all_kernels()] == [1, 2]
+
+    _evt, (d,) = knl(cq)
+    assert (d.get() == 5 + 1 + 2 + 3).all()
+
+
+def test_inline_deps(ctx_factory):
+    # https://github.com/inducer/loopy/issues/564
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    child_knl = lp.make_function(
+        "{[i]:0<=i < 4}",
+        """
+        a[i] = b[i]
+        """, name="func")
+
+    parent_knl = lp.make_kernel(
+        "{[i]: 0<=i<4}",
+        """
+        <> b[i] = i  {id=init,dup=i}
+        [i]: a[i] = func([i]: b[i]) {dep=init}
+        """)
+
+    prg = lp.merge([parent_knl, child_knl])
+    inlined = lp.inline_callable_kernel(prg, "func")
+
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
+    apply_single_writer_depencency_heuristic(inlined, error_if_used=True)
+
+    _evt, (a_dev,) = inlined(cq)
+
+    assert np.array_equal(a_dev.get(), np.arange(4))
+
+
+def test_inline_stride():
+    # https://github.com/inducer/loopy/issues/728
+    child_knl = lp.make_function(
+            [],
+            """
+            g[0] = 2*e[0] + 3*f[0] {id=a}
+            g[1] = 2*e[1] + 3*f[1] {dep=a}
+            """, name="linear_combo")
+    parent_knl = lp.make_kernel(
+            ["{[j]:0<=j<n}", "{[i]:0<=i<n}"],
+            """
+            [i]: z[i, j] = linear_combo([i]: x[i, j], [i]: y[i,j])
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="x, y, z",
+                    dtype=np.float64,
+                    shape=("n", "n")),
+                ...],
+            assumptions="n>=2",
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "linear_combo")
+    lp.generate_code_v2(knl).device_code()
+
+
+def test_inline_predicate():
+    # https://github.com/inducer/loopy/issues/739
+    twice = lp.make_function(
+        "{[i]: 0<=i<10}",
+        """
+        y[i] = 2*x[i]
+        """,
+        name="twice")
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<10 and 0<=j<10}",
+        """
+        <> y[i] = 0  {id=y,dup=i}
+        <> x[i] = 1  {id=x,dup=i}
+        for j
+            <> a = (j%2 == 0)
+            y[i] = i                         {dep=y,if=a,id=y2}
+            [i]: z[i, j] = twice([i]: x[i])  {if=a,dep=y}
+        end
+        """)
+
+    knl = lp.add_dtypes(knl, {"z": np.float64})
+    knl = lp.merge([knl, twice])
+    knl = lp.inline_callable_kernel(knl, "twice")
+    code = lp.generate_code_v2(knl).device_code()
+    assert code.count("if (a)") == 1
+
+
+def test_subarray_ref_with_repeated_indices(ctx_factory):
+    # https://github.com/inducer/loopy/pull/735#discussion_r1071690388
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+    child_knl = lp.make_function(
+            ["{[i]: 0<=i<10}"],
+            """
+            g[i] = 1
+            """, name="ones")
+
+    parent_knl = lp.make_kernel(
+            ["{[i]:0<=i<10}", "{[j]: 0<=j<10}"],
+            """
+            z[i, j] = 0                {id = a}
+            [i]: z[i, i] = ones()  {dep=a,dup=i}
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="z",
+                    dtype=np.float64,
+                    is_input=False,
+                    shape=(10, 10)),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "ones")
+    evt, (z_dev,) = knl(cq)
+    assert np.allclose(z_dev.get(), np.eye(10))
+
+
+def test_inline_constant_access():
+    child_knl = lp.make_function(
+            [],
+            """
+            g[0] = 2*e[0] + 3*f[0] {id=a}
+            g[1] = 2*e[1] + 3*f[1] {dep=a}
+            """, name="linear_combo")
+    parent_knl = lp.make_kernel(
+            ["{[j]:0<=j<n}", "{[i]:0<=i<n}"],
+            """
+            [i]: z[i, j] = linear_combo([i]: x[i, j], [i]: y[i,j])
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="x, y, z",
+                    dtype=np.float64,
+                    shape=(3, "n")),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "linear_combo")
+    knl = lp.tag_array_axes(knl, ["x", "y", "z"], "sep,C")
+    lp.generate_code_v2(knl).device_code()
 
 
 if __name__ == "__main__":

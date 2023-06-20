@@ -51,6 +51,11 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     pytest.importorskip("fparser")
     ctx = ctx_factory()
 
+    if (ctx.devices[0].platform.name == "Portable Computing Language"
+            and ilp_multiple > 1):
+        # about 400s, cf. https://gitlab.tiker.net/inducer/loopy/-/jobs/421250#L937
+        pytest.skip("takes a very long time to compile on pocl")
+
     filename = os.path.join(os.path.dirname(__file__), "strongVolumeKernels.f90")
     with open(filename) as sourcef:
         source = sourcef.read()
@@ -232,7 +237,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     hsv = tap_hsv
 
     hsv = lp.set_options(hsv,
-            cl_build_options=[
+            build_options=[
                  "-cl-denorms-are-zero",
                  "-cl-fast-relaxed-math",
                  "-cl-finite-math-only",

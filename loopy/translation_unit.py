@@ -320,14 +320,21 @@ class TranslationUnit(ImmutableRecord):
         """
         entrypoint = kwargs.get("entrypoint", None)
         if entrypoint is None:
-            if len(self.entrypoints) == 1:
+            nentrypoints = len(self.entrypoints)
+            if nentrypoints == 1:
                 entrypoint, = self.entrypoints
-            else:
+            elif nentrypoints > 1:
                 raise ValueError("TranslationUnit has multiple possible entrypoints."
                                  " The default entrypoint kernel is not uniquely"
                                  " determined. You may explicitly specify an "
                                  " entrypoint using the 'entrypoint' kwarg.")
-
+            elif nentrypoints == 0:
+                raise ValueError("TranslationUnit has no entrypoints, but"
+                                 f" {len(self.callables_table)} callables."
+                                 " Use TranslationUnit.with_entrypoints to"
+                                 " set an entrypoint.")
+            else:
+                raise AssertionError
         else:
             if entrypoint not in self.entrypoints:
                 raise LoopyError(f"'{entrypoint}' not in list of possible "
@@ -363,14 +370,13 @@ class TranslationUnit(ImmutableRecord):
         self._program_executor_cache = {}
 
     def __hash__(self):
-        if self._hash_value is not None:
-            return self._hash_value
+        # NOTE: _hash_value may vanish during pickling
+        if getattr(self, "_hash_value", None) is None:
+            from loopy.tools import LoopyKeyBuilder
+            key_hash = LoopyKeyBuilder.new_hash()
+            self.update_persistent_hash(key_hash, LoopyKeyBuilder())
+            self._hash_value = hash(key_hash.digest())
 
-        from loopy.tools import LoopyKeyBuilder
-        from pytools.persistent_dict import new_hash
-        key_hash = new_hash()
-        self.update_persistent_hash(key_hash, LoopyKeyBuilder())
-        self._hash_value = hash(key_hash.digest())
         return self._hash_value
 
 # }}}

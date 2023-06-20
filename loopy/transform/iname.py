@@ -28,6 +28,7 @@ from loopy.symbolic import (
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
+from typing import FrozenSet
 
 from loopy.translation_unit import (TranslationUnit,
                                     for_each_kernel)
@@ -245,8 +246,6 @@ def _split_iname_backend(kernel, iname_to_split,
         raise ValueError(
                 f"cannot split loop for unknown variable '{iname_to_split}'")
 
-    applied_iname_rewrites = kernel.applied_iname_rewrites[:]
-
     vng = kernel.get_var_name_generator()
 
     if outer_iname is None:
@@ -265,7 +264,6 @@ def _split_iname_backend(kernel, iname_to_split,
     new_loop_index = make_new_loop_index(inner, outer)
 
     subst_map = {var(iname_to_split): new_loop_index}
-    applied_iname_rewrites.append(subst_map)
 
     # {{{ update within_inames
 
@@ -284,8 +282,7 @@ def _split_iname_backend(kernel, iname_to_split,
 
     # }}}
 
-    iname_slab_increments = kernel.iname_slab_increments.copy()
-    iname_slab_increments[outer_iname] = slabs
+    iname_slab_increments = kernel.iname_slab_increments.set(outer_iname, slabs)
 
     new_priorities = []
     for prio in kernel.loop_priority:
@@ -301,7 +298,7 @@ def _split_iname_backend(kernel, iname_to_split,
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
             instructions=new_insns,
-            applied_iname_rewrites=applied_iname_rewrites,
+            applied_iname_rewrites=kernel.applied_iname_rewrites+(subst_map,),
             loop_priority=frozenset(new_priorities))
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -626,7 +623,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
             .copy(
                 instructions=new_insns,
                 domains=domch.get_domains_with(new_domain),
-                applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
+                applied_iname_rewrites=kernel.applied_iname_rewrites + (subst_dict,)
                 ))
 
     from loopy.match import parse_stack_match
@@ -1145,7 +1142,7 @@ def remove_unused_inames(kernel, inames=None):
     # {{{ remove them
 
     domains = kernel.domains
-    for iname in unused_inames:
+    for iname in sorted(unused_inames):
         new_domains = []
 
         for dom in domains:
@@ -1396,7 +1393,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
             rule_mapping_context.finish_kernel(
                 old_to_new.map_kernel(kernel))
             .copy(
-                applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
+                applied_iname_rewrites=kernel.applied_iname_rewrites + (subst_dict,)
                 ))
 
     # }}}
@@ -1591,6 +1588,12 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
         self.iname_to_red_count = {}
         self.iname_to_nonsimultaneous_red_count = {}
 
+    def get_cache_key(self, expr, expn_state):
+        return (super().get_cache_key(expr, expn_state)
+                + tuple(sorted(self.iname_to_red_count.items()))
+                + tuple(sorted(self.iname_to_nonsimultaneous_red_count.items()))
+                )
+
     def map_reduction(self, expr, expn_state):
         within = self.within(
                     expn_state.kernel,
@@ -1705,8 +1708,7 @@ def add_inames_to_insn(kernel, inames, insn_match):
     :arg insn_match: An instruction match as understood by
         :func:`loopy.match.parse_match`.
 
-    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
-        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
+    :returns: a :class:`LoopKernel` with the *inames* added to
         the instructions matched by *insn_match*.
 
     .. versionadded:: 2016.3
@@ -1727,6 +1729,91 @@ def add_inames_to_insn(kernel, inames, insn_match):
         if match(kernel, insn):
             new_instructions.append(
                     insn.copy(within_inames=insn.within_inames | inames))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
+# }}}
+
+
+# {{{ remove_inames_from_insn
+
+@for_each_kernel
+def remove_inames_from_insn(kernel: LoopKernel, inames: FrozenSet[str],
+        insn_match) -> LoopKernel:
+    """
+    :arg inames: a frozenset of inames that will be added to the
+        instructions matched by *insn_match*.
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *inames* removed from
+        the instructions matched by *insn_match*.
+
+    This transformation is useful when an iname is added to an
+    instruction in a sub-kernel by an inlining call because the
+    kernel invocation itself has the iname. When the instruction
+    does not depend on the iname, this transformation can be used
+    for removing that iname.
+
+    .. versionadded:: 2023.0
+    """
+
+    if not isinstance(inames, frozenset):
+        raise TypeError("'inames' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if match(kernel, insn):
+            new_inames = insn.within_inames - inames
+            if new_inames == insn.within_inames:
+                raise LoopyError(f"Inames {inames} not found in instruction "
+                    f"{insn.id}")
+            new_instructions.append(
+                    insn.copy(within_inames=new_inames))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
+
+@for_each_kernel
+def remove_predicates_from_insn(kernel, predicates, insn_match):
+    """
+    :arg predicates: a frozenset of predicates that will be added to the
+        instructions matched by *insn_match*
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *predicates* removed from
+        the instructions matched by *insn_match*.
+
+    This transformation is useful when a predicate is added to an
+    instruction in a sub-kernel by an inlining call because the
+    kernel invocation itself has the iname. When the instruction
+    does not depend on the predicate, this transformation can be used
+    for removing that predicate.
+
+    .. versionadded:: 2023.0
+    """
+    if not isinstance(predicates, frozenset):
+        raise TypeError("'predicates' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if match(kernel, insn):
+            new_predicates = insn.predicates - predicates
+            new_instructions.append(
+                insn.copy(predicates=frozenset(new_predicates)))
         else:
             new_instructions.append(insn)
 
@@ -1981,7 +2068,7 @@ def map_domain(kernel, transform_map):
 
     substitutions = {}
     var_substitutions = {}
-    applied_iname_rewrites = kernel.applied_iname_rewrites[:]
+    applied_iname_rewrites = kernel.applied_iname_rewrites
 
     from loopy.symbolic import aff_to_expr
     from pymbolic import var
@@ -1991,7 +2078,7 @@ def map_domain(kernel, transform_map):
         substitutions[iname] = subst_from_map
         var_substitutions[var(iname)] = subst_from_map
 
-    applied_iname_rewrites.append(var_substitutions)
+    applied_iname_rewrites = applied_iname_rewrites + (var_substitutions,)
     del var_substitutions
 
     # }}}
@@ -2198,9 +2285,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
         if isinstance(tag, GroupInameTag)],
         default=-1) + 1
 
-    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalInameTag)
+    contains_auto_local_tag = any(isinstance(tag, AutoFitLocalInameTag)
         for iname in kernel.inames.values()
-        for tag in iname.tags])
+        for tag in iname.tags)
 
     if contains_auto_local_tag:
         raise LoopyError("Kernels containing l.auto tags are invalid"
@@ -2280,12 +2367,16 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
 @for_each_kernel
 @remove_any_newly_unused_inames
-def rename_inames(kernel, old_inames, new_iname, existing_ok=False, within=None):
-    """
+def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
+                  within=None, raise_on_domain_mismatch: bool = __debug__):
+    r"""
     :arg old_inames: A collection of inames that must be renamed to **new_iname**.
     :arg within: a stack match as understood by
         :func:`loopy.match.parse_stack_match`.
     :arg existing_ok: execute even if *new_iname* already exists
+    :arg raise_on_domain_mismatch: If *True*, raises an error if
+        :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
+        \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
     """
     from collections.abc import Collection
     if (isinstance(old_inames, str)
@@ -2336,37 +2427,44 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False, within=None)
     del does_exist
     assert new_iname in kernel.all_inames()
 
-    for old_iname in old_inames:
-        # {{{ check that the domains match up
+    if raise_on_domain_mismatch:
+        for old_iname in old_inames:
+            # {{{ check that the domains match up
 
-        dom = kernel.get_inames_domain(frozenset((old_iname, new_iname)))
+            dom = kernel.get_inames_domain(frozenset((old_iname, new_iname)))
 
-        var_dict = dom.get_var_dict()
-        _, old_idx = var_dict[old_iname]
-        _, new_idx = var_dict[new_iname]
+            var_dict = dom.get_var_dict()
+            _, old_idx = var_dict[old_iname]
+            _, new_idx = var_dict[new_iname]
 
-        par_idx = dom.dim(dim_type.param)
-        dom_old = dom.move_dims(
-                dim_type.param, par_idx, dim_type.set, old_idx, 1)
-        dom_old = dom_old.move_dims(
-                dim_type.set, dom_old.dim(dim_type.set), dim_type.param, par_idx, 1)
-        dom_old = dom_old.project_out(
-                dim_type.set, new_idx if new_idx < old_idx else new_idx - 1, 1)
+            par_idx = dom.dim(dim_type.param)
+            dom_old = dom.move_dims(
+                    dim_type.param, par_idx, dim_type.set, old_idx, 1)
+            dom_old = dom_old.move_dims(dim_type.set,
+                                        dom_old.dim(dim_type.set),
+                                        dim_type.param, par_idx, 1)
+            dom_old = dom_old.project_out(dim_type.set,
+                                          new_idx
+                                          if new_idx < old_idx
+                                          else new_idx - 1,
+                                          1)
 
-        par_idx = dom.dim(dim_type.param)
-        dom_new = dom.move_dims(
-                dim_type.param, par_idx, dim_type.set, new_idx, 1)
-        dom_new = dom_new.move_dims(
-                dim_type.set, dom_new.dim(dim_type.set), dim_type.param, par_idx, 1)
-        dom_new = dom_new.project_out(
-                dim_type.set, old_idx if old_idx < new_idx else old_idx - 1, 1)
+            par_idx = dom.dim(dim_type.param)
+            dom_new = dom.move_dims(dim_type.param, par_idx,
+                                    dim_type.set, new_idx, 1)
+            dom_new = dom_new.move_dims(dim_type.set, dom_new.dim(dim_type.set),
+                                        dim_type.param, par_idx, 1)
+            dom_new = dom_new.project_out(dim_type.set,
+                                          old_idx
+                                          if old_idx < new_idx
+                                          else old_idx - 1, 1)
 
-        if not (dom_old <= dom_new and dom_new <= dom_old):
-            raise LoopyError(
-                    "inames {old} and {new} do not iterate over the same domain"
-                    .format(old=old_iname, new=new_iname))
+            if not (dom_old <= dom_new and dom_new <= dom_old):
+                raise LoopyError(
+                        "inames {old} and {new} do not iterate over the same domain"
+                        .format(old=old_iname, new=new_iname))
 
-        # }}}
+            # }}}
 
     from pymbolic import var
     subst_dict = {old_iname: var(new_iname) for old_iname in old_inames}
@@ -2388,7 +2486,8 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False, within=None)
                 or frozenset(old_inames) & insn.reduction_inames())
 
     kernel = rule_mapping_context.finish_kernel(
-            smap.map_kernel(kernel, within=does_insn_involve_iname))
+            smap.map_kernel(kernel, within=does_insn_involve_iname,
+                            map_tvs=False, map_args=False))
 
     new_instructions = [insn.copy(within_inames=((insn.within_inames
                                                   - frozenset(old_inames))

@@ -20,15 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import TYPE_CHECKING, Tuple, Optional
+from dataclasses import dataclass
 from warnings import warn
-
-from pytools import Record
 
 import numpy as np
 
 import loopy as lp
+from loopy.kernel.array import get_strides
 
 from loopy.diagnostic import LoopyError, AutomaticTestFailure
+
+if TYPE_CHECKING:
+    import pyopencl.array as cla
 
 
 AUTO_TEST_SKIP_RUN = False
@@ -68,13 +72,34 @@ def fill_rand(ary):
         fill_rand(ary)
 
 
-class TestArgInfo(Record):
-    pass
+@dataclass
+class TestArgInfo:
+    name: str
+    ref_array: "cla.Array"
+    ref_storage_array: "cla.Array"
+
+    ref_pre_run_array: "cla.Array"
+    ref_pre_run_storage_array: "cla.Array"
+
+    ref_shape: Tuple[int, ...]
+    ref_strides: Tuple[int, ...]
+    ref_alloc_size: int
+    ref_numpy_strides: Tuple[int, ...]
+    needs_checking: bool
+
+    # The attributes below are being modified in make_args, hence this dataclass
+    # cannot be frozen.
+    test_storage_array: Optional["cla.Array"] = None
+    test_array: Optional["cla.Array"] = None
+    test_shape: Optional[Tuple[int, ...]] = None
+    test_strides: Optional[Tuple[int, ...]] = None
+    test_numpy_strides: Optional[Tuple[int, ...]] = None
+    test_alloc_size: Optional[Tuple[int, ...]] = None
 
 
 # {{{ "reference" arguments
 
-def make_ref_args(kernel, impl_arg_info, queue, parameters):
+def make_ref_args(kernel, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
@@ -86,13 +111,8 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
     ref_args = {}
     ref_arg_data = []
 
-    for arg in impl_arg_info:
-        kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
-
-        if arg.arg_class is ValueArg:
-            if arg.offset_for_name:
-                continue
-
+    for arg in kernel.args:
+        if isinstance(arg, ValueArg):
             arg_value = parameters[arg.name]
 
             try:
@@ -107,25 +127,24 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
 
             ref_arg_data.append(None)
 
-        elif arg.arg_class is ArrayArg or arg.arg_class is ImageArg \
-                or arg.arg_class is ConstantArg:
+        elif isinstance(arg, (ArrayArg, ImageArg, ConstantArg)):
             if arg.shape is None or any(saxis is None for saxis in arg.shape):
                 raise LoopyError("array '%s' needs known shape to use automatic "
                         "testing" % arg.name)
 
-            shape = evaluate_shape(arg.unvec_shape, parameters)
-            dtype = kernel_arg.dtype
+            shape = evaluate_shape(arg.shape, parameters)
+            dtype = arg.dtype
 
-            is_output = kernel_arg.is_output
+            is_output = arg.is_output
 
-            if arg.arg_class is ImageArg:
+            if isinstance(arg, ImageArg):
                 storage_array = ary = cl_array.empty(
                         queue, shape, dtype, order="C")
                 numpy_strides = None
                 alloc_size = None
                 strides = None
             else:
-                strides = evaluate(arg.unvec_strides, parameters)
+                strides = evaluate(get_strides(arg), parameters)
 
                 alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
                         for alen, astrd in zip(shape, strides)) + 1
@@ -142,13 +161,13 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
 
                 storage_array = cl_array.empty(queue, alloc_size, dtype)
 
-            if is_output and arg.arg_class is ImageArg:
+            if is_output and isinstance(arg, ImageArg):
                 raise LoopyError("write-mode images not supported in "
                         "automatic testing")
 
             fill_rand(storage_array)
 
-            if arg.arg_class is ImageArg:
+            if isinstance(arg, ImageArg):
                 # must be contiguous
                 pre_run_ary = pre_run_storage_array = storage_array.copy()
 
@@ -191,20 +210,17 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
 
 # {{{ "full-scale" arguments
 
-def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
+def make_args(kernel, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, ArrayArg, ImageArg,\
-            TemporaryVariable, ConstantArg
+    from loopy.kernel.data import ValueArg, ArrayArg, ImageArg, ConstantArg
 
     from pymbolic import evaluate
 
     args = {}
-    for arg, arg_desc in zip(impl_arg_info, ref_arg_data):
-        kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
-
-        if arg.arg_class is ValueArg:
+    for arg, arg_desc in zip(kernel.args, ref_arg_data):
+        if isinstance(arg, ValueArg):
             arg_value = parameters[arg.name]
 
             try:
@@ -217,24 +233,23 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
 
             args[arg.name] = arg_value
 
-        elif arg.arg_class is ImageArg:
+        elif isinstance(arg, ImageArg):
             if arg.name in kernel.get_written_variables():
                 raise NotImplementedError("write-mode images not supported in "
                         "automatic testing")
 
-            shape = evaluate_shape(arg.unvec_shape, parameters)
+            shape = evaluate_shape(arg.shape, parameters)
             assert shape == arg_desc.ref_shape
 
             # must be contiguous
             args[arg.name] = cl.image_from_array(
                     queue.context, arg_desc.ref_pre_run_array.get())
 
-        elif arg.arg_class is ArrayArg or\
-                arg.arg_class is ConstantArg:
-            shape = evaluate(arg.unvec_shape, parameters)
-            strides = evaluate(arg.unvec_strides, parameters)
+        elif isinstance(arg, (ArrayArg, ConstantArg)):
+            shape = evaluate(arg.shape, parameters)
+            strides = evaluate(get_strides(arg), parameters)
 
-            dtype = kernel_arg.dtype
+            dtype = arg.dtype
             itemsize = dtype.itemsize
             numpy_strides = [itemsize*s for s in strides]
 
@@ -280,10 +295,6 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             arg_desc.test_numpy_strides = numpy_strides
             arg_desc.test_alloc_size = alloc_size
 
-        elif arg.arg_class is TemporaryVariable:
-            # global temporary, handled by invocation logic
-            pass
-
         else:
             raise LoopyError("arg type not understood")
 
@@ -307,7 +318,9 @@ def _default_check_result(result, ref_result):
         linf_err = (
                 np.max(np.abs(ref_result-result))
                 / np.max(np.abs(ref_result-result)))
+        # pylint: disable=bad-string-format-type
         return (False,
+                # pylint: disable=bad-string-format-type
                 "results do not match -- (rel) l_2 err: %g, l_inf err: %g"
                 % (l2_err, linf_err))
     else:
@@ -454,9 +467,6 @@ def auto_test_vs_ref(
                 properties=cl.command_queue_properties.PROFILING_ENABLE)
         ref_codegen_result = lp.generate_code_v2(ref_prog)
 
-        ref_implemented_data_info = ref_codegen_result.implemented_data_infos[
-                ref_entrypoint]
-
         logger.info("{} (ref): trying {} for the reference calculation".format(
             ref_entrypoint, dev))
 
@@ -470,9 +480,7 @@ def auto_test_vs_ref(
 
         try:
             ref_args, ref_arg_data = \
-                    make_ref_args(ref_prog[ref_entrypoint],
-                            ref_implemented_data_info,
-                            ref_queue, parameters)
+                    make_ref_args(ref_prog[ref_entrypoint], ref_queue, parameters)
             ref_args["out_host"] = False
         except cl.RuntimeError as e:
             if e.code == cl.status_code.IMAGE_FORMAT_NOT_SUPPORTED:
@@ -547,8 +555,6 @@ def auto_test_vs_ref(
     test_prog_codegen_result = lp.generate_code_v2(test_prog)
 
     args = make_args(test_prog[test_entrypoint],
-            test_prog_codegen_result.implemented_data_infos[
-                test_entrypoint],
             queue, ref_arg_data, parameters)
     args["out_host"] = False
 

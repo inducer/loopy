@@ -20,9 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Union, Tuple, Optional, List
 
+import numpy as np
 from islpy import dim_type
 import islpy as isl
+
 from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
 from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
         warn_with_kernel, LoopyIndexError)
@@ -30,7 +33,13 @@ from loopy.type_inference import TypeReader
 from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
                                       CInstruction, _DataObliviousInstruction,
                                       NoOpInstruction)
+from loopy.kernel import LoopKernel
+from loopy.kernel.array import (
+        FixedStrideArrayDimTag, SeparateArrayArrayDimTag, ArrayBase)
+from loopy.kernel.data import auto, ArrayArg, ArrayDimImplementationTag
 from loopy.translation_unit import for_each_kernel
+from loopy.typing import ExpressionT
+
 from pytools import memoize_method
 
 from collections import defaultdict
@@ -145,6 +154,131 @@ def check_functions_are_resolved(kernel):
             pass
         else:
             raise NotImplementedError(type(insn))
+
+
+@for_each_kernel
+def check_separated_array_consistency(kernel: LoopKernel) -> None:
+    # Boo. This is (part of) the price of redundant representation.
+    for arg in kernel.args:
+        if isinstance(arg, ArrayArg) and arg._separation_info is not None:
+            sep_indices = arg._separation_info.sep_axis_indices_set
+            for subarg_name in arg._separation_info.subarray_names.values():
+                sub_arg = kernel.arg_dict[subarg_name]
+
+                from loopy.preprocess import _remove_at_indices
+
+                assert arg.shape is None or isinstance(arg.shape, tuple)
+                if _remove_at_indices(sep_indices, arg.shape) != sub_arg.shape:
+                    raise LoopyError(
+                            f"Shapes of '{arg.name}' and associated sep array "
+                            "'{sub_arg.name}' are not consistent.")
+
+                assert arg.dim_tags is None or isinstance(arg.dim_tags, tuple)
+                if _remove_at_indices(sep_indices, arg.dim_tags) != sub_arg.dim_tags:
+                    raise LoopyError(
+                            f"Dim tags of '{arg.name}' and associated sep array "
+                            "'{sub_arg.name}' are not consistent.")
+
+                for attr_name in ["address_space", "is_input", "is_output"]:
+                    if getattr(arg, attr_name) != getattr(sub_arg, attr_name):
+                        raise LoopyError(
+                                "Attribute '{attr_name}' of "
+                                f"'{arg.name}' and associated sep array "
+                                f"'{sub_arg.name}' is not consistent.")
+
+
+@for_each_kernel
+def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
+    from loopy.symbolic import DependencyMapper
+    from pymbolic.primitives import Variable, Expression
+
+    arg_name_vars = {Variable(name) for name in kernel.arg_dict}
+    dep_mapper = DependencyMapper()
+
+    def ensure_depends_only_on_arguments(
+            what: str, expr: Union[str, ExpressionT]) -> None:
+        if isinstance(expr, str):
+            expr = Variable(expr)
+
+        deps = dep_mapper(expr)
+        if not deps <= arg_name_vars:
+            raise LoopyError(
+                    f"not all names in {what} are arguments: "
+                    + ", ".join(str(v) for v in deps - arg_name_vars))
+
+    # {{{ process arguments
+
+    new_args = []
+    for arg in kernel.args:
+        if isinstance(arg, ArrayArg):
+            what = f"offset of argument '{arg.name}'"
+            if arg.offset is None:
+                continue
+            if arg.offset is auto:
+                pass
+            elif isinstance(arg.offset, (int, np.integer, Expression, str)):
+                ensure_depends_only_on_arguments(what, arg.offset)
+
+            else:
+                raise LoopyError(f"invalid value of offset for '{arg.name}'")
+
+            if arg.dim_tags is None:
+                new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]] = \
+                        arg.dim_tags
+            else:
+                new_dim_tags = ()
+                for iaxis, dim_tag in enumerate(arg.dim_tags):
+                    if isinstance(dim_tag, FixedStrideArrayDimTag):
+                        what = (f"stride for axis {iaxis+1} (1-based) of "
+                                        f"of argument '{arg.name}'")
+                        if dim_tag.stride is auto:
+                            pass
+                        elif isinstance(
+                                dim_tag.stride, (int, np.integer, Expression)):
+                            ensure_depends_only_on_arguments(what, dim_tag.stride)
+                        else:
+                            raise LoopyError(f"invalid value of {what}")
+
+                    assert new_dim_tags is not None
+                    new_dim_tags = new_dim_tags + (dim_tag,)
+
+            arg = arg.copy(dim_tags=new_dim_tags)
+
+        new_args.append(arg)
+
+    # }}}
+
+    # {{{ process temporary variables
+
+    for tv in kernel.temporary_variables.values():
+        what = f"offset of temporary '{tv.name}'"
+        if tv.offset is None:
+            pass
+        if tv.offset is auto:
+            pass
+        elif isinstance(tv.offset, (int, np.integer, Expression, str)):
+            ensure_depends_only_on_arguments(what, tv.offset)
+        else:
+            raise LoopyError(f"invalid value of offset for '{tv.name}'")
+
+        if tv.dim_tags is not None:
+            for iaxis, dim_tag in enumerate(tv.dim_tags):
+                if isinstance(dim_tag, FixedStrideArrayDimTag):
+                    what = ("axis stride for axis "
+                            f"{iaxis+1} (1-based) of temporary '{tv.name}'")
+                    if dim_tag.stride is auto:
+                        raise LoopyError(f"The {what}" f" is 'auto', "
+                                "which is not allowed.")
+                    elif isinstance(dim_tag.stride, (int, np.integer, Expression)):
+                        ensure_depends_only_on_arguments(what, dim_tag.stride)
+                    else:
+                        raise LoopyError(f"invalid value of {what}")
+
+                elif isinstance(dim_tag, SeparateArrayArrayDimTag):
+                    raise LoopyError(f"Axis {iaxis+1} of temporary "
+                            f"'{tv.name} is tagged 'sep'. This is not allowed.")
+
+    # }}}
 
 # }}}
 
@@ -466,24 +600,6 @@ def check_for_write_races(kernel):
 
 
 @for_each_kernel
-def check_for_orphaned_user_hardware_axes(kernel):
-    from loopy.kernel.data import LocalInameTag
-    for axis in kernel.local_sizes:
-        found = False
-        for iname in kernel.inames.values():
-            for tag in iname.tags:
-                if isinstance(tag, LocalInameTag) and tag.axis == axis:
-                    found = True
-                    break
-            if found:
-                break
-
-        if not found:
-            raise LoopyError("user-requested local hardware axis %d "
-                    "has no iname mapped to it" % axis)
-
-
-@for_each_kernel
 def check_for_data_dependent_parallel_bounds(kernel):
     """
     Check that inames tagged as hw axes have bounds that are known at kernel
@@ -546,6 +662,7 @@ class _AccessCheckMapper(WalkMapper):
     def __init__(self, kernel, callables_table):
         self.kernel = kernel
         self.callables_table = callables_table
+        super().__init__()
 
     @memoize_method
     def _make_slab(self, space, iname, start, stop):
@@ -728,7 +845,7 @@ def _check_bounds_inner(kernel, callables_table):
             domain_with_assumptions = domain & assumptions
 
         def run_acm(expr):
-            acm(expr, domain_with_assumptions, insn.id)
+            acm(expr, domain_with_assumptions, insn.id)  # noqa: B023
             return expr
 
         insn.with_transformed_expressions(run_acm)
@@ -1117,12 +1234,13 @@ def pre_schedule_checks(t_unit):
         check_for_integer_subscript_indices(t_unit)
 
         check_functions_are_resolved(t_unit)
+        check_separated_array_consistency(t_unit)
+        check_offsets_and_dim_tags(t_unit)
         # Ordering restriction:
         # check_sub_array_ref_inames_not_within_or_redn_inames should be done
         # before check_bounds. See: BatchedAccessMapMapper.map_sub_array_ref.
         check_sub_array_ref_inames_not_within_or_redn_inames(t_unit)
         check_for_duplicate_insn_ids(t_unit)
-        check_for_orphaned_user_hardware_axes(t_unit)
         check_for_double_use_of_hw_axes(t_unit)
         check_insn_attributes(t_unit)
         check_loop_priority_inames_known(t_unit)
@@ -1149,6 +1267,37 @@ def pre_schedule_checks(t_unit):
 
 
 # {{{ post-schedule / pre-code-generation checks
+
+# {{{ check_for_nested_base_storage
+
+def check_for_nested_base_storage(kernel: LoopKernel) -> None:
+    # must run after preprocessing has created variables for base_storage
+
+    from loopy.kernel.data import ArrayArg
+    arrays: List[ArrayBase] = [
+        arg for arg in kernel.args if isinstance(arg, ArrayArg)
+        ]
+    arrays = arrays + list(kernel.temporary_variables.values())
+
+    name_to_array = {ary.name: ary for ary in arrays}
+
+    for ary in kernel.temporary_variables.values():
+        if ary.base_storage:
+            storage_array = name_to_array.get(ary.base_storage, None)
+
+            if storage_array is None:
+                raise ValueError("nothing known about storage array "
+                        f"'{ary.base_storage}' serving as base_storage of "
+                        f"'{ary.name}'")
+
+            if storage_array.base_storage:
+                raise ValueError("storage array "
+                        f"'{storage_array.name}' serving as base_storage of "
+                        f"'{ary.name}' may not itself use base_storage "
+                        "(currently given as '{storage_array.base_storage}'")
+
+# }}}
+
 
 # {{{ check for unused hw axes
 
@@ -1486,7 +1635,7 @@ def _validate_kernel_call_insn(caller, call_insn, callee):
                 raise LoopyError(f"Call to '{callee.name}' in '{call_insn}' expects"
                                  f" a {next_iarg_input+1}-th positional "
                                  "argument corresponding"
-                                 f" to '{arg.name}'in the callee.")
+                                 f" to '{arg.name}' in the callee.")
             in_val = arg_id_to_arg[next_iarg_input]
             next_iarg_input += 1
             if isinstance(arg, ArrayBase):
@@ -1539,8 +1688,6 @@ def _validate_kernel_call_sites_inner(kernel, callables):
 
 
 def validate_kernel_call_sites(translation_unit):
-    from loopy import LoopKernel
-
     for name in translation_unit.callables_table:
         clbl = translation_unit[name]
         if isinstance(clbl, LoopKernel):
@@ -1550,10 +1697,31 @@ def validate_kernel_call_sites(translation_unit):
 # }}}
 
 
+# {{{ check_all_callees_have_same_index_dtype
+
+def check_all_callees_have_same_index_dtype(epoint: LoopKernel,
+                                            callables_table):
+    from loopy.kernel.function_interface import CallableKernel
+
+    epoint_clbl = callables_table[epoint.name]
+    for clbl_name in epoint_clbl.get_called_callables(callables_table,
+                                                      recursive=True):
+        clbl = callables_table[clbl_name]
+        if isinstance(clbl, CallableKernel):
+            if clbl.subkernel.index_dtype != epoint.index_dtype:
+                raise LoopyError(f"Callee '{clbl_name}' in entrypoint"
+                                 f" {epoint.name}'s callgraph does not have the"
+                                 " same index_dtype as the entrypoint. This is"
+                                 " not allowed.")
+
+# }}}
+
+
 def pre_codegen_entrypoint_checks(kernel, callables_table):
     logger.debug("pre-codegen entrypoint check %s: start" % kernel.name)
 
     kernel.target.pre_codegen_entrypoint_check(kernel, callables_table)
+    check_all_callees_have_same_index_dtype(kernel, callables_table)
 
     logger.debug("pre-codegen entrypoint check %s: done" % kernel.name)
 
@@ -1561,6 +1729,7 @@ def pre_codegen_entrypoint_checks(kernel, callables_table):
 def pre_codegen_callable_checks(kernel, callables_table):
     logger.debug("pre-codegen callable check %s: start" % kernel.name)
 
+    check_for_nested_base_storage(kernel)
     check_for_unused_hw_axes_in_insns(kernel, callables_table)
     check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
     check_that_temporaries_are_defined_in_subkernels_where_used(kernel)

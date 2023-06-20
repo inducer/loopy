@@ -21,12 +21,16 @@ THE SOFTWARE.
 """
 
 from sys import intern
-from pytools import ImmutableRecord, memoize_method
-from pytools.tag import Tag, tag_dataclass, Taggable
-from loopy.diagnostic import LoopyError
-from loopy.tools import Optional
+from functools import cached_property
+from typing import FrozenSet
+
 from warnings import warn
 import islpy as isl
+from pytools import ImmutableRecord, memoize_method
+from pytools.tag import Tag, tag_dataclass, Taggable
+
+from loopy.diagnostic import LoopyError
+from loopy.tools import Optional
 
 
 # {{{ instruction tags
@@ -321,7 +325,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         return result
 
-    def reduction_inames(self):
+    def reduction_inames(self) -> FrozenSet[str]:
         raise NotImplementedError
 
     def sub_array_ref_inames(self):
@@ -412,8 +416,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # {{{ hashing and key building
 
-    @property
-    @memoize_method
+    @cached_property
     def _key_builder(self):
         from loopy.tools import LoopyEqKeyBuilder
         key_builder = LoopyEqKeyBuilder()
@@ -639,6 +642,10 @@ class OrderedAtomic(VarAtomicity):
                 and self.ordering == other.ordering
                 and self.scope == other.scope)
 
+    def __hash__(self):
+        return hash((type(self), self.var_name,
+                     self.ordering, self.scope))
+
     @property
     def op_name(self):
         raise NotImplementedError
@@ -720,7 +727,7 @@ class MultiAssignmentBase(InstructionBase):
     @memoize_method
     def reduction_inames(self):
         from loopy.symbolic import get_reduction_inames
-        return get_reduction_inames(self.expression)
+        return frozenset(get_reduction_inames(self.expression))
 
     @memoize_method
     def sub_array_ref_inames(self):
@@ -1059,9 +1066,9 @@ class CallInstruction(MultiAssignmentBase):
         return result
 
     def arg_id_to_arg(self):
-        """:returns: a :class:`dict` mapping argument identifiers (non-negative numbers
-            for positional arguments and negative numbers
-            for assignees) to their respective values
+        """:returns: a :class:`dict` mapping argument identifiers (non-negative
+            numbers for positional arguments and negative numbers for assignees) to
+            their respective values
         """
         arg_id_to_arg = dict(enumerate(self.expression.parameters))
         for i, arg in enumerate(self.assignees):
@@ -1199,7 +1206,7 @@ class CInstruction(InstructionBase):
     """
     .. attribute:: iname_exprs
 
-        A list of tuples *(name, expr)* of inames or expressions based on them
+        A tuple of tuples *(name, expr)* of inames or expressions based on them
         that the instruction needs access to.
 
     .. attribute:: code
@@ -1237,7 +1244,7 @@ class CInstruction(InstructionBase):
 
     def __init__(self,
             iname_exprs, code,
-            read_variables=frozenset(), assignees=tuple(),
+            read_variables=frozenset(), assignees=(),
             id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
@@ -1295,11 +1302,11 @@ class CInstruction(InstructionBase):
                 new_assignees.append(i)
         # }}}
 
-        self.iname_exprs = new_iname_exprs
+        self.iname_exprs = tuple(new_iname_exprs)
         from loopy.tools import remove_common_indentation
         self.code = remove_common_indentation(code)
         self.read_variables = read_variables
-        self.assignees = new_assignees
+        self.assignees = tuple(new_assignees)
 
     # {{{ abstract interface
 
@@ -1315,10 +1322,13 @@ class CInstruction(InstructionBase):
         for subscript_deps in self.assignee_subscript_deps():
             result = result | subscript_deps
 
-        return frozenset(result) | self.predicates
+        for pred in self.predicates:
+            result = result | get_dependencies(pred)
+
+        return frozenset(result)
 
     def reduction_inames(self):
-        return set()
+        return frozenset()
 
     def sub_array_ref_inames(self):
         return frozenset()

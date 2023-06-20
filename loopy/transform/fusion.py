@@ -23,6 +23,7 @@ THE SOFTWARE.
 
 import islpy as isl
 from islpy import dim_type
+from immutables import Map
 
 from loopy.diagnostic import LoopyError
 from pymbolic import var
@@ -103,7 +104,7 @@ def _ordered_merge_lists(list_a, list_b):
 
 
 def _merge_dicts(item_name, dict_a, dict_b):
-    result = dict_a.copy()
+    result = dict(dict_a)
 
     for k, v in dict_b.items():
         if k in result:
@@ -114,7 +115,10 @@ def _merge_dicts(item_name, dict_a, dict_b):
         else:
             result[k] = v
 
-    return result
+    if isinstance(dict_a, Map):
+        return Map(result)
+    else:
+        return result
 
 
 def _merge_values(item_name, val_a, val_b):
@@ -242,8 +246,6 @@ def _fuse_two_kernels(kernela, kernelb):
             preamble_generators=_ordered_merge_lists(
                 kernela.preamble_generators, kernelb.preamble_generators),
             assumptions=new_assumptions,
-            local_sizes=_merge_dicts(
-                "local size", kernela.local_sizes, kernelb.local_sizes),
             temporary_variables=new_temporaries,
             inames=_merge_dicts(
                 "inames",
@@ -276,7 +278,8 @@ def _fuse_two_kernels(kernela, kernelb):
                 "target",
                 kernela.target,
                 kernelb.target),
-            options=kernela.options), old_b_id_to_new_b_id
+            options=kernela.options,
+            tags=kernela.tags | kernelb.tags), old_b_id_to_new_b_id
 
 # }}}
 

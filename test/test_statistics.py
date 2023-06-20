@@ -117,10 +117,10 @@ def test_op_counter_logic():
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
             [
                 """
-                e[i,k] = if(
-                        not(k<ell-2) and k>6 or k/2==ell,
-                        g[i,k]*2,
-                        g[i,k]+h[i,k]/2)
+                e[i,k] = \
+                        (g[i, k] * 2) \
+                        if (not(k<ell-2) and k>6 or k/2==ell) else \
+                        (g[i, k] + h[i, k] / 2)
                 """
             ],
             name="logic", assumptions="n,m,ell >= 1")
@@ -1529,6 +1529,41 @@ def test_no_loop_ops():
     f64_mul = op_map.filter_by(name="mul").eval_and_sum({})
     assert f64_add == 3
     assert f64_mul == 1
+
+
+def test_within_stats():
+    import loopy as lp
+    import numpy as np
+    import pytest
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        out1[i] = 2.0f * i  {tags=writes_float}
+        out2[i] = 3 * i     {tags=writes_int}
+        out3[i] = 7.0f * i  {tags=writes_float}
+        """)
+
+    op_map = lp.get_op_map(knl, subgroup_size="guess", within="tag:writes_float")
+
+    ops_dtype = op_map.group_by("dtype")
+
+    f32ops = ops_dtype[lp.Op(dtype=np.float32)].eval_with_dict({})
+
+    assert f32ops == 20
+
+    with pytest.raises(KeyError):
+        _ = ops_dtype[lp.Op(dtype=np.int32)].eval_with_dict({})
+
+    mem_map = lp.get_mem_access_map(knl, subgroup_size="guess",
+                                    within="tag:writes_float")
+
+    mem_dtype = mem_map.group_by("dtype")
+    mem_ops = mem_dtype[lp.MemAccess(dtype=np.float32)].eval_with_dict({})
+    assert mem_ops == 20
+
+    with pytest.raises(KeyError):
+        _ = ops_dtype[lp.MemAccess(dtype=np.int32)].eval_with_dict({})
 
 
 if __name__ == "__main__":

@@ -21,8 +21,12 @@ THE SOFTWARE.
 """
 
 
+from typing import FrozenSet
 import islpy as isl
 from islpy import dim_type
+from loopy.codegen.tools import CodegenOperationCacheManager
+
+from loopy.kernel import LoopKernel
 
 
 # {{{ approximate, convex bounds check generator
@@ -55,8 +59,10 @@ def get_approximate_convex_bounds_checks(domain, check_inames,
 
 # {{{ on which inames may a conditional depend?
 
-def get_usable_inames_for_conditional(kernel, sched_index, op_cache_manager):
-    result = op_cache_manager.active_inames[sched_index]
+def get_usable_inames_for_conditional(
+        kernel: LoopKernel, sched_index: int,
+        op_cache_manager: CodegenOperationCacheManager) -> FrozenSet[str]:
+    active_inames = op_cache_manager.active_inames[sched_index]
     crosses_barrier = op_cache_manager.has_barrier_within[sched_index]
 
     # Find our containing subkernel. Grab inames for all insns from there.
@@ -64,26 +70,28 @@ def get_usable_inames_for_conditional(kernel, sched_index, op_cache_manager):
 
     if subkernel_index is None:
         # Outside all subkernels - use only inames available to host.
-        assert isinstance(result, frozenset)
-        return result
+        assert isinstance(active_inames, frozenset)
+        return active_inames
 
-    parallel_inames_in_subkernel = (
-            op_cache_manager.get_parallel_inames_in_a_callkernel(
+    concurrent_inames_in_subkernel = (
+            op_cache_manager.get_concurrent_inames_in_a_callkernel(
                 subkernel_index))
 
     # not all parallel inames are usable:
     #  - local indices may not be used in conditionals that cross barriers.
     #  - ILP indices and vector lane indices are not available in loop
     #    bounds, they only get defined at the innermost level of nesting.
+    from loopy.schedule import find_used_inames_within
     from loopy.kernel.data import VectorizeTag, LocalInameTagBase, IlpBaseTag
-    usable_parallel_inames_in_subkernel = frozenset(iname
-            for iname in parallel_inames_in_subkernel
+    usable_concurrent_inames_in_subkernel = frozenset(
+            iname for iname in concurrent_inames_in_subkernel
             if (not (kernel.iname_tags_of_type(iname, LocalInameTagBase)
                          and crosses_barrier)
                 and not kernel.iname_tags_of_type(iname, VectorizeTag)
-                and not kernel.iname_tags_of_type(iname, IlpBaseTag)))
+                and not kernel.iname_tags_of_type(iname, IlpBaseTag))
+            ) & find_used_inames_within(kernel, sched_index)
 
-    return result | usable_parallel_inames_in_subkernel
+    return active_inames | usable_concurrent_inames_in_subkernel
 
 # }}}
 

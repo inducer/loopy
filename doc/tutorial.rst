@@ -112,9 +112,9 @@ always see loopy's view of a kernel by printing it.
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
     ARGUMENTS:
-    a: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) aspace: global
+    a: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) in aspace: global
     n: ValueArg, type: <auto/runtime>
-    out: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) aspace: global
+    out: type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1) out aspace: global
     ---------------------------------------------------------------------------
     DOMAINS:
     [n] -> { [i] : 0 <= i < n }
@@ -183,7 +183,7 @@ by passing :attr:`loopy.Options.write_code`.
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -235,7 +235,7 @@ inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
         if allocator is None:
             allocator = _lpy_cl_tools.DeferredAllocator(queue.context)
     <BLANKLINE>
-        # {{{ find integer arguments from shapes
+        # {{{ find integer arguments from array data
     <BLANKLINE>
         if n is None:
             if a is not None:
@@ -391,7 +391,7 @@ Let us take a look at the generated code for the above kernel:
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> knl = lp.prioritize_loops(knl, "i,j")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -442,7 +442,7 @@ Now the intended code is generated and our test passes.
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -497,7 +497,7 @@ ambiguous.
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -555,7 +555,7 @@ Consider this example:
     ...     "a[i] = 0", assumptions="n>=1")
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -586,7 +586,7 @@ relation to loop nesting. For example, it's perfectly possible to request
     ...     "a[i] = 0", assumptions="n>=1")
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.prioritize_loops(knl, "i_inner,i_outer")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -611,7 +611,7 @@ commonly called 'loop tiling':
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.split_iname(knl, "j", 16)
     >>> knl = lp.prioritize_loops(knl, "i_outer,j_outer,i_inner")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -653,7 +653,7 @@ loop's tag to ``"unr"``:
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -728,7 +728,7 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     ...     "a[i] = 0", assumptions="n>=0")
     >>> knl = lp.split_iname(knl, "i", 128,
     ...         outer_tag="g.0", inner_tag="l.0")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -774,7 +774,7 @@ assumption:
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -802,7 +802,7 @@ enabling some cost savings:
 
     >>> knl = orig_knl
     >>> knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -898,7 +898,7 @@ memory, local to each work item.
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out1, out2) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -959,7 +959,7 @@ Consider the following example:
     ...     """)
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
     >>> knl = lp.set_temporary_address_space(knl, "a_temp", "local")
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -1024,7 +1024,7 @@ transformation exists in :func:`loopy.add_prefetch`:
     ...     out[16*i_outer + i_inner] = sum(k, a[16*i_outer + i_inner])
     ...     """)
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> knl_pf = lp.add_prefetch(knl, "a")
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -1228,12 +1228,12 @@ should call :func:`loopy.get_one_linearized_kernel`:
    ...
    ---------------------------------------------------------------------------
    LINEARIZATION:
-      0: CALL KERNEL rotate_v2(extra_args=[], extra_inames=[])
+      0: CALL KERNEL rotate_v2
       1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2: RETURN FROM KERNEL rotate_v2
       3: ... gbarrier
-      4: CALL KERNEL rotate_v2_0(extra_args=[], extra_inames=[])
-      5:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
+      4: CALL KERNEL rotate_v2_0
+      5:     arr[(i_inner + i_outer*16 + 1) % n] = tmp  {id=rotate}
       6: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
@@ -1260,20 +1260,20 @@ put those instructions into the schedule.
    ...
    ---------------------------------------------------------------------------
    TEMPORARIES:
-   tmp: type: np:dtype('int32'), shape: () aspace:private
-   tmp_save_slot: type: np:dtype('int32'), shape: (n // 16, 16), dim_tags: (N1:stride:16, N0:stride:1) aspace:global
+   tmp: type: np:dtype('int32'), shape: () aspace: private
+   tmp_save_slot: type: np:dtype('int32'), shape: (n // 16, 16), dim_tags: (N1:stride:16, N0:stride:1) aspace: global
    ---------------------------------------------------------------------------
    ...
    ---------------------------------------------------------------------------
    LINEARIZATION:
-      0: CALL KERNEL rotate_v2(extra_args=['tmp_save_slot'], extra_inames=[])
+      0: CALL KERNEL rotate_v2
       1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2:     tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] = tmp  {id=tmp.save}
       3: RETURN FROM KERNEL rotate_v2
       4: ... gbarrier
-      5: CALL KERNEL rotate_v2_0(extra_args=['tmp_save_slot'], extra_inames=[])
+      5: CALL KERNEL rotate_v2_0
       6:     tmp = tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]  {id=tmp.reload}
-      7:     arr[(1 + i_inner + i_outer*16) % n] = tmp  {id=rotate}
+      7:     arr[(i_inner + i_outer*16 + 1) % n] = tmp  {id=rotate}
       8: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
@@ -1297,7 +1297,7 @@ The kernel translates into two OpenCL kernels.
    #define lid(N) ((int) get_local_id(N))
    #define gid(N) ((int) get_group_id(N))
    <BLANKLINE>
-   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int const *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
    {
      int tmp;
    <BLANKLINE>
@@ -1305,12 +1305,12 @@ The kernel translates into two OpenCL kernels.
      tmp_save_slot[16 * gid(0) + lid(0)] = tmp;
    }
    <BLANKLINE>
-   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n, __global int const *__restrict__ tmp_save_slot)
    {
      int tmp;
    <BLANKLINE>
      tmp = tmp_save_slot[16 * gid(0) + lid(0)];
-     arr[(1 + lid(0) + gid(0) * 16) % n] = tmp;
+     arr[(lid(0) + gid(0) * 16 + 1) % n] = tmp;
    }
 
 Now we can execute the kernel.
@@ -1482,7 +1482,7 @@ When we ask to see the code, the issue becomes apparent:
 
 .. doctest::
 
-    >>> knl = lp.set_options(knl, "write_code")
+    >>> knl = lp.set_options(knl, write_code=True)
     >>> from warnings import catch_warnings
     >>> with catch_warnings():
     ...     filterwarnings("always", category=lp.LoopyWarning)

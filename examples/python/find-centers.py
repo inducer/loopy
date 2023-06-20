@@ -1,6 +1,8 @@
 import numpy as np
-import loopy as lp
 import pyopencl as cl
+
+import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 cl_ctx = cl.create_some_context()
 
@@ -24,11 +26,11 @@ knl = lp.make_kernel(
                             and qbx_forced_limit * center_side[ictr] > 0)
                     )
 
-            <> post_dist_sq = if(matches, dist_sq, HUGE)
+            <> post_dist_sq = dist_sq if matches else HUGE
         end
         <> min_dist_sq, <> min_ictr = argmin(ictr, ictr, post_dist_sq)
 
-        tgt_to_qbx_center[itgt] = if(min_dist_sq < HUGE, min_ictr, -1)
+        tgt_to_qbx_center[itgt] = min_ictr if min_dist_sq < HUGE else -1
     end
     """)
 

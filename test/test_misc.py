@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from pickle import loads, dumps
+
 import pytest
 import loopy as lp
 
@@ -30,6 +32,16 @@ logger = logging.getLogger(__name__)
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+
+
+def test_kernel_pickling_and_hashing():
+    knl = lp.make_kernel("{[i]: 0<=i<10}",
+                         """
+                         y[i] = i
+                         """)
+    from loopy.tools import LoopyKeyBuilder
+    reconst_knl = loads(dumps(knl))
+    assert LoopyKeyBuilder()(knl) == LoopyKeyBuilder()(reconst_knl)
 
 
 def test_SetTrie():
@@ -78,8 +90,6 @@ def test_LazilyUnpicklingDict():
     mapping = LazilyUnpicklingDict({0: cls()})
 
     assert not cls.instance_unpickled
-
-    from pickle import loads, dumps
 
     pickled_mapping = dumps(mapping)
 
@@ -133,7 +143,6 @@ def test_LazilyUnpicklingList():
     lst = LazilyUnpicklingList([cls()])
     assert not cls.instance_unpickled
 
-    from pickle import loads, dumps
     pickled_lst = dumps(lst)
 
     # {{{ test lazy loading
@@ -188,7 +197,6 @@ def test_LazilyUnpicklingListWithEqAndPersistentHashing():
     from loopy.tools import LazilyUnpicklingListWithEqAndPersistentHashing
 
     cls = PickleDetectorForLazilyUnpicklingListWithEqAndPersistentHashing
-    from pickle import loads, dumps
 
     # {{{ test comparison of a pair of lazy lists
 

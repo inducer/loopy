@@ -117,6 +117,7 @@ Pytest POCL Examples:
     curl -L -O https://tiker.net/ci-support-v0
     . ./ci-support-v0
     build_py_project_in_venv
+    rewrite_pyopencl_test
 
     . ./.ci/examples-funcs.sh
     install_example_prereqs
@@ -163,6 +164,19 @@ Flake8:
   script:
   - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
   - . ./prepare-and-run-flake8.sh "$CI_PROJECT_NAME" test examples
+  tags:
+  - python3
+  except:
+  - tags
+
+Mypy:
+  script: |
+    EXTRA_INSTALL="pybind11 numpy"
+    curl -L -O https://tiker.net/ci-support-v0
+    . ./ci-support-v0
+    build_py_project_in_venv
+    python -m pip install mypy
+    ./run-mypy.sh
   tags:
   - python3
   except:

@@ -154,18 +154,18 @@ class _ReductionRealizationContext:
                 surrounding_insn_add_no_sync_with=set())
 
     def get_insn_kwargs(self):
-        return dict(
-                within_inames=(
+        return {
+                "within_inames": (
                     self.surrounding_within_inames
                     | frozenset(self.surrounding_insn_add_within_inames)),
-                within_inames_is_final=True,
-                depends_on=(
+                "within_inames_is_final": True,
+                "depends_on": (
                     self.surrounding_depends_on
                     | frozenset(self.surrounding_insn_add_depends_on)),
-                no_sync_with=(
+                "no_sync_with": (
                     self.surrounding_no_sync_with
                     | frozenset(self.surrounding_insn_add_no_sync_with)),
-                predicates=self.surrounding_predicates)
+                "predicates": self.surrounding_predicates}
 
 # }}}
 
@@ -725,6 +725,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                     TemporaryVariable(
                         name=new_assignee_name,
                         dtype=None,
+                        shape=(),
                         address_space=AddressSpace.PRIVATE))
 
             from pymbolic import var
@@ -794,9 +795,9 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
     new_instructions = (
             list(new_or_updated_instructions.values())
-            + list(insn
+            + [insn
                 for insn in kernel.instructions
-                if insn.id not in new_or_updated_instructions))
+                if insn.id not in new_or_updated_instructions])
 
     return kernel.copy(temporary_variables=new_temporary_variables,
                        instructions=new_instructions)
@@ -814,7 +815,7 @@ class RealizeReductionCallbackMapper(ReductionCallbackMapper):
         return self.callback(expr, **kwargs)
 
     def map_if(self, expr, *, red_realize_ctx, nresults):
-        common_kwargs = dict(nresults=nresults)
+        common_kwargs = {"nresults": nresults}
 
         # {{{ generate code for condition
 
@@ -1810,7 +1811,7 @@ def map_reduction(expr, *, red_realize_ctx, nresults):
                 % ", ".join(expr.inames))
 
     if n_local_par > 1:
-        raise LoopyError("Reduction over '%s' contains more than"
+        raise LoopyError("Reduction over '%s' contains more than "
                 "one parallel iname. It must be split "
                 "(using split_reduction_{in,out}ward) "
                 "before code generation."
@@ -1922,6 +1923,18 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
 
     kernel_changed = False
 
+    if insn_id_filter is None:
+        insn_id_filter = set(kernel.id_to_insn)
+    elif isinstance(insn_id_filter, str):
+        insn_id_filter = {insn_id_filter}
+    else:
+        from collections.abc import Collection
+        if not isinstance(insn_id_filter, Collection):
+            raise LoopyError("'insn_id_filter' can be either None, a string or a"
+                             f" collection of strings. Got {type(insn_id_filter)}.")
+        else:
+            insn_id_filter = set(insn_id_filter)
+
     while insn_queue:
         insn = insn_queue.pop(0)
 
@@ -1961,7 +1974,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                 _change_flag=_ChangeFlag(changes_made=False)
                 )
 
-        if insn_id_filter is not None and insn.id != insn_id_filter \
+        if insn.id not in insn_id_filter \
                 or not isinstance(insn, MultiAssignmentBase):
             finished_insns.append(insn)
             continue
@@ -2133,6 +2146,12 @@ def realize_reduction(t_unit, *args, **kwargs):
     If *force_outer_iname_for_scan* is not *None*, this function will attempt
     to realize candidate reductions as scans using the specified iname as the
     outer (sweep) iname.
+
+    :arg insn_id_filter: Can be one of:
+        - An instance of :class:`str` specifying the ID of the instruction
+          whose reductions are to be realized.
+        - A collection of :class:`str` specifying the IDs of the instructions
+          whose reductions are to be realized.
     """
 
     assert isinstance(t_unit, TranslationUnit)

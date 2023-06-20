@@ -1,4 +1,27 @@
-"""Base target interface."""
+"""
+.. currentmodule:: loopy
+
+.. autoclass:: TargetBase
+.. autoclass:: ASTBuilderBase
+.. autoclass:: CFamilyTarget
+.. autoclass:: CTarget
+.. autoclass:: ExecutableCTarget
+.. autoclass:: CudaTarget
+.. autoclass:: OpenCLTarget
+.. autoclass:: PyOpenCLTarget
+.. autoclass:: ISPCTarget
+
+References to Canonical Names
+-----------------------------
+
+.. currentmodule:: loopy.target
+
+.. class:: TargetBase
+
+    See :class:`loopy.TargetBase`.
+"""
+
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -23,34 +46,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-__doc__ = """
 
-.. currentmodule:: loopy
+from typing import (Any, Tuple, Generic, TypeVar, Sequence, ClassVar, Optional,
+        TYPE_CHECKING)
 
-.. autoclass:: TargetBase
-.. autoclass:: ASTBuilderBase
-.. autoclass:: CFamilyTarget
-.. autoclass:: CTarget
-.. autoclass:: ExecutableCTarget
-.. autoclass:: CudaTarget
-.. autoclass:: OpenCLTarget
-.. autoclass:: PyOpenCLTarget
-.. autoclass:: ISPCTarget
-.. autoclass:: NumbaTarget
-.. autoclass:: NumbaCudaTarget
-
-References to Canonical Names
------------------------------
-
-.. currentmodule:: loopy.target
-
-.. class:: TargetBase
-
-    See :class:`loopy.TargetBase`.
-"""
+if TYPE_CHECKING:
+    from loopy.typing import ExpressionT
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
-class TargetBase:
+ASTType = TypeVar("ASTType")
+
+
+class TargetBase():
     """Base class for all targets, i.e. different combinations of code that
     loopy can generate.
 
@@ -59,8 +68,8 @@ class TargetBase:
 
     # {{{ persistent hashing
 
-    hash_fields = ()
-    comparison_fields = ()
+    hash_fields: ClassVar[Tuple[str, ...]] = ()
+    comparison_fields: ClassVar[Tuple[str, ...]] = ()
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_hash.update(type(self).__name__.encode())
@@ -100,20 +109,20 @@ class TargetBase:
     device_program_name_prefix = ""
     device_program_name_suffix = ""
 
-    def split_kernel_at_global_barriers(self):
+    def split_kernel_at_global_barriers(self) -> bool:
         """
         :returns: a :class:`bool` indicating whether the kernel should
             be split when a global barrier is encountered.
         """
         raise NotImplementedError()
 
-    def get_host_ast_builder(self):
+    def get_host_ast_builder(self) -> ASTBuilderBase[Any]:
         """
         :returns: a class implementing :class:`ASTBuilderBase` for the host code
         """
         raise NotImplementedError()
 
-    def get_device_ast_builder(self):
+    def get_device_ast_builder(self) -> ASTBuilderBase[Any]:
         """
         :returns: a class implementing :class:`ASTBuilderBase` for the host code
         """
@@ -151,7 +160,7 @@ class TargetBase:
         raise NotImplementedError()
 
 
-class ASTBuilderBase:
+class ASTBuilderBase(Generic[ASTType]):
     """An interface for generating (host or device) ASTs.
     """
 
@@ -184,28 +193,43 @@ class ASTBuilderBase:
     def ast_module(self):
         raise NotImplementedError()
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index, function_decl, function_body):
+    def get_function_definition(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult,
+            schedule_index: int, function_decl: ASTType, function_body: ASTType
+            ) -> ASTType:
         raise NotImplementedError
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], ASTType]:
+        """Returns preambles and the AST for the function declaration."""
         raise NotImplementedError
 
-    def generate_top_of_body(self, codegen_state):
+    def generate_top_of_body(
+            self, codegen_state: CodeGenerationState) -> Sequence[ASTType]:
         return []
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    def get_temporary_decls(self, codegen_state: CodeGenerationState,
+            schedule_index: int) -> ASTType:
         raise NotImplementedError
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
-        raise NotImplementedError
+    def get_kernel_call(self, codegen_state: CodeGenerationState,
+            subkernel_name: str,
+            gsize: Tuple[ExpressionT, ...],
+            lsize: Tuple[ExpressionT, ...]) -> Optional[ASTType]:
+        raise NotImplementedError()
 
     @property
     def ast_block_class(self):
         raise NotImplementedError()
 
-    def get_expression_to_code_mapper(self, codegen_state):
+    @property
+    def ast_block_scope_class(self):
+        raise NotImplementedError()
+
+    def get_expression_to_code_mapper(self, codegen_state: CodeGenerationState):
         raise NotImplementedError()
 
     def add_vector_access(self, access_expr, index):
@@ -216,15 +240,6 @@ class ASTBuilderBase:
         :arg synchronization_kind: ``"local"`` or ``"global"``
         :arg mem_kind: ``"local"`` or ``"global"``
         """
-        raise NotImplementedError()
-
-    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
-        raise NotImplementedError()
-
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
-        raise NotImplementedError()
-
-    def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
     def emit_assignment(self, codegen_state, insn):
@@ -256,6 +271,9 @@ class ASTBuilderBase:
     def emit_comment(self, s):
         raise NotImplementedError()
 
+    def emit_noop_with_comment(self, s):
+        raise NotImplementedError()
+
     # }}}
 
     def process_ast(self, node):
@@ -279,14 +297,16 @@ class _DummyASTBlock:
         return ""
 
 
-class DummyHostASTBuilder(ASTBuilderBase):
+class DummyHostASTBuilder(ASTBuilderBase[None]):
     def get_function_definition(self, codegen_state, codegen_result,
             schedule_index, function_decl, function_body):
         return function_body
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        return None
+    def get_function_declaration(
+            self, codegen_state, codegen_result,
+            schedule_index,
+            ) -> Tuple[Sequence[Tuple[str, str]], None]:
+        return [], None
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         return []
@@ -294,7 +314,7 @@ class DummyHostASTBuilder(ASTBuilderBase):
     def get_expression_to_code_mapper(self, codegen_state):
         return _DummyExpressionToCodeMapper()
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+    def get_kernel_call(self, codegen_state, name, gsize, lsize):
         return None
 
     @property

@@ -76,7 +76,8 @@ from loopy.transform.iname import (
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
         has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn, add_inames_for_unused_hw_axes, map_domain)
+        add_inames_to_insn, add_inames_for_unused_hw_axes, map_domain,
+        remove_inames_from_insn, remove_predicates_from_insn)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
@@ -95,7 +96,8 @@ from loopy.transform.data import (
         alias_temporaries, set_argument_order,
         rename_argument,
         set_temporary_scope,
-        set_temporary_address_space)
+        set_temporary_address_space,
+        allocate_temporaries_for_base_storage)
 
 from loopy.transform.subst import (extract_subst,
         assignment_to_subst, expand_subst, find_rules_matching,
@@ -104,6 +106,7 @@ from loopy.transform.subst import (extract_subst,
 from loopy.transform.precompute import precompute
 from loopy.transform.buffer import buffer_array
 from loopy.transform.fusion import fuse_kernels
+from loopy.transform.concatenate import concatenate_arrays
 
 from loopy.transform.arithmetic import (
         fold_constants,
@@ -114,7 +117,8 @@ from loopy.transform.padding import (
         find_padding_multiple,
         add_padding)
 
-from loopy.transform.privatize import privatize_temporaries_with_inames
+from loopy.transform.privatize import (privatize_temporaries_with_inames,
+        unprivatize_temporaries_with_inames)
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
@@ -157,7 +161,6 @@ from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
-from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
 from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
 
@@ -209,6 +212,7 @@ __all__ = [
         "make_reduction_inames_unique",
         "has_schedulable_iname_nesting", "get_iname_duplication_options",
         "add_inames_to_insn", "add_inames_for_unused_hw_axes", "map_domain",
+        "remove_inames_from_insn", "remove_predicates_from_insn",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
@@ -216,6 +220,7 @@ __all__ = [
         "remove_unused_arguments",
         "alias_temporaries", "set_argument_order",
         "rename_argument", "set_temporary_scope", "set_temporary_address_space",
+        "allocate_temporaries_for_base_storage",
 
         "find_instructions", "map_instructions",
         "set_instruction_priority", "add_dependency",
@@ -230,6 +235,7 @@ __all__ = [
 
         "precompute", "buffer_array",
         "fuse_kernels",
+        "concatenate_arrays",
 
         "fold_constants", "collect_common_factors_on_increment",
 
@@ -237,6 +243,7 @@ __all__ = [
         "find_padding_multiple", "add_padding",
 
         "privatize_temporaries_with_inames",
+        "unprivatize_temporaries_with_inames",
 
         "to_batched",
 
@@ -302,7 +309,6 @@ __all__ = [
         "CWithGNULibcTarget", "ExecutableCWithGNULibcTarget",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
-        "NumbaTarget", "NumbaCudaTarget",
         "ASTBuilderBase",
 
         "Optional", "memoize_on_disk",
@@ -366,7 +372,7 @@ def set_options(kernel, *args, **kwargs):
 # {{{ library registration
 
 @for_each_kernel
-def register_preamble_generators(kernel, preamble_generators):
+def register_preamble_generators(kernel: LoopKernel, preamble_generators):
     """
     :arg manglers: list of functions of signature ``(preamble_info)``
         generating tuples ``(sortable_str_identifier, code)``,
@@ -376,7 +382,8 @@ def register_preamble_generators(kernel, preamble_generators):
     """
     from loopy.tools import unpickles_equally
 
-    new_pgens = kernel.preamble_generators[:]
+    new_pgens = tuple(kernel.preamble_generators)
+
     for pgen in preamble_generators:
         if pgen not in new_pgens:
             if not unpickles_equally(pgen):
@@ -385,7 +392,7 @@ def register_preamble_generators(kernel, preamble_generators):
                         "and would thus disrupt loopy's caches"
                         % pgen)
 
-            new_pgens.insert(0, pgen)
+            new_pgens = (pgen,) + new_pgens
 
     return kernel.copy(preamble_generators=new_pgens)
 
@@ -394,7 +401,7 @@ def register_preamble_generators(kernel, preamble_generators):
 def register_symbol_manglers(kernel, manglers):
     from loopy.tools import unpickles_equally
 
-    new_manglers = kernel.symbol_manglers[:]
+    new_manglers = kernel.symbol_manglers
     for m in manglers:
         if m not in new_manglers:
             if not unpickles_equally(m):
@@ -403,7 +410,7 @@ def register_symbol_manglers(kernel, manglers):
                         "and would disrupt loopy's caches"
                         % m)
 
-            new_manglers.insert(0, m)
+            new_manglers = (m,) + new_manglers
 
     return kernel.copy(symbol_manglers=new_manglers)
 
@@ -484,7 +491,8 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
     result = make_kernel(set_str,
             "output[%s] = input[%s]"
             % (commad_indices, commad_indices),
-            lang_version=MOST_RECENT_LANGUAGE_VERSION)
+            lang_version=MOST_RECENT_LANGUAGE_VERSION,
+            default_offset=auto)
 
     result = tag_array_axes(result, "input", old_dim_tags)
     result = tag_array_axes(result, "output", new_dim_tags)
@@ -526,6 +534,9 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
     arg_spec, out_spec = spec.split("->")
     arg_specs = arg_spec.split(",")
 
+    out_spec = out_spec.strip()
+    arg_specs = [arg_spec.strip() for arg_spec in arg_specs]
+
     if len(arg_names) != len(arg_specs):
         raise ValueError(
             f"Number of arg names ({arg_names}) should match the number "
@@ -561,9 +572,9 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
         for idx in all_indices
         )
 
-    if "name" not in knl_creation_kwargs:
-        knl_creation_kwargs["name"] = "einsum%dto%d_kernel" % (
-                len(all_indices), len(out_indices))
+    knl_creation_kwargs.setdefault("name", "einsum%dto%d_kernel" % (
+            len(all_indices), len(out_indices)))
+    knl_creation_kwargs.setdefault("lang_version", MOST_RECENT_LANGUAGE_VERSION)
 
     return make_kernel("{[%s]: %s}" % (",".join(sorted(all_indices)), constraints),
                        [Assignment(lhs, rhs)],

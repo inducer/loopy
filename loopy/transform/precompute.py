@@ -25,19 +25,84 @@ import numpy as np
 import islpy as isl
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
-        SubstitutionRuleMappingContext)
+        SubstitutionRuleMappingContext, CombineMapper)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 from loopy.translation_unit import TranslationUnit
+from loopy.kernel.instruction import MultiAssignmentBase
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.kernel.tools import (kernel_has_global_barriers,
                                 find_most_recent_global_barrier)
 from loopy.kernel.data import AddressSpace
+from loopy.types import LoopyType
 
 from pymbolic import var
+from pytools import memoize_on_first_arg
 
 from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
+
+
+# {{{ contains_subst_rule_invocation
+
+class FunctionNameCollector(CombineMapper):
+    def combine(self, values):
+        from functools import reduce
+        return reduce(frozenset.union, values, frozenset())
+
+    def map_call(self, expr):
+        return self.combine([frozenset([expr.function.name])]
+                            + [self.rec(arg) for arg in expr.parameters])
+
+    def map_call_with_kwargs(self, expr):
+        return self.combine([frozenset([expr.function.name])]
+                            + [self.rec(arg) for arg in expr.parameters]
+                            + [self.rec(arg) for arg in expr.kw_parameters.values()])
+
+    def map_algebraic_leaf(self, expr):
+        return frozenset()
+
+    def map_constant(self, expr):
+        return frozenset()
+
+
+@memoize_on_first_arg
+def _get_calls_in_expr(expr):
+    return FunctionNameCollector()(expr)
+
+
+@memoize_on_first_arg
+def _get_called_names(insn):
+    assert isinstance(insn, MultiAssignmentBase)
+    from pymbolic.primitives import Expression
+    from functools import reduce
+    return ((_get_calls_in_expr(insn.expression)
+             if isinstance(insn.expression, Expression)
+             else frozenset())
+            # indices of assignees might call the subst rules
+            | reduce(frozenset.union,
+                     (_get_calls_in_expr(assignee)
+                      for assignee in insn.assignees),
+                     frozenset())
+            | reduce(frozenset.union,
+                     (_get_calls_in_expr(pred)
+                      for pred in insn.predicates
+                      if isinstance(pred, Expression)),
+                     frozenset())
+            )
+
+
+@memoize_on_first_arg
+def _get_all_substs(kernel):
+    return frozenset(kernel.substitutions)
+
+
+def contains_a_subst_rule_invocation(kernel, insn):
+    all_substs = _get_all_substs(kernel)
+    return ((all_substs & _get_called_names(insn))
+            or (all_substs & insn.read_dependency_names()))
+
+# }}}
 
 
 class RuleAccessDescriptor(AccessDescriptor):
@@ -245,8 +310,14 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         for insn in kernel.instructions:
             self.replaced_something = False
 
+            if (isinstance(insn, MultiAssignmentBase)
+                    and not contains_a_subst_rule_invocation(kernel, insn)):
+                # 'insn' does not call a subst => do not process
+                new_insns.append(insn)
+                continue
+
             insn = insn.with_transformed_expressions(
-                    lambda expr: self(expr, kernel, insn))
+                    lambda expr: self(expr, kernel, insn))  # noqa: B023
 
             if self.replaced_something:
                 insn = insn.copy(
@@ -366,6 +437,10 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
         group size, but this default will disappear in favor of simply leaving them
         untagged in 2019. For 2018, a warning will be issued if no *default_tag* is
         specified.
+
+    :arg dtype: The dtype of the temporary variable to precompute the result
+        in. Can be either a dtype as understood by :class:`numpy.dtype` or
+        *None* to let :mod:`loopy` infer it.
 
     :arg compute_insn_id: The ID of the instruction generated to perform the
         precomputation.
@@ -540,7 +615,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         import loopy as lp
         for insn in kernel.instructions:
-            if isinstance(insn, lp.MultiAssignmentBase):
+            if (isinstance(insn, lp.MultiAssignmentBase)
+                    and contains_a_subst_rule_invocation(kernel, insn)):
                 for assignee in insn.assignees:
                     invg(assignee, kernel, insn)
                 invg(insn.expression, kernel, insn)
@@ -933,7 +1009,7 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
                 and insn.within_inames & prior_storage_axis_names):
             insn = (insn
                     .with_transformed_expressions(
-                        lambda expr: expr_subst_map(expr, kernel, insn))
+                        lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023,E501
                     .copy(within_inames=frozenset(
                         storage_axis_subst_dict.get(iname, var(iname)).name
                         for iname in insn.within_inames)))
@@ -998,12 +1074,13 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         # {{{ check and adapt existing temporary
 
-        if temp_var.dtype is lp.auto:
+        if temp_var.dtype is None:
             pass
-        elif temp_var.dtype is not lp.auto and dtype is lp.auto:
+        elif temp_var.dtype is not None and dtype is None:
             dtype = temp_var.dtype
-        elif temp_var.dtype is not lp.auto and dtype is not lp.auto:
-            if temp_var.dtype != dtype:
+        elif temp_var.dtype is not None and dtype is not None:
+            assert isinstance(temp_var.dtype, LoopyType)
+            if temp_var.dtype.numpy_dtype != dtype:
                 raise LoopyError("Existing and new dtype of temporary '%s' "
                         "do not match (existing: %s, new: %s)"
                         % (temporary_name, temp_var.dtype, dtype))

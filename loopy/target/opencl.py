@@ -23,17 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Tuple, Sequence
+
 import numpy as np
+from pymbolic import var
+from pytools import memoize_method
+from cgen import Declarator, Generable
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from pytools import memoize_method
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
-from loopy.kernel.data import AddressSpace
+from loopy.kernel.array import VectorArrayDimTag, FixedStrideArrayDimTag, ArrayBase
+from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg
 from loopy.kernel.function_interface import ScalarCallable
-from pymbolic import var
+from loopy.codegen import CodeGenerationState
+from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ dtype registry wrappers
@@ -41,7 +47,7 @@ from pymbolic import var
 
 class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     """
-    A DType registry that uses int8 for bool8 types.
+    A DType registry that uses int8 for bool_ types.
 
     .. note::
 
@@ -50,7 +56,7 @@ class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     """
     def dtype_to_ctype(self, dtype):
         from loopy.types import NumpyType
-        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool8:
+        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool_:
             return self.wrapped_registry.dtype_to_ctype(
                     NumpyType(np.int8))
         return self.wrapped_registry.dtype_to_ctype(dtype)
@@ -123,10 +129,10 @@ def _create_vector_types():
                 titles.extend((len(names)-len(titles))*[None])
 
             try:
-                dtype = np.dtype(dict(
-                    names=names,
-                    formats=[base_type]*padded_count,
-                    titles=titles))
+                dtype = np.dtype({
+                    "names": names,
+                    "formats": [base_type]*padded_count,
+                    "titles": titles})
             except NotImplementedError:
                 try:
                     dtype = np.dtype([((n, title), base_type)
@@ -415,10 +421,12 @@ def get_opencl_callables():
     *identifier* is known in OpenCL.
     """
     opencl_function_ids = (
-            {"max", "min", "dot", "pow", "abs", "acos", "asin",
-            "atan", "cos", "cosh", "sin", "sinh", "pow", "atan2", "tanh", "exp",
-            "log", "log10", "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-            "fabs", "tan", "erf", "erfc"}
+            {"dot", "abs",
+             "cos", "cosh", "sin", "sinh", "tan", "tanh",
+             "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
+             "pow", "exp", "log", "log10", "sqrt", "ceil", "floor",
+             "max", "min", "fmax", "fmin",
+             "fabs",  "erf", "erfc"}
             | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
             | set(VECTOR_LITERAL_FUNCS))
 
@@ -486,25 +494,25 @@ def opencl_preamble_generator(preamble_info):
     from loopy.tools import remove_common_indentation
     kernel = preamble_info.kernel
 
+    idx_ctype = kernel.target.dtype_to_typename(kernel.index_dtype)
     yield ("00_declare_gid_lid",
-            remove_common_indentation("""
-                #define lid(N) ((%(idx_ctype)s) get_local_id(N))
-                #define gid(N) ((%(idx_ctype)s) get_group_id(N))
-                """ % dict(idx_ctype=kernel.target.dtype_to_typename(
-                    kernel.index_dtype))))
+            remove_common_indentation(f"""
+                #define lid(N) (({idx_ctype}) get_local_id(N))
+                #define gid(N) (({idx_ctype}) get_group_id(N))
+                """))
 
     for func in preamble_info.seen_functions:
         if func.name == "pow" and func.c_name == "powf32":
-            yield("08_clpowf32", """
-            inline float powf32(float x, float y) {
-              return pow(x, y);
-            }""")
+            yield ("08_clpowf32", """
+                inline float powf32(float x, float y) {
+                return pow(x, y);
+                }""")
 
         if func.name == "pow" and func.c_name == "powf64":
-            yield("08_clpowf64", """
-            inline double powf64(double x, double y) {
-              return pow(x, y);
-            }""")
+            yield ("08_clpowf64", """
+                inline double powf64(double x, double y) {
+                return pow(x, y);
+                }""")
 
 # }}}
 
@@ -543,7 +551,7 @@ class OpenCLTarget(CFamilyTarget):
             for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
             double-exchange for floating point--not yet supported).
         :arg use_int8_for_bool: Size of *bool* is undefined as per
-            OpenCL spec, if *True* all bool8 variables would be treated
+            OpenCL spec, if *True* all bool_ variables would be treated
             as int8's.
         """
         super().__init__()
@@ -590,9 +598,7 @@ class OpenCLTarget(CFamilyTarget):
                 and dtype.numpy_dtype in list(vec.types.values()))
 
     def vector_dtype(self, base, count):
-        return NumpyType(
-                vec.types[base.numpy_dtype, count],
-                target=self)
+        return NumpyType(vec.types[base.numpy_dtype, count])
 
 # }}}
 
@@ -624,9 +630,11 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{ top-level codegen
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        fdecl = super().get_function_declaration(
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+        preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper
@@ -634,14 +642,19 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         if not codegen_state.is_entrypoint:
             # auxiliary kernels need not mention opencl speicific qualifiers
             # for a functions signature
-            return fdecl
+            return preambles, fdecl
 
-        fdecl = fdecl.subdecl
+        return preambles, FunctionDeclarationWrapper(
+                self._wrap_kernel_decl(codegen_state, schedule_index, fdecl.subdecl))
 
+    def _wrap_kernel_decl(
+            self, codegen_state: CodeGenerationState, schedule_index: int,
+            fdecl: Declarator) -> Declarator:
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
         fdecl = CLKernel(fdecl)
 
         from loopy.schedule import get_insn_ids_for_block_at
+        assert codegen_state.kernel.linearization is not None
         _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(
                     codegen_state.kernel.linearization, schedule_index),
@@ -654,7 +667,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
             fdecl = CLRequiredWorkGroupSize(local_sizes, fdecl)
 
-        return FunctionDeclarationWrapper(fdecl)
+        return fdecl
 
     def generate_top_of_body(self, codegen_state):
         from loopy.kernel.data import ImageArg
@@ -669,8 +682,6 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         return []
 
     # }}}
-
-    # {{{ code generation guts
 
     def get_expression_to_c_expression_mapper(self, codegen_state):
         return ExpressionToOpenCLCExpressionMapper(codegen_state)
@@ -697,68 +708,71 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def wrap_temporary_decl(self, decl, scope):
-        if scope == AddressSpace.LOCAL:
-            from cgen.opencl import CLLocal
+    # {{{ declarators
+
+    def wrap_decl_for_address_space(
+            self, decl: Declarator, address_space: AddressSpace) -> Declarator:
+        from cgen.opencl import CLGlobal, CLLocal
+        if address_space == AddressSpace.GLOBAL:
+            return CLGlobal(decl)
+        elif address_space == AddressSpace.LOCAL:
             return CLLocal(decl)
-        elif scope == AddressSpace.PRIVATE:
+        elif address_space == AddressSpace.PRIVATE:
             return decl
         else:
-            raise ValueError("unexpected temporary variable scope: %s"
-                    % scope)
+            raise ValueError("unexpected temporary variable address space: %s"
+                    % address_space)
 
-    def wrap_global_constant(self, decl):
-        from cgen.opencl import CLConstant
+    def wrap_global_constant(self, decl: Declarator) -> Declarator:
+        from cgen.opencl import CLGlobal, CLConstant
+        assert isinstance(decl, CLGlobal)
+        decl = decl.subdecl
+
         return CLConstant(decl)
 
-    def get_array_arg_decl(self, name, mem_address_space, shape, dtype, is_written):
-        from cgen.opencl import CLGlobal, CLLocal
-        from loopy.kernel.data import AddressSpace
+    # duplicated in CUDA, update there if updating here
+    def get_array_base_declarator(self, ary: ArrayBase) -> Declarator:
+        dtype = ary.dtype
 
-        if mem_address_space == AddressSpace.LOCAL:
-            return CLLocal(super().get_array_arg_decl(
-                name, mem_address_space, shape, dtype, is_written))
-        elif mem_address_space == AddressSpace.PRIVATE:
-            return super().get_array_arg_decl(
-                name, mem_address_space, shape, dtype, is_written)
-        elif mem_address_space == AddressSpace.GLOBAL:
-            return CLGlobal(super().get_array_arg_decl(
-                name, mem_address_space, shape, dtype, is_written))
-        else:
-            raise ValueError("unexpected array argument scope: %s"
-                    % mem_address_space)
+        vec_size = ary.vector_size(self.target)
+        if vec_size > 1:
+            dtype = self.target.vector_dtype(dtype, vec_size)
 
-    def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.kernel.data import AddressSpace
-        from warnings import warn
-        warn("get_global_arg_decl is deprecated use get_array_arg_decl "
-                "instead.", DeprecationWarning, stacklevel=2)
+        if ary.dim_tags:
+            for dim_tag in ary.dim_tags:
+                if isinstance(dim_tag, (FixedStrideArrayDimTag, VectorArrayDimTag)):
+                    # we're OK with those
+                    pass
 
-        return self.get_array_arg_decl(name, AddressSpace.GLOBAL, shape,
-                dtype, is_written)
+                else:
+                    raise NotImplementedError(
+                        f"{type(self).__name__} does not understand axis tag "
+                        f"'{type(dim_tag)}.")
 
-    def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
+        from loopy.target.c import POD
+        return POD(self, dtype, ary.name)
+
+    def get_constant_arg_declarator(self, arg: ConstantArg) -> Declarator:
+        from cgen import RestrictPointer
+        from cgen.opencl import CLConstant
+
+        # constant *is* an address space as far as CL is concerned, do not re-wrap
+        return CLConstant(RestrictPointer(self.get_array_base_declarator(
+                arg)))
+
+    def get_image_arg_declarator(
+            self, arg: ImageArg, is_written: bool) -> Declarator:
         if is_written:
             mode = "w"
         else:
             mode = "r"
 
         from cgen.opencl import CLImage
-        return CLImage(num_target_axes, mode, name)
+        return CLImage(arg.num_target_axes(), mode, arg.name)
 
-    def get_constant_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.target.c import POD  # uses the correct complex type
-        from cgen import RestrictPointer, Const
-        from cgen.opencl import CLConstant
+    # }}}
 
-        arg_decl = RestrictPointer(POD(self, dtype, name))
-
-        if not is_written:
-            arg_decl = Const(arg_decl)
-
-        return CLConstant(arg_decl)
-
-    # {{{
+    # {{{ atomics
 
     def emit_atomic_init(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
@@ -767,10 +781,6 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
         return self.emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
-
-    # }}}
-
-    # {{{ code generation for atomic update
 
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
@@ -880,8 +890,6 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 ])
         else:
             raise NotImplementedError("atomic update for '%s'" % lhs_dtype)
-
-    # }}}
 
     # }}}
 

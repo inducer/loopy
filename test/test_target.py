@@ -25,9 +25,11 @@ import sys
 import numpy as np
 import loopy as lp
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
+import pyopencl.tools
 import pytest
+import pymbolic.primitives as prim
 
 from loopy.target.c import CTarget
 from loopy.target.opencl import OpenCLTarget
@@ -54,7 +56,7 @@ __all__ = [
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
-def test_ispc_target(occa_mode=False):
+def test_ispc_target():
     from loopy.target.ispc import ISPCTarget
 
     knl = lp.make_kernel(
@@ -64,7 +66,7 @@ def test_ispc_target(occa_mode=False):
                 lp.GlobalArg("out,a", np.float32, shape=lp.auto),
                 "..."
                 ],
-            target=ISPCTarget(occa_mode=occa_mode))
+            target=ISPCTarget())
 
     knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
@@ -211,7 +213,7 @@ def test_random123(ctx_factory, tp):
             """.replace("TYPE", tp))
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     evt, (out,) = knl(queue, n=n)
 
@@ -249,42 +251,9 @@ def test_clamp(ctx_factory):
             "out[i] = clamp(x[i], a, b)")
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     evt, (out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
-
-
-def test_numba_target():
-    knl = lp.make_kernel(
-        "{[i,j,k]: 0<=i,j<M and 0<=k<N}",
-        "D[i,j] = sqrt(sum(k, (X[i, k]-X[j, k])**2))",
-        target=lp.NumbaTarget())
-
-    knl = lp.add_and_infer_dtypes(knl, {"X": np.float32})
-
-    print(lp.generate_code_v2(knl).device_code())
-
-
-def test_numba_cuda_target():
-    knl = lp.make_kernel(
-        "{[i,j,k]: 0<=i,j<M and 0<=k<N}",
-        "D[i,j] = sqrt(sum(k, (X[i, k]-X[j, k])**2))",
-        target=lp.NumbaCudaTarget())
-
-    knl = lp.assume(knl, "M>0")
-    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
-    knl = lp.split_iname(knl, "j", 128, inner_tag="l.0", slabs=(0, 1))
-    knl = lp.add_prefetch(knl, "X[i,:]",
-            fetch_outer_inames="i_inner, i_outer, j_inner",
-            default_tag="l.auto")
-    knl = lp.fix_parameters(knl, N=3)
-    knl = lp.prioritize_loops(knl, "i_inner,j_outer")
-    knl = lp.tag_inames(knl, "k:unr")
-    knl = lp.tag_array_axes(knl, "X", "N0,N1")
-
-    knl = lp.add_and_infer_dtypes(knl, {"X": np.float32})
-
-    print(lp.generate_code_v2(knl).all_code())
 
 
 def test_sized_integer_c_codegen(ctx_factory):
@@ -408,13 +377,13 @@ def test_opencl_support_for_bool(ctx_factory):
         """
         y[i] = i%2
         """,
-        [lp.GlobalArg("y", dtype=np.bool8, shape=lp.auto)])
+        [lp.GlobalArg("y", dtype=np.bool_, shape=lp.auto)])
 
     cl_ctx = ctx_factory()
     evt, (out, ) = knl(cl.CommandQueue(cl_ctx))
     out = out.get()
 
-    np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool8), 5))
+    np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool_), 5))
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
@@ -438,7 +407,7 @@ def test_nan_support(ctx_factory, target):
         [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
         seq_dependencies=True, target=target())
 
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     if target == lp.PyOpenCLTarget:
         evt, out_dict = knl(queue)
@@ -478,7 +447,7 @@ def test_opencl_emits_ternary_operators_correctly(ctx_factory, target):
             """, seq_dependencies=True,
             target=target())
 
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     if target == lp.PyOpenCLTarget:
         evt, out_dict = knl(queue)
@@ -534,7 +503,7 @@ def test_inf_support(ctx_factory, target, dtype):
                       dtype=dtype)
          ], target=target())
 
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     if target == lp.PyOpenCLTarget:
         _, out_dict = knl(queue)
@@ -557,7 +526,7 @@ def test_input_args_are_required(ctx_factory):
         """
         g[i] = f[i] + 1.5
         """,
-        [lp.GlobalArg("f, g", dtype="float64"), ...]
+        [lp.GlobalArg("f, g", shape=lp.auto, dtype="float64"), ...]
     )
 
     knl2 = lp.make_kernel(
@@ -582,7 +551,7 @@ def test_input_args_are_required(ctx_factory):
         f[i] = 3.
         g[i] = f[i] + 1.5
         """,
-        [lp.GlobalArg("f, g", dtype="float64"), ...]
+        [lp.GlobalArg("f, g", shape=lp.auto, dtype="float64"), ...]
     )
 
     # FIXME: this should not raise!
@@ -640,7 +609,7 @@ def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
         ...],
         seq_dependencies=True)
     knl = lp.tag_inames(knl, {"i": "g.0", "j": "g.0"})
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     my_allocator = RecordingAllocator(cq)
     _, out = knl(cq, allocator=my_allocator)
@@ -706,6 +675,150 @@ def test_zero_size_temporaries(ctx_factory):
 
     _evt, (out, ) = knl(cq)
     assert out.shape == (0,)
+
+
+def test_empty_array_output(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i]: i > 0 and i < 0}",
+        [],
+        [lp.GlobalArg("a", shape=(0,), dtype=np.float32,
+            is_output=True, is_input=False)])
+
+    _evt, (out, ) = knl(cq)
+    assert out.shape == (0,)
+
+
+def test_empty_array_stride_check(ctx_factory):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    einsum = lp.make_einsum("mij,j->mi", ["a", "x"])
+    einsum(cq, a=np.random.randn(3, 0, 5), x=np.random.randn(5))
+
+    if einsum.default_entrypoint.options.skip_arg_checks:
+        pytest.skip("args checks disabled, cannot check")
+
+    with pytest.raises(ValueError):
+        einsum(cq, a=np.random.randn(3, 2, 5).copy(order="F"), x=np.random.randn(5))
+
+
+def test_no_op_with_predicate(ctx_factory):
+    ctx = ctx_factory()
+
+    predicate = prim.Comparison(prim.Variable("a"), ">", 0)
+    knl = lp.make_kernel([],
+        ["<> a = 1", lp.NoOpInstruction(predicates=[predicate])])
+    code = lp.generate_code_v2(knl).device_code()
+    cl.Program(ctx, code).build()
+
+
+def test_empty_array_stride_check_fortran(ctx_factory):
+    # https://github.com/inducer/loopy/issues/583
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    import pyopencl.array as cla
+
+    a_f = cla.Array(queue, (0, 2), np.float64, order="F")
+
+    knl = lp.make_kernel(
+        "{ [i,j]: 0<=i<n and 0<=j<m }",
+        "output[i,j] = sqrt(input[i,j])")
+
+    knl(queue, input=a_f)
+
+
+@pytest.mark.parametrize("with_gbarrier", [False, True])
+def test_passing_bajillions_of_svm_args(ctx_factory, with_gbarrier):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from pyopencl.characterize import has_coarse_grain_buffer_svm
+    if not has_coarse_grain_buffer_svm(queue.device):
+        pytest.skip("device does not support SVM, which is required for this test")
+
+    if with_gbarrier:
+        gbarrier_part = [
+            # Make this artificially have multiple subkernels to check that
+            # declarations are correctly emitted in that setting as well
+            # https://github.com/inducer/loopy/pull/642#pullrequestreview-1087588248
+            "z[j] = 0 {id=init_z}",
+            "... gbarrier {dep=init_z,id=gb}"
+             ]
+
+        dep = "{dep=gb}"
+
+    else:
+        gbarrier_part = []
+        dep = ""
+
+    nargsets = 300
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i,j<n}",
+            gbarrier_part + [
+                f"c{iargset}[i] = a{iargset}[i]+b{iargset}[i] {dep}"
+                for iargset in range(nargsets)
+            ], [
+                lp.GlobalArg(f"{name}{iargset}", shape=lp.auto, dtype=np.float32)
+                for name in "abc"
+                for iargset in range(nargsets)
+                ] + [...],
+            target=lp.PyOpenCLTarget(limit_arg_size_nbytes=20),
+            options=lp.Options(return_dict=True))
+
+    alloc = cl.tools.SVMAllocator(
+            ctx, flags=cl.svm_mem_flags.READ_WRITE, queue=queue)
+
+    multiplier = 10_000
+    args = {}
+    for iargset in range(nargsets):
+        args[f"a{iargset}"] = (
+                cl.array.zeros(queue, 20, np.float32, allocator=alloc)
+                + np.float32(multiplier * iargset))
+        args[f"b{iargset}"] = (
+                cl.array.zeros(queue, 20, np.float32, allocator=alloc)
+                + np.float32(iargset))
+
+    evt, res = knl(queue, **args, allocator=alloc)
+
+    for iargset in range(nargsets):
+        assert (res[f"c{iargset}"].get() == iargset * multiplier + iargset).all()
+
+
+def test_no_uint_in_cuda_code():
+    # https://github.com/inducer/compyte/pull/44
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i] = a[i] + b[i]", target=lp.CudaTarget())
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.dtype(np.uint32)})
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.dtype(np.uint32)})
+    assert "uint" not in lp.generate_code_v2(knl).device_code()
+
+
+def test_ispc_private_var():
+    # https://github.com/inducer/loopy/issues/763
+    knl = lp.make_kernel(
+            "{ [k]: 0<=k<K }",
+            """
+            <float32> b = 6.0 * float_pos[k]
+            output[k] = 2.0 * b
+            """, [lp.ValueArg("K", is_input=True),
+                  lp.GlobalArg("float_pos", np.float32, shape=lp.auto,
+                               is_input=True, is_output=False),
+                  lp.GlobalArg("output", np.uint8, shape=lp.auto, is_input=False,
+                               is_output=True)],
+            target=lp.ISPCTarget(), assumptions="1<K")
+
+    knl = lp.split_iname(knl, "k", 8, inner_tag="l.0")
+    knl = lp.set_temporary_address_space(knl, "b", "private")
+
+    cg_result = lp.generate_code_v2(knl)
+
+    print(cg_result.device_code())
 
 
 if __name__ == "__main__":
