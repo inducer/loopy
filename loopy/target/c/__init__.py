@@ -488,8 +488,8 @@ class CMathCallable(ScalarCallable):
         # {{{ (abs|max|min) -> (fabs|fmax|fmin)
 
         if name in ["abs", "min", "max"]:
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for dtype in arg_id_to_dtype.values()])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for dtype in arg_id_to_dtype.values()])
             if dtype.kind == "f":
                 name = "f" + name
 
@@ -558,9 +558,9 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
             real_dtype = np.empty(0, dtype=dtype).real.dtype
 
             if name in ["fmax", "fmin", "copysign"] and dtype.kind == "c":
@@ -598,9 +598,9 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
             if dtype.kind not in "iu":
                 # only support integers for now to avoid having to deal with NaNs
                 raise LoopyError(f"{name} does not support '{dtype}' arguments.")
