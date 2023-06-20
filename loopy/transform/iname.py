@@ -2503,9 +2503,9 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
 
 
 def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
-                 preserve_tags=True, within=None):
+                 within=None, preserve_tags=False):
     """
-    Single iname version of :func:`loopy.transform.iname.rename_inames`.
+    Single iname version of :func:`loopy.rename_inames`.
     :arg existing_ok: execute even if *new_iname* already exists
     :arg within: a stack match understood by :func:`loopy.match.parse_stack_match`.
     :arg preserve_tags: copy the tags on the old iname to the new iname
