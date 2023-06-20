@@ -151,6 +151,13 @@ class Options(ImmutableRecord):
         allowing for tweaks before the code is passed on to
         the target for compilation.
 
+    .. attribute:: allow_fp_reordering
+
+        Allow re-ordering of floating point arithmetic. Re-ordering may
+        give different results as floating point arithmetic is not
+        associative in addition and mulitplication. Default is *True*.
+        Note that the implementation of this option is currently incomplete.
+
     .. attribute:: build_options
 
         Options to pass to the target compiler when building the kernel.
@@ -246,6 +253,7 @@ class Options(ImmutableRecord):
                 write_wrapper=kwargs.get("write_wrapper", False),
                 write_code=kwargs.get("write_code", False),
                 edit_code=kwargs.get("edit_code", False),
+                allow_fp_reordering=kwargs.get("allow_fp_reordering", True),
                 build_options=kwargs.get("build_options", []),
                 allow_terminal_colors=kwargs.get("allow_terminal_colors",
                     allow_terminal_colors_def),

@@ -77,7 +77,7 @@ def main():
         target = ISPCTarget
     elif args.target == "ispc-occa":
         from loopy.target.ispc import ISPCTarget
-        target = lambda: ISPCTarget(occa_mode=True)  # noqa: E731
+        target = lambda: ISPCTarget()  # noqa: E731
     elif args.target == "c":
         from loopy.target.c import CTarget
         target = CTarget

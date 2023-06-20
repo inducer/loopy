@@ -163,7 +163,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         from loopy.kernel.array import _apply_offset
                         from loopy.symbolic import simplify_using_aff
 
-                        subscript = _apply_offset(0, expr.name, arg)
+                        subscript = _apply_offset(0, arg)
                         result = self.make_subscript(
                                 arg,
                                 var(expr.name),
@@ -223,7 +223,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         index_tuple = tuple(
                 simplify_using_aff(self.kernel, idx) for idx in expr.index_tuple)
 
-        access_info = get_access_info(self.kernel.target, ary, index_tuple,
+        access_info = get_access_info(self.kernel, ary, index_tuple,
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 
@@ -394,7 +394,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         result_type = self.infer_type(expr)
         return type(expr)(
                 self.rec(expr.condition, type_context,
-                         to_loopy_type(np.bool8)),
+                         to_loopy_type(np.bool_)),
                 self.rec(expr.then, type_context, result_type),
                 self.rec(expr.else_, type_context, result_type),
                 )
@@ -578,8 +578,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         else:
             if isinstance(expr.data_type(float("nan")), np.float32):
                 return p.Variable("NAN")
-            elif isinstance(expr.data_type(float("nan")), (np.float64,
-                                                              np.float128)):
+            elif isinstance(expr.data_type(float("nan")), np.floating):
                 registry = self.codegen_state.ast_builder.target.get_dtype_registry()
                 lpy_type = NumpyType(np.dtype(expr.data_type))
                 cast = var("(%s)" % registry.dtype_to_ctype(lpy_type))

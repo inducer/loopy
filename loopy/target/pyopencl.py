@@ -22,16 +22,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from warnings import warn
+from typing import Sequence, Tuple, List, Union, Optional, cast
+
 import numpy as np
 import pymbolic.primitives as p
+import genpy
+from cgen import (Generable, Pointer, Const, FunctionBody, Collection, Initializer,
+                Line, Block)
+from cgen.opencl import CLGlobal
 
 from loopy.target.opencl import (OpenCLTarget, OpenCLCASTBuilder,
         ExpressionToOpenCLCExpressionMapper)
 from loopy.target.python import PythonASTBuilderBase
+from loopy.kernel import LoopKernel
 from loopy.types import NumpyType
+from loopy.typing import ExpressionT
 from loopy.diagnostic import LoopyError, LoopyTypeError
-from warnings import warn
 from loopy.kernel.function_interface import ScalarCallable
+from loopy.kernel.data import (
+        TemporaryVariable, ValueArg, ArrayArg, ImageArg, ConstantArg)
+from loopy.schedule import CallKernel
+from loopy.codegen import CodeGenerationState
+from loopy.codegen.result import CodeGenerationResult
 
 import logging
 logger = logging.getLogger(__name__)
@@ -124,11 +137,11 @@ class PyOpenCLCallable(ScalarCallable):
             dtype = self.arg_id_to_dtype[-1]
             ctype = target.dtype_to_typename(dtype)
 
-            yield(f"40_{name}", f"""
-            static inline {ctype} {name}({ctype} x) {{
-                return {ret};
-            }}
-            """)
+            yield (f"40_{name}", f"""
+                static inline {ctype} {name}({ctype} x) {{
+                    return {ret};
+                }}
+                """)
 
 
 def get_pyopencl_callables():
@@ -157,11 +170,18 @@ def pyopencl_preamble_generator(preamble_info):
         if has_double:
             yield ("10_include_complex_header", """
                 #define PYOPENCL_DEFINE_CDOUBLE
+                #ifndef PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT
+                #define PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT 1
+                #endif
 
                 #include <pyopencl-complex.h>
                 """)
         else:
             yield ("10_include_complex_header", """
+                #ifndef PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT
+                #define PYOPENCL_COMPLEX_ENABLE_EXTENDED_ALIGNMENT 1
+                #endif
+
                 #include <pyopencl-complex.h>
                 """)
 
@@ -216,6 +236,33 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if not is_complex:
             return super().map_sum(expr, type_context)
+        elif not self.kernel.options.allow_fp_reordering:
+            if len(expr.children) == 0:
+                return tgt_dtype(0)
+
+            tgt_name = self.complex_type_name(tgt_dtype)
+            result = None
+            lhs_is_complex = False
+
+            for child in expr.children:
+                rhs_is_complex = self.infer_type(child).is_complex()
+                if rhs_is_complex:
+                    child_val = self.rec(child, type_context, tgt_dtype)
+                else:
+                    child_val = self.rec(child, type_context)
+
+                if result is None:
+                    result = child_val
+                elif lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_add")(result, child_val)
+                elif lhs_is_complex and not rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_addr")(result, child_val)
+                elif not lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_radd")(result, child_val)
+                else:
+                    result = p.Sum((result, child_val))
+                lhs_is_complex = lhs_is_complex or rhs_is_complex
+            return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
@@ -231,18 +278,54 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
             c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
 
+            mul_name = f"{tgt_name}_mul"
+
             def binary_tree_add(start, end):
                 if start + 1 == end:
                     return c_applied[start]
                 mid = (start + end)//2
                 lsum = binary_tree_add(start, mid)
                 rsum = binary_tree_add(mid, end)
-                return p.Variable("%s_add" % tgt_name)(lsum, rsum)
+
+                # FMAs should ideally be recognized by the compiler, but some
+                # compilers fail to do so. For eg:
+                #
+                #    res = complex_add(c, complex_mul(a, b))
+                #
+                # leads to code that looks like below because of the temporary
+                # given by ``complex_mul(a, b)``.
+                #
+                #    tmp.real = a.real * b.real - a.imag * b.imag
+                #    tmp.imag = a.real * b.imag + a.imag * b.real
+                #    res.real = c.real + tmp.real
+                #    res.imag = c.imag + tmp.imag
+                #
+                # clang can fuse across multiple statements like this with
+                # -ffp-contract=fast which is the default for PTX codegen, but
+                # for some unknown reason, clang fails to see the FMAs.
+                #
+                # We need to do this only for complex as we haev temporaries
+                # only in complex. For reals, the code generated looks like
+                #
+                #    res = c + a * b
+                #
+                # and clang is able to generate an FMA for this code.
+
+                if isinstance(lsum, p.Call) and isinstance(lsum.function,
+                        p.Variable) and lsum.function.name == mul_name:
+                    return p.Variable(f"{tgt_name}_fma")(*lsum.parameters, rsum)
+
+                elif isinstance(rsum, p.Call) and isinstance(rsum.function,
+                        p.Variable) and rsum.function.name == mul_name:
+                    return p.Variable(f"{tgt_name}_fma")(*rsum.parameters, lsum)
+
+                else:
+                    return p.Variable(f"{tgt_name}_add")(lsum, rsum)
 
             complex_sum = binary_tree_add(0, len(c_applied))
 
             if reals:
-                return p.Variable("%s_radd" % tgt_name)(real_sum, complex_sum)
+                return p.Variable(f"{tgt_name}_radd")(real_sum, complex_sum)
             else:
                 return complex_sum
 
@@ -261,6 +344,30 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if not is_complex:
             return super().map_product(expr, type_context)
+        elif not self.kernel.options.allow_fp_reordering:
+            tgt_name = self.complex_type_name(tgt_dtype)
+
+            result = None
+            lhs_is_complex = False
+            for child in expr.children:
+                rhs_is_complex = self.infer_type(child).is_complex()
+                if rhs_is_complex:
+                    child_val = self.rec(child, type_context, tgt_dtype)
+                else:
+                    child_val = self.rec(child, type_context)
+
+                if result is None:
+                    result = child_val
+                elif lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_mul")(result, child_val)
+                elif lhs_is_complex and not rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_mulr")(result, child_val)
+                elif not lhs_is_complex and rhs_is_complex:
+                    result = p.Variable(f"{tgt_name}_rmul")(result, child_val)
+                else:
+                    result = p.Product((result, child_val))
+                lhs_is_complex = lhs_is_complex or rhs_is_complex
+            return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
@@ -384,8 +491,16 @@ class PyOpenCLTarget(OpenCLTarget):
     host_program_name_prefix = "_lpy_host_"
     host_program_name_suffix = ""
 
-    def __init__(self, device=None, pyopencl_module_name="_lpy_cl",
-                 atomics_flavor=None, use_int8_for_bool=True):
+    # FIXME Not yet complete
+    limit_arg_size_nbytes: Optional[int]
+    pointer_size_nbytes: int
+
+    def __init__(
+            self, device=None, *, pyopencl_module_name: str = "_lpy_cl",
+            atomics_flavor=None, use_int8_for_bool: bool = True,
+            limit_arg_size_nbytes: Optional[int] = None,
+            pointer_size_nbytes: Optional[int] = None
+            ) -> None:
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
 
@@ -404,6 +519,12 @@ class PyOpenCLTarget(OpenCLTarget):
                     DeprecationWarning, stacklevel=2)
 
         self.pyopencl_module_name = pyopencl_module_name
+
+        if pointer_size_nbytes is None:
+            pointer_size_nbytes = tuple.__itemsize__
+
+        self.limit_arg_size_nbytes = limit_arg_size_nbytes
+        self.pointer_size_nbytes = pointer_size_nbytes
 
     @property
     def device(self):
@@ -460,9 +581,7 @@ class PyOpenCLTarget(OpenCLTarget):
             from pyopencl.array import vec
             vec_types = vec.types
 
-        return NumpyType(
-                vec_types[base.numpy_dtype, count],
-                target=self)
+        return NumpyType(vec_types[base.numpy_dtype, count])
 
     def alignment_requirement(self, type_decl):
         import struct
@@ -476,7 +595,9 @@ class PyOpenCLTarget(OpenCLTarget):
     # }}}
 
     def get_kernel_executor_cache_key(self, queue, **kwargs):
-        return queue.context
+        import weakref
+        # Use weakref for CL context to avoid keeping context artifically alive
+        return (weakref.ref(queue.context), kwargs["entrypoint"])
 
     def preprocess_translation_unit_for_passed_args(self, t_unit, epoint,
                                                    passed_args_dict):
@@ -529,20 +650,17 @@ class PyOpenCLTarget(OpenCLTarget):
 
 # {{{ host code: value arg setup
 
-def generate_value_arg_setup(kernel, implemented_data_info):
+def generate_value_arg_setup(
+        kernel: LoopKernel, passed_names: Sequence[str]
+        ) -> genpy.Suite:
     options = kernel.options
 
     import loopy as lp
     from loopy.kernel.array import ArrayBase
 
-    cl_arg_idx = 0
-    arg_idx_to_cl_arg_idx = {}
-
-    fp_arg_count = 0
-
     from genpy import If, Raise, Statement as S, Suite
 
-    result = []
+    result: List[str] = []
     gen = result.append
 
     buf_indices_and_args = []
@@ -559,32 +677,32 @@ def generate_value_arg_setup(kernel, implemented_data_info):
             buf_indices_and_args.append(arg_idx)
             buf_indices_and_args.append(f"pack('{typechar}', {expr_str})")
 
-    for arg_idx, idi in enumerate(implemented_data_info):
-        arg_idx_to_cl_arg_idx[arg_idx] = cl_arg_idx
+    for arg_idx, passed_name in enumerate(passed_names):
+        if passed_name in kernel.all_inames():
+            add_buf_arg(arg_idx, kernel.index_dtype.numpy_dtype.char, passed_name)
+            continue
 
-        if not issubclass(idi.arg_class, lp.ValueArg):
-            assert issubclass(idi.arg_class, ArrayBase)
+        var_descr = kernel.get_var_descriptor(passed_name)
+        assert var_descr.dtype is not None
 
-            # assume each of those generates exactly one...
-            cl_arg_idx += 1
+        if not isinstance(var_descr, lp.ValueArg):
+            assert isinstance(var_descr, ArrayBase)
 
             continue
 
         if not options.skip_arg_checks:
-            gen(If("%s is None" % idi.name,
-                Raise('RuntimeError("input argument \'{name}\' '
-                        'must be supplied")'.format(name=idi.name))))
+            gen(If(f"{passed_name} is None",
+                Raise('RuntimeError("input argument \'{var_descr.name}\' '
+                        'must be supplied")')))
 
-        if idi.dtype.is_composite():
-            buf_indices_and_args.append(cl_arg_idx)
-            buf_indices_and_args.append(f"{idi.name}")
+        if var_descr.dtype.is_composite():
+            buf_indices_and_args.append(arg_idx)
+            buf_indices_and_args.append(f"{passed_name}")
 
-            cl_arg_idx += 1
+        elif var_descr.dtype.is_complex():
+            assert isinstance(var_descr.dtype, NumpyType)
 
-        elif idi.dtype.is_complex():
-            assert isinstance(idi.dtype, NumpyType)
-
-            dtype = idi.dtype
+            dtype = var_descr.dtype
 
             if dtype.numpy_dtype == np.complex64:
                 arg_char = "f"
@@ -593,24 +711,17 @@ def generate_value_arg_setup(kernel, implemented_data_info):
             else:
                 raise TypeError("unexpected complex type: %s" % dtype)
 
-            buf_indices_and_args.append(cl_arg_idx)
+            buf_indices_and_args.append(arg_idx)
             buf_indices_and_args.append(
                 f"_lpy_pack('{arg_char}{arg_char}', "
-                f"{idi.name}.real, {idi.name}.imag)")
-            cl_arg_idx += 1
+                f"{passed_name}.real, {passed_name}.imag)")
 
-            fp_arg_count += 2
-
-        elif isinstance(idi.dtype, NumpyType):
-            if idi.dtype.dtype.kind == "f":
-                fp_arg_count += 1
-
-            add_buf_arg(cl_arg_idx, idi.dtype.dtype.char, idi.name)
-            cl_arg_idx += 1
+        elif isinstance(var_descr.dtype, NumpyType):
+            add_buf_arg(arg_idx, var_descr.dtype.dtype.char, passed_name)
 
         else:
             raise LoopyError("do not know how to pass argument of type '%s'"
-                    % idi.dtype)
+                    % var_descr.dtype)
 
     for arg_kind, args_and_indices, entry_length in [
             ("_buf", buf_indices_and_args, 2),
@@ -622,23 +733,29 @@ def generate_value_arg_setup(kernel, implemented_data_info):
                     f"({', '.join(str(i) for i in args_and_indices)},), "
                     ")"))
 
-    return Suite(result), arg_idx_to_cl_arg_idx, cl_arg_idx
+    return Suite(result)
 
 # }}}
 
 
-def generate_array_arg_setup(kernel, implemented_data_info, arg_idx_to_cl_arg_idx):
+def generate_array_arg_setup(
+        kernel: LoopKernel, passed_names: Sequence[str],
+        ) -> genpy.Generable:
     from loopy.kernel.array import ArrayBase
     from genpy import Statement as S, Suite
 
-    result = []
+    result: List[str] = []
     gen = result.append
 
-    cl_indices_and_args = []
-    for arg_idx, arg in enumerate(implemented_data_info):
-        if issubclass(arg.arg_class, ArrayBase):
-            cl_indices_and_args.append(arg_idx_to_cl_arg_idx[arg_idx])
-            cl_indices_and_args.append(arg.name)
+    cl_indices_and_args: List[Union[int, str]] = []
+    for arg_idx, passed_name in enumerate(passed_names):
+        if passed_name in kernel.all_inames():
+            continue
+
+        var_descr = kernel.get_var_descriptor(passed_name)
+        if isinstance(var_descr, ArrayBase):
+            cl_indices_and_args.append(arg_idx)
+            cl_indices_and_args.append(passed_name)
 
     if cl_indices_and_args:
         assert len(cl_indices_and_args) % 2 == 0
@@ -658,13 +775,18 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     # {{{ code generation guts
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index, function_decl, function_body):
-        from loopy.kernel.data import TemporaryVariable
+    def get_function_definition(
+            self, codegen_state, codegen_result,
+            schedule_index: int, function_decl, function_body: genpy.Generable
+            ) -> genpy.Function:
+        assert schedule_index == 0
+
+        from loopy.schedule.tools import get_kernel_arg_info
+        kai = get_kernel_arg_info(codegen_state.kernel)
+
         args = (
                 ["_lpy_cl_kernels", "queue"]
-                + [idi.name for idi in codegen_state.implemented_data_info
-                    if not issubclass(idi.arg_class, TemporaryVariable)]
+                + list(kai.passed_arg_names)
                 + ["wait_for=None", "allocator=None"])
 
         from genpy import (For, Function, Suite, Return, Line, Statement as S)
@@ -689,10 +811,12 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     Return("_lpy_evt"),
                     ]))
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], genpy.Generable]:
         # no such thing in Python
-        return None
+        return [], None
 
     def _get_global_temporaries(self, codegen_state):
         from loopy.kernel.data import AddressSpace
@@ -704,14 +828,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from genpy import Assign, Comment, Line
-        from collections import defaultdict
-        from numbers import Number
-        import pymbolic.primitives as prim
-
-        def alloc_nbytes(tv):
-            from functools import reduce
-            from operator import mul
-            return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
@@ -720,37 +836,14 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not global_temporaries:
             return []
 
-        # {{{ allocate space for the base_storage
-
-        base_storage_sizes = defaultdict(set)
-
-        for tv in global_temporaries:
-            if tv.base_storage:
-                base_storage_sizes[tv.base_storage].add(tv.nbytes)
-
-        # }}}
-
         allocated_var_names = []
         code_lines = []
         code_lines.append(Line())
         code_lines.append(Comment("{{{ allocate global temporaries"))
         code_lines.append(Line())
 
-        for name, sizes in base_storage_sizes.items():
-            if all(isinstance(s, Number) for s in sizes):
-                size = max(sizes)
-            else:
-                size = prim.Max(tuple(sizes))
-
-            allocated_var_names.append(name)
-            code_lines.append(Assign(name,
-                                     f"allocator({ecm(size, PREC_NONE, 'i')})"))
-
         for tv in global_temporaries:
-            if tv.base_storage:
-                assert tv.base_storage in base_storage_sizes
-                code_lines.append(Assign(tv.name, tv.base_storage))
-            else:
+            if not tv.base_storage:
                 nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
                 allocated_var_names.append(tv.name)
                 code_lines.append(Assign(tv.name,
@@ -765,7 +858,18 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         return code_lines
 
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+    def get_kernel_call(
+            self, codegen_state: CodeGenerationState,
+            subkernel_name: str,
+            gsize: Tuple[ExpressionT, ...], lsize: Tuple[ExpressionT, ...]
+            ) -> genpy.Suite:
+        from genpy import Suite, Assign, Assert, Line, Comment
+
+        kernel = codegen_state.kernel
+
+        from loopy.schedule.tools import get_subkernel_arg_info
+        skai = get_subkernel_arg_info(kernel, subkernel_name)
+
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
         if not gsize:
@@ -773,18 +877,66 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not lsize:
             lsize = (1,)
 
-        all_args = codegen_state.implemented_data_info + extra_args
+        assert isinstance(kernel.target, PyOpenCLTarget)
+        regular_arg_names, struct_overflow_arg_names = split_args_for_overflow(
+                kernel, skai.passed_names,
+                limit_arg_size_nbytes=kernel.target.limit_arg_size_nbytes,
+                pointer_size_nbytes=kernel.target.pointer_size_nbytes)
 
-        value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
-            generate_value_arg_setup(
-                    codegen_state.kernel,
-                    all_args)
+        value_arg_code = generate_value_arg_setup(
+                codegen_state.kernel, regular_arg_names)
         arry_arg_code = generate_array_arg_setup(
-            codegen_state.kernel,
-            all_args,
-            arg_idx_to_cl_arg_idx)
+                codegen_state.kernel, regular_arg_names)
 
-        from genpy import Suite, Assign, Assert, Line, Comment
+        if struct_overflow_arg_names:
+            regular_arg_names_set = frozenset(regular_arg_names)
+            struct_overflow_arg_names_set = frozenset(
+                    struct_overflow_arg_names)
+
+            py_passed_args = []
+            struct_pack_types = []
+            struct_pack_args = []
+
+            for arg_name in skai.passed_names:
+                if arg_name in regular_arg_names_set:
+                    py_passed_args.append(arg_name)
+                else:
+                    assert arg_name in struct_overflow_arg_names_set
+
+                    arg = kernel.get_var_descriptor(arg_name)
+                    assert arg.dtype is not None
+                    if isinstance(arg, ValueArg):
+                        struct_pack_types.append(arg.dtype.numpy_dtype.char)
+                        struct_pack_args.append(arg_name)
+                    elif isinstance(arg, (ArrayArg, ConstantArg, TemporaryVariable)):
+                        struct_pack_types.append("P")
+                        struct_pack_args.append(f"{arg_name}.svm_ptr")
+                    elif isinstance(arg, ImageArg):
+                        raise AssertionError()
+                    else:
+                        raise ValueError(f"unrecognized arg type: '{type(arg)}'")
+
+            cl_arg_count = len(regular_arg_names)
+            overflow_args_code = Suite([
+                # It's important for _lpy_overflow_args_buf to be in a variable.
+                # Otherwise, no reference to it will survive until the kernel
+                # launch and the buffer may be released.
+                Assign("_lpy_overflow_args_buf",
+                    "_lpy_cl.Buffer(queue.context, "
+                    "_lpy_cl.mem_flags.READ_ONLY "
+                    "| _lpy_cl.mem_flags.COPY_HOST_PTR, "
+                    "hostbuf="
+                    f"_lpy_pack({repr(''.join(struct_pack_types))}, "
+                    f"{', '.join(struct_pack_args)}))"),
+                Line(f"_lpy_knl.set_arg({cl_arg_count}, _lpy_overflow_args_buf)")
+                ])
+
+            cl_arg_count += 1
+
+        else:
+            cl_arg_count = len(skai.passed_names)
+            overflow_args_code = Suite([])
+
         from pymbolic.mapper.stringifier import PREC_NONE
 
         import pyopencl.version as cl_ver
@@ -796,10 +948,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         # TODO: Generate finer-grained dependency structure
         return Suite([
-            Comment("{{{ enqueue %s" % name),
+            Comment("{{{ enqueue %s" % subkernel_name),
             Line(),
-            Assign("_lpy_knl", "_lpy_cl_kernels."+name),
-            Assert(f"_lpy_knl.num_args == {cl_arg_count}, f'Kernel \"{name}\" "
+            Assign("_lpy_knl", "_lpy_cl_kernels."+subkernel_name),
+            Assert(f"_lpy_knl.num_args == {cl_arg_count}, "
+                   f"f'Kernel \"{subkernel_name}\" "
                    f"invoker argument count ({cl_arg_count}) does not match the "
                    # No f"" here since {_lpy_knl.num_args} needs to be evaluated
                    # at runtime, not here.
@@ -807,19 +960,18 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             Line(),
             value_arg_code,
             arry_arg_code,
-            Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
-                "queue, _lpy_knl, "
-                "%(gsize)s, %(lsize)s, "
-                # using positional args because pybind is slow with kwargs
-                "None, "  # offset
-                "wait_for, "
-                "True, "  # g_times_l
-                "True, "  # allow_empty_ndrange
-                ")"
-                % dict(
-                    pyopencl_module_name=self.target.pyopencl_module_name,
-                    gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
-                    lsize=ecm(lsize, prec=PREC_NONE, type_context="i"))),
+            overflow_args_code,
+            Assign("_lpy_evt",
+                   f"{self.target.pyopencl_module_name}.enqueue_nd_range_kernel("
+                   "queue, _lpy_knl, "
+                   f"{ecm(gsize, prec=PREC_NONE, type_context='i')}, "
+                   f"{ecm(lsize, prec=PREC_NONE, type_context='i')}, "
+                   # using positional args because pybind is slow with kwargs
+                   "None, "  # offset
+                   "wait_for, "
+                   "True, "  # g_times_l
+                   "True, "  # allow_empty_ndrange
+                   ")"),
             Assign("wait_for", "[_lpy_evt]"),
             Line(),
             Comment("}}}"),
@@ -831,11 +983,210 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 # }}}
 
 
+# {{{ split_args_for_overflow
+
+def split_args_for_overflow(
+        kernel: LoopKernel, passed_names: Sequence[str],
+        *, limit_arg_size_nbytes: Optional[int], pointer_size_nbytes: int
+        ) -> Tuple[Sequence[str], Sequence[str]]:
+    if limit_arg_size_nbytes is None:
+        return passed_names, []
+
+    regular_arg_names = []
+    overflow_arg_names = []
+
+    # Consider that the pointer to the arg overflow struct also occupies
+    # argument space.
+    running_arg_size = pointer_size_nbytes
+
+    for arg_name in passed_names:
+        arg = kernel.get_var_descriptor(arg_name)
+        if isinstance(arg, (ValueArg, ArrayArg, ConstantArg, TemporaryVariable)):
+            if isinstance(arg, ValueArg):
+                assert arg.dtype is not None
+                arg_size = arg.dtype.numpy_dtype.itemsize
+            else:
+                arg_size = pointer_size_nbytes
+
+            if running_arg_size + arg_size > limit_arg_size_nbytes:
+                overflow_arg_names.append(arg_name)
+            else:
+                regular_arg_names.append(arg_name)
+
+            running_arg_size += arg_size
+
+        elif isinstance(arg, ImageArg):
+            regular_arg_names.append(arg_name)
+        else:
+            raise ValueError(f"unrecognized arg type: '{type(arg)}'")
+
+    return regular_arg_names, overflow_arg_names
+
+# }}}
+
+
 # {{{ device ast builder
 
 class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     """A C device AST builder for integration with PyOpenCL.
     """
+
+    # {{{ function decl/def, with arg overflow handling
+
+    def get_function_definition(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult,
+            schedule_index: int, function_decl: Generable, function_body: Generable,
+            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+        assert isinstance(function_body, Block)
+        kernel = codegen_state.kernel
+        assert kernel.linearization is not None
+
+        subkernel_name = cast(CallKernel,
+                kernel.linearization[schedule_index]).kernel_name
+
+        result = []
+
+        from loopy.kernel.data import AddressSpace
+        # We only need to write declarations for global variables with
+        # the first device program. `is_first_dev_prog` determines
+        # whether this is the first device program in the schedule.
+        is_first_dev_prog = codegen_state.is_generating_device_code
+        for i in range(schedule_index):
+            if isinstance(kernel.linearization[i], CallKernel):
+                is_first_dev_prog = False
+                break
+        if is_first_dev_prog:
+            for tv in sorted(
+                    kernel.temporary_variables.values(),
+                    key=lambda key_tv: key_tv.name):
+
+                if tv.address_space == AddressSpace.GLOBAL and (
+                        tv.initializer is not None):
+                    assert tv.read_only
+
+                    decl = self.wrap_global_constant(
+                            self.get_temporary_var_declarator(codegen_state, tv))
+
+                    if tv.initializer is not None:
+                        from loopy.target.c import generate_array_literal
+                        decl = Initializer(decl, generate_array_literal(
+                            codegen_state, tv, tv.initializer))
+
+                    result.append(decl)
+
+        # {{{ unpack overflow args
+
+        if codegen_state.is_entrypoint:
+            from loopy.schedule.tools import get_subkernel_arg_info
+            skai = get_subkernel_arg_info(kernel, subkernel_name)
+
+            _, struct_overflow_arg_names = split_args_for_overflow(
+                    kernel, skai.passed_names,
+                    limit_arg_size_nbytes=self.target.limit_arg_size_nbytes,
+                    pointer_size_nbytes=self.target.pointer_size_nbytes)
+
+            arg_unpack_code = [
+                    Initializer(
+                        self.arg_to_cgen_declarator(
+                            kernel, arg_name,
+                            is_written=arg_name in skai.written_names),
+                        f"_lpy_overflow_args->{arg_name}")
+                    for arg_name in struct_overflow_arg_names
+                    ] + ([Line()] if struct_overflow_arg_names else [])
+
+            function_body = Block(arg_unpack_code + function_body.contents)
+
+        # }}}
+
+        fbody = FunctionBody(function_decl, function_body)
+        if not result:
+            return fbody
+        else:
+            return Collection(result+[Line(), fbody])
+
+    def get_function_declaration(
+            self, codegen_state: CodeGenerationState,
+            codegen_result: CodeGenerationResult, schedule_index: int
+            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+        kernel = codegen_state.kernel
+
+        assert codegen_state.kernel.linearization is not None
+        subkernel_name = cast(
+                        CallKernel,
+                        codegen_state.kernel.linearization[schedule_index]
+                        ).kernel_name
+
+        from cgen import FunctionDeclaration, Value, Struct
+
+        name = codegen_result.current_program(codegen_state).name
+        if self.target.fortran_abi:
+            name += "_"
+
+        from loopy.target.c import FunctionDeclarationWrapper
+
+        if codegen_state.is_entrypoint:
+            name = Value("void", name)
+
+            # subkernel launches occur only as part of entrypoint kernels for now
+            from loopy.schedule.tools import get_subkernel_arg_info
+            skai = get_subkernel_arg_info(kernel, subkernel_name)
+            passed_names = skai.passed_names
+            written_names = skai.written_names
+
+            regular_arg_names, struct_overflow_arg_names = split_args_for_overflow(
+                    kernel, passed_names,
+                    limit_arg_size_nbytes=self.target.limit_arg_size_nbytes,
+                    pointer_size_nbytes=self.target.pointer_size_nbytes)
+
+            arg_overflow_struct_name = f"_lpy_arg_struct_{subkernel_name}"
+            arg_overflow_struct = Struct(
+                    arg_overflow_struct_name, [
+                        self.arg_to_cgen_declarator(
+                            kernel, arg_name,
+                            is_written=arg_name in written_names)
+                        for arg_name in struct_overflow_arg_names])
+
+            if struct_overflow_arg_names:
+                logger.info(f"overflowing arguments into SVM buffer: "
+                        f"{len(regular_arg_names)} regular/"
+                        f"{len(struct_overflow_arg_names)} in buffer "
+                        f"for '{subkernel_name}'")
+                arg_struct_preambles = [
+                        (f"declare-{arg_overflow_struct_name}",
+                            str(arg_overflow_struct))
+                        ] if struct_overflow_arg_names else []
+                arg_struct_args = [CLGlobal(Const(Pointer(Value(
+                                f"struct {arg_overflow_struct_name}",
+                                "_lpy_overflow_args"))))]
+            else:
+                arg_struct_preambles = []
+                arg_struct_args = []
+
+            return arg_struct_preambles, FunctionDeclarationWrapper(
+                    self._wrap_kernel_decl(
+                        codegen_state, schedule_index,
+                        FunctionDeclaration(
+                            name,
+                            [self.arg_to_cgen_declarator(
+                                kernel, arg_name,
+                                is_written=arg_name in written_names)
+                                for arg_name in regular_arg_names]
+                            + arg_struct_args
+                            )))
+        else:
+            name = Value("static void", name)
+            passed_names = [arg.name for arg in kernel.args]
+            written_names = kernel.get_written_variables()
+
+            return [], FunctionDeclarationWrapper(
+                    FunctionDeclaration(
+                        name,
+                        [self.arg_to_cgen_declarator(
+                                kernel, arg_name,
+                                is_written=arg_name in written_names)
+                            for arg_name in passed_names]))
+    # }}}
 
     # {{{ library
 
@@ -859,7 +1210,6 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     def get_expression_to_c_expression_mapper(self, codegen_state):
         return ExpressionToPyOpenCLCExpressionMapper(codegen_state)
-
 
 # }}}
 

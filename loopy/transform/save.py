@@ -20,12 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import cached_property
+
+from immutables import Map
 
 from loopy.diagnostic import LoopyError
 import loopy as lp
 
 from loopy.kernel.data import auto, AddressSpace
 from pytools import memoize_method, Record
+from loopy.kernel.data import Iname
 from loopy.schedule import (
             EnterLoop, LeaveLoop, RunInstruction,
             CallKernel, ReturnFromKernel, Barrier)
@@ -242,8 +246,7 @@ class TemporarySaver:
         from collections import defaultdict
         self.insns_to_insert = []
         self.insns_to_update = {}
-        self.extra_args_to_add = {}
-        self.updated_iname_to_tags = {}
+        self.updated_iname_objs = Map()
         self.updated_temporary_variables = {}
 
         # temporary name -> save or reload insn ids
@@ -295,8 +298,7 @@ class TemporarySaver:
 
         return frozenset(accessing_insns_in_subkernel)
 
-    @property
-    @memoize_method
+    @cached_property
     def base_storage_to_temporary_map(self):
         from collections import defaultdict
 
@@ -309,8 +311,7 @@ class TemporarySaver:
 
         return result
 
-    @property
-    @memoize_method
+    @cached_property
     def subkernel_to_slice_indices(self):
         result = {}
 
@@ -322,8 +323,7 @@ class TemporarySaver:
 
         return result
 
-    @property
-    @memoize_method
+    @cached_property
     def subkernel_to_surrounding_inames(self):
         current_outer_inames = set()
         within_subkernel = False
@@ -502,7 +502,7 @@ class TemporarySaver:
         if promoted_temporary is None:
             return
 
-        new_subdomain, hw_inames, dim_inames, iname_to_tags = (
+        new_subdomain, hw_inames, dim_inames, iname_objs = (
             self.augment_domain_for_save_or_reload(
                 self.new_subdomain, promoted_temporary, mode, subkernel))
 
@@ -580,7 +580,7 @@ class TemporarySaver:
         self.updated_temporary_variables[promoted_temporary.name] = (
             promoted_temporary.as_kernel_temporary(self.kernel))
 
-        self.updated_iname_to_tags.update(iname_to_tags)
+        self.updated_iname_objs = self.updated_iname_objs.update(iname_objs)
 
     @memoize_method
     def finish(self):
@@ -596,7 +596,7 @@ class TemporarySaver:
         new_instructions.extend(
             sorted(insns_to_insert.values(), key=lambda insn: insn.id))
 
-        self.updated_iname_to_tags.update(self.kernel.iname_to_tags)
+        self.updated_iname_objs = self.updated_iname_objs.update(self.kernel.inames)
         self.updated_temporary_variables.update(self.kernel.temporary_variables)
 
         new_domains = list(self.kernel.domains)
@@ -607,7 +607,7 @@ class TemporarySaver:
         kernel = self.kernel.copy(
             domains=new_domains,
             instructions=new_instructions,
-            iname_to_tags=self.updated_iname_to_tags,
+            inames=self.updated_iname_objs,
             temporary_variables=self.updated_temporary_variables,
             overridden_get_grid_sizes_for_insn_ids=None)
 
@@ -649,7 +649,7 @@ class TemporarySaver:
         orig_dim = domain.dim(isl.dim_type.set)
 
         # Tags for newly added inames
-        iname_to_tags = {}
+        iname_objs = {}
 
         from loopy.symbolic import aff_from_expr
 
@@ -674,7 +674,8 @@ class TemporarySaver:
                 # If the temporary has local scope, then loads / stores can
                 # be done in parallel.
                 from loopy.kernel.data import AutoFitLocalInameTag
-                iname_to_tags[new_iname] = frozenset([AutoFitLocalInameTag()])
+                iname_objs[new_iname] = Iname(
+                        new_iname, tags=frozenset([AutoFitLocalInameTag()]))
 
             dim_inames.append(new_iname)
 
@@ -704,7 +705,8 @@ class TemporarySaver:
                 &
                 aff[new_iname].lt_set(aff_from_expr(domain.space, dim)))
 
-            self.updated_iname_to_tags[new_iname] = frozenset([hw_tag])
+            self.updated_iname_objs = self.updated_iname_objs.set(new_iname,
+                    Iname(name=new_iname, tags=frozenset([hw_tag])))
             hw_inames.append(new_iname)
 
         # The operations on the domain above return a Set object, but the
@@ -712,7 +714,7 @@ class TemporarySaver:
         domain_list = domain.get_basic_set_list()
         assert domain_list.n_basic_set() == 1
         domain = domain_list.get_basic_set(0)
-        return domain, hw_inames, dim_inames, iname_to_tags
+        return domain, hw_inames, dim_inames, iname_objs
 
 # }}}
 

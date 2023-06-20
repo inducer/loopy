@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import ClassVar, Tuple
+
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
@@ -152,6 +154,7 @@ class ArrayArgDescriptor(ImmutableRecord):
 class ExpressionIsScalarChecker(WalkMapper):
     def __init__(self, kernel):
         self.kernel = kernel
+        super().__init__()
 
     def map_sub_array_ref(self, expr):
         raise LoopyError("Sub-array refs can only be used as call's parameters"
@@ -323,7 +326,8 @@ class InKernelCallable(ImmutableRecord):
 
     """
 
-    hash_fields = ("name", "arg_id_to_dtype", "arg_id_to_descr")
+    hash_fields: ClassVar[Tuple[str, ...]] = (
+            "name", "arg_id_to_dtype", "arg_id_to_descr")
 
     def __init__(self, name, arg_id_to_dtype=None, arg_id_to_descr=None):
 

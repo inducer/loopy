@@ -122,7 +122,8 @@ def extract_subst(kernel, subst_name, template, parameters=(), within=None):
             # can't nest, don't recurse
 
     from loopy.symbolic import (
-            CallbackMapper, WalkMapper, IdentityMapper)
+            CallbackMapper, UncachedWalkMapper as WalkMapper,
+            IdentityMapper)
     dfmapper = CallbackMapper(gather_exprs, WalkMapper())
 
     from loopy.kernel.instruction import MultiAssignmentBase
@@ -327,39 +328,41 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     dep_kernel = expand_subst(kernel)
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     dep_kernel = apply_single_writer_depencency_heuristic(dep_kernel)
+    assigning_insn_ids = {insn.id
+                          for insn in dep_kernel.instructions
+                          if lhs_name in insn.assignee_var_names()}
 
     id_to_insn = dep_kernel.id_to_insn
 
     def get_relevant_definition_insn_id(usage_insn_id):
         insn = id_to_insn[usage_insn_id]
 
-        def_id = set()
+        rel_def_ids = set(insn.depends_on & assigning_insn_ids)
         for dep_id in insn.depends_on:
             dep_insn = id_to_insn[dep_id]
-            if lhs_name in dep_insn.write_dependency_names():
+            if lhs_name in dep_insn.assignee_var_names():
                 if lhs_name in dep_insn.read_dependency_names():
                     raise LoopyError("instruction '%s' both reads *and* "
                             "writes '%s'--cannot transcribe to substitution "
                             "rule" % (dep_id, lhs_name))
-
-                def_id.add(dep_id)
             else:
-                rec_result = get_relevant_definition_insn_id(dep_id)
-                if rec_result is not None:
-                    def_id.add(rec_result)
+                if rel_def_ids < assigning_insn_ids:
+                    rec_result = get_relevant_definition_insn_id(dep_id)
+                    if rec_result is not None:
+                        rel_def_ids.add(rec_result)
 
-        if len(def_id) > 1:
+        if len(rel_def_ids) > 1:
             raise LoopyError("more than one write to '%s' found in "
                     "depdendencies of '%s'--definition cannot be resolved "
                     "(writer instructions ids: %s)"
-                    % (lhs_name, usage_insn_id, ", ".join(def_id)))
+                    % (lhs_name, usage_insn_id, ", ".join(rel_def_ids)))
 
-        if not def_id:
+        if not rel_def_ids:
             return None
         else:
-            def_id, = def_id
+            rel_def_id, = rel_def_ids
 
-        return def_id
+        return rel_def_id
 
     usage_to_definition = {}
 
@@ -375,14 +378,9 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
         usage_to_definition[insn.id] = def_id
 
-    definition_insn_ids = set()
-    for insn in kernel.instructions:
-        if lhs_name in insn.write_dependency_names():
-            definition_insn_ids.add(insn.id)
-
     # }}}
 
-    if not definition_insn_ids:
+    if not assigning_insn_ids:
         raise LoopyError("no assignments to variable '%s' found"
                 % lhs_name)
 
@@ -396,11 +394,11 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, vng)
     tts = AssignmentToSubstChanger(rule_mapping_context,
-            lhs_name, definition_insn_ids,
+            lhs_name, assigning_insn_ids,
             usage_to_definition, extra_arguments, within)
 
     def _accesses_lhs(kernel, insn, *args):
-        return lhs_name in insn.dependency_names()
+        return lhs_name in insn.read_dependency_names()
 
     kernel = rule_mapping_context.finish_kernel(
         tts.map_kernel(kernel,

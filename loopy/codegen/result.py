@@ -20,10 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pytools import ImmutableRecord
+from typing import (Any, Sequence, Mapping, Tuple, Optional, TYPE_CHECKING, Union,
+                    Dict, List)
+from dataclasses import dataclass, replace
+
+import islpy as isl
 
 
-def process_preambles(preambles):
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+
+
+def process_preambles(preambles: Sequence[Tuple[int, str]]) -> Sequence[str]:
     seen_preamble_tags = set()
     dedup_preambles = []
 
@@ -55,7 +63,8 @@ __doc__ = """
 
 # {{{ code generation result
 
-class GeneratedProgram(ImmutableRecord):
+@dataclass(frozen=True)
+class GeneratedProgram:
     """
     .. attribute:: name
 
@@ -73,8 +82,17 @@ class GeneratedProgram(ImmutableRecord):
         the overall function definition.
     """
 
+    name: str
+    is_device_program: bool
+    ast: Any
+    body_ast: Optional[Any] = None
 
-class CodeGenerationResult(ImmutableRecord):
+    def copy(self, **kwargs: Any) -> "GeneratedProgram":
+        return replace(self, **kwargs)
+
+
+@dataclass(frozen=True)
+class CodeGenerationResult:
     """
     .. attribute:: host_program
     .. attribute:: device_programs
@@ -93,12 +111,15 @@ class CodeGenerationResult(ImmutableRecord):
     .. automethod:: host_code
     .. automethod:: device_code
     .. automethod:: all_code
-
-    .. attribute:: implemented_data_info
-
-        a list of :class:`loopy.codegen.ImplementedDataInfo` objects.
-        Only added at the very end of code generation.
     """
+    host_program: Optional[GeneratedProgram]
+    device_programs: Sequence[GeneratedProgram]
+    implemented_domains: Mapping[str, isl.Set]
+    host_preambles: Sequence[Tuple[str, str]] = ()
+    device_preambles: Sequence[Tuple[str, str]] = ()
+
+    def copy(self, **kwargs: Any) -> "CodeGenerationResult":
+        return replace(self, **kwargs)
 
     @staticmethod
     def new(codegen_state, insn_id, ast, implemented_domain):
@@ -119,12 +140,12 @@ class CodeGenerationResult(ImmutableRecord):
                     }
 
         return CodeGenerationResult(
-                implemented_data_info=codegen_state.implemented_data_info,
                 implemented_domains={insn_id: [implemented_domain]},
                 **kwargs)
 
     def host_code(self):
-        preamble_codes = process_preambles(getattr(self, "host_preambles", []))
+        assert self.host_program is not None
+        preamble_codes = process_preambles(self.host_preambles)
 
         return (
                 "".join(preamble_codes)
@@ -132,7 +153,7 @@ class CodeGenerationResult(ImmutableRecord):
                 str(self.host_program.ast))
 
     def device_code(self):
-        preamble_codes = process_preambles(getattr(self, "device_preambles", []))
+        preamble_codes = process_preambles(self.device_preambles)
 
         return (
                 "".join(preamble_codes)
@@ -140,6 +161,7 @@ class CodeGenerationResult(ImmutableRecord):
                 + "\n\n".join(str(dp.ast) for dp in self.device_programs))
 
     def all_code(self):
+        assert self.host_program is not None
         preamble_codes = process_preambles(
                 getattr(self, "host_preambles", [])
                 +
@@ -153,7 +175,8 @@ class CodeGenerationResult(ImmutableRecord):
                 + "\n\n"
                 + str(self.host_program.ast))
 
-    def current_program(self, codegen_state):
+    def current_program(
+            self, codegen_state: "CodeGenerationState") -> GeneratedProgram:
         if codegen_state.is_generating_device_code:
             if self.device_programs:
                 result = self.device_programs[-1]
@@ -178,7 +201,7 @@ class CodeGenerationResult(ImmutableRecord):
             assert program.is_device_program
             return self.copy(
                     device_programs=(
-                        self.device_programs[:-1]
+                        list(self.device_programs[:-1])
                         +
                         [program]))
         else:
@@ -200,20 +223,28 @@ class CodeGenerationResult(ImmutableRecord):
 
 # {{{ support code for AST merging
 
-def merge_codegen_results(codegen_state, elements, collapse=True):
+def merge_codegen_results(
+        codegen_state: "CodeGenerationState",
+        elements: Sequence[Union[CodeGenerationResult, Any]], collapse=True
+        ) -> CodeGenerationResult:
     elements = [el for el in elements if el is not None]
 
     if not elements:
         return CodeGenerationResult(
                 host_program=None,
                 device_programs=[],
-                implemented_domains={},
-                implemented_data_info=codegen_state.implemented_data_info)
+                implemented_domains={})
+
+    # FIXME This is fundamentally broken. What is this even doing?
+    # I guess partly to blame is the fact that there's an unresolved
+    # tension between subkernels and callables.
+    # -AK, 2022-08-28
 
     ast_els = []
     new_device_programs = []
+    new_device_preambles: List[Tuple[str, str]] = []
     dev_program_names = set()
-    implemented_domains = {}
+    implemented_domains: Dict[str, isl.Set] = {}
     codegen_result = None
 
     block_cls = codegen_state.ast_builder.ast_block_class
@@ -237,6 +268,8 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
                         new_device_programs.append(dp)
                         dev_program_names.add(dp.name)
 
+            new_device_preambles.extend(el.device_preambles)
+
             cur_ast = el.current_ast(codegen_state)
             if (isinstance(cur_ast, block_cls)
                     and not isinstance(cur_ast, block_scope_cls)):
@@ -256,11 +289,13 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
     if not codegen_state.is_generating_device_code:
         kwargs["device_programs"] = new_device_programs
 
+    assert codegen_result is not None
+
     return (codegen_result
             .with_new_ast(codegen_state, ast)
             .copy(
+                device_preambles=tuple(new_device_preambles),
                 implemented_domains=implemented_domains,
-                implemented_data_info=codegen_state.implemented_data_info,
                 **kwargs))
 
 
@@ -314,12 +349,22 @@ def generate_host_or_device_program(codegen_state, schedule_index):
 
         cur_prog = codegen_result.current_program(codegen_state)
         body_ast = cur_prog.ast
-        fdecl_ast = ast_builder.get_function_declaration(
+        fdef_preambles, fdecl_ast = ast_builder.get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         fdef_ast = ast_builder.get_function_definition(
                 codegen_state, codegen_result,
                 schedule_index, fdecl_ast, body_ast)
+
+        if fdef_preambles:
+            if codegen_state.is_generating_device_code:
+                codegen_result = codegen_result.copy(
+                        device_preambles=(
+                            codegen_result.device_preambles + tuple(fdef_preambles)))
+            else:
+                codegen_result = codegen_result.copy(
+                        host_preambles=(
+                            codegen_result.host_preambles + tuple(fdef_preambles)))
 
         codegen_result = codegen_result.with_new_program(
                 codegen_state,
@@ -330,3 +375,5 @@ def generate_host_or_device_program(codegen_state, schedule_index):
     return codegen_result
 
 # }}}
+
+# vim: foldmethod=marker

@@ -242,10 +242,10 @@ def assert_parse_roundtrip(expr):
     assert expr == parsed_expr
 
 
-@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
+@pytest.mark.parametrize("target_cls", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 @pytest.mark.parametrize("random_seed", [0, 1, 2, 3, 4, 5])
 @pytest.mark.parametrize("expr_type", ["int", "int_nonneg", "real", "complex"])
-def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
+def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cls):
     from pymbolic import evaluate
 
     def get_numpy_type(x):
@@ -290,7 +290,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
 
         var_name = "expr%d" % i
 
-        print(expr)
+        # print(expr)
         #assert_parse_roundtrip(expr)
 
         if expr_type in ["int", "int_nonneg"]:
@@ -299,7 +299,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
                     var_values,
                     lbound=result_type_iinfo.min,
                     ubound=result_type_iinfo.max)
-            print(expr)
+            # print(expr)
             try:
                 ref_values[var_name] = bceval_mapper(expr)
             except BoundsCheckError:
@@ -330,8 +330,27 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
         if expr_type == "int_nonneg":
             var_names.extend(var_values)
 
+    if issubclass(target_cls, lp.ExecutableCTarget):
+        # https://github.com/inducer/loopy/issues/686
+        # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107127
+
+        from shutil import which
+        gcc_10 = which("gcc-10")
+        if gcc_10 is not None:
+            from loopy.target.c.c_execution import CCompiler
+            target = target_cls(compiler=CCompiler(cc=gcc_10))
+        else:
+            from warnings import warn
+            warn("Using default C compiler because gcc-10 was not found. "
+                 "These tests may take a long time, because of "
+                 "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107127.")
+            target = target_cls()
+
+    else:
+        target = target_cls()
+
     knl = lp.make_kernel("{ : }", instructions, data, seq_dependencies=True,
-            target=target())
+            target=target)
 
     import islpy as isl
     knl = lp.assume(knl, isl.BasicSet(
@@ -341,13 +360,14 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target):
                 " and ".join("%s >= 0" % name for name in var_names))))
 
     knl = lp.set_options(knl, return_dict=True)
-    print(knl)
+    # print(knl)
 
-    if target == lp.PyOpenCLTarget:
+    if type(target) is lp.PyOpenCLTarget:
         cl_ctx = ctx_factory()
-        knl = lp.set_options(knl, "write_cl")
-        evt, lp_values = knl(cl.CommandQueue(cl_ctx), out_host=True)
-    elif target == lp.ExecutableCTarget:
+        knl = lp.set_options(knl, write_code=True)
+        with cl.CommandQueue(cl_ctx) as queue:
+            evt, lp_values = knl(queue, out_host=True)
+    elif type(target) is lp.ExecutableCTarget:
         evt, lp_values = knl()
     else:
         raise NotImplementedError("unsupported target")
@@ -386,7 +406,7 @@ def test_sci_notation_literal(ctx_factory):
          """ { [i]: 0<=i<12 } """,
          """ out[i] = 1e-12""")
 
-    set_kernel = lp.set_options(set_kernel, write_cl=True)
+    set_kernel = lp.set_options(set_kernel, write_code=True)
 
     evt, (out,) = set_kernel(queue)
 
@@ -403,7 +423,7 @@ def test_indexof(ctx_factory):
          [lp.GlobalArg("out", is_input=False, shape=lp.auto)]
     )
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     (evt, (out,)) = knl(queue)
     out = out.get()
@@ -427,7 +447,7 @@ def test_indexof_vec(ctx_factory):
 
     knl = lp.tag_inames(knl, {"i": "vec"})
     knl = lp.tag_data_axes(knl, "out", "vec,c,c")
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     (evt, (out,)) = knl(queue)
     #out = out.get()
@@ -466,9 +486,21 @@ def test_integer_associativity():
     print(lp.generate_code_v2(knl).device_code())
     assert (
             "u[ncomp * indices[i % elemsize + elemsize "
-            "* loopy_floor_div_int32(i, ncomp * elemsize)] "
+            "* (i / (ncomp * elemsize))] "
             "+ loopy_mod_pos_b_int32(i / elemsize, ncomp)]"
             in lp.generate_code_v2(knl).device_code())
+
+
+def test_floor_div():
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<10 }",
+        "out[i] = (i-1)*(i-2)//2")
+    assert "loopy_floor_div" in lp.generate_code_v2(knl).device_code()
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<10 }",
+        "out[i] = (i*(i+1))//2")
+    assert "loopy_floor_div" not in lp.generate_code_v2(knl).device_code()
 
 
 def test_divide_precedence(ctx_factory):
@@ -481,7 +513,8 @@ def test_divide_precedence(ctx_factory):
             x[0] = c*(a/b)
             y[0] = c*(a%b)
             """,
-            [lp.ValueArg("a, b, c", np.int32), lp.GlobalArg("x, y", np.int32)])
+            [lp.ValueArg("a, b, c", np.int32),
+                lp.GlobalArg("x, y", np.int32, shape=lp.auto)])
     print(lp.generate_code_v2(knl).device_code())
 
     evt, (x_out, y_out) = knl(queue, c=2, b=2, a=5)
@@ -515,7 +548,7 @@ def test_complex_support(ctx_factory, target):
             ],
             target=target(),
             seq_dependencies=True)
-    knl = lp.set_options(knl, "return_dict")
+    knl = lp.set_options(knl, return_dict=True)
 
     n = 10
 
@@ -525,9 +558,10 @@ def test_complex_support(ctx_factory, target):
     kwargs = {"in1": in1, "in2": in2}
 
     if target == lp.PyOpenCLTarget:
-        knl = lp.set_options(knl, "write_cl")
+        knl = lp.set_options(knl, write_code=True)
         cl_ctx = ctx_factory()
-        evt, out = knl(cl.CommandQueue(cl_ctx), **kwargs)
+        with cl.CommandQueue(cl_ctx) as queue:
+            evt, out = knl(queue, **kwargs)
     elif target == lp.ExecutableCTarget:
         evt, out = knl(**kwargs)
     else:
@@ -579,7 +613,7 @@ def test_bool_type_context(ctx_factory):
         k = 8.0 and 7.0
         """,
         [
-            lp.GlobalArg("k", dtype=np.bool8, shape=lp.auto),
+            lp.GlobalArg("k", dtype=np.bool_, shape=lp.auto),
         ])
 
     evt, (out,) = knl(queue)

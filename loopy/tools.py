@@ -21,11 +21,14 @@ THE SOFTWARE.
 """
 
 import collections.abc as abc
+from functools import cached_property
 
+from immutables import Map
+import islpy as isl
 import numpy as np
 from pytools import memoize_method, ProcessLogger
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
-from loopy.symbolic import (WalkMapper as LoopyWalkMapper,
+from loopy.symbolic import (UncachedWalkMapper as LoopyWalkMapper,
                             RuleAwareIdentityMapper)
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
@@ -59,6 +62,10 @@ class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
 
     See also :meth:`LoopyKeyBuilder.update_for_pymbolic_expression`.
     """
+
+    def __init__(self, key_hash):
+        LoopyWalkMapper.__init__(self)
+        PersistentHashWalkMapperBase.__init__(self, key_hash)
 
     def map_reduction(self, expr, *args):
         if not self.visit(expr):
@@ -105,7 +112,13 @@ class LoopyKeyBuilder(KeyBuilderBase):
         getattr(prn, "print_"+key._base_name)(key)
         key_hash.update(prn.get_str().encode("utf8"))
 
-    update_for_Map = update_for_BasicSet  # noqa
+    def update_for_Map(self, key_hash, key):  # noqa
+        if isinstance(key, Map):
+            self.update_for_dict(key_hash, key)
+        elif isinstance(key, isl.Map):
+            self.update_for_BasicSet(key_hash, key)
+        else:
+            raise AssertionError()
 
     def update_for_pymbolic_expression(self, key_hash, key):
         if key is None:
@@ -625,6 +638,12 @@ class Optional:
                 key_hash,
                 (self._value,) if self.has_value else ())
 
+    def __hash__(self):
+        if not self.has_value:
+            return hash((type(self), False))
+        else:
+            return hash((self.has_value, self._value))
+
 # }}}
 
 
@@ -663,8 +682,7 @@ class _CallablesUnresolver(RuleAwareIdentityMapper):
         self.callables_table = callables_table
         self.target = target
 
-    @property
-    @memoize_method
+    @cached_property
     def known_callables(self):
         from loopy.kernel.function_interface import CallableKernel
         return (frozenset(self.target.get_device_ast_builder().known_callables)
@@ -714,6 +732,11 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
             option += ("dep="+":".join(insn.depends_on)+", ")
         if insn.tags:
             option += ("tags="+":".join(insn.tags)+", ")
+        if insn.within_inames is not None:
+            if insn.within_inames_is_final:
+                option += ("inames="+":".join(insn.within_inames)+", ")
+            else:
+                option += ("inames=+"+":".join(insn.within_inames)+", ")
 
         if isinstance(insn, MultiAssignmentBase):
             if insn.atomicity:
@@ -739,6 +762,10 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
         % endfor
         ],
         '''
+        % for name, rule in sorted(kernel.substitutions.items(), key=lambda x: x[0]):
+        ${name}(${", ".join(rule.arguments)}) := ${str(rule.expression)}
+        %endfor
+
         % for id, opts in options.items():
         <% insn = kernel.id_to_insn[id] %>
         % if isinstance(insn, lp.MultiAssignmentBase):
@@ -790,9 +817,9 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
     % endif
             )
 
-    % for iname, tags in kernel.iname_to_tags.items():
-    % for tag in tags:
-    ${var_name} = lp.tag_inames(${var_name}, "${"%s:%s" %(iname, tag)}")
+    % for iname in kernel.inames.values():
+    % for tag in iname.tags:
+    ${var_name} = lp.tag_inames(${var_name}, "${"%s:%s" %(iname.name, tag)}")
     % endfor
 
     % endfor
@@ -846,8 +873,12 @@ def t_unit_to_python(t_unit, var_name="t_unit",
     knl_args = ", ".join(f"{name}_knl" for name in t_unit.callables_table)
     merge_stmt = f"{var_name} = lp.merge([{knl_args}])"
 
-    preamble_str = "\n".join(["import loopy as lp", "import numpy as np",
-                              "from pymbolic.primitives import *"])
+    preamble_str = "\n".join([
+        "import loopy as lp",
+        "import numpy as np",
+        "from pymbolic.primitives import *",
+        "import immutables",
+        ])
     body_str = "\n".join(knl_python_code_srcs + ["\n", merge_stmt])
 
     python_code = "\n".join([preamble_str, "\n", body_str])
@@ -871,6 +902,13 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     from loopy.kernel import LoopKernel
     import pymbolic.primitives as prim
 
+    transform_cache = WriteOncePersistentDict(
+        ("loopy-memoize-cache-"
+            f"{func.__name__}-"
+            f"{key_builder_t.__qualname__}.{key_builder_t.__name__}"
+            f"-v0-{DATA_MODEL_VERSION}"),
+        key_builder=key_builder_t())
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         from loopy import CACHING_ENABLED
@@ -879,19 +917,14 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
                 or kwargs.pop("_no_memoize_on_disk", False)):
             return func(*args, **kwargs)
 
-        transform_cache = WriteOncePersistentDict(
-            ("loopy-memoize-cache-"
-             f"{key_builder_t.__qualname__}-{key_builder_t.__name__}"
-             f"-v0-{DATA_MODEL_VERSION}"),
-            key_builder=key_builder_t())
-
         def _get_persistent_hashable_arg(arg):
             if isinstance(arg, prim.Expression):
                 return PymbolicExpressionHashWrapper(arg)
             else:
                 return arg
 
-        cache_key = (tuple(_get_persistent_hashable_arg(arg)
+        cache_key = (func.__qualname__, func.__name__,
+                     tuple(_get_persistent_hashable_arg(arg)
                            for arg in args),
                      {kw: _get_persistent_hashable_arg(arg)
                       for kw, arg in kwargs.items()})

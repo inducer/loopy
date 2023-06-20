@@ -13,4 +13,8 @@
   - maptlotlib.pyplot
 
 - arg: init-hook
-  val: sys.setrecursionlimit(5000)
+  val: import sys; sys.setrecursionlimit(5000)
+
+- arg: disable
+  val:
+  - E1102

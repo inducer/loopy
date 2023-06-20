@@ -340,11 +340,11 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 result["within_inames_is_final"] = True
 
             result["within_inames"] = intern_frozenset_of_ids(
-                    opt_value.split(":"))
+                    [s for s in opt_value.split(":") if s])
 
         elif opt_key == "if" and opt_value is not None:
             predicates = opt_value.split(":")
-            new_predicates = set()
+            new_predicates = set(result["predicates"])
 
             for pred in predicates:
                 from pymbolic.primitives import LogicalNot
@@ -1112,6 +1112,7 @@ class IndexRankFinder(CSECachingMapperMixin, WalkMapper):
     def __init__(self, arg_name):
         self.arg_name = arg_name
         self.index_ranks = []
+        WalkMapper.__init__(self)
 
     def map_subscript(self, expr):
         WalkMapper.map_subscript(self, expr)
@@ -1345,16 +1346,14 @@ class CSEToAssignmentMapper(IdentityMapper):
     def __init__(self, add_assignment):
         self.add_assignment = add_assignment
         self.expr_to_var = {}
+        super().__init__()
 
-    def map_reduction(self, expr, additional_inames, found):
+    def map_reduction(self, expr, additional_inames):
         additional_inames = additional_inames | frozenset(expr.inames)
-        found[0] = True
 
-        return super().map_reduction(
-                expr, additional_inames, found)
+        return super().map_reduction(expr, additional_inames)
 
-    def map_common_subexpression(self, expr, additional_inames, found):
-        found[0] = True
+    def map_common_subexpression(self, expr, additional_inames):
         try:
             return self.expr_to_var[expr.child]
         except KeyError:
@@ -1364,7 +1363,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             else:
                 dtype = None
 
-            child = self.rec(expr.child, additional_inames, found)
+            child = self.rec(expr.child, additional_inames)
             from pymbolic.primitives import Variable
             if isinstance(child, Variable):
                 return child
@@ -1428,9 +1427,8 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
 
     for insn, insn_inames_to_dup in zip(instructions, inames_to_dup):
         if isinstance(insn, MultiAssignmentBase):
-            found = [False]
-            new_expression = cseam(insn.expression, frozenset(), found)
-            if found[0]:
+            new_expression = cseam(insn.expression, frozenset())
+            if new_expression is not insn.expression:
                 new_insns.append(insn.copy(expression=new_expression))
             else:
                 new_insns.append(insn)
@@ -1595,7 +1593,7 @@ def determine_shapes_of_temporaries(knl):
     def feed_all_expressions(receiver):
         for insn in knl.instructions:
             insn.with_transformed_expressions(
-                lambda expr: receiver(expr, insn.within_inames))
+                    lambda expr: receiver(expr, insn.within_inames))  # noqa: B023
 
     var_to_base_indices, var_to_shape, var_to_error = (
         find_shapes_of_vars(
@@ -1857,7 +1855,8 @@ def add_inferred_inames(knl):
 # {{{ apply single-writer heuristic
 
 @for_each_kernel
-def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
+def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True,
+        error_if_used=False):
     logger.debug("%s: default deps" % kernel.name)
 
     from loopy.transform.subst import expand_subst
@@ -1907,16 +1906,19 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
             new_deps = frozenset(auto_deps) | depends_on
 
             if new_deps != depends_on:
+                msg = (
+                    "The single-writer dependency heuristic added dependencies "
+                    "on instruction ID(s) '%s' to instruction ID '%s' after "
+                    "kernel creation is complete. This is deprecated and "
+                    "may stop working in the future. "
+                    "To fix this, ensure that instruction dependencies "
+                    "are added/resolved as soon as possible, ideally at kernel "
+                    "creation time."
+                    % (", ".join(new_deps - depends_on), insn.id))
                 if warn_if_used:
-                    warn_with_kernel(kernel, "single_writer_after_creation",
-                        "The single-writer dependency heuristic added dependencies "
-                        "on instruction ID(s) '%s' to instruction ID '%s' after "
-                        "kernel creation is complete. This is deprecated and "
-                        "may stop working in the future. "
-                        "To fix this, ensure that instruction dependencies "
-                        "are added/resolved as soon as possible, ideally at kernel "
-                        "creation time."
-                        % (", ".join(new_deps - depends_on), insn.id))
+                    warn_with_kernel(kernel, "single_writer_after_creation", msg)
+                if error_if_used:
+                    raise LoopyError(msg)
 
                 insn = insn.copy(depends_on=new_deps)
                 changed = True
@@ -2001,6 +2003,7 @@ class SliceToInameReplacer(IdentityMapper):
         self.subarray_ref_bounds = []
         self.knl = knl
         self.var_name_gen = knl.get_var_name_generator()
+        super().__init__()
 
     def map_subscript(self, expr):
         subscript_iname_bounds = {}
@@ -2141,7 +2144,7 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
 # }}}
 
 
-# {{{ kernel creation top-level
+# {{{ make_function
 
 def make_function(domains, instructions, kernel_data=None, **kwargs):
     """User-facing kernel creation entrypoint.
@@ -2443,10 +2446,36 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     kernel_args = arg_guesser.convert_names_to_full_args(kernel_args)
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)
 
+    for name, rule in kwargs.pop("substitutions", {}).items():
+        if name in substitutions:
+            raise LoopyError(f"substitution rule '{name}' declared both in-line "
+                             "and via substitutions argument")
+
+        substitutions[name] = rule
+
     kwargs["substitutions"] = substitutions
 
     from pytools.tag import normalize_tags, check_tag_uniqueness
     tags = check_tag_uniqueness(normalize_tags(kwargs.pop("tags", frozenset())))
+
+    index_dtype = kwargs.pop("index_dtype", None)
+    if index_dtype is None:
+        index_dtype = np.int32
+
+    from loopy.types import to_loopy_type
+    index_dtype = to_loopy_type(index_dtype)
+
+    preambles = kwargs.pop("preambles", None)
+    if preambles is None:
+        preambles = ()
+    elif not isinstance(preambles, tuple):
+        preambles = tuple(preambles)
+
+    preamble_generators = kwargs.pop("preamble_generators", None)
+    if preamble_generators is None:
+        preamble_generators = ()
+    elif not isinstance(preamble_generators, tuple):
+        preamble_generators = tuple(preamble_generators)
 
     from loopy.kernel import LoopKernel
     knl = LoopKernel(domains, instructions, kernel_args,
@@ -2457,6 +2486,9 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
             tags=tags,
             inames=inames,
             assumptions=assumptions,
+            index_dtype=index_dtype,
+            preambles=preambles,
+            preamble_generators=preamble_generators,
             **kwargs)
 
     from loopy.transform.instruction import uniquify_instruction_ids
@@ -2528,10 +2560,14 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     from loopy.translation_unit import make_program
     return make_program(knl)
 
+# }}}
+
+
+# {{{ make_kernel
 
 def make_kernel(*args, **kwargs):
     tunit = make_function(*args, **kwargs)
-    name, = [name for name in tunit.callables_table]
+    name, = tunit.callables_table
     return tunit.with_entrypoints(name)
 
 

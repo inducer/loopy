@@ -20,23 +20,46 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Callable, Any, Union, Tuple, Sequence, Optional
 import tempfile
 import os
+import ctypes
+from dataclasses import dataclass
 
-from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
-                             ExecutionWrapperGeneratorBase, get_highlighted_code)
+from immutables import Map
 from pytools import memoize_method
-from pytools.py_codegen import (Indentation)
+from pytools.codegen import Indentation, CodeGenerator
 from pytools.prefork import ExecError
 from codepy.toolchain import guess_toolchain, ToolchainGuessError, GCCToolchain
 from codepy.jit import compile_from_string
-import ctypes
 
 import numpy as np
+
+from loopy.typing import ExpressionT
+from loopy.types import LoopyType
+from loopy.kernel import LoopKernel
+from loopy.kernel.array import ArrayBase
+from loopy.kernel.data import ArrayArg
+from loopy.schedule.tools import KernelArgInfo
+from loopy.codegen.result import GeneratedProgram
+from loopy.translation_unit import TranslationUnit
+from loopy.target.execution import (KernelExecutorBase,
+                             ExecutionWrapperGeneratorBase, get_highlighted_code)
 
 import logging
 logger = logging.getLogger(__name__)
 
+DEF_EVEN_DIV_FUNCTION = """
+def _lpy_even_div(a, b):
+    result, remdr = divmod(a, b)
+    if remdr != 0:
+        # FIXME: This error message is kind of crummy.
+        raise ValueError("expected even division")
+    return result
+"""
+
+
+# {{{ CExecutionWrapperGenerator
 
 class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     """
@@ -52,7 +75,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         if np.dtype(str(dtype)).isbuiltin:
             name = dtype.name
             if dtype.name == "bool":
-                name = "bool8"
+                name = "bool_"
             return f"_lpy_np.dtype(_lpy_np.{name})"
         raise Exception(f"dtype: {dtype} not recognized")
 
@@ -65,20 +88,29 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ handle allocation of unspecified arguements
 
-    def handle_alloc(self, gen, arg, kernel_arg, strify, skip_arg_checks):
+    def handle_alloc(
+            self, gen: CodeGenerator, arg: ArrayArg,
+            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguements for C-execution
         """
         from pymbolic import var
 
-        num_axes = len(arg.unvec_shape)
+        assert isinstance(arg.shape, tuple)
+        assert isinstance(arg.dtype, LoopyType)
+        num_axes = len(arg.shape)
         for i in range(num_axes):
-            gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
+            gen("_lpy_shape_%d = %s" % (i, strify(arg.shape[i])))
 
-        itemsize = kernel_arg.dtype.numpy_dtype.itemsize
+        from loopy.kernel.array import get_strides
+        strides = get_strides(arg)
+        num_axes = len(strides)
+
+        itemsize = arg.dtype.numpy_dtype.itemsize
         for i in range(num_axes):
             gen("_lpy_strides_%d = %s" % (i, strify(
-                itemsize*arg.unvec_strides[i])))
+                itemsize*strides[i])))
 
         if not skip_arg_checks:
             for i in range(num_axes):
@@ -95,16 +127,13 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 for i in range(num_axes))
 
         # find order of array
-        order = "'C'" if (arg.shape == () or arg.unvec_strides[-1] == 1) else "'F'"
+        from loopy.kernel.array import get_strides
+        strides = get_strides(arg)
+        order = "'C'" if (arg.shape == () or strides[-1] == 1) else "'F'"
 
-        gen("%(name)s = _lpy_np.empty(%(shape)s, "
-                "%(dtype)s, order=%(order)s)"
-                % dict(
-                    name=arg.name,
-                    shape=strify(sym_shape),
-                    dtype=self.python_dtype_str(
-                        gen, kernel_arg.dtype.numpy_dtype),
-                    order=order))
+        gen(f"{arg.name} = _lpy_np.empty({strify(sym_shape)}, "
+                f"{self.python_dtype_str(gen, arg.dtype.numpy_dtype)}, "
+                f"order={order})")
 
         expected_strides = tuple(
                 var("_lpy_expected_strides_%s" % i)
@@ -115,15 +144,12 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         #check strides
         if not skip_arg_checks:
             strides_check_expr = self.get_strides_check_expr(
-                    (strify(s) for s in sym_shape),
-                    (strify(s) for s in sym_strides),
-                    (strify(s) for s in expected_strides))
-            gen("assert %(strides_check)s, "
-                    "'Strides of loopy created array %(name)s, "
-                    "do not match expected.'" %
-                    dict(strides_check=strides_check_expr,
-                         name=arg.name,
-                         strides=strify(sym_strides)))
+                    [strify(s) for s in sym_shape],
+                    [strify(s) for s in sym_strides],
+                    [strify(s) for s in expected_strides])
+            gen(f"assert {strides_check_expr}, "
+                    f"'Strides of loopy created array {arg.name}, "
+                    "do not match expected.'")
             for i in range(num_axes):
                 gen("del _lpy_shape_%d" % i)
                 gen("del _lpy_strides_%d" % i)
@@ -136,6 +162,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         Add default C-imports to preamble
         """
         gen.add_to_preamble("import numpy as _lpy_np")
+        gen.add_to_preamble(DEF_EVEN_DIV_FUNCTION)
 
     def initialize_system_args(self, gen):
         """
@@ -145,37 +172,30 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ generate invocation
 
-    def generate_invocation(self, gen, kernel_name, args,
-            kernel, implemented_data_info):
+    def generate_invocation(self, gen: CodeGenerator, kernel: LoopKernel,
+            kai: KernelArgInfo, host_program_name: str, args: Sequence[str]) -> None:
         gen("for knl in _lpy_c_kernels:")
         with Indentation(gen):
-            gen("knl({args})".format(
-                args=", ".join(args)))
+            gen(f"knl({', '.join(args)})")
 
     # }}}
 
     # {{{
 
-    def generate_output_handler(
-            self, gen, options, kernel, implemented_data_info):
-
-        from loopy.kernel.data import KernelArgument
+    def generate_output_handler(self, gen: CodeGenerator,
+            kernel: LoopKernel, kai: KernelArgInfo) -> None:
+        options = kernel.options
 
         if options.return_dict:
             gen("return None, {%s}"
-                    % ", ".join(f'"{arg.name}": {arg.name}'
-                        for arg in implemented_data_info
-                        if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in
-                        kernel.get_written_variables()))
+                    % ", ".join(f'"{arg_name}": {arg_name}'
+                        for arg_name in kai.passed_arg_names
+                        if kernel.arg_dict[arg_name].is_output))
         else:
-            out_args = [arg
-                    for arg in implemented_data_info
-                        if issubclass(arg.arg_class, KernelArgument)
-                    if arg.base_name in kernel.get_written_variables()]
-            if out_args:
-                gen("return None, (%s,)"
-                        % ", ".join(arg.name for arg in out_args))
+            out_names = [arg_name for arg_name in kai.passed_arg_names
+                    if kernel.arg_dict[arg_name].is_output]
+            if out_names:
+                gen(f"return None, ({', '.join(out_names)},)")
             else:
                 gen("return None, ()")
 
@@ -190,6 +210,10 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     def get_arg_pass(self, arg):
         return arg.name
 
+# }}}
+
+
+# {{{ CCompiler
 
 class CCompiler:
     """
@@ -297,6 +321,10 @@ class CCompiler:
         # and return compiled
         return ctypes.CDLL(ext_file)
 
+# }}}
+
+
+# {{{ CPlusPlusCompiler
 
 class CPlusPlusCompiler(CCompiler):
     """Subclass of CCompiler to invoke a C++ compiler."""
@@ -312,8 +340,10 @@ class CPlusPlusCompiler(CCompiler):
             libraries=libraries, include_dirs=include_dirs,
             library_dirs=library_dirs, defines=defines, source_suffix=source_suffix)
 
+# }}}
 
-# {{{ placeholder till ctypes fixes: bugs.python.org/issue16899
+
+# {{{ placeholder till ctypes fixes: https://github.com/python/cpython/issues/61103
 
 class Complex64(ctypes.Structure):
     _fields_ = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
@@ -337,28 +367,10 @@ if hasattr(np, "complex256"):
 # }}}
 
 
-class IDIToCDLL:
-    """
-    A utility class that extracts arguement and return type info from a
-    :class:`ImplementedDataInfo` in order to create a :class:`ctype.CDLL`
-    """
-    def __init__(self, target):
-        self.target = target
-        from loopy.target.c import CTarget
-        self.registry = CTarget().get_dtype_registry().wrapped_registry
+# {{{ _args_to_ctypes
 
-    def __call__(self, knl, idi):
-        # next loop through the implemented data info to get the arg data
-        arg_info = []
-        for arg in idi:
-            # check if pointer: outputs and arrays must be passed
-            # by reference.
-            pointer = arg.shape or arg.is_written
-            arg_info.append(self._dtype_to_ctype(arg.dtype, pointer))
-
-        return arg_info
-
-    def _dtype_to_ctype(self, dtype, pointer=False):
+def _args_to_ctypes(kernel: LoopKernel, passed_names: Sequence[str]):
+    def _dtype_to_ctype(dtype):
         """Map NumPy dtype to equivalent ctypes type."""
         if dtype.is_complex():
             # complex ctypes aren't exposed
@@ -366,10 +378,23 @@ class IDIToCDLL:
             basetype = _NUMPY_COMPLEX_TYPE_TO_CTYPE[np_dtype]
         else:
             basetype = np.ctypeslib.as_ctypes_type(dtype)
-        if pointer:
-            return ctypes.POINTER(basetype)
         return basetype
 
+    arg_info = []
+    for arg_name in passed_names:
+        arg = kernel.arg_dict[arg_name]
+
+        ctype = _dtype_to_ctype(arg.dtype)
+        if isinstance(arg, ArrayBase):
+            ctype = ctypes.POINTER(ctype)
+        arg_info.append(ctype)
+
+    return arg_info
+
+# }}}
+
+
+# {{{ CompiledCKernel
 
 class CompiledCKernel:
     """
@@ -379,23 +404,19 @@ class CompiledCKernel:
     to automatically map argument types.
     """
 
-    def __init__(self, knl, idi, dev_code, target, comp=None):
-        from loopy.target.c import ExecutableCTarget
-        assert isinstance(target, ExecutableCTarget)
-        self.target = target
-        self.name = knl.name
+    def __init__(self, kernel: LoopKernel, devprog: GeneratedProgram,
+            passed_names: Sequence[str], dev_code: str,
+            comp: Optional["CCompiler"] = None):
         # get code and build
         self.code = dev_code
         self.comp = comp if comp is not None else CCompiler()
-        self.dll = self.comp.build(self.name, self.code)
+        self.dll = self.comp.build(devprog.name, self.code)
 
         # get the function declaration for interface with ctypes
-        func_decl = IDIToCDLL(self.target)
-        arg_info = func_decl(knl, idi)
-        self._fn = getattr(self.dll, self.name)
+        self._fn = getattr(self.dll, devprog.name)
         # kernels are void by defn.
         self._fn.restype = None
-        self._fn.argtypes = [ctype for ctype in arg_info]
+        self._fn.argtypes = _args_to_ctypes(kernel, passed_names)
 
     def __call__(self, *args):
         """Execute kernel with given args mapped to ctypes equivalents."""
@@ -412,6 +433,17 @@ class CompiledCKernel:
             args_.append(arg_)
         self._fn(*args_)
 
+# }}}
+
+
+@dataclass(frozen=True)
+class _KernelInfo:
+    t_unit: TranslationUnit
+    c_kernels: Sequence[CompiledCKernel]
+    invoker: Callable[..., Any]
+
+
+# {{{ CKernelExecutor
 
 class CKernelExecutor(KernelExecutorBase):
     """An object connecting a kernel to a :class:`CompiledKernel`
@@ -421,7 +453,7 @@ class CKernelExecutor(KernelExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, program, entrypoint, compiler=None):
+    def __init__(self, program, entrypoint, compiler: Optional["CCompiler"] = None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -440,30 +472,34 @@ class CKernelExecutor(KernelExecutorBase):
         return CExecutionWrapperGenerator()
 
     @memoize_method
-    def program_info(self, entrypoint, arg_to_dtype_set=frozenset(),
-            all_kwargs=None):
-        program = self.get_typed_and_scheduled_translation_unit(
-                entrypoint, arg_to_dtype_set)
+    def translation_unit_info(
+            self, entrypoint: str,
+            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+        # FIXME: Remove entrypoint argument
+        assert entrypoint == self.entrypoint
+
+        t_unit = self.get_typed_and_scheduled_translation_unit(
+                entrypoint, arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
-        codegen_result = generate_code_v2(program)
+        codegen_result = generate_code_v2(t_unit)
 
         dev_code = codegen_result.device_code()
         host_code = codegen_result.host_code()
         all_code = "\n".join([dev_code, "", host_code])
 
-        if self.program[entrypoint].options.write_cl:
+        if t_unit[entrypoint].options.write_code:
             output = all_code
-            if self.program[entrypoint].options.highlight_cl:
+            if t_unit[entrypoint].options.allow_terminal_colors:
                 output = get_highlighted_code(output)
 
-            if self.program[entrypoint].options.write_cl is True:
+            if t_unit[entrypoint].options.write_code is True:
                 print(output)
             else:
-                with open(self.program[entrypoint].options.write_cl, "w") as outf:
+                with open(t_unit[entrypoint].options.write_code, "w") as outf:
                     outf.write(output)
 
-        if self.program[entrypoint].options.edit_cl:
+        if t_unit[entrypoint].options.edit_code:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
             # update code from editor
@@ -471,19 +507,17 @@ class CKernelExecutor(KernelExecutorBase):
 
         c_kernels = []
 
+        from loopy.schedule.tools import get_kernel_arg_info
+        kai = get_kernel_arg_info(t_unit[entrypoint])
         for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(dp,
-                codegen_result.implemented_data_infos[entrypoint], all_code,
-                self.program.target, self.compiler))
+            c_kernels.append(CompiledCKernel(
+                t_unit[entrypoint], dp, kai.passed_names, all_code,
+                self.compiler))
 
         return _KernelInfo(
-                program=program,
+                t_unit=t_unit,
                 c_kernels=c_kernels,
-                implemented_data_info=codegen_result.implemented_data_infos[
-                    entrypoint],
-                invoker=self.get_invoker(program, entrypoint, codegen_result))
-
-    # }}}
+                invoker=self.get_invoker(t_unit, entrypoint, codegen_result))
 
     def __call__(self, *args, entrypoint=None, **kwargs):
         """
@@ -503,8 +537,12 @@ class CKernelExecutor(KernelExecutorBase):
         if self.packing_controller is not None:
             kwargs = self.packing_controller(kwargs)
 
-        program_info = self.program_info(entrypoint,
-                self.arg_to_dtype_set(kwargs))
+        program_info = self.translation_unit_info(entrypoint,
+                self.arg_to_dtype(kwargs))
 
         return program_info.invoker(
                 program_info.c_kernels, *args, **kwargs)
+
+# }}}
+
+# vim: foldmethod=marker

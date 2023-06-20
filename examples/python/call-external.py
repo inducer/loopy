@@ -77,7 +77,7 @@ class CBLASGEMV(lp.ScalarCallable):
 
     def generate_preambles(self, target):
         assert isinstance(target, CTarget)
-        yield("99_cblas", "#include <cblas.h>")
+        yield ("99_cblas", "#include <cblas.h>")
         return
 
 # }}}

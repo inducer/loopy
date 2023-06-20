@@ -22,78 +22,47 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import cached_property
+from enum import IntEnum
 from sys import intern
+from typing import (
+        Dict, Sequence, Tuple, Mapping, Optional, FrozenSet, Any, Union,
+        Callable, Iterator, List, Set, TYPE_CHECKING)
+from dataclasses import dataclass, replace, field, fields
+from warnings import warn
 
 from collections import defaultdict
 
 import numpy as np
-from pytools import ImmutableRecordWithoutPickling, ImmutableRecord, memoize_method
-from pytools.tag import Taggable
+from pytools import (memoize_method,
+        UniqueNameGenerator, generate_unique_names, natsorted)
+from pytools.tag import Taggable, Tag
 import islpy as isl
 from islpy import dim_type
-import re
-
-from pytools import UniqueNameGenerator, generate_unique_names, natsorted
+from immutables import Map
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import update_persistent_hash
 from loopy.diagnostic import StaticValueFindingError
-from loopy.kernel.data import filter_iname_tags_by_type, Iname
-from warnings import warn
+from loopy.kernel.data import (
+        _ArraySeparationInfo,
+        KernelArgument,
+        filter_iname_tags_by_type, Iname,
+        TemporaryVariable, ValueArg, ArrayArg, SubstitutionRule)
+from loopy.kernel.instruction import InstructionBase
+from loopy.types import LoopyType, NumpyType
+from loopy.options import Options
+from loopy.schedule import ScheduleItem
+from loopy.typing import ExpressionT
+from loopy.target import TargetBase
 
-
-# {{{ unique var names
-
-class _UniqueVarNameGenerator(UniqueNameGenerator):
-
-    def __init__(self, existing_names=frozenset(), forced_prefix=""):
-        super().__init__(existing_names, forced_prefix)
-        array_prefix_pattern = re.compile("(.*)_s[0-9]+$")
-
-        array_prefixes = set()
-        for name in existing_names:
-            match = array_prefix_pattern.match(name)
-            if match is None:
-                continue
-
-            array_prefixes.add(match.group(1))
-
-        self.conflicting_array_prefixes = array_prefixes
-        self.array_prefix_pattern = array_prefix_pattern
-
-    def _name_added(self, name):
-        match = self.array_prefix_pattern.match(name)
-        if match is None:
-            return
-
-        self.conflicting_array_prefixes.add(match.group(1))
-
-    def is_name_conflicting(self, name):
-        if name in self.existing_names:
-            return True
-
-        # Array dimensions implemented as separate arrays generate
-        # names by appending '_s<NUMBER>'. Make sure that no
-        # conflicts can arise from these names.
-
-        # Case 1: a_s0 is already a name; we are trying to insert a
-        # Case 2: a is already a name; we are trying to insert a_s0
-
-        if name in self.conflicting_array_prefixes:
-            return True
-
-        match = self.array_prefix_pattern.match(name)
-        if match is None:
-            return False
-
-        return match.group(1) in self.existing_names
-
-# }}}
-
+if TYPE_CHECKING:
+    from loopy.kernel.function_interface import InKernelCallable
+    from loopy.codegen import PreambleInfo
 
 # {{{ loop kernel object
 
-class KernelState:  # noqa
+class KernelState(IntEnum):  # noqa
     INITIAL = 0
     CALLS_RESOLVED = 1
     PREPROCESSED = 2
@@ -105,11 +74,18 @@ def _get_inames_from_domains(domains):
             (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
 
 
-class _not_provided:  # noqa: N801
-    pass
+@dataclass(frozen=True)
+class _BoundsRecord:
+    lower_bound_pw_aff: isl.PwAff
+    upper_bound_pw_aff: isl.PwAff
+    size: isl.PwAff
 
 
-class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
+PreambleGenerator = Callable[["PreambleInfo"], Iterator[Tuple[int, str]]]
+
+
+@dataclass(frozen=True)
+class LoopKernel(Taggable):
     """These correspond more or less directly to arguments of
     :func:`loopy.make_kernel`.
 
@@ -144,7 +120,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
         A :class:`islpy.BasicSet` parameter domain.
 
-    .. attribute:: local_sizes
     .. attribute:: temporary_variables
 
         A :class:`dict` of mapping variable names to
@@ -179,7 +154,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         were applied to the kernel. These are stored so that they may be repeated
         on expressions the user specifies later.
 
-    .. attribute:: cache_manager
     .. attribute:: options
 
         An instance of :class:`loopy.Options`
@@ -204,162 +178,55 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     .. automethod:: tagged
     .. automethod:: without_tags
     """
+    domains: Sequence[isl.BasicSet]
+    instructions: Sequence[InstructionBase]
+    args: Sequence[KernelArgument]
+    assumptions: isl.BasicSet
+    temporary_variables: Mapping[str, TemporaryVariable]
+    inames: Mapping[str, Iname]
+    substitutions: Mapping[str, SubstitutionRule]
+    options: Options
+    target: TargetBase
+    tags: FrozenSet[Tag]
+    state: KernelState = KernelState.INITIAL
+    name: str = "loopy_kernel"
 
-    # {{{ constructor
+    preambles: Sequence[Tuple[int, str]] = ()
+    preamble_generators: Sequence[PreambleGenerator] = ()
+    symbol_manglers: Sequence[
+            Callable[["LoopKernel", str], Optional[Tuple[LoopyType, str]]]] = ()
+    linearization: Optional[Sequence[ScheduleItem]] = None
+    iname_slab_increments: Mapping[str, Tuple[int, int]] = field(
+            default_factory=Map)
+    loop_priority: FrozenSet[Tuple[str]] = field(
+            default_factory=frozenset)
+    applied_iname_rewrites: Tuple[Dict[str, ExpressionT], ...] = ()
+    index_dtype: NumpyType = NumpyType(np.dtype(np.int32))
+    silenced_warnings: FrozenSet[str] = frozenset()
 
-    def __init__(self, domains, instructions, args=None,
-            schedule=None,
-            linearization=None,
-            name="loopy_kernel",
-            preambles=None,
-            preamble_generators=None,
-            assumptions=None,
-            local_sizes=None,
-            temporary_variables=None,
-            inames=None,
-            iname_to_tags=None,
-            substitutions=None,
-            symbol_manglers=None,
+    # FIXME Yuck, this should go.
+    overridden_get_grid_sizes_for_insn_ids: Optional[
+            Callable[
+                [FrozenSet[str],
+                    Dict[str, "InKernelCallable"],
+                    bool],
+                Tuple[Tuple[int, ...], Tuple[int, ...]]]] = None
 
-            iname_slab_increments=None,
-            loop_priority=frozenset(),
-            silenced_warnings=None,
+    def __post_init__(self):
+        assert isinstance(self.assumptions, isl.BasicSet)
+        assert self.assumptions.is_params()
 
-            applied_iname_rewrites=None,
-            cache_manager=None,
-            index_dtype=None,
-            options=None,
-
-            state=KernelState.INITIAL,
-            target=None,
-
-            overridden_get_grid_sizes_for_insn_ids=None,
-            _cached_written_variables=None,
-            tags=frozenset()):
-        """
-        :arg overridden_get_grid_sizes_for_insn_ids: A callable. When kernels get
-            intersected in slab decomposition, their grid sizes shouldn't
-            change. This provides a way to forward sub-kernel grid size requests.
-        """
-
-        # {{{ process constructor arguments
-
-        if args is None:
-            args = []
-        if preambles is None:
-            preambles = []
-        if preamble_generators is None:
-            preamble_generators = []
-        if local_sizes is None:
-            local_sizes = {}
-        if temporary_variables is None:
-            temporary_variables = {}
-        if substitutions is None:
-            substitutions = {}
-        if symbol_manglers is None:
-            symbol_manglers = []
-        if iname_slab_increments is None:
-            iname_slab_increments = {}
-
-        if silenced_warnings is None:
-            silenced_warnings = []
-        if applied_iname_rewrites is None:
-            applied_iname_rewrites = []
-
-        if cache_manager is None:
-            from loopy.kernel.tools import SetOperationCacheManager
-            cache_manager = SetOperationCacheManager()
-
-        if iname_to_tags is not None:
-            warn("Providing iname_to_tags is deprecated, pass inames instead. "
-                    "Will be unsupported in 2022.",
-                    DeprecationWarning, stacklevel=2)
-
-            if inames is not None:
-                raise LoopyError("Cannot provide both iname_to_tags and inames to "
-                        "LoopKernel.__init__")
-
-            inames = {
-                name: inames.get(name, Iname(name, frozenset()))
-                for name in _get_inames_from_domains(domains)}
-
-        assert isinstance(inames, dict)
-
-        if index_dtype is None:
-            index_dtype = np.int32
-
-        # }}}
-
-        assert isinstance(assumptions, isl.BasicSet)
-        assert assumptions.is_params()
-
-        from loopy.types import to_loopy_type
-        index_dtype = to_loopy_type(index_dtype)
-        if not index_dtype.is_integral():
+        if not self.index_dtype.is_integral():
             raise TypeError("index_dtype must be an integer")
-        if np.iinfo(index_dtype.numpy_dtype).min >= 0:
+        if np.iinfo(self.index_dtype.numpy_dtype).min >= 0:
             raise TypeError("index_dtype must be signed")
 
-        if state not in [
-                KernelState.INITIAL,
-                KernelState.CALLS_RESOLVED,
-                KernelState.PREPROCESSED,
-                KernelState.LINEARIZED,
-                ]:
-            raise ValueError("invalid value for 'state'")
-
-        if linearization is not None:
-            if schedule is not None:
-                # these should not both be present
-                raise ValueError(
-                    "Received both 'schedule' and 'linearization' args. "
-                    "'schedule' is deprecated and will be removed "
-                    "in 2022. Pass 'linearization' only instead.")
-        elif schedule is not None:
-            warn(
-                "'schedule' is deprecated and will be removed in 2022. "
-                "Use 'linearization' instead.",
-                DeprecationWarning, stacklevel=2)
-            linearization = schedule
-
-        assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
-
-        super().__init__(
-                domains=domains,
-                instructions=instructions,
-                args=args,
-                linearization=linearization,
-                name=name,
-                preambles=preambles,
-                preamble_generators=preamble_generators,
-                assumptions=assumptions,
-                iname_slab_increments=iname_slab_increments,
-                loop_priority=loop_priority,
-                silenced_warnings=silenced_warnings,
-                temporary_variables=temporary_variables,
-                local_sizes=local_sizes,
-                inames=inames,
-                substitutions=substitutions,
-                cache_manager=cache_manager,
-                applied_iname_rewrites=applied_iname_rewrites,
-                symbol_manglers=symbol_manglers,
-                index_dtype=index_dtype,
-                options=options,
-                state=state,
-                target=target,
-                overridden_get_grid_sizes_for_insn_ids=(
-                    overridden_get_grid_sizes_for_insn_ids),
-                _cached_written_variables=_cached_written_variables,
-                tags=tags)
-
-        self._kernel_executor_cache = {}
-
-    # }}}
+        assert self.assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
     # {{{ symbol mangling
 
     def mangle_symbol(self, ast_builder, identifier):
-        manglers = ast_builder.symbol_manglers() + self.symbol_manglers
+        manglers = ast_builder.symbol_manglers() + list(self.symbol_manglers)
 
         for mangler in manglers:
             result = mangler(self, identifier)
@@ -378,18 +245,15 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 | set(self.temporary_variables.keys()))
 
     @memoize_method
-    def all_variable_names(self, include_temp_storage=True):
+    def all_variable_names(self):
         return (
                 set(self.temporary_variables.keys())
-                | {tv.base_storage
-                    for tv in self.temporary_variables.values()
-                    if tv.base_storage is not None and include_temp_storage}
                 | set(self.substitutions.keys())
                 | {arg.name for arg in self.args}
                 | set(self.all_inames()))
 
     def get_var_name_generator(self):
-        return _UniqueVarNameGenerator(self.all_variable_names())
+        return UniqueNameGenerator(self.all_variable_names())
 
     def get_instruction_id_generator(self, based_on="insn"):
         used_ids = {insn.id for insn in self.instructions}
@@ -416,9 +280,10 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         return frozenset(result)
 
     def get_group_name_generator(self):
-        return _UniqueVarNameGenerator(set(self.all_group_names()))
+        return UniqueNameGenerator(set(self.all_group_names()))
 
-    def get_var_descriptor(self, name):
+    def get_var_descriptor(
+            self, name: str) -> Union[TemporaryVariable, KernelArgument]:
         try:
             return self.arg_dict[name]
         except KeyError:
@@ -439,15 +304,13 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         try:
             dtype, name = self.mangle_symbol(self.target.get_device_ast_builder(),
                     name)
-            from loopy import ValueArg
             return ValueArg(name, dtype)
         except TypeError:
             pass
 
         raise ValueError("nothing known about variable '%s'" % name)
 
-    @property
-    @memoize_method
+    @cached_property
     def id_to_insn(self):
         return {insn.id: insn for insn in self.instructions}
 
@@ -456,7 +319,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     # {{{ domain wrangling
 
     @memoize_method
-    def parents_per_domain(self):
+    def parents_per_domain(self) -> Sequence[Optional[int]]:
         """Return a list corresponding to self.domains (by index)
         containing domain indices which are nested around this
         domain.
@@ -470,8 +333,8 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         # determines the granularity of inames to be popped/decactivated
         # if we ascend a level.
 
-        iname_set_stack = []
-        result = []
+        iname_set_stack: List[Set[str]] = []
+        result: List[Optional[int]] = []
 
         from loopy.kernel.tools import is_domain_dependent_on_inames
 
@@ -543,24 +406,24 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         return result
 
     @memoize_method
-    def _get_home_domain_map(self):
+    def _get_home_domain_map(self) -> Mapping[str, int]:
         return {
                 iname: i_domain
                 for i_domain, dom in enumerate(self.domains)
                 for iname in dom.get_var_names(dim_type.set)}
 
-    def get_home_domain_index(self, iname):
+    def get_home_domain_index(self, iname: str) -> int:
         return self._get_home_domain_map()[iname]
 
     @property
-    def isl_context(self):
+    def isl_context(self) -> isl.Context:
         for dom in self.domains:
             return dom.get_ctx()
 
         raise AssertionError()
 
     @memoize_method
-    def combine_domains(self, domains):
+    def combine_domains(self, domains: Sequence[int]) -> isl.BasicSet:
         """
         :arg domains: domain indices of domains to be combined. More 'dominant'
             domains (those which get most say on the actual dim_type of an iname)
@@ -582,9 +445,23 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                         dom, result)
                 result = aligned_result & aligned_dom
 
+        assert result is not None
+        # Subdomains may carry other domains' inames as parameters.
+        # Move them back into the 'set' part of the space.
+        param_names = {
+                result.get_dim_name(dim_type.param, i)
+                for i in range(result.dim(dim_type.param))}
+        for actual_iname in param_names - self.all_params():
+            result = result.move_dims(
+                    dim_type.set,
+                    result.dim(dim_type.set),
+                    dim_type.param,
+                    result.find_dim_by_name(dim_type.param, actual_iname),
+                    1)
+
         return result
 
-    def get_inames_domain(self, inames):
+    def get_inames_domain(self, inames: FrozenSet[str]) -> isl.BasicSet:
         if not inames:
             return self.combine_domains(())
 
@@ -665,18 +542,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     # {{{ iname wrangling
 
-    @property
-    @memoize_method
-    def iname_to_tags(self):
-        warn(
-                "LoopKernel.iname_to_tags is deprecated. "
-                "Call LoopKernel.inames instead, "
-                "will be unsupported in 2022.",
-                DeprecationWarning, stacklevel=2)
-        return {name: iname.tags
-                for name, iname in self.inames.items()
-                if iname.tags}
-
     def iname_tags(self, iname):
         return self.inames[iname].tags
 
@@ -705,7 +570,7 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         return frozenset(self.inames.keys())
 
     @memoize_method
-    def all_params(self):
+    def all_params(self) -> FrozenSet[str]:
         all_inames = self.all_inames()
 
         result = set()
@@ -865,15 +730,20 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
         return result
 
-    @memoize_method
     def get_written_variables(self):
-        if self._cached_written_variables is not None:
+        try:
             return self._cached_written_variables
+        except AttributeError:
+            pass
 
-        return frozenset(
+        result = {
                 var_name
                 for insn in self.instructions
-                for var_name in insn.assignee_var_names())
+                for var_name in insn.assignee_var_names()}
+
+        object.__setattr__(self, "_cached_written_variables", result)
+
+        return result
 
     @memoize_method
     def get_temporary_to_base_storage_map(self):
@@ -888,7 +758,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
     def get_unwritten_value_args(self):
         written_vars = self.get_written_variables()
 
-        from loopy.kernel.data import ValueArg
         return {
                 arg.name
                 for arg in self.args
@@ -898,16 +767,12 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     # {{{ argument wrangling
 
-    @property
-    @memoize_method
-    def arg_dict(self):
+    @cached_property
+    def arg_dict(self) -> Dict[str, KernelArgument]:
         return {arg.name: arg for arg in self.args}
 
-    @property
-    @memoize_method
+    @cached_property
     def scalar_loop_args(self):
-        from loopy.kernel.data import ValueArg
-
         if self.args is None:
             return []
         else:
@@ -936,6 +801,18 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     # {{{ bounds finding
 
+    @property
+    def cache_manager(self):
+        try:
+            return self._cache_manager
+        except AttributeError:
+            pass
+
+        from loopy.kernel.tools import SetOperationCacheManager
+        cm = SetOperationCacheManager()
+        object.__setattr__(self, "_cache_manager", cm)
+        return cm
+
     @memoize_method
     def get_iname_bounds(self, iname, constants_only=False):
         domain = self.get_inames_domain(frozenset([iname]))
@@ -963,13 +840,10 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                     dom_intersect_assumptions, iname_idx)
                 .coalesce())
 
-        class BoundsRecord(ImmutableRecord):
-            pass
-
         size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
         size = size.gist(assumptions)
 
-        return BoundsRecord(
+        return _BoundsRecord(
                 lower_bound_pw_aff=lower_bound_pw_aff,
                 upper_bound_pw_aff=upper_bound_pw_aff,
                 size=size)
@@ -1074,19 +948,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
             tgt_dict[tag.axis] = size
 
-        # {{{ override local_sizes with self.local_sizes
-
-        for i_lsize, lsize in self.local_sizes.items():
-            if i_lsize <= max(local_sizes.keys()):
-                local_sizes[i_lsize] = lsize
-            else:
-                from warnings import warn
-                warn(f"Forced local sizes '{i_lsize}: {lsize}' is unused"
-                     f" because kernel '{self.name}' uses {max(local_sizes.keys())}"
-                     " local hardware axes.")
-
-        # }}}
-
         return global_sizes, local_sizes
 
     @memoize_method
@@ -1181,8 +1042,10 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
                 callables_table, ignore_auto=ignore_auto,
                 return_dict=return_dict)
 
-    def get_grid_size_upper_bounds_as_exprs(self, callables_table,
-            ignore_auto=False, return_dict=False):
+    def get_grid_size_upper_bounds_as_exprs(
+            self, callables_table,
+            ignore_auto=False, return_dict=False
+            ) -> Tuple[Tuple[ExpressionT, ...], Tuple[ExpressionT, ...]]:
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 
@@ -1298,8 +1161,9 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
             lines.extend(sep)
             if show_labels:
                 lines.append("ARGUMENTS:")
-            for arg_name in natsorted(kernel.arg_dict):
-                lines.append(str(kernel.arg_dict[arg_name]))
+            # Arguments are ordered, do not be tempted to sort them.
+            for arg in kernel.args:
+                lines.append(str(arg))
 
         if "domains" in what:
             lines.extend(sep)
@@ -1378,36 +1242,6 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     # }}}
 
-    # {{{ implementation arguments
-
-    @property
-    @memoize_method
-    def impl_arg_to_arg(self):
-        from loopy.kernel.array import ArrayBase
-
-        result = {}
-
-        for arg in self.args:
-            if not isinstance(arg, ArrayBase):
-                result[arg.name] = arg
-                continue
-
-            if arg.shape is None or arg.dim_tags is None:
-                result[arg.name] = arg
-                continue
-
-            subscripts_and_names = arg.subscripts_and_names()
-            if subscripts_and_names is None:
-                result[arg.name] = arg
-                continue
-
-            for _index, sub_arg_name in subscripts_and_names:
-                result[sub_arg_name] = arg
-
-        return result
-
-    # }}}
-
     # {{{ direct execution
 
     def __call__(self, *args, **kwargs):
@@ -1426,11 +1260,10 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
     def __getstate__(self):
         result = {
-                key: getattr(self, key)
-                for key in self.__class__.fields
-                if hasattr(self, key)}
-
-        result.pop("cache_manager", None)
+                fld.name: getattr(self, fld.name)
+                for fld in fields(self.__class__)
+                if hasattr(self, fld.name)
+                and not fld.name.startswith("_")}
 
         # Make the instructions lazily unpickling, to support faster
         # cache retrieval for execution.
@@ -1452,71 +1285,75 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         from loopy.tools import LoopyKeyBuilder
         LoopyKeyBuilder()(self)
 
+        # pylint: disable=no-member
         return (result, self._pytools_persistent_hash_digest)
 
     def __setstate__(self, state):
         attribs, p_hash_digest = state
 
-        new_fields = set()
-
-        for k, v in attribs.items():
-            setattr(self, k, v)
-            new_fields.add(k)
-
-        self.register_fields(new_fields)
+        for name, val in attribs.items():
+            object.__setattr__(self, name, val)
 
         if 0:
             # {{{ check that 'reconstituted' object has same hash
 
             from loopy.tools import LoopyKeyBuilder
-            assert p_hash_digest == LoopyKeyBuilder()(self)
+            hash_before = LoopyKeyBuilder()(self)
+
+            object.__setattr__(
+                    self, "_pytools_persistent_hash_digest", p_hash_digest)
+
+            assert hash_before == LoopyKeyBuilder()(self)
 
             # }}}
-
-        self._pytools_persistent_hash_digest = p_hash_digest
+        else:
+            object.__setattr__(
+                    self, "_pytools_persistent_hash_digest", p_hash_digest)
 
         from loopy.kernel.tools import SetOperationCacheManager
-        self.cache_manager = SetOperationCacheManager()
-        self._kernel_executor_cache = {}
+        object.__setattr__(self, "_cache_manager", SetOperationCacheManager())
 
     # }}}
 
     # {{{ persistent hash key generation / comparison
 
-    hash_fields = (
+    hash_fields = [
             "domains",
             "instructions",
             "args",
-            "linearization",
-            "name",
-            "preambles",
             "assumptions",
-            "local_sizes",
             "temporary_variables",
             "inames",
             "substitutions",
+            "options",
+            "target",
+            "tags",
+            "state",
+            "name",
+
+            "preambles",
+            # preamble_generators
+            # symbol_manglers
+            "linearization",
             "iname_slab_increments",
             "loop_priority",
+            # applied_iname_rewrites
+            "index_dtype",
             "silenced_warnings",
-            "options",
-            "state",
-            "target",
-            )
 
-    comparison_fields = hash_fields + (
-            # Contains pymbolic expressions, hence a (small) headache to hash.
-            # Likely not needed for hash uniqueness => headache avoided.
-            "applied_iname_rewrites",
+            # missing:
+            # - applied_iname_rewrites
+            #   Contains pymbolic expressions, hence a (small) headache to hash.
+            #   Likely not needed for hash uniqueness => headache avoided.
 
-            # These are lists of functions. It's not clear how to
-            # hash these correctly, so let's not attempt it. We'll
-            # just assume that the rest of the hash is specific enough
-            # that we won't have to rely on differences in these to
-            # resolve hash conflicts.
-
-            "preamble_generators",
-            "symbol_manglers",
-            )
+            # - preamble_generators
+            # - symbol_manglers
+            #   These are lists of functions. It's not clear how to
+            #   hash these correctly, so let's not attempt it. We'll
+            #   just assume that the rest of the hash is specific enough
+            #   that we won't have to rely on differences in these to
+            #   resolve hash conflicts.
+            ]
 
     update_persistent_hash = update_persistent_hash
 
@@ -1528,56 +1365,9 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
         self.update_persistent_hash(key_hash, LoopyKeyBuilder())
         return hash(key_hash.digest())
 
-    def __eq__(self, other):
-        if self is other:
-            return True
-
-        if not isinstance(other, LoopKernel):
-            return False
-
-        for field_name in self.comparison_fields:
-            if field_name == "domains":
-                if len(self.domains) != len(other.domains):
-                    return False
-
-                for set_a, set_b in zip(self.domains, other.domains):
-                    if not (set_a.plain_is_equal(set_b) or set_a.is_equal(set_b)):
-                        return False
-
-            elif field_name == "assumptions":
-                if not (
-                        self.assumptions.plain_is_equal(other.assumptions)
-                        or self.assumptions.is_equal(other.assumptions)):
-                    return False
-
-            elif getattr(self, field_name) != getattr(other, field_name):
-                return False
-
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
     # }}}
 
-    def get_copy_kwargs(self, **kwargs):
-        if "iname_to_tags" in kwargs:
-            if "inames" in kwargs:
-                raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
-                        "LoopKernel.get_copy_kwargs")
-
-            warn("Providing iname_to_tags is deprecated, pass inames instead. "
-                    "Will be unsupported in 2022.",
-                    DeprecationWarning, stacklevel=2)
-
-            iname_to_tags = kwargs["iname_to_tags"]
-            domains = kwargs.get("domains", self.domains)
-            kwargs["inames"] = {name: Iname(name,
-                                            iname_to_tags.get(name, frozenset()))
-                                for name in _get_inames_from_domains(domains)
-                                }
-            del kwargs["iname_to_tags"]
-
+    def get_copy_kwargs(self, **kwargs: Any) -> Dict[str, Any]:
         if "domains" in kwargs:
             inames = kwargs.get("inames", self.inames)
             domains = kwargs["domains"]
@@ -1586,35 +1376,37 @@ class LoopKernel(ImmutableRecordWithoutPickling, Taggable):
 
             assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
 
-        if "instructions" in kwargs:
+        return kwargs
+
+    def copy(self, **kwargs: Any) -> "LoopKernel":
+        result = replace(self, **self.get_copy_kwargs(**kwargs))
+
+        object.__setattr__(result, "_cache_manager", self.cache_manager)
+
+        if "instructions" not in kwargs:
             # Avoid carrying over an invalid cache when instructions are
             # modified.
-            kwargs["_cached_written_variables"] = None
+            try:
+                # The type system does not know about this attribute, and we're
+                # not about to tell it. It's an internal caching hack.
+                cwv = self._cached_written_variables  # type: ignore[attr-defined]
+            except AttributeError:
+                pass
+            else:
+                object.__setattr__(result, "_cached_written_variables", cwv)
 
-        return super().get_copy_kwargs(**kwargs)
+        return result
 
-    def copy(self, **kwargs):
-        if "iname_to_tags" in kwargs:
-            if "inames" in kwargs:
-                raise LoopyError("Cannot pass both `inames` and `iname_to_tags` to "
-                        "LoopKernel.copy")
+    def _with_new_tags(self, tags) -> "LoopKernel":
+        return replace(self, tags=tags)
 
-        if "schedule" in kwargs:
-            if "linearization" in kwargs:
-                raise LoopyError("Cannot pass both `schedule` and "
-                                 "`linearization` to LoopKernel.copy")
-
-            kwargs["linearization"] = None
-
-        from pytools.tag import normalize_tags, check_tag_uniqueness
-        tags = kwargs.pop("tags", _not_provided)
-        if tags is not _not_provided:
-            kwargs["tags"] = check_tag_uniqueness(normalize_tags(tags))
-
-        return super().copy(**kwargs)
-
-    def _with_new_tags(self, tags):
-        return self.copy(tags=tags)
+    @memoize_method
+    def _separation_info(self) -> Dict[str, _ArraySeparationInfo]:
+        return {
+                arg.name: arg._separation_info
+                for arg in self.args
+                if isinstance(arg, ArrayArg) and arg._separation_info is not None
+                }
 
 # }}}
 

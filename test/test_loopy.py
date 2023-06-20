@@ -24,6 +24,7 @@ import sys
 import numpy as np
 import loopy as lp
 import pyopencl as cl
+import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
 import pytest
@@ -104,9 +105,7 @@ def test_complicated_subst(ctx_factory):
         assert substs_with_letter == how_many
 
 
-def test_type_inference_no_artificial_doubles(ctx_factory):
-    ctx = ctx_factory()
-
+def test_type_inference_no_artificial_doubles():
     prog = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
@@ -120,7 +119,7 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
                 lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     code = lp.generate_code_v2(prog).device_code()
     assert "double" not in code
@@ -175,32 +174,28 @@ def test_sized_and_complex_literals(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
 
 
-def test_simple_side_effect(ctx_factory):
-    ctx = ctx_factory()
-
+def test_simple_side_effect():
     knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
             """
                 a[i] = a[i] + 1
                 """,
             [lp.GlobalArg("a", np.float32, shape=(100,))],
-            target=lp.PyOpenCLTarget(ctx.devices[0])
+            target=lp.PyOpenCLTarget()
             )
 
     print(knl)
     print(lp.generate_code_v2(knl))
 
 
-def test_owed_barriers(ctx_factory):
-    ctx = ctx_factory()
-
+def test_owed_barriers():
     knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
             [
                 "<float32> z[i] = a[i]"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))],
-            target=lp.PyOpenCLTarget(ctx.devices[0])
+            target=lp.PyOpenCLTarget()
             )
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
@@ -209,36 +204,14 @@ def test_owed_barriers(ctx_factory):
     print(lp.generate_code_v2(knl))
 
 
-def test_wg_too_small(ctx_factory):
-    ctx = ctx_factory()
-
-    knl = lp.make_kernel(
-            "{[i]: 0<=i<100}",
-            [
-                "<float32> z[i] = a[i] {id=copy}"
-                ],
-            [lp.GlobalArg("a", np.float32, shape=(100,))],
-            target=lp.PyOpenCLTarget(ctx.devices[0]),
-            local_sizes={0: 16})
-
-    knl = lp.tag_inames(knl, dict(i="l.0"))
-
-    print(knl)
-    with pytest.raises(RuntimeError):
-        print(lp.generate_code_v2(knl))
-
-
-def test_multi_cse(ctx_factory):
-    ctx = ctx_factory()
-
+def test_multi_cse():
     knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
             [
                 "<float32> z[i] = a[i] + a[i]**2"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))],
-            target=lp.PyOpenCLTarget(ctx.devices[0]),
-            local_sizes={0: 16})
+            target=lp.PyOpenCLTarget())
 
     knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", [])
@@ -274,9 +247,7 @@ def test_bare_data_dependency(ctx_factory):
 
 # {{{ test race detection
 
-def test_ilp_write_race_detection_global(ctx_factory):
-    ctx = ctx_factory()
-
+def test_ilp_write_race_detection_global():
     knl = lp.make_kernel(
             "[n] -> {[i,j]: 0<=i,j<n }",
             [
@@ -287,7 +258,7 @@ def test_ilp_write_race_detection_global(ctx_factory):
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ],
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            target=lp.PyOpenCLTarget(),
             name="loopy_kernel")
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
@@ -305,16 +276,14 @@ def test_ilp_write_race_detection_global(ctx_factory):
                     for w in warn_list)
 
 
-def test_ilp_write_race_avoidance_local(ctx_factory):
-    ctx = ctx_factory()
-
+def test_ilp_write_race_avoidance_local():
     knl = lp.make_kernel(
             "{[i,j]: 0<=i<16 and 0<=j<17 }",
             [
                 "<> a[i] = 5+i+j",
                 ],
             [],
-            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            target=lp.PyOpenCLTarget(),
             name="loopy_kernel")
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
@@ -323,15 +292,14 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
     assert knl["loopy_kernel"].temporary_variables["a"].shape == (16, 17)
 
 
-def test_ilp_write_race_avoidance_private(ctx_factory):
-    ctx = ctx_factory()
+def test_ilp_write_race_avoidance_private():
     knl = lp.make_kernel(
             "{[j]: 0<=j<16 }",
             [
                 "<> a = 5+j",
                 ],
             [],
-            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            target=lp.PyOpenCLTarget(),
             name="loopy_kernel")
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
@@ -342,10 +310,7 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
 # }}}
 
 
-def test_write_parameter(ctx_factory):
-    dtype = np.float32
-    ctx = ctx_factory()
-
+def test_write_parameter(dtype=np.float32):
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             """
@@ -359,7 +324,7 @@ def test_write_parameter(ctx_factory):
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ],
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     import pytest
     with pytest.raises(RuntimeError):
@@ -368,9 +333,7 @@ def test_write_parameter(ctx_factory):
 
 # {{{ arg guessing
 
-def test_arg_shape_guessing(ctx_factory):
-    ctx = ctx_factory()
-
+def test_arg_shape_guessing():
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             """
@@ -385,15 +348,13 @@ def test_arg_shape_guessing(ctx_factory):
                 lp.ValueArg("n"),
                 ],
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(knl)
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_arg_guessing(ctx_factory):
-    ctx = ctx_factory()
-
+def test_arg_guessing():
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             """
@@ -402,16 +363,13 @@ def test_arg_guessing(ctx_factory):
                 c[i+j, j] = b[j,i]
                 """,
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(knl)
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_arg_guessing_with_reduction(ctx_factory):
-    #logging.basicConfig(level=logging.DEBUG)
-    ctx = ctx_factory()
-
+def test_arg_guessing_with_reduction():
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             """
@@ -421,15 +379,13 @@ def test_arg_guessing_with_reduction(ctx_factory):
                 c[i+j, j] = b[j,i]
                 """,
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(knl)
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_unknown_arg_shape(ctx_factory):
-    ctx = ctx_factory()
-    from loopy.target.pyopencl import PyOpenCLTarget
+def test_unknown_arg_shape():
     bsize = [256, 0]
 
     knl = lp.make_kernel(
@@ -445,7 +401,7 @@ def test_unknown_arg_shape(ctx_factory):
         """,
         seq_dependencies=True,
         name="uniform_l",
-        target=PyOpenCLTarget(ctx.devices[0]),
+        target=lp.PyOpenCLTarget(),
         assumptions="m<=%d and m>=1 and n mod %d = 0" % (bsize[0], bsize[0]))
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
@@ -454,9 +410,7 @@ def test_unknown_arg_shape(ctx_factory):
 # }}}
 
 
-def test_nonlinear_index(ctx_factory):
-    ctx = ctx_factory()
-
+def test_nonlinear_index():
     knl = lp.make_kernel(
             "{[i]: 0<=i<n }",
             """
@@ -467,7 +421,7 @@ def test_nonlinear_index(ctx_factory):
                 lp.ValueArg("n"),
                 ],
             assumptions="n>=1",
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
 
     print(knl)
     print(lp.generate_code_v2(knl).device_code())
@@ -523,7 +477,7 @@ def test_vector_ilp_with_prefetch(ctx_factory):
                 lp.GlobalArg("out,a", np.float32, shape=lp.auto),
                 "..."
                 ],
-            target=lp.PyOpenCLTarget(ctx.devices[0]))
+            target=lp.PyOpenCLTarget())
     ref_knl = knl
 
     knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
@@ -534,10 +488,7 @@ def test_vector_ilp_with_prefetch(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 1024})
 
 
-def test_c_instruction(ctx_factory):
-    #logging.basicConfig(level=logging.DEBUG)
-    ctx = ctx_factory()
-
+def test_c_instruction():
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             [
@@ -551,7 +502,7 @@ def test_c_instruction(ctx_factory):
                 lp.TemporaryVariable("x", np.float32),
                 "...",
                 ],
-            assumptions="n>=1", target=lp.PyOpenCLTarget(ctx.devices[0]))
+            assumptions="n>=1", target=lp.PyOpenCLTarget())
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
@@ -559,9 +510,7 @@ def test_c_instruction(ctx_factory):
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_dependent_domain_insn_iname_finding(ctx_factory):
-    ctx = ctx_factory()
-
+def test_dependent_domain_insn_iname_finding():
     prog = lp.make_kernel([
             "{[isrc_box]: 0<=isrc_box<nsrc_boxes}",
             "{[isrc]: isrc_start<=isrc<isrc_end}",
@@ -578,7 +527,7 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
                 lp.GlobalArg("strengths",
                     None, shape="nsources"),
                 "..."],
-            target=lp.PyOpenCLTarget(ctx.devices[0]),
+            target=lp.PyOpenCLTarget(),
             name="loopy_kernel")
 
     print(prog)
@@ -612,9 +561,7 @@ def test_inames_deps_from_write_subscript(ctx_factory):
     assert "i" in prog["loopy_kernel"].insn_inames("myred")
 
 
-def test_modulo_indexing(ctx_factory):
-    ctx = ctx_factory()
-
+def test_modulo_indexing():
     knl = lp.make_kernel(
             "{[i,j]: 0<=i<n and 0<=j<5}",
             """
@@ -623,7 +570,7 @@ def test_modulo_indexing(ctx_factory):
             [
                 lp.GlobalArg("a", None, shape="n"),
                 "..."
-                ], target=lp.PyOpenCLTarget(ctx.devices[0])
+                ], target=lp.PyOpenCLTarget()
             )
 
     print(knl)
@@ -678,6 +625,50 @@ def test_conditional(ctx_factory):
                 "..."
                 ])
 
+    ref_knl = knl
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            parameters=dict(
+                n=200
+                ))
+
+
+def test_conditional_two_ways(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<n }",
+        """
+        <> b = i > 3
+        <> c = i > 1
+        out[i] = a[i] {id=init}
+        if b
+            out[i] = 2*a[i]  {if=c,dep=init}
+        end
+        """,
+        [
+            lp.GlobalArg("a", np.float32, shape=lp.auto),
+            lp.GlobalArg("out", np.float32, shape=lp.auto),
+            "..."
+        ]
+    )
+
+    ref_knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<n }",
+        """
+        <> b = i > 3
+        <> c = i > 1
+        out[i] = a[i] {id=init}
+        if b and c
+            out[i] = 2*a[i]  {dep=init}
+        end
+        """,
+        [
+            lp.GlobalArg("a", np.float32, shape=lp.auto),
+            lp.GlobalArg("out", np.float32, shape=lp.auto),
+            "..."
+        ]
+    )
     ref_knl = knl
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
@@ -750,7 +741,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         a_ref = a.copy()
         a_knl = a.copy()
 
-        knl = lp.set_options(knl, write_cl=True)
+        knl = lp.set_options(knl, write_code=True)
         print("TEST-----------------------------------------")
         knl(queue, a=a_knl)
         print("REF-----------------------------------------")
@@ -791,7 +782,7 @@ def test_make_copy_kernel(ctx_factory):
 
     cknl1 = lp.fix_parameters(cknl1, n2=3)
 
-    cknl1 = lp.set_options(cknl1, write_cl=True)
+    cknl1 = lp.set_options(cknl1, write_code=True)
     evt, a2 = cknl1(queue, input=a1)
 
     cknl2 = lp.make_copy_kernel("c,c,c", intermediate_format)
@@ -800,6 +791,23 @@ def test_make_copy_kernel(ctx_factory):
     evt, a3 = cknl2(queue, input=a2)
 
     assert (a1 == a3).all()
+
+
+def test_make_copy_kernel_with_offsets(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    a1 = np.random.randn(3, 1024, 4)
+    a1_dev = cl.array.to_device(queue, a1)
+
+    cknl1 = lp.make_copy_kernel("c,c,c", "sep,c,c")
+
+    cknl1 = lp.fix_parameters(cknl1, n0=3)
+
+    cknl1 = lp.set_options(cknl1, write_code=True)
+    evt, (a2_dev,) = cknl1(queue, input=a1_dev)
+
+    assert (a1 == a2_dev.get()).all()
 
 
 def test_auto_test_can_detect_problems(ctx_factory):
@@ -1436,7 +1444,7 @@ def test_global_temporary(ctx_factory):
 
     assert len(cgr.device_programs) == 2
 
-    #print(cgr.device_code())
+    print(cgr.device_code())
     #print(cgr.host_code())
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
@@ -1493,12 +1501,12 @@ def test_finite_difference_expr_subst(ctx_factory):
                 ("f", 1, 0)
                 ])
 
-    fused_knl = lp.set_options(fused_knl, write_cl=True)
+    fused_knl = lp.set_options(fused_knl, write_code=True)
     evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
 
     fused_knl = lp.assignment_to_subst(fused_knl, "f")
 
-    fused_knl = lp.set_options(fused_knl, write_cl=True)
+    fused_knl = lp.set_options(fused_knl, write_code=True)
 
     # This is the real test here: The automatically generated
     # shape expressions are '2+n' and the ones above are 'n+2'.
@@ -1824,7 +1832,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
                 "..."
                 ])
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
     knl = lp.fix_parameters(knl, n=a.shape[0])
 
     evt, (a2,) = knl(queue, out_host=True)
@@ -1895,8 +1903,12 @@ def test_scalars_with_base_storage(ctx_factory):
     knl = lp.make_kernel(
             [isl.BasicSet("[] -> {[]: }")],  # empty (domain w/unused inames errors)
             "a = 1",
-            [lp.TemporaryVariable("a", dtype=np.float64,
-                                  shape=(), base_storage="base")])
+            [
+                lp.TemporaryVariable("a", dtype=np.float64,
+                                  shape=(), base_storage="base"),
+                lp.TemporaryVariable("b", dtype=np.float64,
+                                  shape=(), base_storage="base"),
+                ])
 
     knl(queue, out_host=True)
 
@@ -2013,7 +2025,7 @@ def test_tight_loop_bounds(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
 
     evt, (out,) = knl(queue, out_host=True)
 
@@ -2401,7 +2413,7 @@ def test_struct_assignment(ctx_factory):
             "..."],
         preambles=[("000", preamble)])
 
-    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.set_options(knl, write_code=True)
     knl(queue, N=200)
 
 
@@ -2426,20 +2438,6 @@ def test_inames_conditional_generation(ctx_factory):
 
     with cl.CommandQueue(ctx) as queue:
         knl(queue)
-
-
-def test_kernel_var_name_generator():
-    prog = lp.make_kernel(
-            "{[i]: 0 <= i <= 10}",
-            """
-            <>a = 0
-            <>b_s0 = 0
-            """)
-
-    vng = prog["loopy_kernel"].get_var_name_generator()
-
-    assert vng("a_s0") != "a_s0"
-    assert vng("b") != "b"
 
 
 def test_fixed_parameters(ctx_factory):
@@ -2752,7 +2750,7 @@ def test_shape_mismatch_check(ctx_factory):
     if t_unit["loopy_kernel"].options.skip_arg_checks:
         pytest.skip("args checks disabled, cannot check")
 
-    with pytest.raises(TypeError, match="strides mismatch"):
+    with pytest.raises(ValueError, match="strides mismatch"):
         t_unit(queue, a=a, b=b)
 
 
@@ -3165,6 +3163,20 @@ def test_tunit_to_python():
     t_unit = lp.merge([t_unit, mysin])
     lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
 
+    knl_explicit_iname = lp.make_kernel(
+        ["{[i]: 0<=i<10}", "{[j]: 0<=j<10}"],
+        ["""
+        for i
+            a[j] = 0       {id=a}
+            b[i, j] = a[j] {dep=a}
+        end"""],
+        kernel_data=[
+            lp.TemporaryVariable("a", dtype=np.int32),
+            lp.GlobalArg("b"),
+        ])
+    # contains check to assert roundtrip equivalence
+    lp.t_unit_to_python(knl_explicit_iname)
+
 
 def test_global_tv_with_base_storage_across_gbarrier(ctx_factory):
     # see https://github.com/inducer/loopy/pull/466 for context
@@ -3229,6 +3241,30 @@ def test_zero_stride_array(ctx_factory):
     assert out.shape == (10, 0)
 
 
+def test_sep_array_ordering(ctx_factory):
+    # https://github.com/inducer/loopy/pull/667
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    # NOTE: this works with n = 10, but fails with n >= 11
+    n = 11
+    knl = lp.make_kernel(
+        "{[i, k]: 0<=k<noutputs and 0<=i<m}",
+        """
+        x[k, i] = k
+        """,
+        [lp.GlobalArg("x", shape=("noutputs", "m"), dim_tags="sep,C")] + [...],
+        fixed_parameters=dict(noutputs=n),
+        )
+    knl = lp.tag_inames(knl, "k:unr")
+
+    x = [cl.array.empty(cq, (0,), dtype=np.float64) for i in range(n)]
+    evt, out = knl(cq, x=x)
+
+    for i in range(n):
+        assert out[i] is x[i], f"failed on input x{i}: {id(out[i])} {id(x[i])}"
+
+
 def test_predicated_redn(ctx_factory):
     # See https://github.com/inducer/loopy/issues/427
     ctx = ctx_factory()
@@ -3273,6 +3309,304 @@ def test_obj_tagged_is_persistent_hashable():
         pass
 
     assert lkb(ObjTagged(MyTag())) == lkb(ObjTagged(MyTag()))
+
+
+@pytest.mark.xfail
+def test_vec_loops_surrounded_by_preds(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/615
+    ctx = ctx_factory()
+    knl = lp.make_kernel(
+        "{[i, j]: 0<=i<100 and 0<=j<4}",
+        """
+        for i
+            for j
+                if j
+                    <> tmp[j] = 1
+                end
+                out[i, j] = 2*tmp[j]
+            end
+        end
+        """, seq_dependencies=True)
+
+    ref_knl = knl
+
+    knl = lp.tag_array_axes(knl, "tmp", "vec")
+    knl = lp.tag_inames(knl, "j:vec")
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+def test_vec_inames_can_reenter(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/644
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i, j]: 0<=i,j<4}",
+        """
+        for i
+            <> tmp0[i] = 1
+            for j
+                <> tmp1[i] = 2
+            end
+            <> tmp2[i] = 3
+            out[i] = tmp0[i] + tmp1[i] + tmp2[i]
+        end
+        """,
+        seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, "i:vec")
+    knl = lp.tag_array_axes(knl, "tmp0,tmp1,tmp2", "vec")
+
+    knl = lp.duplicate_inames(knl, "i",
+                              within="writes:tmp1",
+                              tags={"i": "vec"})
+
+    _, (out,) = knl(cq)
+    np.testing.assert_allclose(out.get(), 6*np.ones(4))
+
+
+def test_split_and_join_inames(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/652
+    ctx = ctx_factory()
+
+    tunit = lp.make_kernel(
+        "{[i]: 0<=i<16}",
+        """
+        y[i] = i
+        """)
+    ref_tunit = tunit
+
+    tunit = lp.split_iname(tunit, "i", 4)
+    tunit = lp.join_inames(tunit, ["i_inner", "i_outer"])
+
+    lp.auto_test_vs_ref(ref_tunit, ctx, tunit)
+
+
+def test_different_index_dtypes():
+    from loopy.diagnostic import LoopyError
+
+    doublify = lp.make_function(
+        "{[i]: 0<=i<10}",
+        """
+        x[i] = x[i] * 2
+        """,
+        name="doublify",
+        index_dtype=np.int64
+    )
+
+    knl = lp.make_kernel(
+        "{[I]: 0<=I<10}",
+        """
+        [I]: X[I] = doublify([I]: X[I])
+        """,
+        index_dtype=np.int32
+    )
+
+    knl = lp.merge([knl, doublify])
+
+    with pytest.raises(LoopyError):
+        lp.generate_code_v2(knl)
+
+
+def test_translation_unit_pickle():
+    tunit = lp.make_kernel(
+        "{[i]: 0<=i<16}",
+        """
+        y[i] = i
+        """)
+    assert isinstance(hash(tunit), int)
+
+    from pickle import dumps, loads
+    tunit = loads(dumps(tunit))
+    assert isinstance(hash(tunit), int)
+
+
+def test_creation_kwargs():
+    # https://github.com/inducer/loopy/issues/705
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        "a[i] = foo() * i",
+        substitutions={"foo": lp.SubstitutionRule("foo", (), 3.14)},
+    )
+
+    assert len(knl.default_entrypoint.substitutions) != 0
+
+    # https://github.com/inducer/loopy/issues/705
+    with pytest.raises(lp.LoopyError):
+        lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            foo := 5
+            a[i] = foo() * i
+            """,
+            substitutions={"foo": lp.SubstitutionRule("foo", (), 3.14)},
+        )
+
+    with pytest.raises(TypeError):
+        knl = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            "a[i] = foo() * i",
+            # not a known kwarg
+            ksdfjlasdf=None)
+
+
+def test_global_temps_with_multiple_base_storages(ctx_factory):
+    # See https://github.com/inducer/loopy/issues/737
+
+    n = 10
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+        "{[r0, r1]: 0<=r0,r1< %s}" % n,
+        """
+        tmp0 = sum(r0, r0**2)
+        ... gbarrier
+        tmp1 = sum(r1, r1**3)
+        ... gbarrier
+        out = tmp0 + tmp1
+        """,
+        [lp.TemporaryVariable("tmp0",
+                              shape=lp.auto,
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base1"),
+         lp.TemporaryVariable("tmp1",
+                              shape=lp.auto,
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base2"),
+         ...],
+        seq_dependencies=True
+    )
+
+    prg = lp.infer_unknown_types(prg)
+    prg = lp.allocate_temporaries_for_base_storage(prg)
+    print(prg)
+
+    _, (out,) = prg(cq)
+
+    assert out == sum(i**2 for i in range(n)) + sum(i**3 for i in range(n))
+
+
+def test_t_unit_to_python_with_substs():
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        subst_0(i) := abs(10.0 * (i-5))
+        subst_1(i) := abs(10.0 * (i**2-5))
+
+        y[i] = subst_0(i) + subst_1(i)
+        """)
+
+    lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
+
+
+def test_type_inference_of_clbls_in_substitutions(ctx_factory):
+    # Regression for https://github.com/inducer/loopy/issues/746
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        subst_0(_0) := abs(10.0 * (_0-5))
+
+        y[i] = subst_0(i)
+        """)
+
+    evt, (out,) = knl(cq)
+    np.testing.assert_allclose(out.get(), np.abs(10.0*(np.arange(10)-5)))
+
+
+def test_einsum_parsing(ctx_factory):
+    ctx = ctx_factory()
+
+    # See <https://github.com/inducer/loopy/issues/753>
+    knl = lp.make_einsum("ik, kj -> ij", ["A", "B"])
+    knl = lp.add_dtypes(knl, {"A": np.float32, "B": np.float32})
+    lp.auto_test_vs_ref(knl, ctx, knl,
+                        parameters={"Ni": 10, "Nj": 10, "Nk": 10})
+
+
+def test_no_barrier_err_for_global_temps_with_base_storage(ctx_factory):
+    # Regression for https://github.com/inducer/loopy/issues/748
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i, j<16}",
+        """
+        for i
+            tmp1[i] = i
+            tmp2[i] = tmp1[i] + 2
+        end
+        ... gbarrier
+        for j
+            out[j] = tmp1[j] + tmp2[j]
+        end
+        """,
+        [lp.TemporaryVariable("tmp1",
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base1",
+                              shape=lp.auto),
+         lp.TemporaryVariable("tmp2",
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base2",
+                              shape=lp.auto),
+         ...],
+        seq_dependencies=True
+    )
+    knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
+    knl = lp.split_iname(knl, "j", 4, inner_tag="l.0", outer_tag="g.0")
+
+    _, (out,) = knl(cq, out_host=True)
+
+    np.testing.assert_allclose(2*np.arange(16) + 2, out)
+
+
+def test_dgemm_with_rectangular_tile_prefetch(ctx_factory):
+    # See <https://github.com/inducer/loopy/issues/724>
+    t_unit = lp.make_kernel(
+        "{[i,j,k]: 0<=i,j<72 and 0<=k<32}",
+        """
+        C[i,j] = sum(k, A[i,k] * B[k,j])
+        """,
+        [lp.GlobalArg("A,B", dtype=np.float64, shape=lp.auto),
+         ...],
+    )
+    ref_t_unit = t_unit
+
+    tx = 8
+    ty = 23
+    tk = 11
+
+    t_unit = lp.split_iname(t_unit, "i", tx, inner_tag="l.0", outer_tag="g.0")
+    t_unit = lp.split_iname(t_unit, "j", ty, inner_tag="l.1", outer_tag="g.1")
+    t_unit = lp.split_iname(t_unit, "k", tk)
+    t_unit = lp.add_prefetch(
+        t_unit, "A",
+        sweep_inames=["i_inner", "k_inner"],
+        temporary_address_space=lp.AddressSpace.LOCAL,
+        fetch_outer_inames=frozenset({"i_outer", "j_outer", "k_outer"}),
+        dim_arg_names=["iprftch_A", "kprftch_A"],
+        default_tag=None,
+    )
+
+    t_unit = lp.add_prefetch(
+        t_unit, "B",
+        sweep_inames=["k_inner", "j_inner"],
+        temporary_address_space=lp.AddressSpace.LOCAL,
+        fetch_outer_inames=frozenset({"i_outer", "j_outer", "k_outer"}),
+        dim_arg_names=["kprftch_B", "jprftch_B"],
+        default_tag=None,
+    )
+
+    t_unit = lp.split_iname(t_unit, "kprftch_A", tx, inner_tag="l.0")
+    t_unit = lp.split_iname(t_unit, "iprftch_A", ty, inner_tag="l.1")
+    t_unit = lp.split_iname(t_unit, "jprftch_B", tx, inner_tag="l.0")
+    t_unit = lp.split_iname(t_unit, "kprftch_B", ty, inner_tag="l.1")
+
+    ctx = cl.create_some_context()
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
 if __name__ == "__main__":

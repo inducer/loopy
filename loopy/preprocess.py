@@ -20,15 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Tuple, TypeVar, Iterable, Optional, List, FrozenSet, cast
 import logging
 logger = logging.getLogger(__name__)
+
+from immutables import Map
+import numpy as np
 
 from loopy.diagnostic import (
         LoopyError, WriteRaceConditionWarning, warn_with_kernel,
         LoopyAdvisory)
 
 from loopy.tools import memoize_on_disk
-from loopy.kernel.data import filter_iname_tags_by_type
+from loopy.kernel.data import filter_iname_tags_by_type, ArrayArg, auto, ValueArg
+
+from loopy.kernel import LoopKernel
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
 from loopy.symbolic import RuleAwareIdentityMapper
@@ -37,6 +43,11 @@ from loopy.symbolic import RuleAwareIdentityMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.transform.data import allocate_temporaries_for_base_storage
+from loopy.kernel.array import ArrayDimImplementationTag
+from loopy.kernel.data import _ArraySeparationInfo, KernelArgument
+from loopy.translation_unit import for_each_kernel
+from loopy.typing import ExpressionT
 
 from pytools import ProcessLogger
 from functools import partial
@@ -100,6 +111,195 @@ def check_reduction_iname_uniqueness(kernel):
 # }}}
 
 
+# {{{ make_arrays_for_sep_arrays
+
+T = TypeVar("T")
+
+
+def _remove_at_indices(
+        indices: FrozenSet[int], values: Optional[Iterable[T]]
+        ) -> Optional[Tuple[T, ...]]:
+    """
+    Assumes *indices* is sorted.
+    """
+    if values is None:
+        return values
+
+    return tuple(val for i, val in enumerate(values) if i not in indices)
+
+
+@for_each_kernel
+def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
+    from loopy.kernel.array import SeparateArrayArrayDimTag
+    new_args = []
+
+    vng = kernel.get_var_name_generator()
+    made_changes = False
+
+    # {{{ rewrite arguments
+
+    for arg in kernel.args:
+        if not isinstance(arg, ArrayArg) or arg.dim_tags is None:
+            new_args.append(arg)
+            continue
+
+        sep_axis_indices = [
+                i for i, dim_tag in enumerate(arg.dim_tags)
+                if isinstance(dim_tag, SeparateArrayArrayDimTag)]
+
+        if not sep_axis_indices or arg._separation_info:
+            new_args.append(arg)
+            continue
+
+        made_changes = True
+
+        sep_axis_indices_set = frozenset(sep_axis_indices)
+
+        assert isinstance(arg.shape, tuple)
+        new_shape: Optional[Tuple[ExpressionT, ...]] = \
+                _remove_at_indices(sep_axis_indices_set, arg.shape)
+        new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]] = \
+                _remove_at_indices(sep_axis_indices_set, arg.dim_tags)
+        new_dim_names: Optional[Tuple[Optional[str], ...]] = \
+                _remove_at_indices(sep_axis_indices_set, arg.dim_names)
+
+        sep_shape: List[ExpressionT] = [arg.shape[i] for i in sep_axis_indices]
+        for i, sep_shape_i in enumerate(sep_shape):
+            if not isinstance(sep_shape_i, (int, np.integer)):
+                raise LoopyError(
+                        f"Axis {sep_axis_indices[i]+1} (1-based) of "
+                        f"argument '{arg.name}' is tagged 'sep', but "
+                        "does not have constant length.")
+
+        sep_info = _ArraySeparationInfo(
+                sep_axis_indices_set=sep_axis_indices_set,
+                subarray_names=Map({
+                    ind: vng(f"{arg.name}_s{'_'.join(str(i) for i in ind)}")
+                    for ind in np.ndindex(*cast(List[int], sep_shape))}))
+
+        new_args.append(arg.copy(_separation_info=sep_info))
+
+        for _ind, san in sorted(sep_info.subarray_names.items()):
+            new_args.append(
+                    arg.copy(
+                        name=san,
+                        shape=new_shape,
+                        dim_tags=new_dim_tags,
+                        dim_names=new_dim_names))
+
+    # }}}
+
+    if not made_changes:
+        return kernel
+
+    kernel = kernel.copy(args=new_args)
+
+    return kernel
+
+# }}}
+
+
+# {{{ make temporary variables for offsets and strides
+
+def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
+    additional_args: List[KernelArgument] = []
+
+    vng = kernel.get_var_name_generator()
+
+    from pymbolic.primitives import Expression, Variable
+    from loopy.kernel.array import FixedStrideArrayDimTag
+
+    # {{{ process arguments
+
+    new_args = []
+    for arg in kernel.args:
+        if isinstance(arg, ArrayArg) and not arg._separation_info:
+            what = f"offset for argument '{arg.name}'"
+            if arg.offset is None:
+                pass
+            if arg.offset is auto:
+                offset_name = vng(arg.name+"_offset")
+                additional_args.append(ValueArg(
+                        offset_name, kernel.index_dtype))
+                arg = arg.copy(offset=offset_name)
+            elif isinstance(arg.offset, (int, np.integer, Expression, str)):
+                pass
+            else:
+                raise LoopyError(f"invalid value of {what}")
+
+            if arg.dim_tags is None:
+                new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]]  \
+                        = arg.dim_tags
+            else:
+                new_dim_tags = ()
+                for iaxis, dim_tag in enumerate(arg.dim_tags):
+                    if isinstance(dim_tag, FixedStrideArrayDimTag):
+                        what = ("axis stride for axis "
+                                f"{iaxis+1} (1-based) of '{arg.name}'")
+                        if dim_tag.stride is auto:
+                            stride_name = vng(f"{arg.name}_stride{iaxis}")
+                            dim_tag = dim_tag.copy(stride=Variable(stride_name))
+                            additional_args.append(ValueArg(
+                                    stride_name, kernel.index_dtype))
+                        elif isinstance(
+                                dim_tag.stride, (int, np.integer, Expression)):
+                            pass
+                        else:
+                            raise LoopyError(f"invalid value of {what}")
+
+                    new_dim_tags = new_dim_tags + (dim_tag,)
+
+            arg = arg.copy(dim_tags=new_dim_tags)
+
+        new_args.append(arg)
+
+    # }}}
+
+    if not additional_args:
+        return kernel
+    else:
+        return kernel.copy(args=new_args + additional_args)
+
+# }}}
+
+
+# {{{ zero_offsets
+
+def zero_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
+    made_changes = False
+    from pymbolic.primitives import Expression
+
+    # {{{ process arguments
+
+    new_args = []
+    for arg in kernel.args:
+        if isinstance(arg, ArrayArg):
+            if arg.offset is None:
+                pass
+            if arg.offset is auto:
+                made_changes = True
+                arg = arg.copy(offset=0)
+            elif isinstance(arg.offset, (int, np.integer, Expression, str)):
+                from pymbolic.primitives import is_zero
+                if not is_zero(arg.offset):
+                    raise LoopyError(
+                        f"Non-zero offset on argument '{arg.name}' "
+                        f"of callable kernel '{kernel.name}. This is not allowed.")
+            else:
+                raise LoopyError(f"invalid value of offset for '{arg.name}'")
+
+        new_args.append(arg)
+
+    # }}}
+
+    if not made_changes:
+        return kernel
+    else:
+        return kernel.copy(args=new_args)
+
+# }}}
+
+
 # {{{ decide temporary address space
 
 def _get_compute_inames_tagged(kernel, insn, tag_base):
@@ -129,16 +329,8 @@ def find_temporary_address_space(kernel):
 
     base_storage_to_aliases = {}
 
-    kernel_var_names = kernel.all_variable_names(include_temp_storage=False)
-
     for temp_var in kernel.temporary_variables.values():
         if temp_var.base_storage is not None:
-            # no nesting allowed
-            if temp_var.base_storage in kernel_var_names:
-                raise LoopyError("base_storage for temporary '%s' is '%s', "
-                        "which is an existing variable name"
-                        % (temp_var.name, temp_var.base_storage))
-
             base_storage_to_aliases.setdefault(
                     temp_var.base_storage, []).append(temp_var.name)
 
@@ -389,15 +581,16 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
 
     def __call__(self, expr, kernel, insn, assignees=None):
         from loopy.kernel.data import InstructionBase
-        from loopy.symbolic import IdentityMapper, ExpansionState
+        from loopy.symbolic import UncachedIdentityMapper, ExpansionState
+        import immutables
         assert insn is None or isinstance(insn, InstructionBase)
 
-        return IdentityMapper.__call__(self, expr,
+        return UncachedIdentityMapper.__call__(self, expr,
                 ExpansionState(
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context={}), assignees=assignees)
+                    arg_context=immutables.Map()), assignees=assignees)
 
     def map_kernel(self, kernel):
 
@@ -534,10 +727,18 @@ def filter_reachable_callables(t_unit):
     return t_unit.copy(callables_table=new_callables)
 
 
-def _preprocess_single_kernel(kernel, callables_table):
+def _preprocess_single_kernel(kernel: LoopKernel, is_entrypoint: bool) -> LoopKernel:
     from loopy.kernel import KernelState
 
     prepro_logger = ProcessLogger(logger, "%s: preprocess" % kernel.name)
+
+    kernel = make_arrays_for_sep_arrays(kernel)
+
+    if is_entrypoint:
+        kernel = make_args_for_offsets_and_strides(kernel)
+    else:
+        # No need for offsets internally, we can pass arbitrary pointers.
+        kernel = zero_offsets_and_strides(kernel)
 
     from loopy.check import check_identifiers_in_subst_rules
     check_identifiers_in_subst_rules(kernel)
@@ -567,6 +768,10 @@ def _preprocess_single_kernel(kernel, callables_table):
     kernel = realize_ilp(kernel)
 
     kernel = find_temporary_address_space(kernel)
+
+    # Ordering restriction: temporary address spaces need to be found before
+    # allocating base_storage
+    kernel = allocate_temporaries_for_base_storage(kernel, _implicitly_run=True)
 
     # check for atomic loads, much easier to do here now that the dependencies
     # have been established
@@ -636,7 +841,8 @@ def preprocess_program(program):
     for func_id, in_knl_callable in program.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = _preprocess_single_kernel(
-                    in_knl_callable.subkernel, program.callables_table)
+                    in_knl_callable.subkernel,
+                    is_entrypoint=func_id in program.entrypoints)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
         elif isinstance(in_knl_callable, ScalarCallable):

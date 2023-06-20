@@ -29,7 +29,6 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
         Assignment, CInstruction, _DataObliviousInstruction)
 from loopy.symbolic import (
-        simplify_using_aff,
         RuleAwareIdentityMapper,
         RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext)
 from loopy.kernel.function_interface import (
@@ -130,39 +129,16 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
     def map_subscript(self, expr, expn_state):
         if expr.aggregate.name in self.callee_knl.arg_dict:
-            from loopy.symbolic import get_start_subscript_from_sar
-            from loopy.symbolic import simplify_via_aff
             from pymbolic.primitives import Subscript, Variable
+            from pymbolic import substitute
 
             sar = self.callee_arg_to_call_param[expr.aggregate.name]  # SubArrayRef
 
-            callee_arg = self.callee_knl.arg_dict[expr.aggregate.name]
-            if sar.subscript.aggregate.name in self.caller_knl.arg_dict:
-                caller_arg = self.caller_knl.arg_dict[sar.subscript.aggregate.name]
-            else:
-                caller_arg = self.caller_knl.temporary_variables[
-                        sar.subscript.aggregate.name]
-
-            flatten_index = 0
-            for i, idx in enumerate(get_start_subscript_from_sar(sar,
-                    self.caller_knl).index_tuple):
-                flatten_index += idx*caller_arg.dim_tags[i].stride
-
-            flatten_index += sum(
-                idx * tag.stride
-                for idx, tag in zip(self.rec(expr.index_tuple, expn_state),
-                                    callee_arg.dim_tags))
-
-            flatten_index = simplify_via_aff(flatten_index)
-
-            new_indices = []
-            for dim_tag in caller_arg.dim_tags:
-                ind = flatten_index // dim_tag.stride
-                flatten_index -= (dim_tag.stride * ind)
-                new_indices.append(ind)
-
-            new_indices = tuple(simplify_using_aff(
-                self.callee_knl, i) for i in new_indices)
+            index_tuple = self.rec(expr.index_tuple, expn_state)
+            subs_map = {iname: idx for idx, iname in
+                    zip(index_tuple, sar.swept_inames)}
+            new_indices = tuple(substitute(idx, subs_map) for idx in
+                    sar.subscript.index_tuple)
 
             return Subscript(Variable(sar.subscript.aggregate.name), new_indices)
         else:
@@ -177,7 +153,15 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
             if isinstance(arg, ArrayArg):
                 assert arg.shape == ()
                 assert isinstance(par, SubArrayRef) and par.swept_inames == ()
-                return par.subscript.aggregate
+                if par.subscript.index_tuple:
+                    return par.subscript
+                else:
+                    assert (self
+                            .caller_knl
+                            .get_var_descriptor(par.subscript
+                                                .aggregate.name)
+                            .shape) == ()
+                    return par.subscript.aggregate
             else:
                 assert isinstance(arg, ValueArg)
                 return par
@@ -267,6 +251,10 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     callee_label = callee_knl.name[:4] + "_"
     vng = caller_knl.get_var_name_generator()
     ing = caller_knl.get_instruction_id_generator()
+    # collisions with callee var names might affect the renaming logic
+    # below, better to avoid it.
+    vng.add_names(callee_knl.all_variable_names(), conflicting_ok=True)
+    ing.add_names(callee_knl.all_variable_names(), conflicting_ok=True)
 
     # {{{ construct callee->caller name mappings
 
@@ -287,7 +275,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     # {{{ iname_to_tags
 
     # new_inames: caller's inames post inlining
-    new_inames = caller_knl.inames
+    new_inames = caller_knl.inames.copy()
 
     for old_name, callee_iname in callee_knl.inames.items():
         new_name = name_map[old_name]
@@ -401,12 +389,15 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     noop_start = NoOpInstruction(
         id=ing(callee_label+"_start"),
         within_inames=call_insn.within_inames,
-        depends_on=call_insn.depends_on
+        depends_on=call_insn.depends_on,
+        predicates=call_insn.predicates,
     )
     noop_end = NoOpInstruction(
         id=call_insn.id,
         within_inames=call_insn.within_inames,
-        depends_on=frozenset(insn_id_map.values())
+        depends_on=frozenset(insn_id_map.values()),
+        depends_on_is_final=True,
+        predicates=call_insn.predicates,
     )
 
     # }}}
@@ -432,8 +423,10 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                 id=insn_id_map[insn.id],
                 within_inames=new_within_inames,
                 depends_on=new_depends_on,
+                depends_on_is_final=True,
                 tags=insn.tags | call_insn.tags,
                 atomicity=new_atomicity,
+                predicates=insn.predicates | call_insn.predicates,
                 no_sync_with=new_no_sync_with
             )
         else:
@@ -442,7 +435,8 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                 within_inames=new_within_inames,
                 depends_on=new_depends_on,
                 tags=insn.tags | call_insn.tags,
-                no_sync_with=new_no_sync_with
+                no_sync_with=new_no_sync_with,
+                predicates=insn.predicates | call_insn.predicates,
             )
         inlined_insns.append(insn)
 
@@ -467,7 +461,11 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
                            domains=caller_knl.domains+new_domains,
                            assumptions=(old_assumptions.params()
                                         & new_assumptions.params()),
-                           inames=new_inames)
+                           inames=new_inames,
+                           preambles=caller_knl.preambles+callee_knl.preambles,
+                           preamble_generators=(caller_knl.preamble_generators
+                                                + callee_knl.preamble_generators),
+                           )
 
 # }}}
 

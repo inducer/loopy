@@ -21,11 +21,13 @@ THE SOFTWARE.
 """
 
 
+from typing import ClassVar, Tuple
+
 from pymbolic import var
-from loopy.symbolic import ResolvedFunction
-from loopy.kernel.function_interface import ScalarCallable
 import numpy as np
 
+from loopy.symbolic import ResolvedFunction
+from loopy.kernel.function_interface import ScalarCallable
 from loopy.symbolic import FunctionIdentifier
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
@@ -271,7 +273,7 @@ class MinReductionOperation(ScalarReductionOperation):
 # {{{ base class for symbolic reduction ops
 
 class ReductionOpFunction(FunctionIdentifier):
-    init_arg_names = ("reduction_op",)
+    init_arg_names: ClassVar[Tuple[str, ...]] = ("reduction_op",)
 
     def __init__(self, reduction_op):
         self.reduction_op = reduction_op

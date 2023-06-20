@@ -20,9 +20,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Sequence, Mapping, List, Tuple
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
+from loopy.kernel.instruction import InstructionBase
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.symbolic import RuleAwareIdentityMapper
 
@@ -191,8 +193,7 @@ def remove_instructions(kernel, insn_ids):
     if isinstance(insn_ids, MatchExpressionBase):
         within = insn_ids
 
-        insn_ids = set([insn.id for insn in kernel.instructions if
-            within(kernel, insn)])
+        insn_ids = {insn.id for insn in kernel.instructions if within(kernel, insn)}
 
     assert isinstance(insn_ids, set)
     id_to_insn = kernel.id_to_insn
@@ -227,6 +228,12 @@ def remove_instructions(kernel, insn_ids):
         else:
             depends_on = insn.depends_on
 
+        if ((not (depends_on & insn_ids))
+                and insn.no_sync_with == frozenset()):
+            # early exit if *insn* need not be updated.
+            new_insns.append(insn)
+            continue
+
         new_deps = reduce(frozenset.union,
                           (transitive_deps.get(d, frozenset([d]))
                            for d in depends_on),
@@ -250,12 +257,19 @@ def remove_instructions(kernel, insn_ids):
 
 # {{{ replace_instruction_ids
 
-def replace_instruction_ids_in_insn(insn, replacements):
+def replace_instruction_ids_in_insn(
+        insn: InstructionBase, replacements: Mapping[str, Sequence[str]]
+        ) -> InstructionBase:
     changed = False
     new_depends_on = list(insn.depends_on)
-    extra_depends_on = []
-    new_no_sync_with = []
+    extra_depends_on: List[str] = []
+    new_no_sync_with: List[Tuple[str, str]] = []
 
+    if insn.id in replacements:
+        insn = insn.copy(id=replacements[insn.id][0])
+
+    new_depends_on = list(insn.depends_on)
+    extra_depends_on = []
     for idep, dep in enumerate(insn.depends_on):
         if dep in replacements:
             new_deps = list(replacements[dep])
@@ -279,7 +293,19 @@ def replace_instruction_ids_in_insn(insn, replacements):
         return insn
 
 
-def replace_instruction_ids(kernel, replacements):
+def replace_instruction_ids(
+        kernel: LoopKernel, replacements: Mapping[str, Sequence[str]]
+        ) -> LoopKernel:
+    """Return a new kernel with the ids of instructions and dependencies
+    replaced according to the provided mapping.
+
+    :arg replacements: a :class:`dict` mapping old insn ids to an
+        iterable of new insn ids.
+        The first entry of the iterable is used for replacement
+        purposes. Additional insn ids after the first are added to the
+        dependency list of instructions that have a dependency on the old insn id.
+    """
+
     if not replacements:
         return kernel
 

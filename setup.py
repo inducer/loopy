@@ -82,10 +82,10 @@ setup(name="loopy",
           "Topic :: Utilities",
           ],
 
-      python_requires="~=3.6",
+      python_requires="~=3.8",
       install_requires=[
-          "pytools>=2022.1.2",
-          "pymbolic>=2019.2",
+          "pytools>=2022.1.7",
+          "pymbolic>=2022.1",
           "genpy>=2016.1.2",
 
           # https://github.com/inducer/loopy/pull/419
@@ -97,11 +97,12 @@ setup(name="loopy",
           "colorama",
           "Mako",
           "pyrsistent",
+          "immutables",
           ],
 
       extras_require={
           "pyopencl":  [
-              "pyopencl>=2020.2",
+              "pyopencl>=2022.3",
               ],
           "fortran":  [
               # Note that this is *not* regular 'f2py2e', this is

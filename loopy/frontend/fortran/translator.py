@@ -47,6 +47,10 @@ class SubscriptIndexAdjuster(IdentityMapper):
 
     def __init__(self, scope):
         self.scope = scope
+        super().__init__()
+
+    def get_cache_key(self, expr):
+        return super().get_cache_key(expr) + (self.scope,)
 
     def map_subscript(self, expr):
         from pymbolic.primitives import Variable
@@ -925,6 +929,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     index_dtype=self.index_dtype,
                     target=self.target,
                     seq_dependencies=seq_dependencies,
+                    lang_version=(2018, 2),
                     )
 
             from loopy.loop import merge_loop_domains

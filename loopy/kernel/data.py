@@ -24,13 +24,23 @@ THE SOFTWARE.
 """
 
 
+from typing import (Type, Union, FrozenSet, Tuple, Optional, Sequence, Any, ClassVar,
+        cast)
 from sys import intern
+from dataclasses import dataclass, replace
+from enum import IntEnum
+from warnings import warn
+
+from immutables import Map
 import numpy as np  # noqa
 from pytools import ImmutableRecord
 from pytools.tag import Taggable
-from pytools.tag import UniqueTag as UniqueTagBase
-from loopy.kernel.array import ArrayBase
+from pytools.tag import UniqueTag as UniqueTagBase, Tag
+
+from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
 from loopy.diagnostic import LoopyError
+from loopy.typing import ExpressionT
+from loopy.types import LoopyType
 from loopy.kernel.instruction import (  # noqa
         InstructionBase,
         MemoryOrdering,
@@ -43,6 +53,7 @@ from loopy.kernel.instruction import (  # noqa
         CallInstruction,
         make_assignment,
         CInstruction)
+
 
 __doc__ = """
 .. autofunction:: filter_iname_tags_by_type
@@ -64,9 +75,46 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
-
-.. autoclass:: KernelArgument
 """
+
+# This docstring is included in ref_internals. Do not include parts of the public
+# interface, e.g. TemporaryVariable, KernelArgument, ArrayArg.
+
+
+# {{{ utilities
+
+def _names_from_expr(expr: Union[None, ExpressionT, str]) -> FrozenSet[str]:
+    from numbers import Number
+    from loopy.symbolic import DependencyMapper
+    dep_mapper = DependencyMapper()
+
+    from pymbolic.primitives import Expression
+    if isinstance(expr, str):
+        return frozenset({expr})
+    elif isinstance(expr, Expression):
+        return frozenset(v.name for v in dep_mapper(expr))
+    elif expr is None:
+        return frozenset()
+    elif isinstance(expr, Number):
+        return frozenset()
+    else:
+        raise ValueError(f"unexpected value of expression-like object: '{expr}'")
+
+
+def _names_from_dim_tags(
+        dim_tags: Optional[Sequence[ArrayDimImplementationTag]]) -> FrozenSet[str]:
+    from loopy.kernel.array import FixedStrideArrayDimTag
+    if dim_tags is not None:
+        return frozenset({
+            name
+            for dim_tag in dim_tags
+            if isinstance(dim_tag, FixedStrideArrayDimTag)
+            for name in _names_from_expr(dim_tag.stride)
+            })
+    else:
+        return frozenset()
+
+# }}}
 
 
 class auto:  # noqa
@@ -109,7 +157,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
 
 
 class InameImplementationTag(ImmutableRecord, UniqueTagBase):
-    __slots__ = []
+    __slots__: ClassVar[Tuple[str, ...]] = ()
 
     def __hash__(self):
         return hash(self.key)
@@ -262,7 +310,7 @@ def parse_tag(tag):
 
 # {{{ memory address space
 
-class AddressSpace:
+class AddressSpace(IntEnum):
     """Storage location of a variable.
 
     .. attribute:: PRIVATE
@@ -278,13 +326,15 @@ class AddressSpace:
     GLOBAL = 2
 
     @classmethod
-    def stringify(cls, val):
+    def stringify(cls, val: Union["AddressSpace", Type[auto]]) -> str:
         if val == cls.PRIVATE:
             return "private"
         elif val == cls.LOCAL:
             return "local"
         elif val == cls.GLOBAL:
             return "global"
+        elif val is auto:
+            return "<auto>"
         else:
             raise ValueError("unexpected value of AddressSpace")
 
@@ -294,24 +344,36 @@ class AddressSpace:
 # {{{ arguments
 
 class KernelArgument(ImmutableRecord):
-    """Base class for all argument types"""
+    """Base class for all argument types.
+
+    .. attribute:: name
+    .. attribute:: dtype
+    .. attribute:: is_output
+    .. attribute:: is_input
+
+    .. automethod:: supporting_names
+    """
+    name: str
+    dtype: Optional[LoopyType]
+    is_output: bool
+    is_input: bool
 
     def __init__(self, **kwargs):
         kwargs["name"] = intern(kwargs.pop("name"))
 
         target = kwargs.pop("target", None)
+        if target is not None:
+            warn("Passing 'target' is deprecated and will stop working in 2023. "
+                    "It is already being ignored.",
+                    DeprecationWarning, stacklevel=2)
 
         dtype = kwargs.pop("dtype", None)
 
-        if "for_atomic" in kwargs:
-            for_atomic = kwargs["for_atomic"]
-        else:
-            for_atomic = False
+        for_atomic = kwargs.pop("for_atomic", False)
 
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(
-                dtype, allow_auto=True, allow_none=True, for_atomic=for_atomic,
-                target=target)
+                dtype, allow_auto=True, allow_none=True, for_atomic=for_atomic)
 
         import loopy as lp
         if dtype is lp.auto:
@@ -323,9 +385,27 @@ class KernelArgument(ImmutableRecord):
 
         ImmutableRecord.__init__(self, **kwargs)
 
+    def supporting_names(self) -> FrozenSet[str]:
+        """'Supporting' names are those that are likely to be required to be
+        present for any use of the argument.
+        """
+
+        return frozenset()
+
+
+@dataclass(frozen=True)
+class _ArraySeparationInfo:
+    """Not user-facing. If an array has been split because an axis
+    is tagged with :class:`~loopy.kernel.data.SeparateArrayArrayDimTag`,
+    this records the names of the actually present sub-arrays that
+    should be used to realize this array.
+    """
+    sep_axis_indices_set: FrozenSet[int]
+    subarray_names: Map[Tuple[int, ...], str]
+
 
 class ArrayArg(ArrayBase, KernelArgument):
-    __doc__ = ArrayBase.__doc__ + (
+    __doc__ = cast(str, ArrayBase.__doc__) + (
         """
         .. attribute:: address_space
 
@@ -345,11 +425,17 @@ class ArrayArg(ArrayBase, KernelArgument):
             at kernel entry.
         """)
 
-    allowed_extra_kwargs = [
+    address_space: AddressSpace
+
+    # _separation_info is not user-facing and hence not documented.
+    _separation_info: Optional[_ArraySeparationInfo]
+
+    allowed_extra_kwargs = (
             "address_space",
             "is_output",
             "is_input",
-            "tags"]
+            "tags",
+            "_separation_info")
 
     def __init__(self, *args, **kwargs):
         if "address_space" not in kwargs:
@@ -357,26 +443,32 @@ class ArrayArg(ArrayBase, KernelArgument):
 
         kwargs["is_output"] = kwargs.pop("is_output", None)
         kwargs["is_input"] = kwargs.pop("is_input", None)
+        kwargs["_separation_info"] = kwargs.pop("_separation_info", None)
 
         super().__init__(*args, **kwargs)
 
     min_target_axes = 0
     max_target_axes = 1
 
-    def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
-        return ast_builder.get_array_arg_decl(self.name + name_suffix,
-                self.address_space, shape, dtype, is_written)
-
     def __str__(self):
-        # dont mention the type name if shape is known
+        # Don't mention the type of array arg if shape is known
+        # FIXME: Why?
         include_typename = self.shape in (None, auto)
 
         aspace_str = AddressSpace.stringify(self.address_space)
 
+        inout = []
+        if self.is_input:
+            inout.append("in")
+        if self.is_output:
+            inout.append("out")
+        if not (self.is_input or self.is_output):
+            inout.append("neither_in_nor_out?")
+
         return (
                 self.stringify(include_typename=include_typename)
-                +
-                " aspace: %s" % aspace_str)
+                + " " + "/".join(inout)
+                + " aspace: %s" % aspace_str)
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -386,6 +478,15 @@ class ArrayArg(ArrayBase, KernelArgument):
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.is_output)
         key_builder.rec(key_hash, self.is_input)
+        key_builder.rec(key_hash, self._separation_info)
+
+    def supporting_names(self) -> FrozenSet[str]:
+        # Do not consider separation info here: The subarrays don't support, they
+        # replace this array.
+        return (
+                _names_from_expr(self.offset)
+                | _names_from_dim_tags(self.dim_tags)
+                )
 
 
 # Making this a function prevents incorrect use in isinstance.
@@ -416,10 +517,6 @@ class ConstantArg(ArrayBase, KernelArgument):
     min_target_axes = 0
     max_target_axes = 1
 
-    def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
-        return ast_builder.get_constant_arg_decl(self.name + name_suffix, shape,
-                dtype, is_written)
-
 
 class ImageArg(ArrayBase, KernelArgument):
     __doc__ = ArrayBase.__doc__
@@ -439,11 +536,18 @@ class ImageArg(ArrayBase, KernelArgument):
 
     @property
     def dimensions(self):
+        assert self.dim_tags is not None
         return len(self.dim_tags)
 
     def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
         return ast_builder.get_image_arg_decl(self.name + name_suffix, shape,
                 self.num_target_axes(), dtype, is_written)
+
+    def supporting_names(self) -> FrozenSet[str]:
+        return (
+                _names_from_expr(self.offset)
+                | _names_from_dim_tags(self.dim_tags)
+                )
 
 
 """
@@ -501,18 +605,13 @@ class ValueArg(KernelArgument, Taggable):
         return ast_builder.get_value_arg_decl(self.name, (),
                 self.dtype, False)
 
-
-class InameArg(ValueArg):
-    pass
-
 # }}}
 
 
 # {{{ temporary variable
 
-
 class TemporaryVariable(ArrayBase):
-    __doc__ = ArrayBase.__doc__ + """
+    __doc__ = cast(str, ArrayBase.__doc__) + """
     .. attribute:: storage_shape
     .. attribute:: base_indices
     .. attribute:: address_space
@@ -525,8 +624,9 @@ class TemporaryVariable(ArrayBase):
     .. attribute:: base_storage
 
         The name of a storage array that is to be used to actually
-        hold the data in this temporary. Note that this storage
-        array must not match any existing variable names.
+        hold the data in this temporary, or *None*. If not *None* or the name
+        of an existing variable, a variable of this name and appropriate size
+        will be created.
 
     .. attribute:: initializer
 
@@ -550,7 +650,7 @@ class TemporaryVariable(ArrayBase):
     min_target_axes = 0
     max_target_axes = 1
 
-    allowed_extra_kwargs = [
+    allowed_extra_kwargs = (
             "storage_shape",
             "base_indices",
             "address_space",
@@ -558,7 +658,7 @@ class TemporaryVariable(ArrayBase):
             "initializer",
             "read_only",
             "_base_storage_access_may_be_aliasing",
-            ]
+            )
 
     def __init__(self, name, dtype=None, shape=auto, address_space=None,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
@@ -670,29 +770,20 @@ class TemporaryVariable(ArrayBase):
         from pytools import product
         return product(si for si in shape)*self.dtype.itemsize
 
-    def decl_info(self, target, index_dtype):
-        return super().decl_info(
-                target, is_written=True, index_dtype=index_dtype,
-                shape_override=self.storage_shape)
-
-    def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
-        if self.address_space == AddressSpace.GLOBAL:
-            return ast_builder.get_array_arg_decl(self.name + name_suffix,
-                    AddressSpace.GLOBAL, shape, dtype, is_written)
-        else:
-            raise LoopyError("unexpected request for argument declaration of "
-                    "non-global temporary")
-
     def __str__(self):
         if self.address_space is auto:
             aspace_str = "auto"
         else:
             aspace_str = AddressSpace.stringify(self.address_space)
 
+        if self.base_storage is None:
+            bs_str = ""
+        else:
+            bs_str = " base_storage: "+str(self.base_storage)
+
         return (
                 self.stringify(include_typename=False)
-                +
-                " aspace:%s" % aspace_str)
+                + f" aspace: {aspace_str}{bs_str}")
 
     def __eq__(self, other):
         return (
@@ -728,6 +819,15 @@ class TemporaryVariable(ArrayBase):
 
         key_builder.rec(key_hash, self.read_only)
         key_builder.rec(key_hash, self._base_storage_access_may_be_aliasing)
+
+    def supporting_names(self) -> FrozenSet[str]:
+        return (
+                _names_from_expr(self.offset)
+                | _names_from_dim_tags(self.dim_tags)
+                | (
+                    frozenset({self.base_storage})
+                    if self.base_storage else frozenset())
+                )
 
 # }}}
 
@@ -799,6 +899,7 @@ class CallMangleInfo(ImmutableRecord):
 
 # {{{ Iname class
 
+@dataclass(frozen=True)
 class Iname(Taggable):
     """
     Records an iname in a :class:`~loopy.LoopKernel`. See :ref:`domain-tree` for
@@ -814,40 +915,18 @@ class Iname(Taggable):
 
         An instance of :class:`str`, denoting the iname's name.
 
-    .. attribute:: tas
+    .. attribute:: tags
 
         An instance of :class:`frozenset` of :class:`pytools.tag.Tag`.
     """
-    def __init__(self, name, tags=frozenset()):
-        super().__init__(tags=tags)
+    name: str
+    tags: FrozenSet[Tag]
 
-        assert isinstance(name, str)
-        self.name = name
-
-    def copy(self, *, name=None, tags=None):
-        if name is None:
-            name = self.name
-        if tags is None:
-            tags = self.tags
-
-        return type(self)(name=name, tags=tags)
+    def copy(self, **kwargs: Any) -> "Iname":
+        return replace(self, **kwargs)
 
     def _with_new_tags(self, tags):
         return self.copy(tags=tags)
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-        key_builder.rec(key_hash, type(self).__name__.encode("utf-8"))
-        key_builder.rec(key_hash, self.name)
-        key_builder.rec(key_hash, self.tags)
-
-    def __eq__(self, other):
-        return (
-                type(self) == type(other)
-                and self.name == other.name
-                and self.tags == other.tags)
 
 # }}}
 
