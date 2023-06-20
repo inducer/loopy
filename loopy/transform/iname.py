@@ -2411,7 +2411,6 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
     :arg within: a stack match understood by :func:`loopy.match.parse_stack_match`.
     :arg preserve_tags: copy the tags on the old iname to the new iname
     """
-    tags = kernel.inames[old_iname].tags
     from itertools import product
     from loopy import tag_inames
 
