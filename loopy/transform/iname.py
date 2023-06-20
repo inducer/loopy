@@ -2404,7 +2404,7 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False, within=None)
 
 
 def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
-                 preserve_tags=False, within=None):
+                 preserve_tags=True, within=None):
     """
     Single iname version of :func:`loopy.transform.iname.rename_inames`.
     :arg existing_ok: execute even if *new_iname* already exists
