@@ -2403,11 +2403,13 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False, within=None)
     return kernel
 
 
-def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
+def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
+                 preserve_tags=False, within=None):
     """
-    Single iname version of :func:`loopy.transform.iname.rename_inames`. Unlike
-    that function, this function ensures the new iname has the same tags as the
-    old iname.
+    Single iname version of :func:`loopy.transform.iname.rename_inames`.
+    :arg existing_ok: execute even if *new_iname* already exists
+    :arg within: a stack match understood by :func:`loopy.match.parse_stack_match`.
+    :arg preserve_tags: copy the tags on the old iname to the new iname
     """
     tags = kernel.inames[old_iname].tags
     from itertools import product
@@ -2415,7 +2417,8 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
 
     tags = kernel.inames[old_iname].tags
     kernel = rename_inames(kernel, [old_iname], new_iname, existing_ok, within)
-    kernel = tag_inames(kernel, product([new_iname], tags))
+    if preserve_tags:
+        kernel = tag_inames(kernel, product([new_iname], tags))
     return kernel
 
 # }}}
