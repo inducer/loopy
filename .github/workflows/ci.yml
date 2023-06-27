@@ -128,6 +128,7 @@ jobs:
                 curl -L -O https://tiker.net/ci-support-v0
                 . ./ci-support-v0
                 build_py_project_in_conda_env
+                rewrite_pyopencl_test
 
                 . ./.ci/examples-funcs.sh
                 install_example_prereqs

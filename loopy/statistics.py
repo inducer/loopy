@@ -1676,7 +1676,7 @@ def _get_op_map_for_single_kernel(knl, callables_table,
 
     for insn in knl.instructions:
         if within(knl, insn):
-            if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+            if isinstance(insn, (CallInstruction, Assignment)):
                 ops = op_counter(insn.assignees) + op_counter(insn.expression)
                 for key, val in ops.count_map.items():
                     count = _get_insn_count(knl, callables_table, insn.id,
@@ -1684,7 +1684,8 @@ def _get_op_map_for_single_kernel(knl, callables_table,
                                 key.count_granularity)
                     op_map = op_map + ToCountMap({key: val}) * count
 
-            elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            elif isinstance(
+                    insn, (CInstruction, NoOpInstruction, BarrierInstruction)):
                 pass
             else:
                 raise NotImplementedError("unexpected instruction item type: '%s'"
@@ -1862,7 +1863,7 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
 
     for insn in knl.instructions:
         if within(knl, insn):
-            if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+            if isinstance(insn, (CallInstruction, Assignment)):
                 insn_access_map = (
                             access_counter_g(insn.expression)
                             + access_counter_l(insn.expression)
@@ -1879,7 +1880,8 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
                                 key.count_granularity)
                     access_map = access_map + ToCountMap({key: val}) * count
 
-            elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            elif isinstance(
+                    insn, (CInstruction, NoOpInstruction, BarrierInstruction)):
                 pass
 
             else:

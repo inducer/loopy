@@ -370,6 +370,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
     # Note: this does not include loop_iname itself!
     usable_inames = get_usable_inames_for_conditional(kernel, sched_index,
             codegen_state.codegen_cachemanager)
+
     # get rid of disjoint loop nests, see <www.github.com/inducer/loopy/issues/724>
     usable_inames = usable_inames & _get_intersecting_inames(kernel, loop_iname)
 

@@ -268,9 +268,9 @@ class OpenCLCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
 
             if dtype.kind == "c":
                 raise LoopyTypeError(f"'{name}' does not support complex numbers")
@@ -289,9 +289,9 @@ class OpenCLCallable(ScalarCallable):
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
-            common_dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                        if (id >= 0 and dtype is not None)])
+            common_dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if (id >= 0 and dtype is not None)])
 
             if common_dtype.kind in ["u", "i", "f"]:
                 if common_dtype.kind == "f":
@@ -332,9 +332,9 @@ class OpenCLCallable(ScalarCallable):
                 if not -1 <= id <= 1:
                     raise LoopyError(f"'{name}' can take only 2 arguments.")
 
-            common_dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                        if (id >= 0 and dtype is not None)])
+            common_dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if (id >= 0 and dtype is not None)])
 
             if common_dtype == np.float64:
                 name = "powf64"
@@ -366,9 +366,9 @@ class OpenCLCallable(ScalarCallable):
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
                             callables_table)
 
-            dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in
-                        arg_id_to_dtype.items() if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
 
             if dtype.kind == "c":
                 raise LoopyError("%s does not support complex numbers"
@@ -421,10 +421,12 @@ def get_opencl_callables():
     *identifier* is known in OpenCL.
     """
     opencl_function_ids = (
-            {"max", "min", "dot", "pow", "abs", "acos", "asin",
-            "atan", "cos", "cosh", "sin", "sinh", "pow", "atan2", "tanh", "exp",
-            "log", "log10", "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-            "fabs", "tan", "erf", "erfc"}
+            {"dot", "abs",
+             "cos", "cosh", "sin", "sinh", "tan", "tanh",
+             "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
+             "pow", "exp", "log", "log10", "sqrt", "ceil", "floor",
+             "max", "min", "fmax", "fmin",
+             "fabs",  "erf", "erfc"}
             | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
             | set(VECTOR_LITERAL_FUNCS))
 
@@ -653,6 +655,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         fdecl = CLKernel(fdecl)
 
         from loopy.schedule import get_insn_ids_for_block_at
+        assert codegen_state.kernel.linearization is not None
         _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(
                     codegen_state.kernel.linearization, schedule_index),

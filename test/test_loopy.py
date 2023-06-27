@@ -633,6 +633,50 @@ def test_conditional(ctx_factory):
                 ))
 
 
+def test_conditional_two_ways(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<n }",
+        """
+        <> b = i > 3
+        <> c = i > 1
+        out[i] = a[i] {id=init}
+        if b
+            out[i] = 2*a[i]  {if=c,dep=init}
+        end
+        """,
+        [
+            lp.GlobalArg("a", np.float32, shape=lp.auto),
+            lp.GlobalArg("out", np.float32, shape=lp.auto),
+            "..."
+        ]
+    )
+
+    ref_knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<n }",
+        """
+        <> b = i > 3
+        <> c = i > 1
+        out[i] = a[i] {id=init}
+        if b and c
+            out[i] = 2*a[i]  {dep=init}
+        end
+        """,
+        [
+            lp.GlobalArg("a", np.float32, shape=lp.auto),
+            lp.GlobalArg("out", np.float32, shape=lp.auto),
+            "..."
+        ]
+    )
+    ref_knl = knl
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            parameters=dict(
+                n=200
+                ))
+
+
 def test_ilp_loop_bound(ctx_factory):
     # The salient bit of this test is that a joint bound on (outer, inner)
     # from a split occurs in a setting where the inner loop has been ilp'ed.

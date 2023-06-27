@@ -445,6 +445,20 @@ class LoopKernel(Taggable):
                         dom, result)
                 result = aligned_result & aligned_dom
 
+        assert result is not None
+        # Subdomains may carry other domains' inames as parameters.
+        # Move them back into the 'set' part of the space.
+        param_names = {
+                result.get_dim_name(dim_type.param, i)
+                for i in range(result.dim(dim_type.param))}
+        for actual_iname in param_names - self.all_params():
+            result = result.move_dims(
+                    dim_type.set,
+                    result.dim(dim_type.set),
+                    dim_type.param,
+                    result.find_dim_by_name(dim_type.param, actual_iname),
+                    1)
+
         return result
 
     def get_inames_domain(self, inames: FrozenSet[str]) -> isl.BasicSet:
@@ -556,7 +570,7 @@ class LoopKernel(Taggable):
         return frozenset(self.inames.keys())
 
     @memoize_method
-    def all_params(self):
+    def all_params(self) -> FrozenSet[str]:
         all_inames = self.all_inames()
 
         result = set()

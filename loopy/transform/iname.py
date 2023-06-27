@@ -28,6 +28,7 @@ from loopy.symbolic import (
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
+from typing import FrozenSet
 
 from loopy.translation_unit import (TranslationUnit,
                                     for_each_kernel)
@@ -1707,8 +1708,7 @@ def add_inames_to_insn(kernel, inames, insn_match):
     :arg insn_match: An instruction match as understood by
         :func:`loopy.match.parse_match`.
 
-    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
-        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
+    :returns: a :class:`LoopKernel` with the *inames* added to
         the instructions matched by *insn_match*.
 
     .. versionadded:: 2016.3
@@ -1729,6 +1729,91 @@ def add_inames_to_insn(kernel, inames, insn_match):
         if match(kernel, insn):
             new_instructions.append(
                     insn.copy(within_inames=insn.within_inames | inames))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
+# }}}
+
+
+# {{{ remove_inames_from_insn
+
+@for_each_kernel
+def remove_inames_from_insn(kernel: LoopKernel, inames: FrozenSet[str],
+        insn_match) -> LoopKernel:
+    """
+    :arg inames: a frozenset of inames that will be added to the
+        instructions matched by *insn_match*.
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *inames* removed from
+        the instructions matched by *insn_match*.
+
+    This transformation is useful when an iname is added to an
+    instruction in a sub-kernel by an inlining call because the
+    kernel invocation itself has the iname. When the instruction
+    does not depend on the iname, this transformation can be used
+    for removing that iname.
+
+    .. versionadded:: 2023.0
+    """
+
+    if not isinstance(inames, frozenset):
+        raise TypeError("'inames' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if match(kernel, insn):
+            new_inames = insn.within_inames - inames
+            if new_inames == insn.within_inames:
+                raise LoopyError(f"Inames {inames} not found in instruction "
+                    f"{insn.id}")
+            new_instructions.append(
+                    insn.copy(within_inames=new_inames))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
+
+@for_each_kernel
+def remove_predicates_from_insn(kernel, predicates, insn_match):
+    """
+    :arg predicates: a frozenset of predicates that will be added to the
+        instructions matched by *insn_match*
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *predicates* removed from
+        the instructions matched by *insn_match*.
+
+    This transformation is useful when a predicate is added to an
+    instruction in a sub-kernel by an inlining call because the
+    kernel invocation itself has the iname. When the instruction
+    does not depend on the predicate, this transformation can be used
+    for removing that predicate.
+
+    .. versionadded:: 2023.0
+    """
+    if not isinstance(predicates, frozenset):
+        raise TypeError("'predicates' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if match(kernel, insn):
+            new_predicates = insn.predicates - predicates
+            new_instructions.append(
+                insn.copy(predicates=frozenset(new_predicates)))
         else:
             new_instructions.append(insn)
 
@@ -2200,9 +2285,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
         if isinstance(tag, GroupInameTag)],
         default=-1) + 1
 
-    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalInameTag)
+    contains_auto_local_tag = any(isinstance(tag, AutoFitLocalInameTag)
         for iname in kernel.inames.values()
-        for tag in iname.tags])
+        for tag in iname.tags)
 
     if contains_auto_local_tag:
         raise LoopyError("Kernels containing l.auto tags are invalid"
@@ -2417,8 +2502,23 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
     return kernel
 
 
-def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
-    return rename_inames(kernel, [old_iname], new_iname, existing_ok, within)
+@for_each_kernel
+def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
+                 within=None, preserve_tags=True):
+    """
+    Single iname version of :func:`loopy.rename_inames`.
+    :arg existing_ok: execute even if *new_iname* already exists
+    :arg within: a stack match understood by :func:`loopy.match.parse_stack_match`.
+    :arg preserve_tags: copy the tags on the old iname to the new iname
+    """
+    from itertools import product
+    from loopy import tag_inames
+
+    tags = kernel.inames[old_iname].tags
+    kernel = rename_inames(kernel, [old_iname], new_iname, existing_ok, within)
+    if preserve_tags:
+        kernel = tag_inames(kernel, product([new_iname], tags))
+    return kernel
 
 # }}}
 

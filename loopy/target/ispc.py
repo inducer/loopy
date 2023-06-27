@@ -93,7 +93,8 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # below in decl generation)
-            gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
+            _gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs(
+                    self.codegen_state.callables_table)
             if lsize:
                 return expr[var("programIndex")]
             else:

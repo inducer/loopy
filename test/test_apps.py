@@ -717,6 +717,34 @@ def test_abs_as_index():
     print(lp.generate_code_v2(knl).device_code())
 
 
+def test_sumpy_p2p_reduced():
+    knl = lp.make_kernel(
+        [
+            "{[itgt_box]: 0<=itgt_box<5 }",
+            "{[isrc_box]: 0<=isrc_box<isrc_box_end }",
+            "{[inner]: 0 <=inner<=31 }",
+            "{[itgt_offset_outer]: itgt_offset_outer=0 }",
+            "{[isrc_prefetch_inner]: isrc_prefetch_inner=0 and 0<=inner<=25 }",
+        ],
+        """
+        <> isrc_box_end = source_box_starts[itgt_box + 1] {inames=inner:itgt_box}
+        <> itgt_offset = inner {inames=inner:itgt_box}
+        <> isrc_prefetch = isrc_prefetch_inner*32 + inner \
+            {inames=isrc_prefetch_inner:inner:isrc_box:itgt_box}
+        """,
+        [
+            lp.GlobalArg("box_target_starts", dtype=np.int32),
+            lp.GlobalArg("box_target_counts_nonchild", dtype=np.int32),
+            lp.GlobalArg("box_source_starts", dtype=np.int32),
+            lp.GlobalArg("box_source_counts_nonchild", dtype=np.int32),
+            lp.GlobalArg("source_box_starts", dtype=np.int32),
+            lp.GlobalArg("source_box_lists", dtype=np.int32),
+        ],
+        silenced_warnings="unused_inames",
+    )
+    lp.generate_code_v2(knl).device_code()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

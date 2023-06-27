@@ -154,9 +154,9 @@ class CudaCallable(ScalarCallable):
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
                             callables_table)
 
-            dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in
-                        arg_id_to_dtype.items() if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
 
             updated_arg_id_to_dtype = {id: NumpyType(dtype)
                     for id in range(-1, num_args)}
@@ -235,10 +235,10 @@ class CudaTarget(CFamilyTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (DTypeRegistry,
-                fill_registry_with_opencl_c_types)
+                fill_registry_with_c_types)
 
         result = DTypeRegistry()
-        fill_registry_with_opencl_c_types(result)
+        fill_registry_with_c_types(result, respect_windows=True)
 
         # no complex number support--needs PyOpenCLTarget
 
@@ -345,6 +345,7 @@ class CudaCASTBuilder(CFamilyASTBuilder):
             fdecl = Extern("C", fdecl)
 
         from loopy.schedule import get_insn_ids_for_block_at
+        assert codegen_state.kernel.linearization is not None
         _, local_grid_size = \
                 codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                         get_insn_ids_for_block_at(

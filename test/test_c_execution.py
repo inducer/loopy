@@ -117,7 +117,7 @@ def test_c_target_strides_nonsquare():
     # test with C-order
     knl = __get_kernel("C")
     a_lp = next(x for x in knl["nonsquare_strides"].args if x.name == "a")
-    a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
+    a_np = np.reshape(np.arange(np.prod(a_lp.shape), dtype=np.float32),
                       a_lp.shape,
                       order="C")
 
@@ -127,7 +127,7 @@ def test_c_target_strides_nonsquare():
     # test with F-order
     knl = __get_kernel("F")
     a_lp = next(x for x in knl["nonsquare_strides"].args if x.name == "a")
-    a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
+    a_np = np.reshape(np.arange(np.prod(a_lp.shape), dtype=np.float32),
                       a_lp.shape,
                       order="F")
 
@@ -163,7 +163,7 @@ def test_c_optimizations():
     # test with ILP
     knl, sizes = __get_kernel("C")
     knl = lp.split_iname(knl, "i", 4, inner_tag="ilp")
-    a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
+    a_np = np.reshape(np.arange(np.prod(sizes), dtype=np.float32),
                       sizes,
                       order="C")
 
@@ -172,7 +172,7 @@ def test_c_optimizations():
     # test with unrolling
     knl, sizes = __get_kernel("C")
     knl = lp.split_iname(knl, "i", 4, inner_tag="unr")
-    a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
+    a_np = np.reshape(np.arange(np.prod(sizes), dtype=np.float32),
                       sizes,
                       order="C")
 

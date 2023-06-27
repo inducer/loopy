@@ -253,6 +253,10 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         from genpy import Comment
         return Comment(s)
 
+    def emit_noop_with_comment(self, s):
+        from cgen import Line
+        return Line(f"pass #{s}")
+
     @property
     def can_implement_conditionals(self):
         return True
