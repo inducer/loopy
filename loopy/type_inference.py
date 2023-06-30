@@ -529,6 +529,8 @@ class TypeInferenceMapper(CombineMapper):
         return [NumpyType(np.dtype(np.int32))]
 
     def map_logical_not(self, expr):
+        self.rec(expr.child)
+
         return [NumpyType(np.dtype(np.int32))]
 
     def map_logical_and(self, expr):
