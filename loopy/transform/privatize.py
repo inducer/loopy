@@ -364,6 +364,8 @@ def unprivatize_temporaries_with_inames(
 
     var_name_to_remove_indices = ir.var_name_to_remove_indices
 
+    from loopy.kernel.array import VectorArrayDimTag
+
     new_temp_vars = kernel.temporary_variables.copy()
     for tv_name, tv in new_temp_vars.items():
         remove_indices = var_name_to_remove_indices.get(tv_name, {})
@@ -374,6 +376,8 @@ def unprivatize_temporaries_with_inames(
 
         new_dim_tags = tv.dim_tags
         if new_dim_tags is not None:
+            new_dim_tags = ["vec" if isinstance(dim_tag, VectorArrayDimTag) else "c"
+                            for idim, dim_tag in enumerate(new_dim_tags)]
             new_dim_tags = tuple(dim for idim, dim in enumerate(new_dim_tags)
                 if idim not in remove_indices)
 
