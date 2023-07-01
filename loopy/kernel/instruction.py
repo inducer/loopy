@@ -1062,7 +1062,8 @@ class CallInstruction(MultiAssignmentBase):
             result += " {%s}" % (": ".join(options))
 
         if self.predicates:
-            result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
+            result += "\n" + 10*" " + "if (%s)" % " && ".join(
+                    str(pred) for pred in self.predicates)
         return result
 
     def arg_id_to_arg(self):
