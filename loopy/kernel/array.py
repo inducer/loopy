@@ -841,6 +841,8 @@ class ArrayBase(ImmutableRecord, Taggable):
                     n_axes=num_user_axes,
                     use_increasing_target_axes=self.max_target_axes > 1,
                     dim_names=dim_names)
+
+        if dim_tags is not None:
             order = None
 
         # }}}
