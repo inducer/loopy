@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 import collections
+from typing import Callable, FrozenSet, Optional, Union
 
 from pytools import ImmutableRecord
 from pymbolic.primitives import Variable
@@ -29,11 +30,12 @@ from functools import wraps
 from loopy.symbolic import (RuleAwareIdentityMapper, ResolvedFunction,
                             SubstitutionRuleMappingContext)
 from loopy.kernel.function_interface import (
-        CallableKernel, ScalarCallable)
+        CallableKernel, InKernelCallable, ScalarCallable)
 from loopy.diagnostic import LoopyError
 from loopy.library.reduction import ReductionOpFunction
 
 from loopy.kernel import LoopKernel
+from loopy.target import TargetBase
 from loopy.tools import update_persistent_hash
 from pymbolic.primitives import Call
 from pyrsistent import pmap, PMap
@@ -176,6 +178,12 @@ class TranslationUnit(ImmutableRecord):
           :meth:`~TranslationUnit.copy`.
 
     """
+    entrypoints: FrozenSet[str]
+    callables_table: PMap[str, InKernelCallable]
+    target: TargetBase
+    func_id_to_in_knl_callable_mappers: Optional[FrozenSet[
+            Callable[[TargetBase, str], InKernelCallable]]]
+
     def __init__(self,
             entrypoints=frozenset(),
             callables_table=None,
@@ -288,7 +296,7 @@ class TranslationUnit(ImmutableRecord):
             new_callables = self.callables_table.set(kernel.name, clbl)
             return self.copy(callables_table=new_callables)
 
-    def __getitem__(self, name):
+    def __getitem__(self, name) -> Union[InKernelCallable, LoopKernel]:
         """
         For the callable named *name*, return a :class:`loopy.LoopKernel` if
         it's a :class:`~loopy.kernel.function_interface.CallableKernel`
@@ -301,10 +309,12 @@ class TranslationUnit(ImmutableRecord):
             return result
 
     @property
-    def default_entrypoint(self):
+    def default_entrypoint(self) -> LoopKernel:
         if len(self.entrypoints) == 1:
             entrypoint, = self.entrypoints
-            return self[entrypoint]
+            ep_kernel = self[entrypoint]
+            assert isinstance(ep_kernel, LoopKernel)
+            return ep_kernel
         else:
             raise ValueError("TranslationUnit has multiple possible entrypoints."
                              " The default entrypoint kernel is not uniquely"
@@ -353,7 +363,7 @@ class TranslationUnit(ImmutableRecord):
 
         return pex(*args, **kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         # FIXME: do a topological sort by the call graph
 
         def strify_callable(clbl):

@@ -1531,6 +1531,78 @@ def test_no_loop_ops():
     assert f64_mul == 1
 
 
+from pytools.tag import Tag
+
+
+class MyCostTag1(Tag):
+    pass
+
+
+class MyCostTag2(Tag):
+    pass
+
+
+class MyCostTagSum(Tag):
+    pass
+
+
+def test_op_taggedexpression():
+    from loopy.symbolic import TaggedExpression
+    from pymbolic.primitives import Subscript, Variable, Sum
+
+    n = 500
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            [
+                lp.Assignment("c[i]", TaggedExpression(frozenset((MyCostTagSum(),)),
+                            Sum(
+                                (TaggedExpression(frozenset((MyCostTag1(),)),
+                                 Subscript(Variable("a"), Variable("i"))),
+                                 TaggedExpression(frozenset((MyCostTag2(),)),
+                                 Subscript(Variable("b"), Variable("i")))))))
+            ])
+
+    knl = lp.add_dtypes(knl, {"a": np.float64, "b": np.float64})
+
+    params = {"n": n}
+
+    op_map = lp.get_op_map(knl, subgroup_size=32)
+
+    f64_add = op_map.filter_by(dtype=[np.float64]).eval_and_sum(params)
+    assert f64_add == n
+
+    f64_add = op_map.filter_by(
+        tags=[frozenset((MyCostTagSum(),))]).eval_and_sum(params)
+    assert f64_add == n
+
+    f64_add = op_map.filter_by(
+        tags=[frozenset((MyCostTag1(),))]).eval_and_sum(params)
+    assert f64_add == 0
+
+    f64_add = op_map.filter_by(
+        tags=[frozenset((MyCostTag2(),))]).eval_and_sum(params)
+    assert f64_add == 0
+
+    f64_add = op_map.filter_by(
+        tags=[frozenset((MyCostTag2(), MyCostTagSum()))]).eval_and_sum(params)
+    assert f64_add == 0
+
+    mem_map = lp.get_mem_access_map(knl, subgroup_size=32)
+
+    mem_ops = mem_map.filter_by(
+        tags=[frozenset((MyCostTag1(),))]).eval_and_sum(params)
+    assert mem_ops == n
+
+    mem_ops = mem_map.filter_by(
+        tags=[frozenset((MyCostTag2(),))]).eval_and_sum(params)
+    assert mem_ops == n
+
+    mem_ops = mem_map.filter_by(
+        tags=[frozenset((MyCostTagSum(),))]).eval_and_sum(params)
+    assert mem_ops == 0
+
+
 def test_within_stats():
     import loopy as lp
     import numpy as np
