@@ -1602,6 +1602,16 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper):
             else:
                 raise TypeError("if takes three arguments")
 
+        elif name in ["minimum", "maximum"]:
+            if len(expr.parameters) == 2:
+                from pymbolic.primitives import Min, Max
+                return {
+                    "minimum": Min,
+                    "maximum": Max
+                }[name](tuple(self.rec(p) for p in expr.parameters))
+            else:
+                raise TypeError(f"{name} takes two arguments")
+
         else:
             # see if 'name' is an existing reduction op
 
