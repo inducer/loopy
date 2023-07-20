@@ -270,7 +270,6 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 @dataclass(frozen=True)
 class _KernelInfo:
-    t_unit: TranslationUnit
     cl_kernels: "_Kernels"
     invoker: Callable[..., Any]
 
@@ -344,7 +343,6 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             setattr(cl_kernels, dp, getattr(cl_program, dp))
 
         return _KernelInfo(
-                t_unit=t_unit,
                 cl_kernels=cl_kernels,
                 invoker=self.get_invoker(t_unit, entrypoint, codegen_result))
 
