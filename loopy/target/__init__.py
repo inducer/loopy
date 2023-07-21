@@ -66,10 +66,20 @@ class TargetBase():
     Objects of this type must be picklable.
     """
 
-    # {{{ persistent hashing
+    # {{{ hashing/equality
 
     hash_fields: ClassVar[Tuple[str, ...]] = ()
     comparison_fields: ClassVar[Tuple[str, ...]] = ()
+
+    def __hash__(self):
+        # NOTE: _hash_value may vanish during pickling
+        if getattr(self, "_hash_value", None) is None:
+            from loopy.tools import LoopyKeyBuilder
+            key_hash = LoopyKeyBuilder.new_hash()
+            LoopyKeyBuilder()(self)
+            object.__setattr__(self, "_hash_value", hash(key_hash.digest()))
+
+        return self._hash_value  # pylint: disable=no-member
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_hash.update(type(self).__name__.encode())

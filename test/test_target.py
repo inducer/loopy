@@ -624,7 +624,7 @@ def test_glibc_bessel_functions(dtype):
         second_kind_bessel[i] = bessel_yn(n, x[i])
         """, target=lp.ExecutableCWithGNULibcTarget(compiler))
 
-    if knl.target.compiler.toolchain.cc not in ["gcc", "g++"]:
+    if knl.target.compiler.toolchain.cc not in ["gcc", "g++"]:  # pylint: disable=no-member  # noqa: E501
         pytest.skip("GNU-libc not found.")
 
     knl = lp.fix_parameters(knl, n=2)
