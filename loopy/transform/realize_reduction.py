@@ -36,7 +36,7 @@ from pytools.tag import Tag
 import islpy as isl
 from pymbolic.primitives import Expression
 
-from pyrsistent import PMap
+from immutables import Map
 
 from loopy.kernel.data import make_assignment
 from loopy.symbolic import ReductionCallbackMapper
@@ -90,7 +90,7 @@ class _ReductionRealizationContext:
     domains: List[isl.BasicSet]
     additional_iname_tags: Dict[str, Sequence[Tag]]
     # list only to facilitate mutation
-    boxed_callables_table: List[PMap]
+    boxed_callables_table: List[Map]
 
     # FIXME: This is a broken-by-design concept. Local-parallel scans emit a
     # reduction internally. This serves to avoid force_scan acting on that
@@ -2168,6 +2168,6 @@ def realize_reduction(t_unit, *args, **kwargs):
                 subkernel=new_knl)
         callables_table[knl.name] = in_knl_callable
 
-    return t_unit.copy(callables_table=callables_table)
+    return t_unit.copy(callables_table=Map(callables_table))
 
 # vim: foldmethod=marker

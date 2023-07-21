@@ -27,7 +27,7 @@ from dataclasses import dataclass, replace
 from typing import Optional, Tuple, Dict
 
 import numpy as np
-
+from immutables import Map
 from islpy import dim_type
 
 from pytools import MovedFunctionDeprecationWrapper
@@ -414,7 +414,7 @@ def add_prefetch(program, *args, **kwargs):
 
         new_callables[func_id] = in_knl_callable
 
-    return program.copy(callables_table=new_callables)
+    return program.copy(callables_table=Map(new_callables))
 
 # }}}
 

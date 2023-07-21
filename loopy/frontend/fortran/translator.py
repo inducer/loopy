@@ -23,6 +23,7 @@ THE SOFTWARE.
 import re
 
 from sys import intern
+from immutables import Map
 
 import loopy as lp
 import numpy as np
@@ -325,7 +326,7 @@ def specialize_fortran_division(t_unit):
 
         new_callables[name] = clbl
 
-    return t_unit.copy(callables_table=new_callables)
+    return t_unit.copy(callables_table=Map(new_callables))
 
 # }}}
 

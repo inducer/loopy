@@ -46,7 +46,7 @@ from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.transform.data import allocate_temporaries_for_base_storage
 from loopy.kernel.array import ArrayDimImplementationTag
 from loopy.kernel.data import _ArraySeparationInfo, KernelArgument
-from loopy.translation_unit import for_each_kernel
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.typing import ExpressionT
 
 from pytools import ProcessLogger
@@ -724,7 +724,7 @@ def filter_reachable_callables(t_unit):
                                                                  t_unit.entrypoints)
     new_callables = {name: clbl for name, clbl in t_unit.callables_table.items()
                      if name in (reachable_function_ids | t_unit.entrypoints)}
-    return t_unit.copy(callables_table=new_callables)
+    return t_unit.copy(callables_table=Map(new_callables))
 
 
 def _preprocess_single_kernel(kernel: LoopKernel, is_entrypoint: bool) -> LoopKernel:
@@ -788,33 +788,33 @@ def _preprocess_single_kernel(kernel: LoopKernel, is_entrypoint: bool) -> LoopKe
 
 
 @memoize_on_disk
-def preprocess_program(program):
+def preprocess_program(t_unit: TranslationUnit) -> TranslationUnit:
 
     from loopy.kernel import KernelState
-    if program.state >= KernelState.PREPROCESSED:
-        return program
+    if t_unit.state >= KernelState.PREPROCESSED:
+        return t_unit
 
-    if len([clbl for clbl in program.callables_table.values() if
+    if len([clbl for clbl in t_unit.callables_table.values() if
             isinstance(clbl, CallableKernel)]) == 1:
-        program = program.with_entrypoints(",".join(clbl.name for clbl in
-            program.callables_table.values() if isinstance(clbl,
+        t_unit = t_unit.with_entrypoints(",".join(clbl.name for clbl in
+            t_unit.callables_table.values() if isinstance(clbl,
                 CallableKernel)))
 
-    if not program.entrypoints:
+    if not t_unit.entrypoints:
         raise LoopyError("Translation unit did not receive any entrypoints")
 
     from loopy.translation_unit import resolve_callables
-    program = resolve_callables(program)
+    t_unit = resolve_callables(t_unit)
 
-    program = filter_reachable_callables(program)
+    t_unit = filter_reachable_callables(t_unit)
 
-    program = infer_unknown_types(program, expect_completion=False)
+    t_unit = infer_unknown_types(t_unit, expect_completion=False)
 
     from loopy.transform.subst import expand_subst
-    program = expand_subst(program)
+    t_unit = expand_subst(t_unit)
 
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    program = apply_single_writer_depencency_heuristic(program)
+    t_unit = apply_single_writer_depencency_heuristic(t_unit)
 
     # Ordering restrictions:
     #
@@ -826,7 +826,7 @@ def preprocess_program(program):
     #   defaults from being applied.
 
     from loopy.transform.realize_reduction import realize_reduction
-    program = realize_reduction(program, unknown_types_ok=False)
+    t_unit = realize_reduction(t_unit, unknown_types_ok=False)
 
     # {{{ preprocess callable kernels
 
@@ -838,11 +838,11 @@ def preprocess_program(program):
     # [1] https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
 
     new_callables = {}
-    for func_id, in_knl_callable in program.callables_table.items():
+    for func_id, in_knl_callable in t_unit.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = _preprocess_single_kernel(
                     in_knl_callable.subkernel,
-                    is_entrypoint=func_id in program.entrypoints)
+                    is_entrypoint=func_id in t_unit.entrypoints)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
         elif isinstance(in_knl_callable, ScalarCallable):
@@ -853,16 +853,16 @@ def preprocess_program(program):
 
         new_callables[func_id] = in_knl_callable
 
-    program = program.copy(callables_table=new_callables)
+    t_unit = t_unit.copy(callables_table=Map(new_callables))
 
     # }}}
 
     # infer arg descrs of the callables
-    program = infer_arg_descr(program)
+    t_unit = infer_arg_descr(t_unit)
 
     # Ordering restriction:
     # callees with gbarrier in them must be inlined after inferrring arg_descr.
-    program = inline_kernels_with_gbarriers(program)
+    t_unit = inline_kernels_with_gbarriers(t_unit)
 
     # {{{ prepare for caching
 
@@ -873,7 +873,7 @@ def preprocess_program(program):
 
     # }}}
 
-    return program
+    return t_unit
 
 
 # FIXME: Do we add a deprecation warning?

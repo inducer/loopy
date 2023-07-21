@@ -28,6 +28,7 @@ from dataclasses import dataclass, replace
 from typing import (FrozenSet, Hashable, Sequence, AbstractSet, Any, Set, TypeVar,
                     Mapping, Dict, Tuple, Iterator, Optional, TYPE_CHECKING)
 
+from immutables import Map
 from pytools import ImmutableRecord
 import islpy as isl
 from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
@@ -2275,7 +2276,7 @@ def linearize(t_unit):
         else:
             raise NotImplementedError(type(clbl))
 
-    return t_unit.copy(callables_table=new_callables)
+    return t_unit.copy(callables_table=Map(new_callables))
 
 
 # vim: foldmethod=marker
