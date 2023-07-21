@@ -654,9 +654,6 @@ class ArrayBase(ImmutableRecord, Taggable):
             * a pymbolic expression
             * :class:`loopy.auto`, in which case an offset argument
               is added automatically, immediately following this argument.
-              :class:`loopy.CompiledKernel` is even smarter in its treatment of
-              this case and will compile custom versions of the kernel based on
-              whether the passed arrays have offsets or not.
 
     .. attribute:: dim_names
 

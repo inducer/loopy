@@ -147,7 +147,6 @@ from loopy.codegen import (
 from loopy.codegen.result import (
         GeneratedProgram,
         CodeGenerationResult)
-from loopy.compiled import CompiledKernel
 from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
 from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
@@ -292,8 +291,6 @@ __all__ = [
         "get_mem_access_map", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
         "Sync",
-
-        "CompiledKernel",
 
         "auto_test_vs_ref",
 

@@ -16,10 +16,7 @@ Controlling caching
 Running Kernels
 ---------------
 
-In addition to simply calling kernels using :meth:`LoopKernel.__call__`,
-the following underlying functionality may be used:
 
-.. autoclass:: CompiledKernel
 
 Automatic Testing
 -----------------
