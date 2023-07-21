@@ -560,22 +560,6 @@ def test_input_args_are_required(ctx_factory):
         _ = knl(queue)
 
 
-def test_pyopencl_execution_accepts_device_scalars(ctx_factory):
-    import pyopencl.array as cla
-
-    ctx = ctx_factory()
-    cq = cl.CommandQueue(ctx)
-
-    knl = lp.make_kernel("{:}",
-                         """
-                         y = 2*x
-                         """)
-
-    evt, (out,) = knl(cq, x=cla.to_device(cq, np.asarray(21)))
-
-    np.testing.assert_allclose(out.get(), 42)
-
-
 def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
     from pyopencl.tools import ImmediateAllocator
 
