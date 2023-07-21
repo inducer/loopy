@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from immutables import Map
 from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
 from loopy.symbolic import (get_dependencies,
@@ -524,7 +525,7 @@ def buffer_array(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=new_callables)
+    return program.copy(callables_table=Map(new_callables))
 
 
 # vim: foldmethod=marker

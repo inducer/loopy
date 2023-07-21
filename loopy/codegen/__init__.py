@@ -493,7 +493,7 @@ def diverge_callee_entrypoints(program):
 
         new_callables[name] = clbl
 
-    return program.copy(callables_table=new_callables)
+    return program.copy(callables_table=Map(new_callables))
 
 
 @dataclass(frozen=True)
