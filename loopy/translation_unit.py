@@ -174,6 +174,7 @@ class TranslationUnit:
         TargetBase, function_indentifier: str)`` that returns an instance
         of :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
 
+    .. automethod:: executor
     .. automethod:: __call__
     .. automethod:: copy
     .. automethod:: __getitem__
@@ -295,6 +296,47 @@ class TranslationUnit:
                              " The default entrypoint kernel is not uniquely"
                              " determined.")
 
+    def executor(self,
+                 *args, entrypoint: Optional[str] = None, **kwargs) -> ExecutorBase:
+        """Return an object that hosts caches of compiled code for execution (i.e.
+        a subclass of :class:`ExecutorBase`, specific to an execution
+        environment (e.g. an OpenCL context) and a given entrypoint.
+
+        :arg entrypoint: The name of the entrypoint callable to be called.
+            Defaults to :attr:`default_entrypoint`.
+            An error will result if multiple entrypoints exist and no
+            entrypoint is specified.
+
+        The variable arguments to this are target-specific. The
+        :class:`PyOpenCLTarget` takes a :class:`~pyopencl.Context` or a
+        :class:`~pyopencl.CommandQueue`.
+        """
+        if entrypoint is None:
+            nentrypoints = len(self.entrypoints)
+            if nentrypoints == 1:
+                entrypoint, = self.entrypoints
+            elif nentrypoints > 1:
+                raise ValueError("TranslationUnit has multiple possible entrypoints."
+                                 " The default entrypoint kernel is not uniquely"
+                                 " determined. You may explicitly specify an "
+                                 " entrypoint using the 'entrypoint' kwarg.")
+            elif nentrypoints == 0:
+                raise ValueError("TranslationUnit has no entrypoints, but"
+                                 f" {len(self.callables_table)} callables."
+                                 " Use TranslationUnit.with_entrypoints to"
+                                 " set an entrypoint.")
+            else:
+                raise AssertionError
+        else:
+            if entrypoint not in self.entrypoints:
+                raise LoopyError(f"'{entrypoint}' not in list of possible "
+                        "entrypoints for the translation unit. "
+                        "Maybe you want to invoke 'with_entrypoints' before "
+                        "calling the translation unit?")
+
+        return self.target.get_kernel_executor(self, entrypoint=entrypoint,
+                                               *args, **kwargs)
+
     def __call__(self, *args, **kwargs):
         """
         Builds and calls the *entrypoint* kernel, if
@@ -302,8 +344,33 @@ class TranslationUnit:
 
         :arg entrypoint: The name of the entrypoint callable to be called.
             Defaults to :attr:`default_entrypoint`.
+
+        .. warning::
+
+            While this was the main execution interface for loopy for many
+            years (and reasonably efficient), the caches that made this so
+            kept lots of expensive 'stuff' (such as OpenCL contexts) alive
+            for no good reason, leading to major inefficiencies.
+            See :meth:`executor` for an efficient, cached way to
+            invoke kernels.
         """
+
+        # The rationale for this is that the executor cache held long-lived
+        # references to OpenCL contexts, and translation units were kept alive
+        # long-term by caches, leading to many stale contexts being kept alive.
+        # While attempts were made to turn those into weak references, this was
+        # ultimately cumbersome and ineffective.
+        #
+        # In addition, the executor interface speeds up kernel invocation
+        # by removing one unnecessary layer of function call.
+        warn("TranslationUnit.__call__ will become uncached in 2024, "
+             "meaning it will incur possibly substantial compilation cost "
+             "with every invocation. Use TranslationUnit.executor to obtain "
+             "an object that holds longer-lived caches.",
+             DirectCallUncachedWarning, stacklevel=2)
+
         entrypoint = kwargs.get("entrypoint", None)
+
         if entrypoint is None:
             nentrypoints = len(self.entrypoints)
             if nentrypoints == 1:
@@ -335,6 +402,8 @@ class TranslationUnit:
         except KeyError:
             pex = self.target.get_kernel_executor(self, *args, **kwargs)
             self._program_executor_cache[key] = pex  # pylint: disable=no-member
+
+        del kwargs["entrypoint"]
 
         return pex(*args, **kwargs)
 
