@@ -599,43 +599,10 @@ class PyOpenCLTarget(OpenCLTarget):
         # Use weakref for CL context to avoid keeping context artifically alive
         return (weakref.ref(queue.context), kwargs["entrypoint"])
 
-    def preprocess_translation_unit_for_passed_args(self, t_unit, epoint,
-                                                   passed_args_dict):
-
-        # {{{ ValueArgs -> GlobalArgs if passed as array shapes
-
-        from loopy.kernel.data import ValueArg, GlobalArg
-        import pyopencl.array as cla
-
-        knl = t_unit[epoint]
-        new_args = []
-
-        for arg in knl.args:
-            if isinstance(arg, ValueArg):
-                if (arg.name in passed_args_dict
-                        and isinstance(passed_args_dict[arg.name], cla.Array)
-                        and passed_args_dict[arg.name].shape == ()):
-                    arg = GlobalArg(name=arg.name, dtype=arg.dtype, shape=(),
-                                    is_output=False, is_input=True)
-
-            new_args.append(arg)
-
-        knl = knl.copy(args=new_args)
-
-        t_unit = t_unit.with_kernel(knl)
-
-        # }}}
-
-        return t_unit
-
     def get_kernel_executor(self, program, queue, **kwargs):
         from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
 
         epoint = kwargs.pop("entrypoint")
-        program = self.preprocess_translation_unit_for_passed_args(program,
-                                                                   epoint,
-                                                                   kwargs)
-
         return PyOpenCLKernelExecutor(queue.context, program,
                                       entrypoint=epoint)
 
