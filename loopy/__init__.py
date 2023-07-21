@@ -163,6 +163,8 @@ from loopy.target.ispc import ISPCTarget
 
 from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
 
+from loopy.target.execution import ExecutorBase
+
 
 __all__ = [
         "TaggedVariable", "Reduction", "LinearSubscript", "TypeCast",
@@ -309,6 +311,8 @@ __all__ = [
         "ASTBuilderBase",
 
         "Optional", "memoize_on_disk",
+
+        "ExecutorBase",
 
         # {{{ from this file
 

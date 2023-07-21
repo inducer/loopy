@@ -23,7 +23,6 @@ References to Canonical Names
 
 from __future__ import annotations
 
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -54,12 +53,14 @@ if TYPE_CHECKING:
     from loopy.typing import ExpressionT
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.target.execution import ExecutorBase
+    from loopy.translation_unit import TranslationUnit, FunctionIdT
 
 
 ASTType = TypeVar("ASTType")
 
 
-class TargetBase():
+class TargetBase:
     """Base class for all targets, i.e. different combinations of code that
     loopy can generate.
 
@@ -162,7 +163,9 @@ class TargetBase():
         """
         raise NotImplementedError()
 
-    def get_kernel_executor(self, kernel, *args, **kwargs):
+    def get_kernel_executor(
+            self, t_unit: TranslationUnit, *args, entrypoint: FunctionIdT,
+            **kwargs) -> ExecutorBase:
         """
         :returns: an immutable type to be used as the cache key for
             kernel executor caching.
@@ -174,7 +177,7 @@ class ASTBuilderBase(Generic[ASTType]):
     """An interface for generating (host or device) ASTs.
     """
 
-    def __init__(self, target):
+    def __init__(self, target) -> None:
         self.target = target
 
     # {{{ library

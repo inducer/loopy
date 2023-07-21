@@ -16,7 +16,11 @@ Controlling caching
 Running Kernels
 ---------------
 
+Use :class:`TranslationUnit.executor` to bind a translation unit
+to execution resources, and then use :class:`ExecutorBase.__call__`
+to invoke the kernel.
 
+.. autoclass:: ExecutorBase
 
 Automatic Testing
 -----------------

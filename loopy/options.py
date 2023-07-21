@@ -131,7 +131,7 @@ class Options(ImmutableRecord):
         output values. This is helpful if arguments are inferred
         and argument ordering is thus implementation-defined.
 
-        See :meth:`CompiledKernel.__call__`.
+        See :meth:`ExecutorBase.__call__`.
 
     .. attribute:: write_wrapper
 
