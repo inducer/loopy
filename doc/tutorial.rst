@@ -29,6 +29,8 @@ import a few modules and set up a :class:`pyopencl.Context` and a
 
     >>> from warnings import filterwarnings, catch_warnings
     >>> filterwarnings('error', category=lp.LoopyWarning)
+    >>> from loopy.diagnostic import DirectCallUncachedWarning
+    >>> filterwarnings('ignore', category=DirectCallUncachedWarning)
 
     >>> ctx = cl.create_some_context(interactive=False)
     >>> queue = cl.CommandQueue(ctx)

@@ -153,7 +153,6 @@ from loopy.codegen import (
 from loopy.codegen.result import (
         GeneratedProgram,
         CodeGenerationResult)
-from loopy.compiled import CompiledKernel
 from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
 from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
@@ -172,7 +171,8 @@ from loopy.target.ispc import ISPCTarget
 from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
 
 from loopy.transform.loop_fusion import (get_kennedy_unweighted_fusion_candidates,
-                                         rename_inames_in_batch)
+                                          rename_inames_in_batch)
+from loopy.target.execution import ExecutorBase
 
 
 __all__ = [
@@ -312,8 +312,6 @@ __all__ = [
         "gather_access_footprints", "gather_access_footprint_bytes",
         "Sync",
 
-        "CompiledKernel",
-
         "auto_test_vs_ref",
 
         "Options",
@@ -331,6 +329,8 @@ __all__ = [
         "PyCudaTarget", "PyCudaWithPackedArgsTarget", "ASTBuilderBase",
 
         "Optional", "memoize_on_disk",
+
+        "ExecutorBase",
 
         # {{{ from this file
 

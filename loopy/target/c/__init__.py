@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import cast, Tuple, Optional, Sequence
+from typing import cast, Tuple, Optional, Sequence, Any
 import re
 
 import numpy as np  # noqa
@@ -37,6 +37,8 @@ from pytools import memoize_method
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.symbolic import IdentityMapper
+from loopy.target.execution import ExecutorBase
+from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import NumpyType, LoopyType
 from loopy.typing import ExpressionT
 from loopy.kernel import LoopKernel
@@ -438,12 +440,6 @@ class CFamilyTarget(TargetBase):
     def dtype_to_typename(self, dtype):
         # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
-
-    def get_kernel_executor_cache_key(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def get_kernel_executor(self, knl, *args, **kwargs):
-        raise NotImplementedError
 
     # }}}
 
@@ -1379,10 +1375,11 @@ class ExecutableCTarget(CTarget):
         # and None isn't allowed in that setting.
         return _CExecutorCacheKey
 
-    def get_kernel_executor(self, t_unit, *args, **kwargs):
-        from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(t_unit, entrypoint=kwargs.pop("entrypoint"),
-                compiler=self.compiler)
+    def get_kernel_executor(
+            self, t_unit: TranslationUnit,
+            *args: Any, entrypoint: FunctionIdT, **kwargs: Any) -> ExecutorBase:
+        from loopy.target.c.c_execution import CExecutor
+        return CExecutor(t_unit, entrypoint=entrypoint, compiler=self.compiler)
 
     def get_host_ast_builder(self):
         # enable host code generation

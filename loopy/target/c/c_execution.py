@@ -43,7 +43,7 @@ from loopy.kernel.data import ArrayArg
 from loopy.schedule.tools import KernelArgInfo
 from loopy.codegen.result import GeneratedProgram
 from loopy.translation_unit import TranslationUnit
-from loopy.target.execution import (KernelExecutorBase,
+from loopy.target.execution import (ExecutorBase,
                              ExecutionWrapperGeneratorBase, get_highlighted_code)
 
 import logging
@@ -443,9 +443,9 @@ class _KernelInfo:
     invoker: Callable[..., Any]
 
 
-# {{{ CKernelExecutor
+# {{{ CExecutor
 
-class CKernelExecutor(KernelExecutorBase):
+class CExecutor(ExecutorBase):
     """An object connecting a kernel to a :class:`CompiledKernel`
     for execution.
 
@@ -472,14 +472,9 @@ class CKernelExecutor(KernelExecutorBase):
         return CExecutionWrapperGenerator()
 
     @memoize_method
-    def translation_unit_info(
-            self, entrypoint: str,
+    def translation_unit_info(self,
             arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
-        # FIXME: Remove entrypoint argument
-        assert entrypoint == self.entrypoint
-
-        t_unit = self.get_typed_and_scheduled_translation_unit(
-                entrypoint, arg_to_dtype)
+        t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
         codegen_result = generate_code_v2(t_unit)
@@ -488,18 +483,18 @@ class CKernelExecutor(KernelExecutorBase):
         host_code = codegen_result.host_code()
         all_code = "\n".join([dev_code, "", host_code])
 
-        if t_unit[entrypoint].options.write_code:
+        if t_unit[self.entrypoint].options.write_code:
             output = all_code
-            if t_unit[entrypoint].options.allow_terminal_colors:
+            if t_unit[self.entrypoint].options.allow_terminal_colors:
                 output = get_highlighted_code(output)
 
-            if t_unit[entrypoint].options.write_code is True:
+            if t_unit[self.entrypoint].options.write_code is True:
                 print(output)
             else:
-                with open(t_unit[entrypoint].options.write_code, "w") as outf:
+                with open(t_unit[self.entrypoint].options.write_code, "w") as outf:
                     outf.write(output)
 
-        if t_unit[entrypoint].options.edit_code:
+        if t_unit[self.entrypoint].options.edit_code:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
             # update code from editor
@@ -508,18 +503,18 @@ class CKernelExecutor(KernelExecutorBase):
         c_kernels = []
 
         from loopy.schedule.tools import get_kernel_arg_info
-        kai = get_kernel_arg_info(t_unit[entrypoint])
+        kai = get_kernel_arg_info(t_unit[self.entrypoint])
         for dp in codegen_result.device_programs:
             c_kernels.append(CompiledCKernel(
-                t_unit[entrypoint], dp, kai.passed_names, all_code,
+                t_unit[self.entrypoint], dp, kai.passed_names, all_code,
                 self.compiler))
 
         return _KernelInfo(
                 t_unit=t_unit,
                 c_kernels=c_kernels,
-                invoker=self.get_invoker(t_unit, entrypoint, codegen_result))
+                invoker=self.get_invoker(t_unit, self.entrypoint, codegen_result))
 
-    def __call__(self, *args, entrypoint=None, **kwargs):
+    def __call__(self, *args, **kwargs):
         """
         :returns: ``(None, output)`` the output is a tuple of output arguments
             (arguments that are written as part of the kernel). The order is given
@@ -529,16 +524,13 @@ class CKernelExecutor(KernelExecutorBase):
             :class:`dict` instead, with keys of argument names and values
             of the returned arrays.
         """
-        assert entrypoint is not None
-
         if __debug__:
             self.check_for_required_array_arguments(kwargs.keys())
 
         if self.packing_controller is not None:
             kwargs = self.packing_controller(kwargs)
 
-        program_info = self.translation_unit_info(entrypoint,
-                self.arg_to_dtype(kwargs))
+        program_info = self.translation_unit_info(self.arg_to_dtype(kwargs))
 
         return program_info.invoker(
                 program_info.c_kernels, *args, **kwargs)

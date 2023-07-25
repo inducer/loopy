@@ -715,11 +715,11 @@ invoker_cache = WriteOncePersistentDict(
 
 # {{{ kernel executor
 
-class KernelExecutorBase:
-    """An object connecting a kernel to a :class:`pyopencl.Context`
-    for execution.
+class ExecutorBase:
+    """An object allowing the execution of an entrypoint of a
+    :class:`~loopy.TranslationUnit`. Create these objects using
+    :meth:`loopy.TranslationUnit.executor`.
 
-    .. automethod:: __init__
     .. automethod:: __call__
     """
     packing_controller: Optional[SeparateArrayPackingController]
@@ -760,7 +760,8 @@ class KernelExecutorBase:
         # passed was often at type inference. This exists to raise a more meaningful
         # message in such scenarios. Since type inference precedes compilation, this
         # check cannot be deferred to the generated invoker code.
-        # See discussion at github.com/inducer/loopy/pull/160#issuecomment-867761204
+        # See discussion at
+        # https://github.com/inducer/loopy/pull/160#issuecomment-867761204
         # and links therin for context.
         if not self.input_array_names <= set(input_args):
             missing_args = self.input_array_names - set(input_args)
@@ -772,12 +773,12 @@ class KernelExecutorBase:
                 "your argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
-            self, entrypoint, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: Optional[Map[str, LoopyType]]
             ) -> TranslationUnit:
         t_unit = self.t_unit
 
         if arg_to_dtype:
-            entry_knl = t_unit[entrypoint]
+            entry_knl = t_unit[self.entrypoint]
 
             # FIXME: This is not so nice. This transfers types from the
             # subarrays of sep-tagged arrays to the 'main' array, because
@@ -809,7 +810,7 @@ class KernelExecutorBase:
         return t_unit
 
     def get_typed_and_scheduled_translation_unit(
-            self, entrypoint: str, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: Optional[Map[str, LoopyType]]
             ) -> TranslationUnit:
         from loopy import CACHING_ENABLED
 
@@ -824,8 +825,7 @@ class KernelExecutorBase:
         logger.debug("%s: typed-and-scheduled cache miss" %
                 self.t_unit.entrypoints)
 
-        kernel = self.get_typed_and_scheduled_translation_unit_uncached(entrypoint,
-                arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_translation_unit_uncached(arg_to_dtype)
 
         if CACHING_ENABLED:
             typed_and_scheduled_cache.store_if_not_present(cache_key, kernel)
@@ -861,8 +861,7 @@ class KernelExecutorBase:
     def get_code(
             self, entrypoint: str,
             arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> str:
-        kernel = self.get_typed_and_scheduled_translation_unit(
-                entrypoint, arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
         code = generate_code_v2(kernel)

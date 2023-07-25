@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 
+from immutables import Map
 import numpy as np
 import islpy as isl
 from loopy.symbolic import (get_dependencies,
@@ -1156,6 +1157,6 @@ def precompute(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=new_callables)
+    return program.copy(callables_table=Map(new_callables))
 
 # vim: foldmethod=marker

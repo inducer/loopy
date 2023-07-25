@@ -201,7 +201,7 @@ Benchmarks:
 Downstream:
   parallel:
     matrix:
-    - DOWNSTREAM_PROJECT: [meshmode, grudge, pytential, pytato]
+    - DOWNSTREAM_PROJECT: [arraycontext, meshmode, grudge, pytential, pytato]
   tags:
   - large-node
   - "docker-runner"

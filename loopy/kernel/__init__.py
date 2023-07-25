@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from loopy.kernel.function_interface import InKernelCallable
     from loopy.codegen import PreambleInfo
 
+
 # {{{ loop kernel object
 
 class KernelState(IntEnum):  # noqa
