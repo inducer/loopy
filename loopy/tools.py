@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import List
 import collections.abc as abc
 from functools import cached_property
 
@@ -27,7 +28,8 @@ from immutables import Map
 import islpy as isl
 import numpy as np
 from pytools import memoize_method, ProcessLogger
-from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
+from pytools.persistent_dict import (
+        KeyBuilder as KeyBuilderBase, WriteOncePersistentDict)
 from loopy.symbolic import (UncachedWalkMapper as LoopyWalkMapper,
                             RuleAwareIdentityMapper)
 from pymbolic.mapper.persistent_hash import (
@@ -892,6 +894,18 @@ def t_unit_to_python(t_unit, var_name="t_unit",
 # }}}
 
 
+# {{{ cache management
+
+caches: List[WriteOncePersistentDict] = []
+
+
+def clear_in_mem_caches() -> None:
+    for cache in caches:
+        cache.clear_in_mem_cache()
+
+# }}}
+
+
 # {{{ memoize_on_disk
 
 def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
@@ -908,6 +922,8 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
             f"{key_builder_t.__qualname__}.{key_builder_t.__name__}"
             f"-v0-{DATA_MODEL_VERSION}"),
         key_builder=key_builder_t())
+
+    caches.append(transform_cache)
 
     @wraps(func)
     def wrapper(*args, **kwargs):

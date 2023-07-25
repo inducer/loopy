@@ -38,7 +38,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from pytools.persistent_dict import WriteOncePersistentDict
-from loopy.tools import LoopyKeyBuilder
+from loopy.tools import LoopyKeyBuilder, caches
 from loopy.typing import ExpressionT
 from loopy.types import LoopyType, NumpyType
 from loopy.kernel import KernelState, LoopKernel
@@ -708,9 +708,15 @@ typed_and_scheduled_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
+caches.append(typed_and_scheduled_cache)
+
+
 invoker_cache = WriteOncePersistentDict(
         "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
+
+
+caches.append(invoker_cache)
 
 
 # {{{ kernel executor
