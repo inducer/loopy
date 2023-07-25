@@ -34,7 +34,7 @@ from loopy.diagnostic import LoopyError, warn
 from pytools import UniqueNameGenerator
 
 from pytools.persistent_dict import WriteOncePersistentDict
-from loopy.tools import LoopyKeyBuilder
+from loopy.tools import LoopyKeyBuilder, caches
 from loopy.version import DATA_MODEL_VERSION
 from loopy.types import LoopyType
 from loopy.typing import ExpressionT
@@ -313,6 +313,9 @@ class CodeGenerationState:
 code_gen_cache = WriteOncePersistentDict(
          "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
          key_builder=LoopyKeyBuilder())
+
+
+caches.append(code_gen_cache)
 
 
 class InKernelCallablesCollector(CombineMapper):

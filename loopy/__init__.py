@@ -161,7 +161,8 @@ from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
 
-from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
+from loopy.tools import (Optional, t_unit_to_python, memoize_on_disk,
+                         clear_in_mem_caches)
 
 from loopy.target.execution import ExecutorBase
 
@@ -310,7 +311,7 @@ __all__ = [
         "PyOpenCLTarget", "ISPCTarget",
         "ASTBuilderBase",
 
-        "Optional", "memoize_on_disk",
+        "Optional", "memoize_on_disk", "clear_in_mem_caches",
 
         "ExecutorBase",
 
