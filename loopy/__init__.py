@@ -168,7 +168,8 @@ from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.pycuda import PyCudaTarget, PyCudaWithPackedArgsTarget
 from loopy.target.ispc import ISPCTarget
 
-from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
+from loopy.tools import (Optional, t_unit_to_python, memoize_on_disk,
+                         clear_in_mem_caches)
 
 from loopy.transform.loop_fusion import (get_kennedy_unweighted_fusion_candidates,
                                           rename_inames_in_batch)
@@ -328,7 +329,7 @@ __all__ = [
         "PyOpenCLTarget", "ISPCTarget",
         "PyCudaTarget", "PyCudaWithPackedArgsTarget", "ASTBuilderBase",
 
-        "Optional", "memoize_on_disk",
+        "Optional", "memoize_on_disk", "clear_in_mem_caches",
 
         "ExecutorBase",
 

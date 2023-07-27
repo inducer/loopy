@@ -1,9 +1,4 @@
-stages:
-  - test
-  - deploy
-
 Pytest POCL:
-  stage: test
   script:
   - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
@@ -20,7 +15,6 @@ Pytest POCL:
       junit: test/pytest.xml
 
 Pytest Nvidia Titan V:
-  stage: test
   script:
   - export PYOPENCL_TEST=nvi:titan
   - export EXTRA_INSTALL="pybind11 numpy mako git+https://github.com/inducer/pycuda.git"
@@ -38,7 +32,6 @@ Pytest Nvidia Titan V:
       junit: test/pytest.xml
 
 Pytest POCL without arg check:
-  stage: test
   script:
   - export PYOPENCL_TEST=portable:pthread
   - export EXTRA_INSTALL="pybind11 numpy mako"
@@ -56,7 +49,6 @@ Pytest POCL without arg check:
       junit: test/pytest.xml
 
 Pytest Intel:
-  stage: test
   script:
   - export PYOPENCL_TEST=intel
   - export EXTRA_INSTALL="pybind11 numpy mako"
@@ -76,7 +68,6 @@ Pytest Intel:
 
 
 Pytest POCL Twice With Cache:
-  stage: test
   script: |
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako"
@@ -109,7 +100,6 @@ Pytest POCL Twice With Cache:
 #   - tags
 
 Pytest POCL Examples:
-  stage: test
   script: |
     export PYOPENCL_TEST=portable:pthread
     export EXTRA_INSTALL="pybind11 numpy mako"
@@ -134,7 +124,6 @@ Pytest POCL Examples:
   - tags
 
 Pylint:
-  stage: test
   script:
   # Needed to avoid name shadowing issues when running from source directory.
   - PROJECT_INSTALL_FLAGS="--editable"
@@ -147,7 +136,6 @@ Pylint:
   - tags
 
 Documentation:
-  stage: deploy
   script: |
     EXTRA_INSTALL="pybind11 numpy"
     curl -L -O https://tiker.net/ci-support-v0
@@ -160,7 +148,6 @@ Documentation:
   - python3
 
 Flake8:
-  stage: test
   script:
   - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
   - . ./prepare-and-run-flake8.sh "$CI_PROJECT_NAME" test examples
@@ -183,7 +170,6 @@ Mypy:
   - tags
 
 Benchmarks:
-  stage: test
   script:
   - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
   - PROJECT=loopy

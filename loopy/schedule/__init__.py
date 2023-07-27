@@ -37,7 +37,7 @@ from pytools import MinRecursionLimit, ProcessLogger
 
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.kernel.instruction import InstructionBase
-from loopy.tools import LoopyKeyBuilder
+from loopy.tools import LoopyKeyBuilder, caches
 from loopy.version import DATA_MODEL_VERSION
 
 if TYPE_CHECKING:
@@ -2373,6 +2373,9 @@ def generate_loop_schedules_inner(
 schedule_cache = WriteOncePersistentDict(
         "loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
+
+
+caches.append(schedule_cache)
 
 
 def _get_one_linearized_kernel_inner(kernel, callables_table):
