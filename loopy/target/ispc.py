@@ -31,7 +31,7 @@ import pymbolic.primitives as p
 from pymbolic import var
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
-from cgen import Generable, Declarator, Const
+from cgen import Generable, Declarator, Const, Collection
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
@@ -476,7 +476,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
         from loopy.target.c import POD
@@ -486,7 +486,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         from cgen.ispc import ISPCUniform
 
-        return For(
+        loop = For(
                 InlineInitializer(
                     ISPCUniform(POD(self, iname_dtype, iname)),
                     ecm(lbound, PREC_NONE, "i")),
@@ -495,6 +495,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
+
+        if hints:
+            return Collection(list(hints) + [loop])
+        else:
+            return loop
 
     # }}}
 

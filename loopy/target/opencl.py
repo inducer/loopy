@@ -782,6 +782,14 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         return self.emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
 
+    def emit_unroll_hint(self, value):
+        # See https://man.opencl.org/attributes-loopUnroll.html
+        from cgen import Line
+        if value:
+            return Line(f"__attribute__((opencl_unroll_hint({value})))")
+        else:
+            return Line("__attribute__((opencl_unroll_hint))")
+
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
         from pymbolic.mapper.stringifier import PREC_NONE

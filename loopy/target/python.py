@@ -226,11 +226,14 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         return Collection
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
+
+        if hints:
+            raise ValueError("hints for python loops not supported")
 
         return For(
                 (iname,),
