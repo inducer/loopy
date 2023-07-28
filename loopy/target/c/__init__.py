@@ -28,7 +28,8 @@ import re
 
 import numpy as np  # noqa
 
-from cgen import Pointer, NestedDeclarator, Block, Generable, Declarator, Const
+from cgen import (Collection, Pointer, NestedDeclarator, Block, Generable,
+                  Declarator, Const)
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 import pymbolic.primitives as p
@@ -780,9 +781,6 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         from cgen import (
                 FunctionBody,
-
-                # Post-mid-2016 cgens have 'Collection', too.
-                Module as Collection,
                 Initializer,
                 Line)
 
@@ -1226,7 +1224,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         from pymbolic import var
         from pymbolic.primitives import Comparison
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For, InlineInitializer, Block
+        from cgen import For, InlineInitializer
 
         loop = For(
                 InlineInitializer(
@@ -1242,7 +1240,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 inner)
 
         if hints:
-            return Block(list(hints) + [loop])
+            return Collection(list(hints) + [loop])
         else:
             return loop
 

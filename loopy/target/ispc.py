@@ -31,7 +31,7 @@ import pymbolic.primitives as p
 from pymbolic import var
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
-from cgen import Generable, Declarator, Const
+from cgen import Generable, Declarator, Const, Collection
 
 from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
@@ -482,7 +482,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from loopy.target.c import POD
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For, InlineInitializer, Block
+        from cgen import For, InlineInitializer
 
         from cgen.ispc import ISPCUniform
 
@@ -497,7 +497,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 inner)
 
         if hints:
-            return Block(list(hints) + [loop])
+            return Collection(list(hints) + [loop])
         else:
             return loop
 
