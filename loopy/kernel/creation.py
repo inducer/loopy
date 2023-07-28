@@ -27,13 +27,14 @@ import numpy as np
 
 from pymbolic.mapper import CSECachingMapperMixin
 from pymbolic.primitives import Slice, Variable, Subscript, Call
+from loopy.kernel.array import FixedStrideArrayDimTag
 from loopy.tools import intern_frozenset_of_ids, Optional
 from loopy.symbolic import (
         IdentityMapper, WalkMapper, SubArrayRef)
 from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
-        SubstitutionRule, AddressSpace, ValueArg)
+        SubstitutionRule, AddressSpace, ValueArg, auto)
 from loopy.translation_unit import for_each_kernel
 from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
@@ -1732,8 +1733,30 @@ def apply_default_order_to_args(kernel, default_order):
 
     processed_args = []
     for arg in kernel.args:
-        if isinstance(arg, ArrayBase) and arg.order is None:
-            arg = arg.copy(order=default_order)
+        if isinstance(arg, ArrayBase):
+            if default_order in ["c", "f", "C", "F"]:
+                if arg.dim_tags is None:
+                    arg = arg.copy(order=default_order)
+                else:
+                    # leave them the way they are
+                    pass
+            elif default_order is auto:
+                if arg.dim_tags is None and arg.shape is not None:
+                    assert arg.shape is not auto
+                    arg = arg.copy(
+                            dim_tags=tuple(
+                                FixedStrideArrayDimTag(auto)
+                                for i in range(len(arg.shape))))
+                    arg = arg.copy(
+                            dim_tags=tuple(
+                                FixedStrideArrayDimTag(auto)
+                                if isinstance(dim_tag, FixedStrideArrayDimTag)
+                                else dim_tag
+                                for dim_tag in arg.dim_tags))
+            else:
+                raise ValueError("unexpected value for default_order: "
+                                 f"'{default_order}'")
+
         processed_args.append(arg)
 
     return kernel.copy(args=processed_args)
@@ -2196,7 +2219,10 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     :arg preamble_generators: a list of functions of signature
         (seen_dtypes, seen_functions) where seen_functions is a set of
         (name, c_name, arg_dtypes), generating extra entries for *preambles*.
-    :arg default_order: "C" (default) or "F"
+    :arg default_order: "C" (default), "F" or :class:`loopy.auto`.
+        The default memory layout of arrays that are not explicitly
+        specified. If :class:`loopy.auto`, variables for strides are
+        automatically created.
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
         *offset* in :attr:`ArrayArg` for guessed arguments.
         Defaults to 0.

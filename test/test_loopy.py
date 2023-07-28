@@ -1768,7 +1768,8 @@ def test_ilp_and_conditionals(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-def test_unr_and_conditionals(ctx_factory):
+@pytest.mark.parametrize("unr_tag", ["unr", "unr_hint"])
+def test_unr_and_conditionals(ctx_factory, unr_tag):
     ctx = ctx_factory()
 
     knl = lp.make_kernel("{[k]: 0<=k<n}}",
@@ -1786,7 +1787,7 @@ def test_unr_and_conditionals(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.split_iname(knl, "k", 2, inner_tag="unr")
+    knl = lp.split_iname(knl, "k", 2, inner_tag=unr_tag)
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 

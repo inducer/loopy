@@ -28,7 +28,8 @@ import re
 
 import numpy as np  # noqa
 
-from cgen import Pointer, NestedDeclarator, Block, Generable, Declarator, Const
+from cgen import (Collection, Pointer, NestedDeclarator, Block, Generable,
+                  Declarator, Const)
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 import pymbolic.primitives as p
@@ -781,9 +782,6 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         from cgen import (
                 FunctionBody,
-
-                # Post-mid-2016 cgens have 'Collection', too.
-                Module as Collection,
                 Initializer,
                 Line)
 
@@ -1221,7 +1219,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                                 in_knl_callable_as_call))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic import var
@@ -1229,7 +1227,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
 
-        return For(
+        loop = For(
                 InlineInitializer(
                     POD(self, iname_dtype, iname),
                     ecm(lbound, PREC_NONE, "i")),
@@ -1241,6 +1239,18 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
+
+        if hints:
+            return Collection(list(hints) + [loop])
+        else:
+            return loop
+
+    def emit_unroll_hint(self, value):
+        from cgen import Pragma
+        if value:
+            return Pragma(f"unroll {value}")
+        else:
+            return Pragma("unroll")
 
     def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
         decl = POD(self, dtype, name)

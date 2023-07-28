@@ -56,6 +56,17 @@ def _lpy_even_div(a, b):
         # FIXME: This error message is kind of crummy.
         raise ValueError("expected even division")
     return result
+
+
+def _lpy_even_div_none(a, b):
+    if a is None:
+        return None
+
+    result, remdr = divmod(a, b)
+    if remdr != 0:
+        # FIXME: This error message is kind of crummy.
+        raise ValueError("expected even division")
+    return result
 """
 
 

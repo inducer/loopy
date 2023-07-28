@@ -357,7 +357,7 @@ def _get_intersecting_inames(kernel: LoopKernel, iname: str) -> FrozenSet[str]:
                   frozenset())
 
 
-def generate_sequential_loop_dim_code(codegen_state, sched_index):
+def generate_sequential_loop_dim_code(codegen_state, sched_index, hints):
     kernel = codegen_state.kernel
 
     ecm = codegen_state.expression_to_code_mapper
@@ -494,7 +494,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                         codegen_state, loop_iname, kernel.index_dtype,
                         pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions)),
                         pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
-                        inner_ast)))
+                        inner_ast, hints)))
 
     return merge_codegen_results(codegen_state, result)
 

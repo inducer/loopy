@@ -26,6 +26,7 @@ import pytest
 import loopy as lp
 import numpy as np
 import pyopencl as cl
+import pyopencl.array
 
 from pyopencl.tools import \
     pytest_generate_tests_for_pyopencl as pytest_generate_tests  # noqa
@@ -138,6 +139,28 @@ def test_einsum_array_ops_triple_prod(ctx_factory, spec):
     ans = np.einsum(spec, a, b, c)
 
     assert np.linalg.norm(out - ans) <= 1e-15
+
+
+def test_einsum_with_variable_strides(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    spec = "ijk,jl->il"
+    knl = lp.make_einsum(spec, ("a", "b"),
+                         default_order=lp.auto, default_offset=lp.auto)
+
+    a_untransposed = np.random.randn(3, 5, 4)
+    b = np.random.randn(4, 5)
+
+    a = a_untransposed.transpose((0, 2, 1))
+    a_dev = cl.array.to_device(queue, a_untransposed).transpose((0, 2, 1))
+    assert a_dev.strides == a.strides
+
+    _evt, (result,) = knl(queue, a=a_dev, b=b)
+
+    ref = np.einsum(spec, a, b)
+
+    assert np.allclose(result.get(), ref)
 
 
 if __name__ == "__main__":
