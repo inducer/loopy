@@ -605,7 +605,7 @@ class VarAtomicity:
         key_builder.rec(key_hash, self.var_name)
 
     def __eq__(self, other):
-        return (type(self) == type(other)
+        return (type(self) is type(other)
                 and self.var_name == other.var_name)
 
     def __ne__(self, other):

@@ -136,7 +136,7 @@ class PymbolicExpressionHashWrapper:
         self.expression = expression
 
     def __eq__(self, other):
-        return (type(self) == type(other)
+        return (type(self) is type(other)
                 and self.expression == other.expression)
 
     def __ne__(self, other):

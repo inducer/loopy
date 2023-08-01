@@ -920,7 +920,7 @@ class ArrayBase(ImmutableRecord, Taggable):
                 is_tuple_of_expressions_equal as istoee,
                 is_expression_equal as isee)
         return (
-                type(self) == type(other)
+                type(self) is type(other)
                 and self.name == other.name
                 and self.dtype == other.dtype
                 and istoee(self.shape, other.shape)
