@@ -88,7 +88,7 @@ class TargetBase:
             key_builder.rec(key_hash, getattr(self, field_name))
 
     def __eq__(self, other):
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
 
         for field_name in self.comparison_fields:
