@@ -148,7 +148,7 @@ class All(MatchExpressionBase):
         key_builder.rec(key_hash, "all_match_expr")
 
     def __eq__(self, other):
-        return (type(self) == type(other))
+        return type(self) is type(other)
 
     def __hash__(self):
         return hash(type(self))
@@ -172,7 +172,7 @@ class MultiChildMatchExpressionBase(MatchExpressionBase):
         key_builder.rec(key_hash, self.children)
 
     def __eq__(self, other):
-        return (type(self) == type(other)
+        return (type(self) is type(other)
                 and self.children == other.children)
 
     def __hash__(self):
@@ -207,7 +207,7 @@ class Not(MatchExpressionBase):
         key_builder.rec(key_hash, self.child)
 
     def __eq__(self, other):
-        return (type(self) == type(other)
+        return (type(self) is type(other)
                 and self.child == other.child)
 
     def __hash__(self):
@@ -253,7 +253,7 @@ class GlobMatchExpressionBase(MatchExpressionBase):
         key_builder.rec(key_hash, self.glob)
 
     def __eq__(self, other):
-        return (type(self) == type(other)
+        return (type(self) is type(other)
                 and self.glob == other.glob)
 
     def __hash__(self):
@@ -434,7 +434,7 @@ class StackAllMatchComponent(StackMatchComponent):
         key_builder.rec(key_hash, "all_match")
 
     def __eq__(self, other):
-        return (type(self) == type(other))
+        return type(self) is type(other)
 
 
 class StackBottomMatchComponent(StackMatchComponent):
@@ -445,7 +445,7 @@ class StackBottomMatchComponent(StackMatchComponent):
         key_builder.rec(key_hash, "bottom_match")
 
     def __eq__(self, other):
-        return (type(self) == type(other))
+        return type(self) is type(other)
 
 
 class StackItemMatchComponent(StackMatchComponent):
@@ -469,7 +469,7 @@ class StackItemMatchComponent(StackMatchComponent):
         key_builder.rec(key_hash, self.inner_match)
 
     def __eq__(self, other):
-        return (type(self) == type(other)
+        return (type(self) is type(other)
                 and self.match_expr == other.match_expr
                 and self.inner_match == other.inner_match)
 
@@ -514,7 +514,7 @@ class StackMatch:
 
     def __eq__(self, other):
         return (
-                type(self) == type(other)
+                type(self) is type(other)
                 and
                 self.root_component == other.root_component)
 
