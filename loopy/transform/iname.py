@@ -35,6 +35,7 @@ from loopy.translation_unit import (TranslationUnit,
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 
+from typing import Optional
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -2368,7 +2369,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 @for_each_kernel
 @remove_any_newly_unused_inames
 def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
-                  within=None, raise_on_domain_mismatch: bool = None):
+                  within=None, raise_on_domain_mismatch: Optional[bool] = None):
     r"""
     :arg old_inames: A collection of inames that must be renamed to **new_iname**.
     :arg within: a stack match as understood by
@@ -2508,7 +2509,7 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
 @for_each_kernel
 def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
                  within=None, preserve_tags=True,
-                 raise_on_domain_mismatch: bool = None):
+                 raise_on_domain_mismatch: Optional[bool] = None):
     r"""
     Single iname version of :func:`loopy.rename_inames`.
     :arg existing_ok: execute even if *new_iname* already exists.
