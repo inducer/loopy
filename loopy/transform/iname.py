@@ -2504,18 +2504,23 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
 
 @for_each_kernel
 def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
-                 within=None, preserve_tags=True):
+                 within=None, preserve_tags=True,
+                 raise_on_domain_mismatch: bool = __debug__):
     """
     Single iname version of :func:`loopy.rename_inames`.
     :arg existing_ok: execute even if *new_iname* already exists
     :arg within: a stack match understood by :func:`loopy.match.parse_stack_match`.
     :arg preserve_tags: copy the tags on the old iname to the new iname
+    :arg raise_on_domain_mismatch: If *True*, raises an error if
+        :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
+        \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
     """
     from itertools import product
     from loopy import tag_inames
 
     tags = kernel.inames[old_iname].tags
-    kernel = rename_inames(kernel, [old_iname], new_iname, existing_ok, within)
+    kernel = rename_inames(kernel, [old_iname], new_iname, existing_ok,
+                           within, raise_on_domain_mismatch)
     if preserve_tags:
         kernel = tag_inames(kernel, product([new_iname], tags))
     return kernel
