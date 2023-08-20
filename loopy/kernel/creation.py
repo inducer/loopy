@@ -42,7 +42,6 @@ from islpy import dim_type
 from pytools import ProcessLogger
 
 from sys import intern
-import loopy.version
 
 import re
 
@@ -2325,8 +2324,9 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     from loopy.version import LANGUAGE_VERSION_SYMBOLS
 
+    import loopy.version as v
     version_to_symbol = {
-            getattr(loopy.version, lvs): lvs
+            getattr(v, lvs): lvs
             for lvs in LANGUAGE_VERSION_SYMBOLS}
 
     lang_version = kwargs.pop("lang_version", None)
