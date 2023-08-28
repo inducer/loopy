@@ -169,21 +169,6 @@ Mypy:
   except:
   - tags
 
-Benchmarks:
-  script:
-  - CONDA_ENVIRONMENT=.test-conda-env-py3.yml
-  - PROJECT=loopy
-  - PYOPENCL_TEST=portable:pthread
-  - export LOOPY_NO_CACHE=1
-  - export ASV_FACTOR=1.5
-  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-benchmark-py-project.sh
-  - ". ./build-and-benchmark-py-project.sh"
-  tags:
-  - linux
-  - benchmark
-  except:
-  - tags
-
 Downstream:
   parallel:
     matrix:
