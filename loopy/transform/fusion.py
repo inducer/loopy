@@ -449,7 +449,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
     new_callables[result.name] = CallableKernel(result)
 
-    return TranslationUnit(callables_table=new_callables,
+    return TranslationUnit(callables_table=Map(new_callables),
                            target=result.target,
                            entrypoints=frozenset([result.name]))
 

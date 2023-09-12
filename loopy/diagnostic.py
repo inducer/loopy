@@ -45,6 +45,10 @@ class ParameterFinderWarning(LoopyWarning):
 class WriteRaceConditionWarning(LoopyWarning):
     pass
 
+
+class DirectCallUncachedWarning(LoopyWarning):
+    pass
+
 # }}}
 
 

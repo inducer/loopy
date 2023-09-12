@@ -77,7 +77,8 @@ from loopy.transform.iname import (
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
         has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn, add_inames_for_unused_hw_axes, map_domain)
+        add_inames_to_insn, add_inames_for_unused_hw_axes, map_domain,
+        remove_inames_from_insn, remove_predicates_from_insn)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
@@ -147,7 +148,6 @@ from loopy.codegen import (
 from loopy.codegen.result import (
         GeneratedProgram,
         CodeGenerationResult)
-from loopy.compiled import CompiledKernel
 from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
 from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
@@ -162,7 +162,10 @@ from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
 
-from loopy.tools import Optional, t_unit_to_python, memoize_on_disk
+from loopy.tools import (Optional, t_unit_to_python, memoize_on_disk,
+                         clear_in_mem_caches)
+
+from loopy.target.execution import ExecutorBase
 
 
 __all__ = [
@@ -213,6 +216,7 @@ __all__ = [
         "make_reduction_inames_unique",
         "has_schedulable_iname_nesting", "get_iname_duplication_options",
         "add_inames_to_insn", "add_inames_for_unused_hw_axes", "map_domain",
+        "remove_inames_from_insn", "remove_predicates_from_insn",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
@@ -293,8 +297,6 @@ __all__ = [
         "gather_access_footprints", "gather_access_footprint_bytes",
         "Sync",
 
-        "CompiledKernel",
-
         "auto_test_vs_ref",
 
         "Options",
@@ -311,7 +313,9 @@ __all__ = [
         "PyOpenCLTarget", "ISPCTarget",
         "ASTBuilderBase",
 
-        "Optional", "memoize_on_disk",
+        "Optional", "memoize_on_disk", "clear_in_mem_caches",
+
+        "ExecutorBase",
 
         # {{{ from this file
 

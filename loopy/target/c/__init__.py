@@ -23,12 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import cast, Tuple, Optional, Sequence
+from typing import cast, Tuple, Optional, Sequence, Any
 import re
 
 import numpy as np  # noqa
 
-from cgen import Pointer, NestedDeclarator, Block, Generable, Declarator, Const
+from cgen import (Collection, Pointer, NestedDeclarator, Block, Generable,
+                  Declarator, Const)
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 import pymbolic.primitives as p
@@ -37,6 +38,8 @@ from pytools import memoize_method
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.symbolic import IdentityMapper
+from loopy.target.execution import ExecutorBase
+from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import NumpyType, LoopyType
 from loopy.typing import ExpressionT
 from loopy.kernel import LoopKernel
@@ -438,12 +441,6 @@ class CFamilyTarget(TargetBase):
         # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
-    def get_kernel_executor_cache_key(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def get_kernel_executor(self, knl, *args, **kwargs):
-        raise NotImplementedError
-
     # }}}
 
 
@@ -488,8 +485,8 @@ class CMathCallable(ScalarCallable):
         # {{{ (abs|max|min) -> (fabs|fmax|fmin)
 
         if name in ["abs", "min", "max"]:
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for dtype in arg_id_to_dtype.values()])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for dtype in arg_id_to_dtype.values()])
             if dtype.kind == "f":
                 name = "f" + name
 
@@ -558,9 +555,9 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
             real_dtype = np.empty(0, dtype=dtype).real.dtype
 
             if name in ["fmax", "fmin", "copysign"] and dtype.kind == "c":
@@ -598,9 +595,9 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
             if dtype.kind not in "iu":
                 # only support integers for now to avoid having to deal with NaNs
                 raise LoopyError(f"{name} does not support '{dtype}' arguments.")
@@ -784,9 +781,6 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         from cgen import (
                 FunctionBody,
-
-                # Post-mid-2016 cgens have 'Collection', too.
-                Module as Collection,
                 Initializer,
                 Line)
 
@@ -1224,7 +1218,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                                 in_knl_callable_as_call))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic import var
@@ -1232,7 +1226,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
 
-        return For(
+        loop = For(
                 InlineInitializer(
                     POD(self, iname_dtype, iname),
                     ecm(lbound, PREC_NONE, "i")),
@@ -1244,6 +1238,18 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
+
+        if hints:
+            return Collection(list(hints) + [loop])
+        else:
+            return loop
+
+    def emit_unroll_hint(self, value):
+        from cgen import Pragma
+        if value:
+            return Pragma(f"unroll {value}")
+        else:
+            return Pragma("unroll")
 
     def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
         decl = POD(self, dtype, name)
@@ -1262,6 +1268,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def emit_comment(self, s):
         from cgen import Comment
         return Comment(s)
+
+    def emit_noop_with_comment(self, s):
+        from cgen import Line
+        return Line(f"; /*{s}*/")
 
     @property
     def can_implement_conditionals(self):
@@ -1374,10 +1384,11 @@ class ExecutableCTarget(CTarget):
         # and None isn't allowed in that setting.
         return _CExecutorCacheKey
 
-    def get_kernel_executor(self, t_unit, *args, **kwargs):
-        from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(t_unit, entrypoint=kwargs.pop("entrypoint"),
-                compiler=self.compiler)
+    def get_kernel_executor(
+            self, t_unit: TranslationUnit,
+            *args: Any, entrypoint: FunctionIdT, **kwargs: Any) -> ExecutorBase:
+        from loopy.target.c.c_execution import CExecutor
+        return CExecutor(t_unit, entrypoint=entrypoint, compiler=self.compiler)
 
     def get_host_ast_builder(self):
         # enable host code generation

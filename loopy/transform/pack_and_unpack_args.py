@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from immutables import Map
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import CallInstruction
 from loopy.translation_unit import TranslationUnit
@@ -335,6 +336,6 @@ def pack_and_unpack_args_for_call(program, *args, **kwargs):
 
         new_callables[func_id] = in_knl_callable
 
-    return program.copy(callables_table=new_callables)
+    return program.copy(callables_table=Map(new_callables))
 
 # vim: foldmethod=marker

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """OpenCL target integrated with PyOpenCL."""
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -23,7 +24,7 @@ THE SOFTWARE.
 """
 
 from warnings import warn
-from typing import Sequence, Tuple, List, Union, Optional, cast
+from typing import Sequence, Tuple, List, Union, Optional, cast, Any, TYPE_CHECKING
 
 import numpy as np
 import pymbolic.primitives as p
@@ -34,8 +35,10 @@ from cgen.opencl import CLGlobal
 
 from loopy.target.opencl import (OpenCLTarget, OpenCLCASTBuilder,
         ExpressionToOpenCLCExpressionMapper)
+from loopy.target.pyopencl_execution import PyOpenCLExecutor
 from loopy.target.python import PythonASTBuilderBase
 from loopy.kernel import LoopKernel
+from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import NumpyType
 from loopy.typing import ExpressionT
 from loopy.diagnostic import LoopyError, LoopyTypeError
@@ -48,6 +51,9 @@ from loopy.codegen.result import CodeGenerationResult
 
 import logging
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    import pyopencl as cl
 
 
 # {{{ pyopencl function scopers
@@ -595,55 +601,22 @@ class PyOpenCLTarget(OpenCLTarget):
     # }}}
 
     def get_kernel_executor_cache_key(self, queue, **kwargs):
-        import weakref
-        # Use weakref for CL context to avoid keeping context artifically alive
-        return (weakref.ref(queue.context), kwargs["entrypoint"])
+        return (queue.context, kwargs["entrypoint"])
 
-    def preprocess_translation_unit_for_passed_args(self, t_unit, epoint,
-                                                   passed_args_dict):
+    # type-ignore because we're making things from *args: Any more concrete,
+    # and mypy doesn't like it.
+    def get_kernel_executor(self, t_unit: TranslationUnit,  # type: ignore[override]
+                            queue_or_context: Union[cl.CommandQueue, cl.Context],
+                            *args: Any, entrypoint: FunctionIdT, **kwargs: Any
+                            ) -> PyOpenCLExecutor:
+        from pyopencl import CommandQueue
+        if isinstance(queue_or_context, CommandQueue):
+            context = queue_or_context.context
+        else:
+            context = queue_or_context
 
-        # {{{ ValueArgs -> GlobalArgs if passed as array shapes
-
-        from loopy.kernel.data import ValueArg, GlobalArg
-        import pyopencl.array as cla
-
-        knl = t_unit[epoint]
-        new_args = []
-
-        for arg in knl.args:
-            if isinstance(arg, ValueArg):
-                if (arg.name in passed_args_dict
-                        and isinstance(passed_args_dict[arg.name], cla.Array)
-                        and passed_args_dict[arg.name].shape == ()):
-                    arg = GlobalArg(name=arg.name, dtype=arg.dtype, shape=(),
-                                    is_output=False, is_input=True)
-
-            new_args.append(arg)
-
-        knl = knl.copy(args=new_args)
-
-        t_unit = t_unit.with_kernel(knl)
-
-        # }}}
-
-        return t_unit
-
-    def get_kernel_executor(self, program, queue, **kwargs):
-        from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
-
-        epoint = kwargs.pop("entrypoint")
-        program = self.preprocess_translation_unit_for_passed_args(program,
-                                                                   epoint,
-                                                                   kwargs)
-
-        return PyOpenCLKernelExecutor(queue.context, program,
-                                      entrypoint=epoint)
-
-    def with_device(self, device):
-        from warnings import warn
-        warn("PyOpenCLTarget.with_device is deprecated, it will "
-                "stop working in 2022.", DeprecationWarning, stacklevel=2)
-        return self
+        from loopy.target.pyopencl_execution import PyOpenCLExecutor
+        return PyOpenCLExecutor(context, t_unit, entrypoint=entrypoint)
 
 # }}}
 

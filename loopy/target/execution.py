@@ -38,7 +38,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from pytools.persistent_dict import WriteOncePersistentDict
-from loopy.tools import LoopyKeyBuilder
+from loopy.tools import LoopyKeyBuilder, caches
 from loopy.typing import ExpressionT
 from loopy.types import LoopyType, NumpyType
 from loopy.kernel import KernelState, LoopKernel
@@ -107,11 +107,11 @@ class _ArgFindingEquation:
     lhs: ExpressionT
     rhs: ExpressionT
 
-    # Arg finding code is sorted by priority, lowest order first
+    # Arg finding code is sorted by priority, all equations (across all unknowns)
+    # of lowest priority first.
     order: int
 
     based_on_names: FrozenSet[str]
-    require_names: bool
 
 
 class ExecutionWrapperGeneratorBase(ABC):
@@ -164,8 +164,6 @@ class ExecutionWrapperGeneratorBase(ABC):
 
         equations: List[_ArgFindingEquation] = []
 
-        from pymbolic.primitives import If
-
         for arg_name in kai.passed_arg_names:
             arg = kernel.arg_dict[arg_name]
             assert arg.dtype is not None
@@ -179,10 +177,10 @@ class ExecutionWrapperGeneratorBase(ABC):
                                     lhs=var(arg.name).attr("shape").index(axis_nr),
                                     rhs=shape_i,
                                     order=0,
-                                    based_on_names=frozenset({arg.name}),
-                                    require_names=True))
+                                    based_on_names=frozenset({arg.name})))
 
-                for axis_nr, stride_i in enumerate(get_strides(arg)):
+                strides = get_strides(arg)
+                for axis_nr, stride_i in enumerate(strides):
                     if stride_i is not None:
                         equations.append(
                                 _ArgFindingEquation(
@@ -192,43 +190,68 @@ class ExecutionWrapperGeneratorBase(ABC):
                                     rhs=_str_to_expr(stride_i),
                                     order=0,
                                     based_on_names=frozenset({arg.name}),
-                                    require_names=True))
+                                    ))
+
+                        if not arg.is_input and isinstance(arg.shape, tuple):
+                            # If no value was found by other means, provide
+                            # C-contiguous default strides for output-only
+                            # arguments.
+                            equations.append(
+                                    _ArgFindingEquation(
+                                        lhs=(strides[axis_nr + 1]
+                                             * arg.shape[axis_nr + 1])
+                                        if axis_nr + 1 < len(strides)
+                                        else 1,
+                                        rhs=_str_to_expr(stride_i),
+                                        # Find strides from last dim to first,
+                                        # starting at order=1 so that shape
+                                        # parameters (found above) are
+                                        # available.
+                                        order=len(strides) - axis_nr,
+                                        based_on_names=frozenset(),
+                                        ))
 
                 if arg.offset is not None:
-                    if not kernel.options.no_numpy:
-                        offset = var("getattr")(var(arg.name), var('"offset"'), 0)
-                    else:
-                        offset = var(arg.name).attr("offset")
-
-                    offset = If(var(f"{arg.name} is None"), 0, offset)
-
                     equations.append(
                             _ArgFindingEquation(
-                                lhs=var("_lpy_even_div")(
-                                    offset, arg.dtype.itemsize),
+                                lhs=var("_lpy_even_div_none")(
+                                    var("getattr")(
+                                        var(arg.name), var('"offset"'), var("None")),
+                                    arg.dtype.itemsize),
                                 rhs=_str_to_expr(arg.offset),
+                                order=0,
+                                based_on_names=frozenset([arg.name]),
+                                ))
 
-                                # Argument finding from offsets should run last,
-                                # as it assumes a zero offset if a variable is
-                                # not passed. That should only be done if no
-                                # other approach yielded a value for the variable.
+                    # If no value was found by other means, default to zero.
+                    equations.append(
+                            _ArgFindingEquation(
+                                lhs=0,
+                                rhs=_str_to_expr(arg.offset),
                                 order=1,
-                                based_on_names=frozenset(arg.name),
-                                require_names=False,
+                                based_on_names=frozenset(),
                                 ))
 
         # }}}
 
         # {{{ regroup equations by unknown
 
-        unknown_to_equations: Dict[str, List[_ArgFindingEquation]] = {}
+        order_to_unknown_to_equations: \
+                Dict[int, Dict[str, List[_ArgFindingEquation]]] = {}
 
         for eqn in equations:
             deps = dep_map(eqn.rhs)
 
             if len(deps) == 1:
                 unknown_var, = deps
-                unknown_to_equations.setdefault(unknown_var.name, []).append((eqn))
+                order_to_unknown_to_equations \
+                        .setdefault(eqn.order, {}) \
+                        .setdefault(unknown_var.name, []) \
+                        .append((eqn))
+            else:
+                # Zero deps: nothing to determine, forget about it.
+                # 2+ deps: not implemented
+                pass
 
         del equations
 
@@ -243,72 +266,67 @@ class ExecutionWrapperGeneratorBase(ABC):
         gen("# {{{ find integer arguments from array data")
         gen("")
 
-        for unknown_name in sorted(unknown_to_equations):
-            unk_equations = sorted(unknown_to_equations[unknown_name],
-                    key=lambda eqn: eqn.order)
-            req_subgen = CodeGenerator()
-            not_req_subgen = CodeGenerator()
+        for order_value in sorted(order_to_unknown_to_equations):
+            for unknown_name in sorted(order_to_unknown_to_equations[order_value]):
+                unk_equations = sorted(
+                        order_to_unknown_to_equations[order_value][unknown_name],
+                        key=lambda eqn: eqn.order)
+                subgen = CodeGenerator()
 
-            seen_based_on_names: Set[FrozenSet[str]] = set()
+                seen_based_on_names: Set[FrozenSet[str]] = set()
 
-            if_or_elif = "if"
+                if_or_elif = "if"
 
-            for eqn in unk_equations:
-                try:
-                    # overkill :)
-                    value_expr = solve_affine_equations_for(
-                            [unknown_name],
-                            [(eqn.lhs, eqn.rhs)]
-                            )[Variable(unknown_name)]
-                except Exception as e:
-                    # went wrong? oh well
-                    from warnings import warn
-                    warn("Unable to generate code to automatically "
-                            f"find '{unknown_name}' "
-                            f"from '{', '.join(eqn.based_on_names)}':\n"
-                            f"{e}", ParameterFinderWarning)
-                    continue
+                for eqn in unk_equations:
+                    if eqn.rhs == Variable(unknown_name):
+                        # Some of the expressions above are non-affine. Let's not
+                        # get carried away by trying to solve a much more complex
+                        # problem than needed.
+                        value_expr = eqn.lhs
+                    else:
+                        try:
+                            # overkill :)
+                            value_expr = solve_affine_equations_for(
+                                    [unknown_name],
+                                    [(eqn.lhs, eqn.rhs)]
+                                    )[Variable(unknown_name)]
+                        except Exception as e:
+                            # went wrong? oh well
+                            from warnings import warn
+                            warn("Unable to generate code to automatically "
+                                    f"find '{unknown_name}' "
+                                    f"from '{', '.join(eqn.based_on_names)}':\n"
+                                    f"{e}", ParameterFinderWarning)
+                            continue
 
-                # Do not use more than one bit of data from each of the
-                # 'based_on_names' to find each value, i.e. if a value can be
-                # found via shape and strides, only one of them suffices.
-                # This also helps because strides can be unreliable in the
-                # face of zero-length axes.
-                if eqn.based_on_names in seen_based_on_names:
-                    continue
-                seen_based_on_names.add(eqn.based_on_names)
+                    # Do not use more than one bit of data from each of the
+                    # 'based_on_names' to find each value, i.e. if a value can be
+                    # found via shape and strides, only one of them suffices.
+                    # This also helps because strides can be unreliable in the
+                    # face of zero-length axes.
+                    if eqn.based_on_names in seen_based_on_names:
+                        continue
+                    seen_based_on_names.add(eqn.based_on_names)
 
-                if eqn.require_names:
-                    condition = " and ".join(
-                            f"{ary_name} is not None"
-                            for ary_name in eqn.based_on_names)
-                    req_subgen(f"{if_or_elif} {condition}:")
-                    with Indentation(req_subgen):
-                        req_subgen(
+                    if eqn.based_on_names:
+                        condition = " and ".join(
+                                f"{ary_name} is not None"
+                                for ary_name in eqn.based_on_names)
+                    else:
+                        condition = "True"
+
+                    subgen(f"{if_or_elif} {condition}:")
+                    with Indentation(subgen):
+                        subgen(
                                 f"{unknown_name} = {StringifyMapper()(value_expr)}")
                     if_or_elif = "elif"
 
-                    req_subgen("")
-                else:
-                    not_req_subgen(
-                            f"{unknown_name} = {StringifyMapper()(value_expr)}")
+                    subgen("")
 
-                    not_req_subgen("")
-
-            if not_req_subgen.code:
-                gen(f"if {unknown_name} is None:")
-                with Indentation(gen):
-                    gen.extend(not_req_subgen)
-
-                    if req_subgen.code:
-                        # still? try the req_subgen
-                        gen(f"if {unknown_name} is None:")
-                        with Indentation(gen):
-                            gen.extend(req_subgen)
-            elif req_subgen.code:
-                gen(f"if {unknown_name} is None:")
-                with Indentation(gen):
-                    gen.extend(req_subgen)
+                if subgen.code:
+                    gen(f"if {unknown_name} is None:")
+                    with Indentation(gen):
+                        gen.extend(subgen)
 
         gen("# }}}")
         gen("")
@@ -708,18 +726,24 @@ typed_and_scheduled_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
+caches.append(typed_and_scheduled_cache)
+
+
 invoker_cache = WriteOncePersistentDict(
         "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
+caches.append(invoker_cache)
+
+
 # {{{ kernel executor
 
-class KernelExecutorBase:
-    """An object connecting a kernel to a :class:`pyopencl.Context`
-    for execution.
+class ExecutorBase:
+    """An object allowing the execution of an entrypoint of a
+    :class:`~loopy.TranslationUnit`. Create these objects using
+    :meth:`loopy.TranslationUnit.executor`.
 
-    .. automethod:: __init__
     .. automethod:: __call__
     """
     packing_controller: Optional[SeparateArrayPackingController]
@@ -760,7 +784,8 @@ class KernelExecutorBase:
         # passed was often at type inference. This exists to raise a more meaningful
         # message in such scenarios. Since type inference precedes compilation, this
         # check cannot be deferred to the generated invoker code.
-        # See discussion at github.com/inducer/loopy/pull/160#issuecomment-867761204
+        # See discussion at
+        # https://github.com/inducer/loopy/pull/160#issuecomment-867761204
         # and links therin for context.
         if not self.input_array_names <= set(input_args):
             missing_args = self.input_array_names - set(input_args)
@@ -772,12 +797,12 @@ class KernelExecutorBase:
                 "your argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
-            self, entrypoint, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: Optional[Map[str, LoopyType]]
             ) -> TranslationUnit:
         t_unit = self.t_unit
 
         if arg_to_dtype:
-            entry_knl = t_unit[entrypoint]
+            entry_knl = t_unit[self.entrypoint]
 
             # FIXME: This is not so nice. This transfers types from the
             # subarrays of sep-tagged arrays to the 'main' array, because
@@ -809,7 +834,7 @@ class KernelExecutorBase:
         return t_unit
 
     def get_typed_and_scheduled_translation_unit(
-            self, entrypoint: str, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: Optional[Map[str, LoopyType]]
             ) -> TranslationUnit:
         from loopy import CACHING_ENABLED
 
@@ -824,8 +849,7 @@ class KernelExecutorBase:
         logger.debug("%s: typed-and-scheduled cache miss" %
                 self.t_unit.entrypoints)
 
-        kernel = self.get_typed_and_scheduled_translation_unit_uncached(entrypoint,
-                arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_translation_unit_uncached(arg_to_dtype)
 
         if CACHING_ENABLED:
             typed_and_scheduled_cache.store_if_not_present(cache_key, kernel)
@@ -861,8 +885,7 @@ class KernelExecutorBase:
     def get_code(
             self, entrypoint: str,
             arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> str:
-        kernel = self.get_typed_and_scheduled_translation_unit(
-                entrypoint, arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
         code = generate_code_v2(kernel)

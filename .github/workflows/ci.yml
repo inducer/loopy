@@ -114,6 +114,7 @@ jobs:
                 curl -L -O https://tiker.net/ci-support-v0
                 . ./ci-support-v0
                 build_py_project_in_conda_env
+                rewrite_pyopencl_test
 
                 . ./.ci/examples-funcs.sh
                 install_example_prereqs
@@ -140,7 +141,7 @@ jobs:
     downstream_tests:
         strategy:
             matrix:
-                downstream_project: [meshmode, grudge, pytential, pytato]
+                downstream_project: [arraycontext, meshmode, grudge, pytential, pytato]
             fail-fast: false
         name: Tests for downstream project ${{ matrix.downstream_project }}
         runs-on: ubuntu-latest

@@ -226,11 +226,14 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         return Collection
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
+
+        if hints:
+            raise ValueError("hints for python loops not supported")
 
         return For(
                 (iname,),
@@ -252,6 +255,10 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     def emit_comment(self, s):
         from genpy import Comment
         return Comment(s)
+
+    def emit_noop_with_comment(self, s):
+        from cgen import Line
+        return Line(f"pass #{s}")
 
     @property
     def can_implement_conditionals(self):

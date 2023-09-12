@@ -101,7 +101,7 @@ class NumpyType(LoopyType):
 
     def __eq__(self, other):
         return (
-                type(self) == type(other)
+                type(self) is type(other)
                 and self.dtype == other.dtype)
 
     def __ne__(self, other):
@@ -192,7 +192,7 @@ class OpaqueType(LoopyType):
 
     def __eq__(self, other):
         return (
-                type(self) == type(other)
+                type(self) is type(other)
                 and self.name == other.name)
 
     def __ne__(self, other):

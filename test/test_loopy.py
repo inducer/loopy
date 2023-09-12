@@ -633,6 +633,50 @@ def test_conditional(ctx_factory):
                 ))
 
 
+def test_conditional_two_ways(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<n }",
+        """
+        <> b = i > 3
+        <> c = i > 1
+        out[i] = a[i] {id=init}
+        if b
+            out[i] = 2*a[i]  {if=c,dep=init}
+        end
+        """,
+        [
+            lp.GlobalArg("a", np.float32, shape=lp.auto),
+            lp.GlobalArg("out", np.float32, shape=lp.auto),
+            "..."
+        ]
+    )
+
+    ref_knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<n }",
+        """
+        <> b = i > 3
+        <> c = i > 1
+        out[i] = a[i] {id=init}
+        if b and c
+            out[i] = 2*a[i]  {dep=init}
+        end
+        """,
+        [
+            lp.GlobalArg("a", np.float32, shape=lp.auto),
+            lp.GlobalArg("out", np.float32, shape=lp.auto),
+            "..."
+        ]
+    )
+    ref_knl = knl
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            parameters=dict(
+                n=200
+                ))
+
+
 def test_ilp_loop_bound(ctx_factory):
     # The salient bit of this test is that a joint bound on (outer, inner)
     # from a split occurs in a setting where the inner loop has been ilp'ed.
@@ -1724,7 +1768,8 @@ def test_ilp_and_conditionals(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-def test_unr_and_conditionals(ctx_factory):
+@pytest.mark.parametrize("unr_tag", ["unr", "unr_hint"])
+def test_unr_and_conditionals(ctx_factory, unr_tag):
     ctx = ctx_factory()
 
     knl = lp.make_kernel("{[k]: 0<=k<n}}",
@@ -1742,7 +1787,7 @@ def test_unr_and_conditionals(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.split_iname(knl, "k", 2, inner_tag="unr")
+    knl = lp.split_iname(knl, "k", 2, inner_tag=unr_tag)
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
@@ -3481,6 +3526,88 @@ def test_einsum_parsing(ctx_factory):
     knl = lp.add_dtypes(knl, {"A": np.float32, "B": np.float32})
     lp.auto_test_vs_ref(knl, ctx, knl,
                         parameters={"Ni": 10, "Nj": 10, "Nk": 10})
+
+
+def test_no_barrier_err_for_global_temps_with_base_storage(ctx_factory):
+    # Regression for https://github.com/inducer/loopy/issues/748
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i, j<16}",
+        """
+        for i
+            tmp1[i] = i
+            tmp2[i] = tmp1[i] + 2
+        end
+        ... gbarrier
+        for j
+            out[j] = tmp1[j] + tmp2[j]
+        end
+        """,
+        [lp.TemporaryVariable("tmp1",
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base1",
+                              shape=lp.auto),
+         lp.TemporaryVariable("tmp2",
+                              address_space=lp.AddressSpace.GLOBAL,
+                              base_storage="base2",
+                              shape=lp.auto),
+         ...],
+        seq_dependencies=True
+    )
+    knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
+    knl = lp.split_iname(knl, "j", 4, inner_tag="l.0", outer_tag="g.0")
+
+    _, (out,) = knl(cq, out_host=True)
+
+    np.testing.assert_allclose(2*np.arange(16) + 2, out)
+
+
+def test_dgemm_with_rectangular_tile_prefetch(ctx_factory):
+    # See <https://github.com/inducer/loopy/issues/724>
+    t_unit = lp.make_kernel(
+        "{[i,j,k]: 0<=i,j<72 and 0<=k<32}",
+        """
+        C[i,j] = sum(k, A[i,k] * B[k,j])
+        """,
+        [lp.GlobalArg("A,B", dtype=np.float64, shape=lp.auto),
+         ...],
+    )
+    ref_t_unit = t_unit
+
+    tx = 8
+    ty = 23
+    tk = 11
+
+    t_unit = lp.split_iname(t_unit, "i", tx, inner_tag="l.0", outer_tag="g.0")
+    t_unit = lp.split_iname(t_unit, "j", ty, inner_tag="l.1", outer_tag="g.1")
+    t_unit = lp.split_iname(t_unit, "k", tk)
+    t_unit = lp.add_prefetch(
+        t_unit, "A",
+        sweep_inames=["i_inner", "k_inner"],
+        temporary_address_space=lp.AddressSpace.LOCAL,
+        fetch_outer_inames=frozenset({"i_outer", "j_outer", "k_outer"}),
+        dim_arg_names=["iprftch_A", "kprftch_A"],
+        default_tag=None,
+    )
+
+    t_unit = lp.add_prefetch(
+        t_unit, "B",
+        sweep_inames=["k_inner", "j_inner"],
+        temporary_address_space=lp.AddressSpace.LOCAL,
+        fetch_outer_inames=frozenset({"i_outer", "j_outer", "k_outer"}),
+        dim_arg_names=["kprftch_B", "jprftch_B"],
+        default_tag=None,
+    )
+
+    t_unit = lp.split_iname(t_unit, "kprftch_A", tx, inner_tag="l.0")
+    t_unit = lp.split_iname(t_unit, "iprftch_A", ty, inner_tag="l.1")
+    t_unit = lp.split_iname(t_unit, "jprftch_B", tx, inner_tag="l.0")
+    t_unit = lp.split_iname(t_unit, "kprftch_B", ty, inner_tag="l.1")
+
+    ctx = cl.create_some_context()
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
 if __name__ == "__main__":
