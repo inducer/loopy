@@ -36,3 +36,10 @@ FloatT = Union[float, complex, np.float32, np.float64, np.complex64,
 ExpressionT = Union[IntegralT, FloatT, Expression]
 ShapeType = Tuple[ExpressionT, ...]
 StridesType = ShapeType
+
+
+class auto:  # noqa
+    """A generic placeholder object for something that should be automatically
+    determined.  See, for example, the *shape* or *strides* argument of
+    :class:`ArrayArg`.
+    """
