@@ -332,7 +332,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def make_subscript(self, array, base_expr, subscript):
         return base_expr[subscript]
 
-    def map_integer_div_operator(self, base_func_name, op_func, expr, type_context):
+    def _map_integer_div_operator(self, base_func_name, op_func, expr, type_context):
         from loopy.symbolic import get_dependencies
         iname_deps = get_dependencies(expr) & self.kernel.all_inames()
         domain = self.kernel.get_inames_domain(iname_deps)
@@ -378,7 +378,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_floor_div(self, expr, type_context):
         import operator
-        return self.map_integer_div_operator(
+        return self._map_integer_div_operator(
                 "loopy_floor_div", operator.floordiv, expr, type_context)
 
     def map_remainder(self, expr, type_context):
@@ -387,7 +387,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             raise RuntimeError("complex remainder not defined")
 
         import operator
-        return self.map_integer_div_operator(
+        return self._map_integer_div_operator(
                 "loopy_mod", operator.mod, expr, type_context)
 
     def map_if(self, expr, type_context):
