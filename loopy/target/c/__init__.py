@@ -1086,6 +1086,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         if temp_var.storage_shape:
             shape = temp_var.storage_shape
         else:
+            assert isinstance(temp_var.shape, tuple)
             shape = temp_var.shape
 
         assert isinstance(shape, tuple)
@@ -1105,6 +1106,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             from cgen import AlignedAttribute
             temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
 
+        assert isinstance(temp_var.address_space, AddressSpace)
         return self.wrap_decl_for_address_space(temp_var_decl,
                 temp_var.address_space)
 
