@@ -146,15 +146,10 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 # }}}
 
 
-class _not_provided:  # noqa: N801
-    pass
-
-
 def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
         sweep_inames=None, dim_arg_names=None,
 
-        # "None" is a valid value here, distinct from the default.
-        default_tag=_not_provided,
+        default_tag=None,
 
         rule_name=None,
         temporary_name=None,
