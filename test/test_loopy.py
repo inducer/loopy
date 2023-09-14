@@ -3564,7 +3564,7 @@ def test_no_barrier_err_for_global_temps_with_base_storage(ctx_factory):
     np.testing.assert_allclose(2*np.arange(16) + 2, out)
 
 
-def test_dgemm_with_rectangular_tile_prefetch(ctx_factory):
+def test_dgemm_with_rectangular_tile_prefetch():
     # See <https://github.com/inducer/loopy/issues/724>
     t_unit = lp.make_kernel(
         "{[i,j,k]: 0<=i,j<72 and 0<=k<32}",
@@ -3608,6 +3608,22 @@ def test_dgemm_with_rectangular_tile_prefetch(ctx_factory):
 
     ctx = cl.create_some_context()
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+def test_modulo_vs_type_context(ctx_factory):
+    t_unit = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+            # previously, the float 'type context' would propagate into
+            # the remainder, leading to 'i % 10.0' being generated, which
+            # C/OpenCL did not like.
+            <float64> a = i % 10
+            """)
+
+    ctx = cl.create_some_context()
+    queue = cl.CommandQueue(ctx)
+
+    t_unit(queue)
 
 
 if __name__ == "__main__":

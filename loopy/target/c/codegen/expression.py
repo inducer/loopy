@@ -368,8 +368,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if den_nonneg:
             if num_nonneg:
                 return op_func(
-                        self.rec(expr.numerator, type_context),
-                        self.rec(expr.denominator, type_context))
+                        self.rec(expr.numerator, "i"),
+                        self.rec(expr.denominator, "i"))
             else:
                 seen_func(f"{base_func_name}_pos_b")
                 return var(f"{base_func_name}_pos_b_{suffix}")(
