@@ -39,7 +39,7 @@ from pytools.tag import UniqueTag as UniqueTagBase, Tag
 
 from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
 from loopy.diagnostic import LoopyError
-from loopy.typing import ExpressionT
+from loopy.typing import ExpressionT, ShapeType
 from loopy.types import LoopyType, auto
 from loopy.kernel.instruction import (  # noqa
         InstructionBase,
@@ -282,12 +282,14 @@ class InOrderSequentialSequentialTag(InameImplementationTag):
         return "ord"
 
 
-def parse_tag(tag):
-    from pytools.tag import Tag as TagBase
+ToInameTagConvertible = Union[str, None, Tag]
+
+
+def parse_tag(tag: ToInameTagConvertible) -> Optional[Tag]:
     if tag is None:
         return tag
 
-    if isinstance(tag, TagBase):
+    if isinstance(tag, Tag):
         return tag
 
     if not isinstance(tag, str):
