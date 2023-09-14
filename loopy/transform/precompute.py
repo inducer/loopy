@@ -348,17 +348,12 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 # }}}
 
 
-class _not_provided:  # noqa: N801
-    pass
-
-
 def precompute_for_single_kernel(kernel, callables_table, subst_use,
         sweep_inames=None, within=None, storage_axes=None, temporary_name=None,
         precompute_inames=None, precompute_outer_inames=None,
         storage_axis_to_tag=None,
 
-        # "None" is a valid value here, distinct from the default.
-        default_tag=_not_provided,
+        default_tag=None,
 
         dtype=None,
         fetch_bounding_box=False,
@@ -549,35 +544,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
     c_subst_name = subst_name.replace(".", "_")
 
-    # {{{ handle default_tag
-
-    from loopy.transform.data import _not_provided \
-            as transform_data_not_provided
-
-    if default_tag is _not_provided or default_tag is transform_data_not_provided:
-        # no need to warn for scalar precomputes
-        if sweep_inames:
-            from warnings import warn
-            warn(
-                    "Not specifying default_tag is deprecated, and default_tag "
-                    "will become mandatory in 2019.x. "
-                    "Pass 'default_tag=\"l.auto\" to match the current default, "
-                    "or Pass 'default_tag=None to leave the loops untagged, which "
-                    "is the recommended behavior.",
-                    DeprecationWarning, stacklevel=(
-
-                        # In this case, we came here through add_prefetch. Increase
-                        # the stacklevel.
-                        3 if default_tag is transform_data_not_provided
-
-                        else 2))
-
-        default_tag = "l.auto"
-
     from loopy.kernel.data import parse_tag
     default_tag = parse_tag(default_tag)
-
-    # }}}
 
     # }}}
 
@@ -727,8 +695,11 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
         storage_axis_names.append(name)
         if name not in preexisting_precompute_inames:
-            new_iname_to_tag[name] = storage_axis_to_tag.get(
-                    tag_lookup_saxis, default_tag)
+            iname_tag = storage_axis_to_tag.get(tag_lookup_saxis, None)
+            if iname_tag is None:
+                iname_tag = default_tag
+            if iname_tag is not None:
+                new_iname_to_tag[name] = iname_tag
 
         prior_storage_axis_name_dict[name] = old_name
 
@@ -779,7 +750,8 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
             if abm.non1_storage_axis_flags[i]:
                 non1_storage_axis_names.append(saxis)
             else:
-                del new_iname_to_tag[saxis]
+                if saxis in new_iname_to_tag:
+                    del new_iname_to_tag[saxis]
 
                 if saxis in preexisting_precompute_inames:
                     raise LoopyError("precompute axis %d (1-based) was "
