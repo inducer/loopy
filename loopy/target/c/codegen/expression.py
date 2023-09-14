@@ -371,7 +371,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         self.rec(expr.numerator, type_context),
                         self.rec(expr.denominator, type_context))
             else:
-                seen_func("%s_pos_b" % base_func_name)
+                seen_func(f"{base_func_name}_pos_b")
                 return var(f"{base_func_name}_pos_b_{suffix}")(
                         self.rec(expr.numerator, "i"),
                         self.rec(expr.denominator, "i"))
@@ -792,13 +792,10 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 force_parens_around=self.multiplicative_primitives)
 
         return self.parenthesize_if_needed(
-                "{} {} {}".format(
-                    # Space is necessary--otherwise '/*'
-                    # (i.e. divide-dererference) becomes
-                    # start-of-comment in C.
-                    num_s,
-                    operator,
-                    denom_s),
+                f"{num_s} {operator} {denom_s}",
+                # Space is necessary--otherwise '/*'
+                # (i.e. divide-dererference) becomes
+                # start-of-comment in C.
                 enclosing_prec, PREC_PRODUCT)
 
     def map_quotient(self, expr, enclosing_prec):
