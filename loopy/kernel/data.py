@@ -665,8 +665,16 @@ class TemporaryVariable(ArrayBase):
         declaration.
     """
 
-    min_target_axes = 0
-    max_target_axes = 1
+    storage_shape: Optional[ShapeType]
+    base_indices: Optional[Tuple[ExpressionT, ...]]
+    address_space: Union[AddressSpace, Type[auto]]
+    base_storage: Optional[str]
+    initializer: Optional[np.ndarray]
+    read_only: bool
+    _base_storage_access_may_be_aliasing: bool
+
+    min_target_axes: ClassVar[int] = 0
+    max_target_axes: ClassVar[int] = 1
 
     allowed_extra_kwargs = (
             "storage_shape",

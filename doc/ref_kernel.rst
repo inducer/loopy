@@ -537,8 +537,6 @@ have the lifetime of a kernel invocation.
 .. autoclass:: AddressSpace
 
 .. autoclass:: TemporaryVariable
-    :members:
-    :undoc-members:
 
 .. _types:
 
