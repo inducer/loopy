@@ -343,6 +343,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         num_type = self.infer_type(expr.numerator)
         den_type = self.infer_type(expr.denominator)
+
+        if not num_type.is_integral() or not den_type.is_integral():
+            raise NotImplementedError("remainder and floordiv "
+                                      "for floating-point types")
+
         from loopy.isl_helpers import is_nonnegative
         num_nonneg = is_nonnegative(expr.numerator, domain) \
             or num_type.numpy_dtype.kind == "u"
