@@ -400,7 +400,7 @@ def test_nan_support(ctx_factory, target):
          lp.Assignment(parse("c"), parse("isnan(3.14)")),
          lp.Assignment(parse("d"), parse("isnan(0.0)")),
          lp.Assignment(parse("e"), NaN(np.float32)),
-         lp.Assignment(parse("f"), Variable("isnan")(NaN())),
+         lp.Assignment(parse("f"), Variable("isnan")(NaN(None))),
          lp.Assignment(parse("g"), NaN(np.complex64)),
          lp.Assignment(parse("h"), NaN(np.complex128)),
          ],

@@ -431,10 +431,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                  " The generated code will be equivalent with the added benefit"
                  " of sound pickling/unpickling of kernel objects.")
             from pymbolic.primitives import NaN
-            if not isinstance(expr, np.generic):
-                return self.map_nan(NaN(), type_context)
-            else:
-                return self.map_nan(NaN(expr.dtype.type), type_context)
+            data_type = expr.dtype.type if isinstance(expr, np.generic) else None
+            return self.map_nan(NaN(data_type), type_context)
         elif np.isneginf(expr):
             return -p.Variable("INFINITY")
         elif np.isinf(expr):
