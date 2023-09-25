@@ -52,12 +52,6 @@ def pw_aff_to_aff(pw_aff):
     return pieces[0][1]
 
 
-def dump_space(ls):
-    return " ".join(
-            "%s: %d" % (dim_type.find_value(dt), ls.dim(dt))
-            for dt in range(1 + dim_type.all))
-
-
 # {{{ make_slab
 
 def make_slab(space, iname, start, stop, iname_multiplier=1):

@@ -605,7 +605,7 @@ class TypedCSE(LoopyExpressionBase, p.CommonSubexpression):
     """
 
     def __init__(self, child, prefix=None, dtype=None):
-        super().__init__(child, prefix)
+        super().__init__(child, prefix=prefix, scope=p.cse_scope.EVALUATION)
         self.dtype = dtype
 
     def __getinitargs__(self):
@@ -1578,7 +1578,8 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper):
                     tag = None
 
                 return p.CommonSubexpression(
-                        self.rec(expr.parameters[0]), tag)
+                        self.rec(expr.parameters[0]), tag,
+                        scope=p.cse_scope.EVALUATION)
             else:
                 raise TypeError("cse takes two arguments")
 
