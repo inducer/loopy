@@ -912,11 +912,26 @@ def precompute_for_single_kernel(kernel, callables_table, subst_use,
 
     storage_axis_subst_dict = {}
 
-    for arg_name, bi in zip(storage_axis_names, abm.storage_base_indices):
+    for i, (arg_name, bi) in enumerate(
+            zip(storage_axis_names, abm.storage_base_indices)):
         if arg_name in non1_storage_axis_names:
             arg = var(arg_name)
         else:
             arg = 0
+
+        # Special case to work around isl's removal of length-1 loop indices.
+        # See https://github.com/inducer/loopy/issues/809
+        from pymbolic.primitives import Expression
+        if not isinstance(bi, Expression):
+            from pytools import is_single_valued
+            if is_single_valued(
+                    accdesc.storage_axis_exprs[i]
+                    for accdesc in access_descriptors):
+                storage_axis_expr = access_descriptors[0].storage_axis_exprs[i]
+                if (
+                        isinstance(storage_axis_expr, Variable)
+                        and storage_axis_expr.name not in sweep_inames):
+                    bi = storage_axis_expr
 
         storage_axis_subst_dict[
                 prior_storage_axis_name_dict.get(arg_name, arg_name)] = arg+bi
