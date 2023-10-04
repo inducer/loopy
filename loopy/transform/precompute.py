@@ -375,6 +375,7 @@ def precompute_for_single_kernel(
         fetch_bounding_box: bool = False,
         temporary_address_space: Union[AddressSpace, None, Type[auto]] = None,
         compute_insn_id: Optional[str] = None,
+        _enable_mirgecom_workaround: bool = False,
         ) -> LoopKernel:
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
@@ -885,14 +886,38 @@ def precompute_for_single_kernel(
 
     storage_axis_subst_dict = {}
 
-    for arg_name, bi in zip(storage_axis_names, abm.storage_base_indices):
-        if arg_name in non1_storage_axis_names:
-            arg = var(arg_name)
-        else:
+    for i, (arg_name, base_index) in enumerate(
+            zip(storage_axis_names, abm.storage_base_indices)):
+        is_length_1 = arg_name not in non1_storage_axis_names
+        if is_length_1:
             arg = 0
+        else:
+            arg = var(arg_name)
+
+        # FIXME: Hacky workaround, remove when no longer needed.
+        # Some transform code in the mirgecom transform stack
+        # first deletes inames from instructions if they're unused and then
+        # gets upset when they've disappeared. Without this 'special handling'
+        # here, this code will replace 0-length axis subscripts with '0', as it
+        # should.
+
+        if _enable_mirgecom_workaround:
+            from pymbolic.primitives import Expression
+            if is_length_1 and not isinstance(base_index, Expression):
+                # I.e. base_index is an integer.
+                from pytools import is_single_valued
+                if is_single_valued(
+                        not_none(accdesc.storage_axis_exprs)[i]
+                        for accdesc in access_descriptors):
+                    assert access_descriptors[0].storage_axis_exprs is not None
+                    storage_axis_expr = access_descriptors[0].storage_axis_exprs[i]
+                    if not (get_dependencies(storage_axis_expr) & sweep_inames_set):
+                        # I.e. no sweeping in this axis.
+                        base_index = storage_axis_expr
 
         storage_axis_subst_dict[
-                prior_storage_axis_name_dict.get(arg_name, arg_name)] = arg+bi
+                prior_storage_axis_name_dict.get(arg_name, arg_name)] = \
+                        arg+base_index
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
