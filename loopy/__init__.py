@@ -28,6 +28,7 @@ from loopy.translation_unit import for_each_kernel
 
 # {{{ imported user interface
 
+from loopy.typing import auto
 from loopy.kernel.instruction import (
         LegacyStringInstructionTag, UseStreamingStoreTag,
         MemoryOrdering,
@@ -37,7 +38,6 @@ from loopy.kernel.instruction import (
         MultiAssignmentBase, Assignment,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
 from loopy.kernel.data import (
-        auto,
         KernelArgument,
         ValueArg, ArrayArg, GlobalArg, ConstantArg, ImageArg,
         AddressSpace,

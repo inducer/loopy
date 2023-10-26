@@ -24,7 +24,7 @@ from warnings import warn
 
 from dataclasses import dataclass, replace
 
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, cast
 
 import numpy as np
 from immutables import Map
@@ -33,7 +33,7 @@ from islpy import dim_type
 from pytools import MovedFunctionDeprecationWrapper
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel.data import ImageArg, auto, TemporaryVariable
+from loopy.kernel.data import AddressSpace, ImageArg, auto, TemporaryVariable
 
 from loopy.types import LoopyType
 from loopy.typing import ExpressionT
@@ -146,15 +146,10 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 # }}}
 
 
-class _not_provided:  # noqa: N801
-    pass
-
-
 def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
         sweep_inames=None, dim_arg_names=None,
 
-        # "None" is a valid value here, distinct from the default.
-        default_tag=_not_provided,
+        default_tag=None,
 
         rule_name=None,
         temporary_name=None,
@@ -1002,7 +997,8 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
 
     vng = kernel.get_var_name_generator()
 
-    name_aspace_dtype_to_bsi: Dict[Tuple[str, int, LoopyType], _BaseStorageInfo] = {}
+    name_aspace_dtype_to_bsi: Dict[
+            Tuple[str, AddressSpace, LoopyType], _BaseStorageInfo] = {}
 
     for tv in sorted(
             kernel.temporary_variables.values(),
@@ -1037,7 +1033,8 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
                 # FIXME: Could use approximate values of ValueArgs
                 approx_array_nbytes = 0
 
-            bs_key = (tv.base_storage, tv.address_space, tv.dtype)
+            bs_key = (tv.base_storage,
+                      cast(AddressSpace, tv.address_space), tv.dtype)
             bsi = name_aspace_dtype_to_bsi.get(bs_key)
 
             if bsi is None or (

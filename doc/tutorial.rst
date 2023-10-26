@@ -1468,7 +1468,7 @@ We'll also request a prefetch--but suppose we only do so across the
 
 .. doctest::
 
-    >>> knl = lp.add_prefetch(knl, "a", "i_inner")
+    >>> knl = lp.add_prefetch(knl, "a", "i_inner", default_tag="l.auto")
 
 When we try to run our code, we get the following warning from loopy as a first
 sign that something is amiss:

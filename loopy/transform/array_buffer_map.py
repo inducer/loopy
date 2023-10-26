@@ -21,6 +21,8 @@ THE SOFTWARE.
 """
 
 
+from abc import ABC, abstractmethod
+from typing import Tuple
 import islpy as isl
 from islpy import dim_type
 from loopy.symbolic import (get_dependencies, SubstitutionMapper)
@@ -28,6 +30,8 @@ from pymbolic.mapper.substitutor import make_subst_func
 
 from pytools import ImmutableRecord, memoize_method
 from pymbolic import var
+
+from loopy.typing import ExpressionT
 
 
 class AccessDescriptor(ImmutableRecord):
@@ -192,7 +196,23 @@ def compute_bounds(kernel, domain, stor2sweep,
 
 # {{{ array-to-buffer map
 
-class ArrayToBufferMap:
+class ArrayToBufferMapBase(ABC):
+    non1_storage_axis_names: Tuple[str, ...]
+    storage_base_indices: Tuple[str, ...]
+    non1_storage_shape: Tuple[ExpressionT, ...]
+    non1_storage_axis_flags: Tuple[ExpressionT, ...]
+
+    @abstractmethod
+    def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
+        ...
+
+    @abstractmethod
+    def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
+            boxify_sweep=False):
+        ...
+
+
+class ArrayToBufferMap(ArrayToBufferMapBase):
     def __init__(self, kernel, domain, sweep_inames, access_descriptors,
             storage_axis_count):
         self.kernel = kernel
@@ -298,7 +318,7 @@ class ArrayToBufferMap:
         self.non1_storage_axis_flags = non1_storage_axis_flags
         self.aug_domain = aug_domain
         self.storage_base_indices = storage_base_indices
-        self.non1_storage_shape = non1_storage_shape
+        self.non1_storage_shape = tuple(non1_storage_shape)
 
     def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
             boxify_sweep=False):
@@ -336,7 +356,7 @@ class ArrayToBufferMap:
         else:
             return convexify(domain)
 
-    def is_access_descriptor_in_footprint(self, accdesc):
+    def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
         return self._is_access_descriptor_in_footprint_inner(
                 tuple(accdesc.storage_axis_exprs))
 
@@ -399,17 +419,20 @@ class ArrayToBufferMap:
                 aligned_g_s2s_parm_dom)
 
 
-class NoOpArrayToBufferMap:
+class NoOpArrayToBufferMap(ArrayToBufferMapBase):
     non1_storage_axis_names = ()
     storage_base_indices = ()
     non1_storage_shape = ()
 
-    def is_access_descriptor_in_footprint(self, accdesc):
+    def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
         # no index dependencies--every reference to the subst rule
         # is necessarily in the footprint.
 
         return True
 
+    def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
+            boxify_sweep=False):
+        return domain
 # }}}
 
 # vim: foldmethod=marker

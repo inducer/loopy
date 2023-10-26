@@ -41,6 +41,7 @@ from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
 from loopy.types import LoopyType
 from loopy.target.c import CExpression
+from loopy.typing import ExpressionT
 
 
 __doc__ = """
@@ -84,7 +85,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
         return type(self)(self.codegen_state, self.fortran_abi, type_inf_mapper)
 
-    def infer_type(self, expr):
+    def infer_type(self, expr: ExpressionT) -> LoopyType:
         result = self.type_inf_mapper(expr)
         assert isinstance(result, LoopyType)
 
@@ -331,7 +332,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def make_subscript(self, array, base_expr, subscript):
         return base_expr[subscript]
 
-    def map_integer_div_operator(self, base_func_name, op_func, expr, type_context):
+    def _map_integer_div_operator(self, base_func_name, op_func, expr, type_context):
         from loopy.symbolic import get_dependencies
         iname_deps = get_dependencies(expr) & self.kernel.all_inames()
         domain = self.kernel.get_inames_domain(iname_deps)
@@ -342,6 +343,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         num_type = self.infer_type(expr.numerator)
         den_type = self.infer_type(expr.denominator)
+
+        if not num_type.is_integral() or not den_type.is_integral():
+            raise NotImplementedError("remainder and floordiv "
+                                      "for floating-point types")
+
         from loopy.isl_helpers import is_nonnegative
         num_nonneg = is_nonnegative(expr.numerator, domain) \
             or num_type.numpy_dtype.kind == "u"
@@ -362,10 +368,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if den_nonneg:
             if num_nonneg:
                 return op_func(
-                        self.rec(expr.numerator, type_context),
-                        self.rec(expr.denominator, type_context))
+                        self.rec(expr.numerator, "i"),
+                        self.rec(expr.denominator, "i"))
             else:
-                seen_func("%s_pos_b" % base_func_name)
+                seen_func(f"{base_func_name}_pos_b")
                 return var(f"{base_func_name}_pos_b_{suffix}")(
                         self.rec(expr.numerator, "i"),
                         self.rec(expr.denominator, "i"))
@@ -377,7 +383,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_floor_div(self, expr, type_context):
         import operator
-        return self.map_integer_div_operator(
+        return self._map_integer_div_operator(
                 "loopy_floor_div", operator.floordiv, expr, type_context)
 
     def map_remainder(self, expr, type_context):
@@ -386,7 +392,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             raise RuntimeError("complex remainder not defined")
 
         import operator
-        return self.map_integer_div_operator(
+        return self._map_integer_div_operator(
                 "loopy_mod", operator.mod, expr, type_context)
 
     def map_if(self, expr, type_context):
@@ -786,13 +792,10 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 force_parens_around=self.multiplicative_primitives)
 
         return self.parenthesize_if_needed(
-                "{} {} {}".format(
-                    # Space is necessary--otherwise '/*'
-                    # (i.e. divide-dererference) becomes
-                    # start-of-comment in C.
-                    num_s,
-                    operator,
-                    denom_s),
+                f"{num_s} {operator} {denom_s}",
+                # Space is necessary--otherwise '/*'
+                # (i.e. divide-dererference) becomes
+                # start-of-comment in C.
                 enclosing_prec, PREC_PRODUCT)
 
     def map_quotient(self, expr, enclosing_prec):

@@ -39,8 +39,8 @@ from pytools.tag import UniqueTag as UniqueTagBase, Tag
 
 from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
 from loopy.diagnostic import LoopyError
-from loopy.typing import ExpressionT
-from loopy.types import LoopyType
+from loopy.typing import ExpressionT, ShapeType
+from loopy.types import LoopyType, auto
 from loopy.kernel.instruction import (  # noqa
         InstructionBase,
         MemoryOrdering,
@@ -115,13 +115,6 @@ def _names_from_dim_tags(
         return frozenset()
 
 # }}}
-
-
-class auto:  # noqa
-    """A generic placeholder object for something that should be automatically
-    determined.  See, for example, the *shape* or *strides* argument of
-    :class:`ArrayArg`.
-    """
 
 
 # {{{ iname tags
@@ -289,12 +282,14 @@ class InOrderSequentialSequentialTag(InameImplementationTag):
         return "ord"
 
 
-def parse_tag(tag):
-    from pytools.tag import Tag as TagBase
+ToInameTagConvertible = Union[str, None, Tag]
+
+
+def parse_tag(tag: ToInameTagConvertible) -> Optional[Tag]:
     if tag is None:
         return tag
 
-    if isinstance(tag, TagBase):
+    if isinstance(tag, Tag):
         return tag
 
     if not isinstance(tag, str):
@@ -670,8 +665,16 @@ class TemporaryVariable(ArrayBase):
         declaration.
     """
 
-    min_target_axes = 0
-    max_target_axes = 1
+    storage_shape: Optional[ShapeType]
+    base_indices: Optional[Tuple[ExpressionT, ...]]
+    address_space: Union[AddressSpace, Type[auto]]
+    base_storage: Optional[str]
+    initializer: Optional[np.ndarray]
+    read_only: bool
+    _base_storage_access_may_be_aliasing: bool
+
+    min_target_axes: ClassVar[int] = 0
+    max_target_axes: ClassVar[int] = 1
 
     allowed_extra_kwargs = (
             "storage_shape",
