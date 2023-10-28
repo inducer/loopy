@@ -247,12 +247,9 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
               {res_ctype} y = 1;
 
               while (n > 1) {{
-                if (n % 2) {{
+                if (n % 2)
                   y = x * y;
-                  x = x * x;
-                }}
-                else
-                  x = x * x;
+                x = x * x;
                 n = n / 2;
               }}
 
