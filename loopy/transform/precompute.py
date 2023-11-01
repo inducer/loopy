@@ -21,12 +21,13 @@ THE SOFTWARE.
 """
 
 
+from dataclasses import dataclass
 from typing import FrozenSet, List, Mapping, Optional, Sequence, Type, Union
 from immutables import Map
 import islpy as isl
 from pytools.tag import Tag
 from loopy.kernel import LoopKernel
-from loopy.typing import auto
+from loopy.typing import ExpressionT, auto, not_none
 from loopy.match import ToStackMatchCovertible
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
@@ -113,8 +114,9 @@ def contains_a_subst_rule_invocation(kernel, insn):
 # }}}
 
 
+@dataclass(frozen=True)
 class RuleAccessDescriptor(AccessDescriptor):
-    __slots__ = ["args", "expansion_stack"]
+    args: Optional[Sequence[ExpressionT]] = None
 
 
 def access_descriptor_id(args, expansion_stack):
@@ -148,7 +150,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
         self.subst_tag = subst_tag
         self.within = within
 
-        self.access_descriptors = []
+        self.access_descriptors: List[RuleAccessDescriptor] = []
 
     def map_substitution(self, name, tag, arguments, expn_state):
         process_me = name == self.subst_name
@@ -597,6 +599,8 @@ def precompute_for_single_kernel(
     expanding_usage_arg_deps = set()
 
     for accdesc in access_descriptors:
+        assert accdesc.args is not None
+
         for arg in accdesc.args:
             expanding_usage_arg_deps.update(
                     get_dependencies(arg) & kernel.all_inames())

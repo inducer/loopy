@@ -21,31 +21,35 @@ THE SOFTWARE.
 """
 
 
+from dataclasses import dataclass, replace
 from abc import ABC, abstractmethod
-from typing import Tuple
+from typing import Optional, Callable, Sequence, Tuple, Hashable
+from typing_extensions import Self
 import islpy as isl
 from islpy import dim_type
 from loopy.symbolic import (get_dependencies, SubstitutionMapper)
 from pymbolic.mapper.substitutor import make_subst_func
 
-from pytools import ImmutableRecord, memoize_method
+from pytools import memoize_method
 from pymbolic import var
 
 from loopy.typing import ExpressionT
 
 
-class AccessDescriptor(ImmutableRecord):
+@dataclass(frozen=True)
+class AccessDescriptor:
     """
     .. attribute:: identifier
 
         An identifier under user control, used to connect this access descriptor
-        to the access that generated it. Any Python value.
+        to the access that generated it. Any hashable Python value.
     """
 
-    __slots__ = [
-            "identifier",
-            "storage_axis_exprs",
-            ]
+    identifier: Hashable
+    storage_axis_exprs: Optional[Sequence[ExpressionT]] = None
+
+    def copy(self, **kwargs) -> Self:
+        return replace(self, **kwargs)
 
 
 def to_parameters_or_project_out(param_inames, set_inames, set):
@@ -66,9 +70,12 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 
 # {{{ construct storage->sweep map
 
-def build_per_access_storage_to_domain_map(storage_axis_exprs, domain,
-        storage_axis_names,
-        prime_sweep_inames):
+def build_per_access_storage_to_domain_map(
+        storage_axis_exprs: Sequence[ExpressionT],
+        domain: isl.BasicSet,
+        storage_axis_names: Sequence[str],
+        prime_sweep_inames: Callable[[ExpressionT], ExpressionT]
+        ) -> isl.BasicMap:
 
     map_space = domain.space
     stor_dim = len(storage_axis_names)
@@ -128,10 +135,8 @@ def move_to_par_from_out(s2smap, except_inames):
             return s2smap
 
 
-def build_global_storage_to_sweep_map(kernel, access_descriptors,
-        domain_dup_sweep, dup_sweep_index,
-        storage_axis_names,
-        sweep_inames, primed_sweep_inames, prime_sweep_inames):
+def build_global_storage_to_sweep_map(access_descriptors,
+        domain_dup_sweep, storage_axis_names, prime_sweep_inames):
     # The storage map goes from storage axes to the domain.
     # The first len(arg_names) storage dimensions are the rule's arguments.
 
@@ -241,10 +246,10 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
         # # }}}
 
         self.stor2sweep = build_global_storage_to_sweep_map(
-                kernel, access_descriptors,
-                domain_dup_sweep, dup_sweep_index,
+                access_descriptors,
+                domain_dup_sweep,
                 storage_axis_names,
-                sweep_inames, self.primed_sweep_inames, self.prime_sweep_inames)
+                self.prime_sweep_inames)
 
         storage_base_indices, storage_shape = compute_bounds(
                 kernel, domain, self.stor2sweep, self.primed_sweep_inames,
@@ -357,6 +362,7 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
             return convexify(domain)
 
     def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
+        assert accdesc.storage_axis_exprs is not None
         return self._is_access_descriptor_in_footprint_inner(
                 tuple(accdesc.storage_axis_exprs))
 
