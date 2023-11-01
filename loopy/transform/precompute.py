@@ -373,7 +373,7 @@ def precompute_for_single_kernel(
         fetch_bounding_box: bool = False,
         temporary_address_space: Union[AddressSpace, None, Type[auto]] = None,
         compute_insn_id: Optional[str] = None,
-        **kwargs) -> LoopKernel:
+        ) -> LoopKernel:
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -459,23 +459,6 @@ def precompute_for_single_kernel(
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
-    if isinstance(kernel, TranslationUnit):
-        kernel_names = [i for i, clbl in
-                kernel.callables_table.items() if isinstance(clbl,
-                    CallableKernel)]
-        if len(kernel_names) != 1:
-            raise LoopyError()
-
-        return kernel.with_kernel(precompute(kernel[kernel_names[0]],
-            subst_use, sweep_inames, within, storage_axes, temporary_name,
-            precompute_inames, precompute_outer_inames, storage_axis_to_tag,
-            default_tag, dtype, fetch_bounding_box, temporary_address_space,
-            compute_insn_id, kernel.callables_table, **kwargs))
-
-    if kwargs:
-        raise TypeError("unrecognized keyword arguments: %s"
-                % ", ".join(kwargs.keys()))
-
     # {{{ check, standardize arguments
 
     if sweep_inames is None:
