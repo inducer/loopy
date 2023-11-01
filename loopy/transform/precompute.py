@@ -123,7 +123,7 @@ def access_descriptor_id(args, expansion_stack):
     return (args, expansion_stack)
 
 
-def storage_axis_exprs(storage_axis_sources, args):
+def storage_axis_exprs(storage_axis_sources, args) -> Sequence[ExpressionT]:
     result = []
 
     for saxis_source in storage_axis_sources:
@@ -653,8 +653,8 @@ def precompute_for_single_kernel(
 
     prior_storage_axis_name_dict = {}
 
-    storage_axis_names = []
-    storage_axis_sources = []  # number for arg#, or iname
+    storage_axis_names: List[str] = []
+    storage_axis_sources: List[Union[str, int]] = []  # number for arg#, or iname
 
     # {{{ check for pre-existing precompute_inames
 
@@ -985,8 +985,11 @@ def precompute_for_single_kernel(
                     .with_transformed_expressions(
                         lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023,E501
                     .copy(within_inames=frozenset(
-                        storage_axis_subst_dict.get(iname, var(iname)).name
-                        for iname in insn.within_inames)))
+                        new_iname
+                        for iname in insn.within_inames
+                        for new_iname in get_dependencies(
+                                storage_axis_subst_dict.get(iname, var(iname)))
+                        )))
 
             new_insns.append(insn)
         else:
