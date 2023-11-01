@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 from dataclasses import dataclass, replace
 from abc import ABC, abstractmethod
-from typing import Optional, Callable, Sequence, Tuple, Hashable
+from typing import Optional, Callable, Sequence, Tuple, Any
 from typing_extensions import Self
 import islpy as isl
 from islpy import dim_type
@@ -42,10 +42,10 @@ class AccessDescriptor:
     .. attribute:: identifier
 
         An identifier under user control, used to connect this access descriptor
-        to the access that generated it. Any hashable Python value.
+        to the access that generated it. Any Python value.
     """
 
-    identifier: Hashable
+    identifier: Any = None
     storage_axis_exprs: Optional[Sequence[ExpressionT]] = None
 
     def copy(self, **kwargs) -> Self:
@@ -203,7 +203,7 @@ def compute_bounds(kernel, domain, stor2sweep,
 
 class ArrayToBufferMapBase(ABC):
     non1_storage_axis_names: Tuple[str, ...]
-    storage_base_indices: Tuple[str, ...]
+    storage_base_indices: Tuple[ExpressionT, ...]
     non1_storage_shape: Tuple[ExpressionT, ...]
     non1_storage_axis_flags: Tuple[ExpressionT, ...]
 
