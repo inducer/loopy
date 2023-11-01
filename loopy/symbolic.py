@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import ClassVar, Mapping, Sequence, Tuple
+from typing import AbstractSet, ClassVar, Mapping, Sequence, Tuple
 from functools import reduce, cached_property
 from sys import intern
 import re
@@ -1043,11 +1043,11 @@ def _get_dependencies_and_reduction_inames(expr):
     return deps, reduction_inames
 
 
-def get_dependencies(expr):
+def get_dependencies(expr: ExpressionT) -> AbstractSet[str]:
     return _get_dependencies_and_reduction_inames(expr)[0]
 
 
-def get_reduction_inames(expr):
+def get_reduction_inames(expr: ExpressionT) -> AbstractSet[str]:
     return _get_dependencies_and_reduction_inames(expr)[1]
 
 
