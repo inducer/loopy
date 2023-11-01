@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import ClassVar, Tuple
+from typing import ClassVar, Mapping, Sequence, Tuple
 from functools import reduce, cached_property
 from sys import intern
 import re
@@ -69,6 +69,7 @@ from pymbolic.parser import Parser as ParserBase
 from loopy.diagnostic import LoopyError
 from loopy.diagnostic import (ExpressionToAffineConversionError,
                               UnableToDetermineAccessRangeError)
+from loopy.typing import ExpressionT
 
 
 __doc__ = """
@@ -1329,7 +1330,12 @@ class RuleAwareIdentityMapper(IdentityMapper):
                                          *args, **kwargs)
 
     @staticmethod
-    def make_new_arg_context(rule_name, arg_names, arguments, arg_context):
+    def make_new_arg_context(
+            rule_name: str,
+            arg_names: Sequence[str],
+            arguments: Sequence[ExpressionT],
+            arg_context: Mapping[str, ExpressionT]
+            ) -> Mapping[str, ExpressionT]:
         if len(arg_names) != len(arguments):
             raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
                     % (rule_name, len(arguments), len(arg_names), ))
