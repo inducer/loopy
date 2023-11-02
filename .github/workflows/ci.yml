@@ -104,6 +104,20 @@ jobs:
                 ( test_py_project )
                 ( test_py_project )
 
+    pytest_with_barvinok:
+        name: Conda Pytest with Barvinok
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v2
+        -   name: "Main Script"
+            run: |
+                CONDA_ENVIRONMENT=.test-conda-env-py3.yml
+                echo "- barvinok" >> "$CONDA_ENVIRONMENT"
+                curl -L -O https://tiker.net/ci-support-v0
+                . ./ci-support-v0
+                build_py_project_in_conda_env
+                test_py_project
+
     examples:
         name: Conda Examples
         runs-on: ubuntu-latest
