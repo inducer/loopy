@@ -21,12 +21,13 @@ THE SOFTWARE.
 """
 
 
+from dataclasses import dataclass
 from typing import FrozenSet, List, Mapping, Optional, Sequence, Type, Union
 from immutables import Map
 import islpy as isl
 from pytools.tag import Tag
 from loopy.kernel import LoopKernel
-from loopy.typing import auto
+from loopy.typing import ExpressionT, auto, not_none
 from loopy.match import ToStackMatchCovertible
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
@@ -113,15 +114,16 @@ def contains_a_subst_rule_invocation(kernel, insn):
 # }}}
 
 
+@dataclass(frozen=True)
 class RuleAccessDescriptor(AccessDescriptor):
-    __slots__ = ["args", "expansion_stack"]
+    args: Optional[Sequence[ExpressionT]] = None
 
 
 def access_descriptor_id(args, expansion_stack):
     return (args, expansion_stack)
 
 
-def storage_axis_exprs(storage_axis_sources, args):
+def storage_axis_exprs(storage_axis_sources, args) -> Sequence[ExpressionT]:
     result = []
 
     for saxis_source in storage_axis_sources:
@@ -148,7 +150,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
         self.subst_tag = subst_tag
         self.within = within
 
-        self.access_descriptors = []
+        self.access_descriptors: List[RuleAccessDescriptor] = []
 
     def map_substitution(self, name, tag, arguments, expn_state):
         process_me = name == self.subst_name
@@ -372,7 +374,8 @@ def precompute_for_single_kernel(
         fetch_bounding_box: bool = False,
         temporary_address_space: Union[AddressSpace, None, Type[auto]] = None,
         compute_insn_id: Optional[str] = None,
-        **kwargs) -> LoopKernel:
+        _enable_mirgecom_workaround: bool = False,
+        ) -> LoopKernel:
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -458,23 +461,6 @@ def precompute_for_single_kernel(
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
-    if isinstance(kernel, TranslationUnit):
-        kernel_names = [i for i, clbl in
-                kernel.callables_table.items() if isinstance(clbl,
-                    CallableKernel)]
-        if len(kernel_names) != 1:
-            raise LoopyError()
-
-        return kernel.with_kernel(precompute(kernel[kernel_names[0]],
-            subst_use, sweep_inames, within, storage_axes, temporary_name,
-            precompute_inames, precompute_outer_inames, storage_axis_to_tag,
-            default_tag, dtype, fetch_bounding_box, temporary_address_space,
-            compute_insn_id, kernel.callables_table, **kwargs))
-
-    if kwargs:
-        raise TypeError("unrecognized keyword arguments: %s"
-                % ", ".join(kwargs.keys()))
-
     # {{{ check, standardize arguments
 
     if sweep_inames is None:
@@ -613,6 +599,8 @@ def precompute_for_single_kernel(
     expanding_usage_arg_deps = set()
 
     for accdesc in access_descriptors:
+        assert accdesc.args is not None
+
         for arg in accdesc.args:
             expanding_usage_arg_deps.update(
                     get_dependencies(arg) & kernel.all_inames())
@@ -665,8 +653,8 @@ def precompute_for_single_kernel(
 
     prior_storage_axis_name_dict = {}
 
-    storage_axis_names = []
-    storage_axis_sources = []  # number for arg#, or iname
+    storage_axis_names: List[str] = []
+    storage_axis_sources: List[Union[str, int]] = []  # number for arg#, or iname
 
     # {{{ check for pre-existing precompute_inames
 
@@ -897,29 +885,38 @@ def precompute_for_single_kernel(
 
     storage_axis_subst_dict = {}
 
-    for i, (arg_name, bi) in enumerate(
+    for i, (arg_name, base_index) in enumerate(
             zip(storage_axis_names, abm.storage_base_indices)):
-        if arg_name in non1_storage_axis_names:
-            arg = var(arg_name)
-        else:
+        is_length_1 = arg_name not in non1_storage_axis_names
+        if is_length_1:
             arg = 0
+        else:
+            arg = var(arg_name)
 
-        # Special case to work around isl's removal of length-1 loop indices.
-        # See https://github.com/inducer/loopy/issues/809
-        from pymbolic.primitives import Expression
-        if not isinstance(bi, Expression):
-            from pytools import is_single_valued
-            if is_single_valued(
-                    accdesc.storage_axis_exprs[i]
-                    for accdesc in access_descriptors):
-                storage_axis_expr = access_descriptors[0].storage_axis_exprs[i]
-                if (
-                        isinstance(storage_axis_expr, Variable)
-                        and storage_axis_expr.name not in sweep_inames):
-                    bi = storage_axis_expr
+        # FIXME: Hacky workaround, remove when no longer needed.
+        # Some transform code in the mirgecom transform stack
+        # first deletes inames from instructions if they're unused and then
+        # gets upset when they've disappeared. Without this 'special handling'
+        # here, this code will replace 0-length axis subscripts with '0', as it
+        # should.
+
+        if _enable_mirgecom_workaround:
+            from pymbolic.primitives import Expression
+            if is_length_1 and not isinstance(base_index, Expression):
+                # I.e. base_index is an integer.
+                from pytools import is_single_valued
+                if is_single_valued(
+                        not_none(accdesc.storage_axis_exprs)[i]
+                        for accdesc in access_descriptors):
+                    assert access_descriptors[0].storage_axis_exprs is not None
+                    storage_axis_expr = access_descriptors[0].storage_axis_exprs[i]
+                    if not (get_dependencies(storage_axis_expr) & sweep_inames_set):
+                        # I.e. no sweeping in this axis.
+                        base_index = storage_axis_expr
 
         storage_axis_subst_dict[
-                prior_storage_axis_name_dict.get(arg_name, arg_name)] = arg+bi
+                prior_storage_axis_name_dict.get(arg_name, arg_name)] = \
+                        arg+base_index
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
@@ -1012,8 +1009,11 @@ def precompute_for_single_kernel(
                     .with_transformed_expressions(
                         lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023,E501
                     .copy(within_inames=frozenset(
-                        storage_axis_subst_dict.get(iname, var(iname)).name
-                        for iname in insn.within_inames)))
+                        new_iname
+                        for iname in insn.within_inames
+                        for new_iname in get_dependencies(
+                                storage_axis_subst_dict.get(iname, var(iname)))
+                        )))
 
             new_insns.append(insn)
         else:

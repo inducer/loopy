@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import ClassVar, Tuple, Union
+from typing import AbstractSet, ClassVar, Mapping, Sequence, Tuple, Union
 from functools import reduce, cached_property
 from sys import intern
 import re
@@ -1043,11 +1043,11 @@ def _get_dependencies_and_reduction_inames(expr):
     return deps, reduction_inames
 
 
-def get_dependencies(expr):
+def get_dependencies(expr: ExpressionT) -> AbstractSet[str]:
     return _get_dependencies_and_reduction_inames(expr)[0]
 
 
-def get_reduction_inames(expr):
+def get_reduction_inames(expr: ExpressionT) -> AbstractSet[str]:
     return _get_dependencies_and_reduction_inames(expr)[1]
 
 
@@ -1330,7 +1330,12 @@ class RuleAwareIdentityMapper(IdentityMapper):
                                          *args, **kwargs)
 
     @staticmethod
-    def make_new_arg_context(rule_name, arg_names, arguments, arg_context):
+    def make_new_arg_context(
+            rule_name: str,
+            arg_names: Sequence[str],
+            arguments: Sequence[ExpressionT],
+            arg_context: Mapping[str, ExpressionT]
+            ) -> Mapping[str, ExpressionT]:
         if len(arg_names) != len(arguments):
             raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
                     % (rule_name, len(arguments), len(arg_names), ))

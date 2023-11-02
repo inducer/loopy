@@ -992,6 +992,9 @@ def parse_instructions(instructions, defines):
         subst_match = SUBST_RE.match(insn)
         if subst_match is not None:
             subst = parse_subst_rule(subst_match.groupdict())
+            if subst.name in substitutions:
+                raise LoopyError("attempt to redefine substitution rule "
+                                 f"'{subst.name}'")
             substitutions[subst.name] = subst
             continue
 

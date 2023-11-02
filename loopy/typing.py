@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-from typing import Union, Tuple
+from typing import Union, Tuple, TypeVar, Optional
 
 import numpy as np
 
@@ -43,3 +43,11 @@ class auto:  # noqa
     determined.  See, for example, the *shape* or *strides* argument of
     :class:`ArrayArg`.
     """
+
+
+T = TypeVar("T")
+
+
+def not_none(obj: Optional[T]) -> T:
+    assert obj is not None
+    return obj

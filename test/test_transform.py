@@ -1818,6 +1818,38 @@ def test_remove_predicates_from_insn():
     assert t_unit == ref_t_unit
 
 
+def test_precompute_lets_length1_inames_live_if_requested():
+    t_unit = lp.make_kernel(
+            "{[e,i]: 0<=e<1 and 0<=i<10}",
+            """
+            v(e, i) := e + i
+            out[e, i] = v(e, i)
+            """)
+
+    t_unit = lp.precompute(t_unit, "v", "i", _enable_mirgecom_workaround=True)
+
+    from pymbolic import parse
+    assert t_unit.default_entrypoint.id_to_insn["v"].expression == parse("e + i_0")
+
+
+def test_precompute_lets_inner_length1_inames_live():
+    t_unit = lp.make_kernel(
+            "{[e,i]: 0<=e<1 and 0<=i<10}",
+            """
+            v(e, i) := e / i
+            #v(eee, i) := eee + i
+            out[e, i] = v(e, i)
+            """)
+
+    t_unit = lp.split_iname(t_unit, "e", 16)
+    t_unit = lp.precompute(t_unit, "v", "i", _enable_mirgecom_workaround=True)
+
+    from pymbolic import parse
+    assert (
+            t_unit.default_entrypoint.id_to_insn["v"].expression
+            == parse("(e_inner + e_outer*16) / i_0"))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
