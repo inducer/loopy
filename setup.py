@@ -98,6 +98,7 @@ setup(name="loopy",
           "Mako",
           "pyrsistent",
           "immutables",
+          "typing_extensions",
           ],
 
       extras_require={
