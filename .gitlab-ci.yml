@@ -1,16 +1,10 @@
 Pytest POCL:
-  script: |
-    export PYOPENCL_TEST=portable:pthread
-    export EXTRA_INSTALL="pybind11 numpy mako"
-    export LOOPY_NO_CACHE=1
-    curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
-
-    # Pytest gripes about ImportPathMismatchError if 'loopy.xyz'
-    # is importable both from a venv and the subdirectory.
-    # -AK, 2023-11-01
-    PROJECT_INSTALL_FLAGS="--editable"
-
-    . ./build-and-test-py-project.sh
+  script:
+  - export PYOPENCL_TEST=portable:pthread
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
   tags:
   - python3
   - pocl
@@ -21,19 +15,13 @@ Pytest POCL:
       junit: test/pytest.xml
 
 Pytest Nvidia Titan V:
-  script: |
-    export PYOPENCL_TEST=nvi:titan
-    export EXTRA_INSTALL="pybind11 numpy mako"
-    export LOOPY_NO_CACHE=1
-    source /opt/enable-intel-cl.sh
-    curl -L -O https://gitlab.tiker."net/inducer/ci-support/raw/main/build-and-test-py-project.sh
-
-    # Pytest gripes about ImportPathMismatchError if 'loopy.xyz'
-    # is importable both from a venv and the subdirectory.
-    # -AK, 2023-11-01
-    PROJECT_INSTALL_FLAGS="--editable"
-
-    . ./build-and-test-py-project.sh
+  script:
+  - export PYOPENCL_TEST=nvi:titan
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - source /opt/enable-intel-cl.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
   tags:
   - python3
   - nvidia-titan-v
@@ -44,19 +32,13 @@ Pytest Nvidia Titan V:
       junit: test/pytest.xml
 
 Pytest POCL without arg check:
-  script: |
-    export PYOPENCL_TEST=portable:pthread
-    export EXTRA_INSTALL="pybind11 numpy mako"
-    export LOOPY_NO_CACHE=1
-    export _LOOPY_SKIP_ARG_CHECKS=1
-    curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
-
-    # Pytest gripes about ImportPathMismatchError if 'loopy.xyz'
-    # is importable both from a venv and the subdirectory.
-    # -AK, 2023-11-01
-    PROJECT_INSTALL_FLAGS="--editable"
-
-    . ./build-and-test-py-project.sh
+  script:
+  - export PYOPENCL_TEST=portable:pthread
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - export _LOOPY_SKIP_ARG_CHECKS=1
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
   tags:
   - python3
   - pocl
@@ -67,20 +49,14 @@ Pytest POCL without arg check:
       junit: test/pytest.xml
 
 Pytest Intel:
-  script: |
-    export PYOPENCL_TEST=intel
-    export EXTRA_INSTALL="pybind11 numpy mako"
-    export LOOPY_NO_CACHE=1
-    export LOOPY_INTEL_CL_OK_FOR_TEST_REF=1
-    source /opt/enable-intel-cl.sh
-    curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
-
-    # Pytest gripes about ImportPathMismatchError if 'loopy.xyz'
-    # is importable both from a venv and the subdirectory.
-    # -AK, 2023-11-01
-    PROJECT_INSTALL_FLAGS="--editable"
-
-    . ./build-and-test-py-project.sh
+  script:
+  - export PYOPENCL_TEST=intel
+  - export EXTRA_INSTALL="pybind11 numpy mako"
+  - export LOOPY_NO_CACHE=1
+  - export LOOPY_INTEL_CL_OK_FOR_TEST_REF=1
+  - source /opt/enable-intel-cl.sh
+  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
   tags:
   - python3
   - intel-cl-cpu
@@ -97,12 +73,6 @@ Pytest POCL Twice With Cache:
     export EXTRA_INSTALL="pybind11 numpy mako"
     curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/ci-support.sh
     . ./ci-support.sh
-
-    # Pytest gripes about ImportPathMismatchError if 'loopy.xyz'
-    # is importable both from a venv and the subdirectory.
-    # -AK, 2023-11-01
-    PROJECT_INSTALL_FLAGS="--editable"
-
     build_py_project_in_venv
     ( test_py_project )
     ( test_py_project )
