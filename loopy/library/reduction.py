@@ -86,6 +86,9 @@ class ReductionOperation:
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def __repr__(self) -> str:
+        return type(self).__name__
+
     @staticmethod
     def parse_result_type(target, op_type):
         try:
