@@ -334,8 +334,8 @@ class TranslationUnit:
                         "Maybe you want to invoke 'with_entrypoints' before "
                         "calling the translation unit?")
 
-        return self.target.get_kernel_executor(self, entrypoint=entrypoint,
-                                               *args, **kwargs)
+        return self.target.get_kernel_executor(self, *args,
+                                               entrypoint=entrypoint, **kwargs)
 
     def __call__(self, *args, **kwargs):
         """
