@@ -349,7 +349,7 @@ class _PickledObject:
         return {"objstring": self.objstring}
 
     def __repr__(self) -> str:
-        return repr(self.unpickle())
+        return type(self).__name__ + "(" + repr(self.unpickle()) + ")"
 
 
 class _PickledObjectWithEqAndPersistentHashKeys(_PickledObject):
