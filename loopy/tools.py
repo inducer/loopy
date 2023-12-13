@@ -103,11 +103,6 @@ class LoopyKeyBuilder(KeyBuilderBase):
 
     update_for_defaultdict = update_for_dict
 
-    def update_for_frozenset(self, key_hash, key):
-        for set_key in sorted(key,
-                key=lambda obj: type(obj).__name__ + str(obj)):
-            self.rec(key_hash, set_key)
-
     def update_for_BasicSet(self, key_hash, key):  # noqa
         from islpy import Printer
         prn = Printer.to_str(key.get_ctx())
