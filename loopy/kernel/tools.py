@@ -2115,4 +2115,19 @@ def get_outer_params(domains):
 # }}}
 
 
+def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
+    """
+    Returns a :class:`isl.PwAff` hardware axes lower bound to serve as an
+    offsetting expression
+    during the hardware ina
+    """
+    from loopy.kernel.data import HardwareConcurrentTag
+    from loopy.isl_helpers import static_min_of_pw_aff
+
+    assert kernel.iname_tags_of_type(iname, HardwareConcurrentTag)
+    bounds = kernel.get_iname_bounds(iname)
+    lower_bound = static_min_of_pw_aff(bounds.lower_bound_pw_aff,
+                                       constants_only=False)
+    return lower_bound
+
 # vim: foldmethod=marker
