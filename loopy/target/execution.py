@@ -777,7 +777,6 @@ class ExecutorBase:
             self.packing_controller = SeparateArrayPackingController(self.sep_info)
         else:
             self.packing_controller = None
-            return None
 
     def check_for_required_array_arguments(self, input_args):
         # Formerly, the first exception raised when a required argument is not
