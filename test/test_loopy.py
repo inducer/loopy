@@ -3644,6 +3644,30 @@ def test_barrier_non_zero_hw_lbound():
     assert barrier_between(knl, "w_a", "w_b")
 
 
+def test_no_unnecessary_lbarrier(ctx_factory):
+    # This regression would fail on loopy.git <= 268a7f4
+    # (Issue reported by @thilinarmtb)
+
+    t_unit = lp.make_kernel(
+        "{[i_outer, i_inner]: 0 <= i_outer < n and 0 <= i_inner < 16}",
+        """
+        <> s_a[i_inner] = ai[i_outer * 16 + i_inner] {id=write_s_a}
+        ao[i_outer * 16 + i_inner] = 2.0 * s_a[i_inner] {id=write_ao, dep=write_s_a}
+        """,
+        assumptions="n>=0")
+
+    t_unit = lp.add_dtypes(t_unit, dict(ai=np.float32))
+    t_unit = lp.tag_inames(t_unit, dict(i_inner="l.0", i_outer="g.0"))
+    t_unit = lp.set_temporary_address_space(t_unit, "s_a", "local")
+    t_unit = lp.prioritize_loops(t_unit, "i_outer,i_inner")
+
+    t_unit = lp.preprocess_kernel(t_unit)
+    knl = lp.get_one_linearized_kernel(t_unit.default_entrypoint,
+                                       t_unit.callables_table)
+
+    assert not barrier_between(knl, "write_s_a", "write_ao")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
