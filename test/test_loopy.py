@@ -3626,6 +3626,24 @@ def test_modulo_vs_type_context(ctx_factory):
     t_unit(queue)
 
 
+def test_barrier_non_zero_hw_lbound():
+    t_unit = lp.make_kernel(
+        ["{[i]: 1<=i<17}",
+         "{[j]: 0<=j<16}"],
+        """
+        <> a[i] = i      {id=w_a}
+        <> b[j] = 2*a[j] {id=w_b}
+        """)
+
+    t_unit = lp.tag_inames(t_unit, {"i": "l.0", "j": "l.0"})
+
+    t_unit = lp.preprocess_kernel(t_unit)
+    knl = lp.get_one_linearized_kernel(t_unit.default_entrypoint,
+                                       t_unit.callables_table)
+
+    assert barrier_between(knl, "w_a", "w_b")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

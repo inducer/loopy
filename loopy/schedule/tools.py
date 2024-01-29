@@ -348,9 +348,10 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
         *unequal* global ids that access the same address.
     """
     import pymbolic.primitives as p
-    from loopy.symbolic import isl_set_from_expr
+    from loopy.symbolic import isl_set_from_expr, aff_from_expr, aff_to_expr
     from loopy.kernel.data import (filter_iname_tags_by_type,
                                    HardwareConcurrentTag)
+    from loopy.kernel.tools import get_hw_axis_base_for_codegen
 
     gsize, lsize = knl.get_grid_size_upper_bounds(callables_table,
                                                   return_dict=True)
@@ -359,9 +360,10 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
 
     # Step 1.1: Project out inames which are also map's dims, but does not form the
     #           insn's within_inames
-    # Step 1.2: Project out sequential inames in the access maps
-    # Step 1.3: Rename the dims with their iname tags i.e. (g.i or l.i)
-    # Step 1.4: Name the ith output dims as _lp_dim{i}
+    # Step 1.2: Perform any offsetting required to the hw axes iname terms
+    # Step 1.3: Project out sequential inames in the access maps
+    # Step 1.4: Rename the dims with their iname tags i.e. (g.i or l.i)
+    # Step 1.5: Name the ith output dims as _lp_dim{i}
 
     updated_maps = []
 
@@ -383,6 +385,36 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
             if dt == isl.dim_type.in_:
                 tag, = filter_iname_tags_by_type(knl.inames[name].tags,
                                                  HardwareConcurrentTag)
+
+                iname_lower_bound = get_hw_axis_base_for_codegen(knl, name)
+
+                if not iname_lower_bound.plain_is_zero():
+                    # Hardware inames with nonzero base have an offset applied in
+                    # code generation:
+                    # https://github.com/inducer/loopy/blob/4e0b1c7635afe1473c8636377f8e7ef6d78dfd46/loopy/codegen/loop.py#L293-L297
+                    # https://github.com/inducer/loopy/issues/600#issuecomment-1104066735
+
+                    map_ = map_.add_dims(isl.dim_type.out, 1)
+                    map_ = map_.move_dims(
+                        isl.dim_type.in_, pos+1,
+                        isl.dim_type.out, map_.dim(isl.dim_type.out)-1,
+                        1
+                    )
+                    map_ = map_.set_dim_name(isl.dim_type.in_, pos+1, name+"'")
+
+                    lbound_offset_expr_aff = aff_from_expr(
+                        map_.domain().space,
+                        (p.Variable(name+"'")
+                         + aff_to_expr(iname_lower_bound)
+                         - p.Variable(name))
+                    )
+                    lbound_offset_as_domain = lbound_offset_expr_aff.zero_basic_set()
+                    map_ = map_.intersect_domain(lbound_offset_as_domain)
+
+                    map_ = map_.project_out(dt, pos, 1)
+                    assert map_.get_dim_name(dt, pos) == name+"'"
+                    map_ = map_.set_dim_name(dt, pos, name)
+
                 map_ = map_.set_dim_name(dt, pos, str(tag))
 
         for i_l in lsize:
