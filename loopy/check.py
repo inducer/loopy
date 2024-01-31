@@ -1058,7 +1058,6 @@ def _check_variable_access_ordered_inner(kernel):
     depends_on = {insn.id: set() for insn in kernel.instructions}
     # rev_depends: mapping from insn_ids to their reverse deps.
     rev_depends = {insn.id: set() for insn in kernel.instructions}
-
     for insn in kernel.instructions:
         depends_on[insn.id].update(insn.depends_on)
         for dep in insn.depends_on:

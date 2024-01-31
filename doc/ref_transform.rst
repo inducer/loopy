@@ -13,6 +13,10 @@ Wrangling inames
 
 .. automodule:: loopy.transform.iname
 
+Precise Dependency Finding
+--------------------------
+.. automodule:: loopy.transform.dependency
+
 Dealing with Substitution Rules
 -------------------------------
 

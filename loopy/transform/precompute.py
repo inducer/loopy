@@ -331,7 +331,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
             if self.replaced_something:
                 insn = insn.copy(
-                        depends_on=(
+                        happens_after=(
                             insn.depends_on
                             | frozenset([self.compute_dep_id])))
 
@@ -951,7 +951,7 @@ def precompute_for_single_kernel(
         from loopy.kernel.instruction import BarrierInstruction
         barrier_insn = BarrierInstruction(
                 id=barrier_insn_id,
-                depends_on=frozenset([compute_insn_id]),
+                happens_after=frozenset([compute_insn_id]),
                 synchronization_kind="global",
                 mem_kind="global")
         compute_dep_id = barrier_insn_id
@@ -984,7 +984,7 @@ def precompute_for_single_kernel(
 
     kernel = kernel.copy(
             instructions=[
-                insn.copy(depends_on=frozenset(invr.compute_insn_depends_on))
+                insn.copy(happens_after=frozenset(invr.compute_insn_depends_on))
                 if insn.id == compute_insn_id
                 else insn
                 for insn in kernel.instructions])

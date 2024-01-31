@@ -390,13 +390,13 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     noop_start = NoOpInstruction(
         id=ing(callee_label+"_start"),
         within_inames=call_insn.within_inames,
-        depends_on=call_insn.depends_on,
+        happens_after=call_insn.depends_on,
         predicates=call_insn.predicates,
     )
     noop_end = NoOpInstruction(
         id=call_insn.id,
         within_inames=call_insn.within_inames,
-        depends_on=frozenset(insn_id_map.values()),
+        happens_after=frozenset(insn_id_map.values()),
         depends_on_is_final=True,
         predicates=call_insn.predicates,
     )
@@ -423,7 +423,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
             insn = insn.copy(
                 id=insn_id_map[insn.id],
                 within_inames=new_within_inames,
-                depends_on=new_depends_on,
+                happens_after=new_depends_on,
                 depends_on_is_final=True,
                 tags=insn.tags | call_insn.tags,
                 atomicity=new_atomicity,
@@ -434,7 +434,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
             insn = insn.copy(
                 id=new_id,
                 within_inames=new_within_inames,
-                depends_on=new_depends_on,
+                happens_after=new_depends_on,
                 tags=insn.tags | call_insn.tags,
                 no_sync_with=new_no_sync_with,
                 predicates=insn.predicates | call_insn.predicates,
