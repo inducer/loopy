@@ -337,10 +337,14 @@ def get_return_from_kernel_mapping(kernel):
 
 # {{{ check for write races in accesses
 
-def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
+def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table,
+                            address_space):
     """
     Returns *True* if the execution instances of *insn_a* and *insn_b*, accessing
     the same variable via access maps *map_a* and *map_b*, result in an access race.
+
+    :arg address_space: An instance of :class:`loopy.kernel.data.AddressSpace`
+        of the variable whose accesses are being checked for a race.
 
     .. note::
 
@@ -350,8 +354,11 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
     import pymbolic.primitives as p
     from loopy.symbolic import isl_set_from_expr, aff_from_expr, aff_to_expr
     from loopy.kernel.data import (filter_iname_tags_by_type,
-                                   HardwareConcurrentTag)
+                                   HardwareConcurrentTag,
+                                   AddressSpace)
     from loopy.kernel.tools import get_hw_axis_base_for_codegen
+
+    assert address_space in [AddressSpace.LOCAL, AddressSpace.GLOBAL]
 
     gsize, lsize = knl.get_grid_size_upper_bounds(callables_table,
                                                   return_dict=True)
@@ -472,25 +479,40 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table):
     # {{{ Step 5: create the set any(l.i.A != l.i.B) OR any(g.i.A != g.i.B)
 
     space = set_a.space
-    unequal_global_id_set = isl.Set.empty(set_a.get_space())
+    unequal_local_id_set = isl.Set.empty(set_a.get_space())
+    unequal_group_id_set = isl.Set.empty(set_a.get_space())
+    equal_group_id_set = isl.BasicSet.universe(set_a.get_space())
 
     for i_l in lsize:
         lid_a = p.Variable(f"l.{i_l}.A")
         lid_b = p.Variable(f"l.{i_l}.B")
-        unequal_global_id_set |= (isl_set_from_expr(space,
-                                                    p.Comparison(lid_a, "!=", lid_b))
-                                  )
+        unequal_local_id_set |= (isl_set_from_expr(space,
+                                                   p.Comparison(lid_a, "!=", lid_b))
+                                 )
 
     for i_g in gsize:
         gid_a = p.Variable(f"g.{i_g}.A")
         gid_b = p.Variable(f"g.{i_g}.B")
-        unequal_global_id_set |= (isl_set_from_expr(space,
-                                                    p.Comparison(gid_a, "!=", gid_b))
-                                  )
+        unequal_group_id_set |= (isl_set_from_expr(space,
+                                                   p.Comparison(gid_a, "!=", gid_b))
+                                 )
+        equal_group_id_set &= (isl_set_from_expr(space,
+                                                 p.Comparison(gid_a, "==", gid_b))
+                               )
 
     # }}}
 
-    return not (set_a & set_b & unequal_global_id_set).is_empty()
+    if address_space == AddressSpace.GLOBAL:
+        return not (set_a
+                    & set_b
+                    & (unequal_local_id_set
+                       | unequal_group_id_set)
+                    ).is_empty()
+    else:
+        return not (set_a
+                    & set_b
+                    & unequal_local_id_set
+                    & equal_group_id_set).is_empty()
 
 
 class AccessMapDescriptor(enum.Enum):
@@ -584,7 +606,10 @@ class WriteRaceChecker:
 
         return _check_for_access_races(insn1_amap, self.kernel.id_to_insn[insn1],
                                        insn2_amap, self.kernel.id_to_insn[insn2],
-                                       self.kernel, self.callables_table)
+                                       self.kernel, self.callables_table,
+                                       (self.kernel
+                                        .get_var_descriptor(var_name)
+                                        .address_space))
 
 # }}}
 
