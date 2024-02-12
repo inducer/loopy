@@ -32,6 +32,7 @@ from loopy.tools import Tree
 from functools import reduce
 from pytools import memoize_method, memoize_on_first_arg
 from pyrsistent import pmap
+from collections.abc import Set as abc_Set
 
 
 # {{{ block boundary finder
@@ -653,7 +654,7 @@ def _pull_out_loop_nest(tree, loop_nests, inames_to_pull_out):
        *outer_loop_nest*: frozenset({'k'})
        *inner_loop_nest*: frozenset({'l'})
     """
-    assert all(isinstance(loop_nest, frozenset) for loop_nest in loop_nests)
+    assert all(isinstance(loop_nest, abc_Set) for loop_nest in loop_nests)
     assert inames_to_pull_out <= reduce(frozenset.union, loop_nests, frozenset())
 
     # {{{ sanity check to ensure the loop nest *inames_to_pull_out* is possible
@@ -955,7 +956,7 @@ def _get_iname_to_tree_node_id_from_partial_loop_nest_tree(tree):
     """
     iname_to_tree_node_id = {}
     for node in tree.nodes():
-        assert isinstance(node, frozenset)
+        assert isinstance(node, abc_Set)
         for iname in node:
             iname_to_tree_node_id[iname] = node
 
