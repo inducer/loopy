@@ -31,6 +31,7 @@ from pytools.tag import Tag, tag_dataclass, Taggable
 
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional
+from collections.abc import Set as abc_Set
 
 
 # {{{ instruction tags
@@ -186,7 +187,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
         provide metadata on this object. Legacy string tags are converted to
         :class:`LegacyStringInstructionTag` or, if they used to carry
-        a functional meaning, the tag carrying that same fucntional meaning
+        a functional meaning, the tag carrying that same functional meaning
         (e.g. :class:`UseStreamingStoreTag`).
 
     .. automethod:: __init__
@@ -267,7 +268,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         if depends_on_is_final is None:
             depends_on_is_final = False
 
-        if depends_on_is_final and not isinstance(depends_on, frozenset):
+        if depends_on_is_final and not isinstance(depends_on, abc_Set):
             raise LoopyError("Setting depends_on_is_final to True requires "
                     "actually specifying depends_on")
 
@@ -277,7 +278,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         if priority is None:
             priority = 0
 
-        if not isinstance(tags, frozenset):
+        if not isinstance(tags, abc_Set):
             # was previously allowed to be tuple
             tags = frozenset(tags)
 
@@ -292,10 +293,10 @@ class InstructionBase(ImmutableRecord, Taggable):
         # assert all(is_interned(iname) for iname in within_inames)
         # assert all(is_interned(pred) for pred in predicates)
 
-        assert isinstance(within_inames, frozenset)
-        assert isinstance(depends_on, frozenset) or depends_on is None
-        assert isinstance(groups, frozenset)
-        assert isinstance(conflicts_with_groups, frozenset)
+        assert isinstance(within_inames, abc_Set)
+        assert isinstance(depends_on, abc_Set) or depends_on is None
+        assert isinstance(groups, abc_Set)
+        assert isinstance(conflicts_with_groups, abc_Set)
 
         ImmutableRecord.__init__(self,
                 id=id,
