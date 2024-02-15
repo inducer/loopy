@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 import collections
+from collections.abc import Set as abc_Set
 from dataclasses import field, dataclass, replace
 from typing import FrozenSet, Optional, TYPE_CHECKING, Mapping, Callable, Union, Any
 from warnings import warn
@@ -195,7 +196,8 @@ class TranslationUnit:
     entrypoints: FrozenSet[str]
 
     def __post_init__(self):
-        assert isinstance(self.entrypoints, frozenset)
+
+        assert isinstance(self.entrypoints, abc_Set)
         assert isinstance(self.callables_table, Map)
 
         object.__setattr__(self, "_program_executor_cache", {})
@@ -239,7 +241,7 @@ class TranslationUnit:
             entrypoints = frozenset([e.strip() for e in
                 entrypoints.split(",")])
 
-        assert isinstance(entrypoints, frozenset)
+        assert isinstance(entrypoints, abc_Set)
 
         return self.copy(entrypoints=entrypoints)
 
