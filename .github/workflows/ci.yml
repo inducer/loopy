@@ -190,4 +190,14 @@ jobs:
 
                 pytest --tb=native -rsxw --durations=10 -m 'not parallel' tests/multigrid/
 
+    validate_cff:
+            name: Validate CITATION.cff
+            runs-on: ubuntu-latest
+            steps:
+            -   uses: actions/checkout@v3
+            -   uses: actions/setup-python@v4
+            -   run: |
+                    pip install cffconvert
+                    cffconvert -i CITATION.cff --validate
+
 # vim: sw=4
