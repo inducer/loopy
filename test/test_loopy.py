@@ -3689,6 +3689,21 @@ def test_no_unnecessary_lbarrier(ctx_factory):
     assert not barrier_between(knl, "write_s_a", "write_ao")
 
 
+def test_long_kernel():
+    n = 500
+    insns = [
+        f"a{i}[j{i}] = j{i}"
+        for i in range(n)
+    ]
+    domains = [
+        f"{{ [j{i}]: 0<=j{i}<10 }}"
+        for i in range(n)
+    ]
+    t_unit = lp.make_kernel(domains, insns)
+    t_unit = lp.preprocess_kernel(t_unit)
+    lp.get_one_linearized_kernel(t_unit.default_entrypoint, t_unit.callables_table)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
