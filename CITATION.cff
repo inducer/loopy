@@ -99,3 +99,5 @@ title: "Loopy"
 version: 2024.1
 date-released: 2024-02-16
 url: "https://github.com/inducer/loopy"
+doi: 10.5281/zenodo.10672275
+license: MIT
