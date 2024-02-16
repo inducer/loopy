@@ -1,0 +1,101 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+
+# major contributors
+
+- family-names: "Kloeckner"
+  given-names: "Andreas"
+  orcid: "https://orcid.org/0000-0003-1228-519X"
+- family-names: Kulkarni
+  given-names: Kaushik
+  email:  kaushikcfd@gmail.com
+- family-names: Kempf
+  given-names: Dominic
+  email: dominic.r.kempf@gmail.com
+- family-names: Wala
+  given-names: Matt
+  email: wala1@illinois.edu
+- family-names: Curtis
+  given-names: Nick
+  email: arghdos@gmail.com
+- family-names: Stevens
+  given-names: James
+  email: jdsteve2@illinois.edu
+- family-names: Fernando
+  given-names: Isuru
+  email: isuruf@gmail.com
+
+# smaller fixes
+
+- family-names: Mitchell
+  given-names: Lawrence
+  email: lawrence@wence.uk
+- family-names: Alvey-Blanco
+  given-names: Addison J.
+  email: aalveyblanco@gmail.com
+- family-names: Fikl
+  given-names: Alexandru
+  email: alexfikl@gmail.com
+- family-names: Malone
+  given-names: Chris
+  email: chris.m.malone@gmail.com
+- family-names: Ward
+  given-names: Connor
+  email: c.ward20@imperial.ac.uk
+- family-names: Wilcox
+  given-names: Lucas C.
+  email: lucas@swirlee.com
+- family-names: Koch
+  given-names: Marcel
+  email: marcel.koch@uni-muenster.de
+- family-names: Woodman
+  given-names: Marmaduke
+  email: marmaduke.woodman@univ-amu.fr
+- family-names: Smith
+  given-names: Matthew
+  email: mjsmith6@illinois.edu
+- family-names: Diener
+  given-names: Matthias
+  email: mdiener@illinois.edu
+- family-names: Christensen
+  given-names: Nicholas
+  email: njchris2@illinois.edu
+- family-names: Nykto
+  given-names: Nicolas
+  email: nnytko2@illinois.edu
+- family-names: Kirby
+  given-names: Robert C.
+  email: Robert_Kirby@baylor.edu
+- family-names: Hegmann
+  given-names: Sebastian
+  email: shegmann@nina.iwr.uni-heidelberg.de
+- family-names: Vorderwuelbecke
+  given-names: Sophia
+  email: sv2518@ic.ac.uk
+- family-names: Ratnayaka
+  given-names: Thilina
+  email: thilinarmtb@gmail.com
+- family-names: Gibson
+  given-names: Thomas
+  email: gibsonthomas1120@hotmail.com
+- family-names: Sun
+  given-names: Tianjiao
+  email: tj-sun@tianjiaos-air.home
+- family-names: Smith
+  given-names: Timothy A.
+  email: tasmith4@illinois.edu
+- family-names: Warburton
+  given-names: Tim
+  email: timwar@caam.rice.edu
+- family-names: Wei
+  given-names: Xiaoyu
+  email: wxy0516@gmail.com
+- family-names: Weiner
+  given-names: Zach
+  email: zachjweiner@gmail.com
+
+title: "Loopy"
+version: 2024.1
+date-released: 2024-02-16
+url: "https://github.com/inducer/loopy"
