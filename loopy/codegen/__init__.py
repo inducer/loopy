@@ -573,7 +573,7 @@ def generate_code_v2(program):
 
     # {{{ cache retrieval
 
-    from loopy import CACHING_ENABLED
+    from loopy import CACHING_ENABLED, ABORT_ON_CACHE_MISS
 
     if CACHING_ENABLED:
         input_program = program
@@ -583,6 +583,9 @@ def generate_code_v2(program):
                           " code generation cache hit")
             return result
         except KeyError:
+            if ABORT_ON_CACHE_MISS:
+                raise
+
             logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
                           " code generation cache miss")
 
