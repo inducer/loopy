@@ -286,7 +286,6 @@ class CCompiler:
                     library_dirs=[],
                     defines=[],
                     undefines=[],
-                    source_suffix="c",
                     so_ext=".so",
                     o_ext=".o",
                     include_dirs=[])
