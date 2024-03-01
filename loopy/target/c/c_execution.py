@@ -280,6 +280,7 @@ class CCompiler:
                 # default args
                 self.toolchain = GCCToolchain(
                     cc="gcc",
+                    ld="ld",
                     cflags="-std=c99 -O3 -fPIC".split(),
                     ldflags="-shared".split(),
                     libraries=[],
@@ -288,7 +289,8 @@ class CCompiler:
                     undefines=[],
                     so_ext=".so",
                     o_ext=".o",
-                    include_dirs=[])
+                    include_dirs=[],
+                    features=set())
 
         if toolchain is None:
             # copy in all differing values
