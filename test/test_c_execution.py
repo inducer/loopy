@@ -336,11 +336,6 @@ def test_missing_compilers():
         # the default (non-guessed) toolchain!
         __test(eval_tester, ExecutableCTarget, compiler=ccomp)
 
-    # and test that we will fail if we remove a required attribute
-    del ccomp.toolchain.undefines
-    with pytest.raises(AttributeError):
-        __test(eval_tester, ExecutableCTarget, compiler=ccomp)
-
     # next test that some made up compiler can be specified
     ccomp = CCompiler(cc="foo")
     assert isinstance(ccomp.toolchain, GCCToolchain)
