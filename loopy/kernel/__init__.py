@@ -39,7 +39,7 @@ from pytools import (memoize_method,
 from pytools.tag import Taggable, Tag
 import islpy as isl
 from islpy import dim_type
-from immutables import Map
+from constantdict import constantdict
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import update_persistent_hash
@@ -198,7 +198,7 @@ class LoopKernel(Taggable):
             Callable[["LoopKernel", str], Optional[Tuple[LoopyType, str]]]] = ()
     linearization: Optional[Sequence[ScheduleItem]] = None
     iname_slab_increments: Mapping[str, Tuple[int, int]] = field(
-            default_factory=Map)
+            default_factory=constantdict)
     loop_priority: FrozenSet[Tuple[str]] = field(
             default_factory=frozenset)
     applied_iname_rewrites: Tuple[Dict[str, ExpressionT], ...] = ()

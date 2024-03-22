@@ -25,13 +25,12 @@ THE SOFTWARE.
 
 
 from typing import (Type, Union, FrozenSet, Tuple, Optional, Sequence, Any, ClassVar,
-        cast)
+        cast, Mapping)
 from sys import intern
 from dataclasses import dataclass, replace
 from enum import IntEnum
 from warnings import warn
 
-from immutables import Map
 import numpy as np  # noqa
 from pytools import ImmutableRecord
 from pytools.tag import Taggable
@@ -419,7 +418,7 @@ class _ArraySeparationInfo:
     should be used to realize this array.
     """
     sep_axis_indices_set: FrozenSet[int]
-    subarray_names: Map[Tuple[int, ...], str]
+    subarray_names: Mapping[Tuple[int, ...], str]
 
 
 class ArrayArg(ArrayBase, KernelArgument):

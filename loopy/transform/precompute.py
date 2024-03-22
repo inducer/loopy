@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 from dataclasses import dataclass
 from typing import FrozenSet, List, Mapping, Optional, Sequence, Type, Union
-from immutables import Map
+from constantdict import constantdict
 import islpy as isl
 from pytools.tag import Tag
 from loopy.kernel import LoopKernel
@@ -1160,6 +1160,6 @@ def precompute(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=constantdict(new_callables))
 
 # vim: foldmethod=marker

@@ -22,10 +22,10 @@ THE SOFTWARE.
 
 
 from typing import (Callable, Tuple, Union, Set, FrozenSet, List, Dict,
-        Optional, Sequence, Any)
+        Optional, Sequence, Any, Mapping)
 from dataclasses import dataclass
 
-from immutables import Map
+from constantdict import constantdict
 
 from abc import ABC, abstractmethod
 from loopy.diagnostic import LoopyError
@@ -796,7 +796,7 @@ class ExecutorBase:
                 "your argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
-            self, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: Optional[Mapping[str, LoopyType]]
             ) -> TranslationUnit:
         t_unit = self.t_unit
 
@@ -806,15 +806,15 @@ class ExecutorBase:
             # FIXME: This is not so nice. This transfers types from the
             # subarrays of sep-tagged arrays to the 'main' array, because
             # type inference fails otherwise.
-            with arg_to_dtype.mutate() as mm:
-                for name, sep_info in self.sep_info.items():
-                    if entry_knl.arg_dict[name].dtype is None:
-                        for sep_name in sep_info.subarray_names.values():
-                            if sep_name in arg_to_dtype:
-                                mm.set(name, arg_to_dtype[sep_name])
-                                del mm[sep_name]
+            mm = dict(arg_to_dtype)
+            for name, sep_info in self.sep_info.items():
+                if entry_knl.arg_dict[name].dtype is None:
+                    for sep_name in sep_info.subarray_names.values():
+                        if sep_name in arg_to_dtype:
+                            mm[name] = arg_to_dtype[sep_name]
+                            del mm[sep_name]
 
-                arg_to_dtype = mm.finish()
+                arg_to_dtype = constantdict(mm)
 
             from loopy.kernel.tools import add_dtypes
             t_unit = t_unit.with_kernel(add_dtypes(entry_knl, arg_to_dtype))
@@ -833,7 +833,7 @@ class ExecutorBase:
         return t_unit
 
     def get_typed_and_scheduled_translation_unit(
-            self, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: Optional[Mapping[str, LoopyType]]
             ) -> TranslationUnit:
         from loopy import CACHING_ENABLED
 
@@ -855,7 +855,7 @@ class ExecutorBase:
 
         return kernel
 
-    def arg_to_dtype(self, kwargs) -> Optional[Map[str, LoopyType]]:
+    def arg_to_dtype(self, kwargs) -> Optional[Mapping[str, LoopyType]]:
         if not self.has_runtime_typed_args:
             return None
 
@@ -872,7 +872,7 @@ class ExecutorBase:
                 else:
                     arg_to_dtype[arg_name] = NumpyType(dtype)
 
-        return Map(arg_to_dtype)
+        return constantdict(arg_to_dtype)
 
     # {{{ debugging aids
 
@@ -883,7 +883,7 @@ class ExecutorBase:
 
     def get_code(
             self, entrypoint: str,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> str:
+            arg_to_dtype: Optional[Mapping[str, LoopyType]] = None) -> str:
         kernel = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2

@@ -21,11 +21,11 @@ THE SOFTWARE.
 """
 
 
-from typing import Sequence, Tuple, Union, Callable, Any, Optional, TYPE_CHECKING
+from typing import (Sequence, Tuple, Union, Callable, Any, Optional,
+                    TYPE_CHECKING, Mapping)
 from dataclasses import dataclass
 
 import numpy as np
-from immutables import Map
 
 from pytools import memoize_method
 from pytools.codegen import Indentation, CodeGenerator
@@ -302,7 +302,7 @@ class PyOpenCLExecutor(ExecutorBase):
     @memoize_method
     def translation_unit_info(
             self,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: Optional[Mapping[str, LoopyType]] = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         # FIXME: now just need to add the types to the arguments
