@@ -266,6 +266,7 @@ def replace_instruction_ids_in_insn(
     new_no_sync_with: List[Tuple[str, str]] = []
 
     if insn.id in replacements:
+        assert isinstance(insn.id, str)
         insn = insn.copy(id=replacements[insn.id][0])
 
     new_depends_on = list(insn.depends_on)
