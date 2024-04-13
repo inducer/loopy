@@ -633,7 +633,7 @@ def generate_value_arg_setup(
 
     from genpy import If, Raise, Statement as S, Suite
 
-    result: List[str] = []
+    result: List[genpy.Generable] = []
     gen = result.append
 
     buf_indices_and_args = []
@@ -717,7 +717,7 @@ def generate_array_arg_setup(
     from loopy.kernel.array import ArrayBase
     from genpy import Statement as S, Suite
 
-    result: List[str] = []
+    result: List[genpy.Generable] = []
     gen = result.append
 
     cl_indices_and_args: List[Union[int, str]] = []
@@ -787,7 +787,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], genpy.Generable]:
+            ) -> Tuple[Sequence[Tuple[str, str]], Optional[genpy.Generable]]:
         # no such thing in Python
         return [], None
 

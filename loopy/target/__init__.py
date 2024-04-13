@@ -216,7 +216,7 @@ class ASTBuilderBase(Generic[ASTType]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], ASTType]:
+            ) -> Tuple[Sequence[Tuple[str, str]], Optional[ASTType]]:
         """Returns preambles and the AST for the function declaration."""
         raise NotImplementedError
 
