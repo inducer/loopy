@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, Sequence
+from typing import Optional, Sequence, Tuple
 
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
@@ -169,7 +169,7 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], None]:
+            ) -> Tuple[Sequence[Tuple[str, str]], Optional[Generable]]:
         return [], None
 
     def get_function_definition(self, codegen_state, codegen_result,
