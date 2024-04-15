@@ -448,10 +448,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             # FIXME: This assumes a 32-bit architecture.
             if isinstance(expr, np.float32):
-                return Literal(repr(expr)+"f")
+                return Literal(repr(float(expr))+"f")
 
             elif isinstance(expr, np.float64):
-                return Literal(repr(expr))
+                return Literal(repr(float(expr)))
 
             # Disabled for now, possibly should be a subtarget.
             # elif isinstance(expr, np.float128):
@@ -464,7 +464,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     suffix += "u"
                 if iinfo.max > (2**31-1):
                     suffix += "l"
-                return Literal(repr(expr)+suffix)
+                return Literal(repr(int(expr))+suffix)
             elif isinstance(expr, np.bool_):
                 return Literal("true") if expr else Literal("false")
             else:
@@ -473,7 +473,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif np.isfinite(expr):
             if type_context == "f":
-                return Literal(repr(np.float32(expr))+"f")
+                return Literal(repr(float((expr)))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context in ["i", "b"]:
@@ -633,7 +633,19 @@ class CExpressionToCodeMapper(RecursiveMapper):
     # }}}
 
     def map_constant(self, expr, prec):
-        return repr(expr)
+        if isinstance(expr, np.generic):
+            if isinstance(expr, np.integer):
+                # FIXME: Add type suffixes?
+                return repr(int(expr))
+            elif isinstance(expr, np.float32):
+                return f"{repr(float(expr))}f"
+            elif isinstance(expr, np.float64):
+                return repr(float(expr))
+            else:
+                raise NotImplementedError(
+                        f"unimplemented numpy-to-C conversion: {type(expr)}")
+        else:
+            return repr(expr)
 
     def map_call(self, expr, enclosing_prec):
         from pymbolic.primitives import Variable

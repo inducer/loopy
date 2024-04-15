@@ -130,7 +130,9 @@ def test_assign_single_precision_scalar(ctx_factory):
         """
 
     t_unit = lp.parse_fortran(fortran_src)
-    assert "1.1f" in lp.generate_code_v2(t_unit).device_code()
+
+    import re
+    assert re.search("1.1000000[0-9]*f", lp.generate_code_v2(t_unit).device_code())
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
     t_unit(queue, a=a_dev)
