@@ -390,7 +390,7 @@ def register_preamble_generators(kernel: LoopKernel, preamble_generators):
         if pgen not in new_pgens:
             if not unpickles_equally(pgen):
                 raise LoopyError("preamble generator '%s' does not "
-                        "compare equally after being upickled "
+                        "compare equally after being unpickled "
                         "and would thus disrupt loopy's caches"
                         % pgen)
 
@@ -408,7 +408,7 @@ def register_symbol_manglers(kernel, manglers):
         if m not in new_manglers:
             if not unpickles_equally(m):
                 raise LoopyError("mangler '%s' does not "
-                        "compare equally after being upickled "
+                        "compare equally after being unpickled "
                         "and would disrupt loopy's caches"
                         % m)
 
@@ -422,10 +422,15 @@ def register_symbol_manglers(kernel, manglers):
 # {{{ cache control
 
 import os
+from pytools import strtobool
+
+# Caching is enabled by default, but can be disabled by setting
+# the environment variables LOOPY_NO_CACHE or CG_NO_CACHE to a
+# 'true' value.
 CACHING_ENABLED = (
-    "LOOPY_NO_CACHE" not in os.environ
+    not strtobool(os.environ.get("LOOPY_NO_CACHE", "false"))
     and
-    "CG_NO_CACHE" not in os.environ)
+    not strtobool(os.environ.get("CG_NO_CACHE", "false")))
 
 
 def set_caching_enabled(flag):
