@@ -41,7 +41,7 @@ from loopy.library.reduction import ReductionOpFunction
 from loopy.kernel import LoopKernel
 from loopy.target import TargetBase
 from pymbolic.primitives import Call
-from immutables import Map
+from constantdict import constantdict
 
 if TYPE_CHECKING:
     from loopy.target.execution import ExecutorBase
@@ -161,7 +161,7 @@ class TranslationUnit:
 
     .. attribute:: callables_table
 
-        An instance of :class:`pyrsistent.PMap` mapping the function
+        An instance of :class:`constantdict.constantdict` mapping the function
         identifiers in a kernel to their associated instances of
         :class:`~loopy.kernel.function_interface.InKernelCallable`.
 
@@ -191,14 +191,14 @@ class TranslationUnit:
 
     """
 
-    callables_table: Map[FunctionIdT, CallableKernel]
+    callables_table: Mapping[FunctionIdT, CallableKernel]
     target: TargetBase
     entrypoints: FrozenSet[str]
 
     def __post_init__(self):
 
         assert isinstance(self.entrypoints, abc_Set)
-        assert isinstance(self.callables_table, Map)
+        assert isinstance(self.callables_table, constantdict)
 
         object.__setattr__(self, "_program_executor_cache", {})
 
@@ -228,7 +228,7 @@ class TranslationUnit:
                 new_callables[func_id] = clbl
 
             program = replace(
-                    self, callables_table=Map(new_callables), target=target)
+                    self, callables_table=constantdict(new_callables), target=target)
 
         return program
 
@@ -693,7 +693,7 @@ class CallablesInferenceContext:
 
         # }}}
 
-        return program.copy(callables_table=Map(new_callables))
+        return program.copy(callables_table=constantdict(new_callables))
 
     def __getitem__(self, name):
         result = self.callables[name]
@@ -711,7 +711,7 @@ def make_program(kernel: LoopKernel) -> TranslationUnit:
     """
 
     return TranslationUnit(
-            callables_table=Map({
+            callables_table=constantdict({
                 kernel.name: CallableKernel(kernel)}),
             target=kernel.target,
             entrypoints=frozenset())
@@ -746,7 +746,7 @@ def for_each_kernel(transform):
 
                 new_callables[func_id] = clbl
 
-            return t_unit.copy(callables_table=Map(new_callables))
+            return t_unit.copy(callables_table=constantdict(new_callables))
         else:
             assert isinstance(t_unit_or_kernel, LoopKernel)
             kernel = t_unit_or_kernel
@@ -841,7 +841,7 @@ def resolve_callables(program):
         else:
             raise NotImplementedError(f"{type(clbl)}")
 
-    program = program.copy(callables_table=Map(callables_table))
+    program = program.copy(callables_table=constantdict(callables_table))
 
     validate_kernel_call_sites(program)
 

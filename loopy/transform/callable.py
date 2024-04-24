@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 import islpy as isl
-from immutables import Map
+from constantdict import constantdict
 
 from pytools import UniqueNameGenerator
 
@@ -111,7 +111,7 @@ def merge(translation_units):
     return TranslationUnit(
             entrypoints=frozenset().union(*(
                 t.entrypoints or frozenset() for t in translation_units)),
-            callables_table=Map(callables_table),
+            callables_table=constantdict(callables_table),
             target=translation_units[0].target)
 
 
@@ -577,7 +577,7 @@ def rename_callable(program, old_name, new_name=None, existing_ok=False):
         new_entrypoints = ((new_entrypoints | frozenset([new_name]))
                            - frozenset([old_name]))
 
-    return program.copy(callables_table=Map(new_callables_table),
+    return program.copy(callables_table=constantdict(new_callables_table),
                         entrypoints=new_entrypoints)
 
 # }}}

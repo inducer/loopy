@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 import sys
-from immutables import Map
+from constantdict import constantdict
 from typing import (Set, Mapping, Sequence, Any, FrozenSet, Union,
        Optional, Tuple, TYPE_CHECKING)
 from dataclasses import dataclass, replace
@@ -190,7 +190,7 @@ class CodeGenerationState:
     seen_functions: Set[SeenFunction]
     seen_atomic_dtypes: Set[LoopyType]
 
-    var_subst_map: Map[str, ExpressionT]
+    var_subst_map: constantdict[str, ExpressionT]
     allow_complex: bool
     callables_table: Mapping[str, InKernelCallable]
     is_entrypoint: bool
@@ -397,7 +397,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
             seen_atomic_dtypes=seen_atomic_dtypes,
-            var_subst_map=Map(),
+            var_subst_map=constantdict(),
             allow_complex=allow_complex,
             var_name_generator=kernel.get_var_name_generator(),
             is_generating_device_code=False,
@@ -496,7 +496,7 @@ def diverge_callee_entrypoints(program):
 
         new_callables[name] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=constantdict(new_callables))
 
 
 @dataclass(frozen=True)

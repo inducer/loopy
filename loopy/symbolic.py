@@ -49,7 +49,7 @@ from pymbolic.mapper import (
         CallbackMapper as CallbackMapperBase,
         CSECachingMapperMixin,
         )
-import immutables
+import constantdict
 from pymbolic.mapper.evaluator import \
         CachedEvaluationMapper as EvaluationMapperBase
 from pymbolic.mapper.substitutor import \
@@ -1103,13 +1103,13 @@ class ExpansionState(ImmutableRecord):
         a dict representing current argument values
     """
     def __init__(self, kernel, instruction, stack, arg_context):
-        if not isinstance(arg_context, immutables.Map):
+        if not isinstance(arg_context, constantdict.constantdict):
             from warnings import warn
             warn(f"Got a {type(arg_context)} for arg_context,"
-                 " expected `immutables.Map`. This is deprecated"
+                 " expected `constantdict.constantdict`. This is deprecated"
                  " and will result in an error from 2023.",
                  DeprecationWarning, stacklevel=2)
-            arg_context = immutables.Map(arg_context)
+            arg_context = constantdict.constantdict(arg_context)
         super().__init__(kernel=kernel,
                          instruction=instruction,
                          stack=stack,
@@ -1342,7 +1342,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
 
         from pymbolic.mapper.substitutor import make_subst_func
         arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
-        return immutables.Map({
+        return constantdict.constantdict({
             formal_arg_name: arg_subst_map(arg_value)
             for formal_arg_name, arg_value in zip(arg_names, arguments)})
 
@@ -1385,7 +1385,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context=immutables.Map()))
+                    arg_context=constantdict.constantdict()))
 
     def map_instruction(self, kernel, insn):
         return insn

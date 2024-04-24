@@ -24,7 +24,7 @@ from typing import List
 import collections.abc as abc
 from functools import cached_property
 
-from immutables import Map
+import constantdict
 import islpy as isl
 import numpy as np
 from pytools import memoize_method, ProcessLogger
@@ -110,9 +110,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
         key_hash.update(prn.get_str().encode("utf8"))
 
     def update_for_Map(self, key_hash, key):  # noqa
-        if isinstance(key, Map):
-            self.update_for_dict(key_hash, key)
-        elif isinstance(key, isl.Map):
+        if isinstance(key, isl.Map):
             self.update_for_BasicSet(key_hash, key)
         else:
             raise AssertionError()
@@ -122,8 +120,6 @@ class LoopyKeyBuilder(KeyBuilderBase):
             self.update_for_NoneType(key_hash, key)
         else:
             PersistentHashWalkMapper(key_hash)(key)
-
-    update_for_PMap = update_for_dict  # noqa: N815
 
 
 class PymbolicExpressionHashWrapper:
@@ -859,7 +855,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
                                                                .callables_table))
                      for name, clbl in t_unit.callables_table.items()
                      if isinstance(clbl, CallableKernel)}
-    t_unit = t_unit.copy(callables_table=Map(new_callables))
+    t_unit = t_unit.copy(callables_table=constantdict.constantdict(new_callables))
 
     knl_python_code_srcs = [_kernel_to_python(clbl.subkernel,
                                               name in t_unit.entrypoints,
@@ -874,7 +870,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
         "import loopy as lp",
         "import numpy as np",
         "from pymbolic.primitives import *",
-        "import immutables",
+        "from constantdict import constantdict",
         ])
     body_str = "\n".join(knl_python_code_srcs + ["\n", merge_stmt])
 
