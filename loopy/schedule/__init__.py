@@ -42,7 +42,6 @@ from loopy.version import DATA_MODEL_VERSION
 
 if TYPE_CHECKING:
     from loopy.kernel import LoopKernel
-    from loopy.kernel.function_interface import InKernelCallable
 
 logger = logging.getLogger(__name__)
 
@@ -2000,7 +1999,7 @@ class MinRecursionLimitForScheduling(MinRecursionLimit):
 
 def generate_loop_schedules(
         kernel: LoopKernel,
-        callables_table: Mapping[str, InKernelCallable],
+        callables_table: CallablesTable,
         debug_args: Optional[Dict[str, Any]] = None) -> Iterator[LoopKernel]:
     """
     .. warning::
@@ -2022,7 +2021,7 @@ def generate_loop_schedules(
 
 def _generate_loop_schedules_inner(
         kernel: LoopKernel,
-        callables_table: Mapping[str, InKernelCallable],
+        callables_table: CallablesTable,
         debug_args: Optional[Dict[str, Any]]) -> Iterator[LoopKernel]:
     if debug_args is None:
         debug_args = {}
@@ -2206,7 +2205,10 @@ schedule_cache = WriteOncePersistentDict(
 caches.append(schedule_cache)
 
 
-def _get_one_linearized_kernel_inner(kernel, callables_table):
+def _get_one_linearized_kernel_inner(
+            kernel: LoopKernel,
+            callables_table: CallablesTable
+        ) -> LoopKernel:
     # This helper function exists to ensure that the generator chain is fully
     # out of scope after the function returns. This allows it to be
     # garbage-collected in the exit handler of the
@@ -2219,7 +2221,9 @@ def _get_one_linearized_kernel_inner(kernel, callables_table):
     return next(iter(generate_loop_schedules(kernel, callables_table)))
 
 
-def get_one_linearized_kernel(kernel, callables_table):
+def get_one_linearized_kernel(
+            kernel: LoopKernel,
+            callables_table: CallablesTable) -> LoopKernel:
     from loopy import CACHING_ENABLED
 
     # must include *callables_table* within the cache key as the preschedule

@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.diagnostic import LoopyError
+from loopy.translation_unit import CallablesTable
 from loopy.types import NumpyType
 import numpy as np
 
@@ -105,7 +106,7 @@ class IndexOfCallable(ScalarCallable):
                 target), True
 
 
-def get_loopy_callables():
+def get_loopy_callables() -> CallablesTable:
     """
     Returns a mapping from function ids to corresponding
     :class:`loopy.kernel.function_interface.InKernelCallable` for functions
@@ -116,13 +117,11 @@ def get_loopy_callables():
     - callables that have a predefined meaning in :mod:`loo.py` like
       ``make_tuple``, ``index_of``, ``indexof_vec``.
     """
-    known_callables = {
+    return {
             "make_tuple": MakeTupleCallable(name="make_tuple"),
             "indexof": IndexOfCallable(name="indexof"),
             "indexof_vec": IndexOfCallable(name="indexof_vec"),
             }
-
-    return known_callables
 
 
 # vim: foldmethod=marker

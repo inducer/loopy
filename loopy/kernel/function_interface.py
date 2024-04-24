@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __copyright__ = "Copyright (C) 2018 Andreas Kloeckner, Kaushik Kulkarni"
 
 __license__ = """
@@ -20,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import ClassVar, Tuple
+from typing import ClassVar, FrozenSet, Tuple, TYPE_CHECKING
 
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
@@ -30,6 +32,9 @@ from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase
 from loopy.kernel.data import ValueArg, ArrayArg
 from loopy.symbolic import DependencyMapper, WalkMapper
+
+if TYPE_CHECKING:
+    from loopy.translation_unit import CallablesTable, FunctionIdT
 
 __doc__ = """
 .. currentmodule:: loopy.kernel.function_interface
@@ -453,7 +458,11 @@ class InKernelCallable(ImmutableRecord):
         """
         raise NotImplementedError()
 
-    def get_called_callables(self, callables_table, recursive=True):
+    def get_called_callables(
+                             self,
+                             callables_table: CallablesTable,
+                             recursive: bool = True
+                         ) -> FrozenSet[FunctionIdT]:
         """
         Returns a :class:`frozenset` of callable ids called by *self* that are
         resolved via *callables_table*.
