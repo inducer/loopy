@@ -566,13 +566,7 @@ class TranslationUnitCodeGenerationResult:
                     self.host_programs.values()))
 
 
-def generate_code_v2(program):
-    """
-    Returns an instance of :class:`CodeGenerationResult`.
-
-    :param program: An instance of :class:`loopy.TranslationUnit`.
-    """
-
+def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
     from loopy.kernel import LoopKernel
     from loopy.translation_unit import make_program
 
@@ -581,46 +575,46 @@ def generate_code_v2(program):
     from loopy import CACHING_ENABLED
 
     if CACHING_ENABLED:
-        input_program = program
+        input_t_unit = t_unit
         try:
-            result = code_gen_cache[input_program]
-            logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
+            result = code_gen_cache[input_t_unit]
+            logger.debug(f"TranslationUnit with entrypoints {t_unit.entrypoints}:"
                           " code generation cache hit")
             return result
         except KeyError:
-            logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
+            logger.debug(f"TranslationUnit with entrypoints {t_unit.entrypoints}:"
                           " code generation cache miss")
 
     # }}}
 
-    if isinstance(program, LoopKernel):
-        program = make_program(program)
+    if isinstance(t_unit, LoopKernel):
+        t_unit = make_program(t_unit)
 
     from loopy.kernel import KernelState
-    if program.state < KernelState.PREPROCESSED:
+    if t_unit.state < KernelState.PREPROCESSED:
         # Note that we cannot have preprocessing separately for everyone.
         # Since, now the preprocessing of each one depends on the other.
         # So we check if any one of the callable kernels are not preprocesses
         # then, we have to do the preprocessing of every other kernel.
         from loopy.preprocess import preprocess_program
-        program = preprocess_program(program)
+        t_unit = preprocess_program(t_unit)
 
     from loopy.type_inference import infer_unknown_types
-    program = infer_unknown_types(program, expect_completion=True)
+    t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
-    if program.state < KernelState.LINEARIZED:
+    if t_unit.state < KernelState.LINEARIZED:
         from loopy.schedule import linearize
-        program = linearize(program)
+        t_unit = linearize(t_unit)
 
     # Why diverge? Generated code for a non-entrypoint kernel and an entrypoint
     # kernel isn't same for a general loopy target. For example in OpenCL, a
     # kernel callable from host and the one supposed to be callable from device
     # have different function signatures. To generate correct code, each
     # callable should be exclusively an entrypoint or a non-entrypoint kernel.
-    program = diverge_callee_entrypoints(program)
+    t_unit = diverge_callee_entrypoints(t_unit)
 
     from loopy.check import pre_codegen_checks
-    pre_codegen_checks(program)
+    pre_codegen_checks(t_unit)
 
     host_programs = {}
     device_programs = []
@@ -629,13 +623,13 @@ def generate_code_v2(program):
 
     # {{{ collect host/device programs
 
-    for func_id in sorted(key for key, val in program.callables_table.items()
+    for func_id in sorted(key for key, val in t_unit.callables_table.items()
                           if isinstance(val, CallableKernel)):
-        cgr = generate_code_for_a_single_kernel(program[func_id],
-                                                program.callables_table,
-                                                program.target,
-                                                func_id in program.entrypoints)
-        if func_id in program.entrypoints:
+        cgr = generate_code_for_a_single_kernel(t_unit[func_id],
+                                                t_unit.callables_table,
+                                                t_unit.target,
+                                                func_id in t_unit.entrypoints)
+        if func_id in t_unit.entrypoints:
             host_programs[func_id] = cgr.host_program
         else:
             assert len(cgr.device_programs) == 1
@@ -648,14 +642,14 @@ def generate_code_v2(program):
 
     # {{{ collect preambles
 
-    for clbl in program.callables_table.values():
-        device_preambles.extend(list(clbl.generate_preambles(program.target)))
+    for clbl in t_unit.callables_table.values():
+        device_preambles.extend(list(clbl.generate_preambles(t_unit.target)))
 
     # }}}
 
     # adding the callee fdecls to the device_programs
     device_programs = ([device_programs[0].copy(
-            ast=program.target.get_device_ast_builder().ast_module.Collection(
+            ast=t_unit.target.get_device_ast_builder().ast_module.Collection(
                 callee_fdecls+[device_programs[0].ast]))] +
             device_programs[1:])
     cgr = TranslationUnitCodeGenerationResult(
@@ -664,7 +658,7 @@ def generate_code_v2(program):
             device_preambles=device_preambles)
 
     if CACHING_ENABLED:
-        code_gen_cache.store_if_not_present(input_program, cgr)
+        code_gen_cache.store_if_not_present(input_t_unit, cgr)
 
     return cgr
 
