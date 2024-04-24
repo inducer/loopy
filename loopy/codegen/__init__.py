@@ -26,6 +26,9 @@ from typing import (Set, Mapping, Sequence, Any, FrozenSet, Union,
        Optional, Tuple, TYPE_CHECKING)
 from dataclasses import dataclass, replace
 import logging
+
+from loopy.codegen.result import CodeGenerationResult
+from loopy.translation_unit import CallablesTable, TranslationUnit
 logger = logging.getLogger(__name__)
 
 import islpy as isl
@@ -40,7 +43,6 @@ from loopy.types import LoopyType
 from loopy.typing import ExpressionT
 from loopy.kernel import LoopKernel
 from loopy.target import TargetBase
-from loopy.kernel.function_interface import InKernelCallable
 
 
 from loopy.symbolic import CombineMapper
@@ -192,7 +194,7 @@ class CodeGenerationState:
 
     var_subst_map: Map[str, ExpressionT]
     allow_complex: bool
-    callables_table: Mapping[str, InKernelCallable]
+    callables_table: CallablesTable
     is_entrypoint: bool
     var_name_generator: UniqueNameGenerator
     is_generating_device_code: bool

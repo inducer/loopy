@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 
 from dataclasses import dataclass
-from typing import FrozenSet, List, Mapping, Optional, Sequence, Type, Union
+from typing import FrozenSet, List, Optional, Sequence, Type, Union
 from immutables import Map
 import islpy as isl
 from pytools.tag import Tag
@@ -34,10 +34,9 @@ from loopy.symbolic import (get_dependencies,
         SubstitutionRuleMappingContext, CombineMapper)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
-from loopy.translation_unit import TranslationUnit
+from loopy.translation_unit import CallablesTable, TranslationUnit
 from loopy.kernel.instruction import InstructionBase, MultiAssignmentBase
-from loopy.kernel.function_interface import (CallableKernel, InKernelCallable,
-                                             ScalarCallable)
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.kernel.tools import (kernel_has_global_barriers,
                                 find_most_recent_global_barrier)
 from loopy.kernel.data import AddressSpace
@@ -359,7 +358,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
 def precompute_for_single_kernel(
         kernel: LoopKernel,
-        callables_table: Mapping[str, InKernelCallable], subst_use,
+        callables_table: CallablesTable,
+        subst_use,
         sweep_inames=None,
         within: ToStackMatchCovertible = None,
         *,

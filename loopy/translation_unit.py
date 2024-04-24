@@ -137,6 +137,8 @@ class CallableResolver(RuleAwareIdentityMapper):
 # {{{ translation unit
 
 FunctionIdT = Union[str, ReductionOpFunction]
+ConcreteCallablesTable = Map[FunctionIdT, InKernelCallable]
+CallablesTable = Mapping[FunctionIdT, InKernelCallable]
 
 
 @dataclass(frozen=True)
@@ -191,7 +193,7 @@ class TranslationUnit:
 
     """
 
-    callables_table: Map[FunctionIdT, CallableKernel]
+    callables_table: ConcreteCallablesTable
     target: TargetBase
     entrypoints: FrozenSet[str]
 

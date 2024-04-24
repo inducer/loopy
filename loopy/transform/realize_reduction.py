@@ -40,7 +40,7 @@ from immutables import Map
 
 from loopy.kernel.data import make_assignment
 from loopy.symbolic import ReductionCallbackMapper
-from loopy.translation_unit import TranslationUnit
+from loopy.translation_unit import ConcreteCallablesTable, TranslationUnit
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.data import TemporaryVariable, AddressSpace
 from loopy.kernel.instruction import (
@@ -90,7 +90,7 @@ class _ReductionRealizationContext:
     domains: List[isl.BasicSet]
     additional_iname_tags: Dict[str, Sequence[Tag]]
     # list only to facilitate mutation
-    boxed_callables_table: List[Map]
+    boxed_callables_table: List[ConcreteCallablesTable]
 
     # FIXME: This is a broken-by-design concept. Local-parallel scans emit a
     # reduction internally. This serves to avoid force_scan acting on that
