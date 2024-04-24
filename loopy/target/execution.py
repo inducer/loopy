@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-from typing import (Callable, Tuple, Union, Set, FrozenSet, List, Dict,
+from typing import (Callable, Mapping, Tuple, Union, Set, FrozenSet, List, Dict,
         Optional, Sequence, Any)
 from dataclasses import dataclass
 
@@ -721,7 +721,10 @@ class ExecutionWrapperGeneratorBase(ABC):
 # }}}
 
 
-typed_and_scheduled_cache = WriteOncePersistentDict(
+typed_and_scheduled_cache: WriteOncePersistentDict[
+    Tuple[str, TranslationUnit, Optional[Mapping[str, LoopyType]]],
+    TranslationUnit
+] = WriteOncePersistentDict(
         "loopy-typed-and-scheduled-cache-v1-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
@@ -729,7 +732,10 @@ typed_and_scheduled_cache = WriteOncePersistentDict(
 caches.append(typed_and_scheduled_cache)
 
 
-invoker_cache = WriteOncePersistentDict(
+invoker_cache: WriteOncePersistentDict[
+    Tuple[str, TranslationUnit, str],
+    str
+] = WriteOncePersistentDict(
         "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 

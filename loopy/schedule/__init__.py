@@ -42,6 +42,8 @@ from loopy.version import DATA_MODEL_VERSION
 
 if TYPE_CHECKING:
     from loopy.kernel import LoopKernel
+    from loopy.translation_unit import CallablesTable, TranslationUnit
+
 
 logger = logging.getLogger(__name__)
 
@@ -2197,7 +2199,10 @@ def _generate_loop_schedules_inner(
 # }}}
 
 
-schedule_cache = WriteOncePersistentDict(
+schedule_cache: WriteOncePersistentDict[
+        Tuple[LoopKernel, CallablesTable],
+        LoopKernel
+] = WriteOncePersistentDict(
         "loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 

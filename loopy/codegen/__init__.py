@@ -312,7 +312,10 @@ class CodeGenerationState:
 # }}}
 
 
-code_gen_cache = WriteOncePersistentDict(
+code_gen_cache: WriteOncePersistentDict[
+    TranslationUnit,
+    CodeGenerationResult
+] = WriteOncePersistentDict(
          "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
          key_builder=LoopyKeyBuilder())
 
