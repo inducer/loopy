@@ -432,6 +432,9 @@ CACHING_ENABLED = (
     and
     not strtobool(os.environ.get("CG_NO_CACHE", "false")))
 
+from pytools import strtobool
+ABORT_ON_CACHE_MISS = strtobool(os.environ.get("LOOPY_ABORT_ON_CACHE_MISS", "False"))
+
 
 def set_caching_enabled(flag):
     """Set whether :mod:`loopy` is allowed to use disk caching for its various
