@@ -2266,7 +2266,7 @@ def get_one_scheduled_kernel(kernel, callables_table):
     return get_one_linearized_kernel(kernel, callables_table)
 
 
-def linearize(t_unit):
+def linearize(t_unit: TranslationUnit) -> TranslationUnit:
     from loopy.kernel.function_interface import (CallableKernel,
                                                  ScalarCallable)
     from loopy.check import pre_schedule_checks

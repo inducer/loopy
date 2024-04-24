@@ -792,7 +792,7 @@ def add_callable_to_table(callables_table, clbl_id, clbl):
 
 # {{{ resolve_callables
 
-def resolve_callables(program):
+def resolve_callables(t_unit: TranslationUnit) -> TranslationUnit:
     """
     Returns a :class:`TranslationUnit` with known :class:`pymbolic.primitives.Call`
     expression nodes converted to :class:`loopy.symbolic.ResolvedFunction`.
@@ -801,21 +801,21 @@ def resolve_callables(program):
     from loopy.check import validate_kernel_call_sites
     from loopy.kernel import KernelState
 
-    if program.state >= KernelState.CALLS_RESOLVED:
+    if t_unit.state >= KernelState.CALLS_RESOLVED:
         # program's callables have been resolved
-        return program
+        return t_unit
 
     # get registered callables
-    known_callables = dict(program.callables_table)
+    known_callables = dict(t_unit.callables_table)
     # get target specific callables
-    known_callables.update(program.target.get_device_ast_builder().known_callables)
+    known_callables.update(t_unit.target.get_device_ast_builder().known_callables)
     # get loopy specific callables
     known_callables.update(get_loopy_callables())
 
     callables_table = {}
 
     # callables: name of the calls seen in the program
-    callables = {name for name, clbl in program.callables_table.items()
+    callables = {name for name, clbl in t_unit.callables_table.items()
                  if isinstance(clbl, CallableKernel)}
 
     while callables:
@@ -843,11 +843,11 @@ def resolve_callables(program):
         else:
             raise NotImplementedError(f"{type(clbl)}")
 
-    program = program.copy(callables_table=Map(callables_table))
+    t_unit = t_unit.copy(callables_table=Map(callables_table))
 
-    validate_kernel_call_sites(program)
+    validate_kernel_call_sites(t_unit)
 
-    return program
+    return t_unit
 
 # }}}
 

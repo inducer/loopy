@@ -854,12 +854,12 @@ class ExecutorBase:
         logger.debug("%s: typed-and-scheduled cache miss" %
                 self.t_unit.entrypoints)
 
-        kernel = self.get_typed_and_scheduled_translation_unit_uncached(arg_to_dtype)
+        t_unit = self.get_typed_and_scheduled_translation_unit_uncached(arg_to_dtype)
 
         if CACHING_ENABLED:
-            typed_and_scheduled_cache.store_if_not_present(cache_key, kernel)
+            typed_and_scheduled_cache.store_if_not_present(cache_key, t_unit)
 
-        return kernel
+        return t_unit
 
     def arg_to_dtype(self, kwargs) -> Optional[Map[str, LoopyType]]:
         if not self.has_runtime_typed_args:
