@@ -43,6 +43,8 @@ __doc__ = """
 
 .. autoclass:: ArrayArgDescriptor
 
+.. currentmodule:: loopy
+
 .. autoclass:: InKernelCallable
 
 .. autoclass:: CallableKernel
@@ -69,7 +71,7 @@ class ArrayArgDescriptor(ImmutableRecord):
     """
     Records information about an array argument to an in-kernel callable. To be
     passed to and returned from
-    :meth:`InKernelCallable.with_descrs`, used for
+    :meth:`~loopy.InKernelCallable.with_descrs`, used for
     matching shape and address space of caller and callee kernels.
 
     .. attribute:: shape
@@ -372,9 +374,10 @@ class InKernelCallable(ImmutableRecord):
     def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers (integers for
-            positional arguments) to instances of :class:`ArrayArgDescriptor`
-            or :class:`ValueArgDescriptor`. Unspecified/unknown descriptors are
-            not represented in *arg_id_to_type*.
+            positional arguments) to instances of
+            :class:`~loopy.kernel.function_interface.ArrayArgDescriptor`
+            or :class:`~loopy.kernel.function_interface.ValueArgDescriptor`.
+            Unspecified/unknown descriptors are not represented in *arg_id_to_type*.
 
             Return values are denoted by negative integers, with the first
             returned value identified as *-1*.
