@@ -45,7 +45,7 @@ from loopy.kernel.data import (
         SubstitutionRule,
         CallMangleInfo)
 from loopy.kernel.function_interface import (
-        CallableKernel, ScalarCallable)
+        InKernelCallable, CallableKernel, ScalarCallable)
 from loopy.translation_unit import (
         TranslationUnit, make_program)
 
@@ -186,7 +186,7 @@ __all__ = [
         "CallInstruction", "CInstruction", "NoOpInstruction",
         "BarrierInstruction",
 
-        "ScalarCallable", "CallableKernel",
+        "InKernelCallable", "ScalarCallable", "CallableKernel",
 
         "TranslationUnit", "make_program",
 

@@ -48,6 +48,21 @@ if TYPE_CHECKING:
 
 
 __doc__ = """
+
+.. class:: FunctionIdT
+
+    A type for a function identifier.
+    A :class:`~loopy.library.reduction.ReductionOpFunction` or a :class:`str`.
+
+.. class:: CallablesTable
+
+    A type alias for callables tables, mapping from :class:`FunctionIdT`
+    to :class:`~loopy.InKernelCallable`
+
+.. currentmodule:: loopy
+
+.. autoclass:: TranslationUnit
+
 .. currentmodule:: loopy.translation_unit
 
 .. autoclass:: CallablesInferenceContext
