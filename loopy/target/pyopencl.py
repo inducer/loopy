@@ -817,10 +817,16 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         for tv in global_temporaries:
             if not tv.base_storage:
-                nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
-                allocated_var_names.append(tv.name)
-                code_lines.append(Assign(tv.name,
-                                         f"allocator({nbytes_str})"))
+                if tv.nbytes:
+                    # NB: This does not prevent all zero-size allocations,
+                    # as sizes are parametric, and allocation size
+                    # could turn out to be zero at runtime.
+                    nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
+                    allocated_var_names.append(tv.name)
+                    code_lines.append(Assign(tv.name,
+                                             f"allocator({nbytes_str})"))
+                else:
+                    code_lines.append(Assign(tv.name, "None"))
 
         code_lines.append(Assign("_global_temporaries", "[{tvs}]".format(
             tvs=", ".join(tv for tv in allocated_var_names))))
