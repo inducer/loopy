@@ -241,7 +241,9 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
                 index = assignee.index_tuple
 
             elif isinstance(assignee, LinearSubscript):
-                if assignee.aggregate.name == var_name:
+                assignee_name = assignee.aggregate.name
+                index = ()
+                if assignee_name == var_name:
                     raise LoopyError("buffer_array may not be applied in the "
                             "presence of linear write indexing into '%s'" % var_name)
 

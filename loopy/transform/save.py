@@ -393,6 +393,7 @@ class TemporarySaver:
 
             my_group_tags = []
             my_local_tags = []
+            group_tags_originating_insn_id = None
 
             for iname in insn.within_inames:
                 tags = self.kernel.iname_tags(iname)
@@ -543,6 +544,8 @@ class TemporarySaver:
         elif mode == "reload":
             depends_on = frozenset()
             update_deps = accessing_insns_in_subkernel
+        else:
+            raise AssertionError()
 
         pre_barrier, post_barrier = self.get_enclosing_global_barrier_pair(subkernel)
 
