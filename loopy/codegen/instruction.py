@@ -142,6 +142,8 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
         del lhs_is_vector
         del rhs_is_vector
+    else:
+        is_vector = False
 
     # }}}
 

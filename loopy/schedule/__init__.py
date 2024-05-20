@@ -2252,7 +2252,7 @@ def get_one_linearized_kernel(
                         callables_table)
 
     if CACHING_ENABLED and not from_cache:
-        schedule_cache.store_if_not_present(sched_cache_key, result)
+        schedule_cache.store_if_not_present(sched_cache_key, result)  # pylint: disable=possibly-used-before-assignment  # noqa: E501
 
     return result
 
