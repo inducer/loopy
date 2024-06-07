@@ -2204,7 +2204,8 @@ schedule_cache: WriteOncePersistentDict[
         LoopKernel
 ] = WriteOncePersistentDict(
         "loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder())
+        key_builder=LoopyKeyBuilder(),
+        safe_sync=False)
 
 
 caches.append(schedule_cache)

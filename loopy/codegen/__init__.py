@@ -317,7 +317,8 @@ code_gen_cache: WriteOncePersistentDict[
     CodeGenerationResult
 ] = WriteOncePersistentDict(
          "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
-         key_builder=LoopyKeyBuilder())
+         key_builder=LoopyKeyBuilder(),
+         safe_sync=False)
 
 
 caches.append(code_gen_cache)

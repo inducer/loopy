@@ -726,7 +726,8 @@ typed_and_scheduled_cache: WriteOncePersistentDict[
     TranslationUnit
 ] = WriteOncePersistentDict(
         "loopy-typed-and-scheduled-cache-v1-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder())
+        key_builder=LoopyKeyBuilder(),
+        safe_sync=False)
 
 
 caches.append(typed_and_scheduled_cache)
@@ -737,7 +738,8 @@ invoker_cache: WriteOncePersistentDict[
     str
 ] = WriteOncePersistentDict(
         "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder())
+        key_builder=LoopyKeyBuilder(),
+        safe_sync=False)
 
 
 caches.append(invoker_cache)

@@ -916,7 +916,8 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
             f"{func.__name__}-"
             f"{key_builder_t.__qualname__}.{key_builder_t.__name__}"
             f"-v0-{DATA_MODEL_VERSION}"),
-        key_builder=key_builder_t())
+        key_builder=key_builder_t(),
+        safe_sync=False)
 
     caches.append(transform_cache)
 
