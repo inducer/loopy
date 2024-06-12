@@ -2147,10 +2147,10 @@ def map_domain(kernel, transform_map):
 
         # Now rename any proxy dims back to their original names
 
-        from loopy.isl_helpers import find_and_rename_dim
-        for real_iname, proxy_iname in proxy_name_pairs:
-            new_s = find_and_rename_dim(
-                new_s, dim_type.set, proxy_iname, real_iname)
+        from loopy.isl_helpers import find_and_rename_dims
+        new_s = find_and_rename_dims(
+            new_s, dim_type.set,
+            dict([pair[::-1] for pair in proxy_name_pairs]))  # (reverse pair order)
 
         return new_s
 
