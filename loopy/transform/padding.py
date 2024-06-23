@@ -48,10 +48,9 @@ class SubscriptRewriter(RuleAwareIdentityMapper):
             # While subst rules are not allowed in assignees, the mapper
             # may perform tasks entirely unrelated to subst rules, so
             # we must map assignees, too.
-            insn if not kernel.substitutions and not within(kernel, insn, ()) \
-            and not any(name in self.arg_names for name in \
-                insn.dependency_names()) else
-            self.map_instruction(kernel,
+            insn if not kernel.substitutions and not within(kernel, insn, ())
+            and not any(name in self.arg_names for name in insn.dependency_names())
+            else self.map_instruction(kernel,
                 insn.with_transformed_expressions(
                     lambda expr: self(expr, kernel, insn)))  # noqa: B023
             for insn in kernel.instructions]
