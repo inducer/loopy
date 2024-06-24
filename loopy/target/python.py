@@ -58,7 +58,7 @@ class ExpressionToPythonMapper(StringifyMapper):
     __call__ = rec
 
     def map_constant(self, expr, enclosing_prec):
-        return repr(expr)
+        return str(expr)
 
     def map_variable(self, expr, enclosing_prec):
         if expr.name in self.codegen_state.var_subst_map:
