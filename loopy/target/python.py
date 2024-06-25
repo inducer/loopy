@@ -25,6 +25,8 @@ THE SOFTWARE.
 
 from typing import Optional, Sequence, Tuple
 
+import numpy as np
+
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
 from genpy import Generable, Suite, Collection
@@ -58,7 +60,10 @@ class ExpressionToPythonMapper(StringifyMapper):
     __call__ = rec
 
     def map_constant(self, expr, enclosing_prec):
-        return repr(expr)
+        if isinstance(expr, np.generic):
+            return repr(expr).replace("np.", "_lpy_np.")
+        else:
+            return repr(expr)
 
     def map_variable(self, expr, enclosing_prec):
         if expr.name in self.codegen_state.var_subst_map:
