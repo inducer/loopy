@@ -522,22 +522,20 @@ class TypeInferenceMapper(CombineMapper):
         return [NumpyType(dtype)]
 
     def map_comparison(self, expr):
-        # "bool" is unusable because OpenCL's bool has indeterminate memory
-        # format.
         self(expr.left, return_tuple=False, return_dtype_set=False)
         self(expr.right, return_tuple=False, return_dtype_set=False)
-        return [NumpyType(np.dtype(np.int32))]
+        return [NumpyType(np.dtype(np.bool_))]
 
     def map_logical_not(self, expr):
         self.rec(expr.child)
 
-        return [NumpyType(np.dtype(np.int32))]
+        return [NumpyType(np.dtype(np.bool_))]
 
     def map_logical_and(self, expr):
         for child in expr.children:
             self.rec(child)
 
-        return [NumpyType(np.dtype(np.int32))]
+        return [NumpyType(np.dtype(np.bool_))]
 
     map_logical_or = map_logical_and
 
