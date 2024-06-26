@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """OpenCL target integrated with PyOpenCL."""
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
