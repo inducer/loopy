@@ -805,6 +805,36 @@ def test_ispc_private_var():
     print(cg_result.device_code())
 
 
+def test_to_complex_casts(ctx_factory):
+    arith_dtypes = "bhilqpBHILQPfdFD"
+
+    out_type = lp.to_loopy_type(np.dtype(np.complex128))
+    other = np.complex64(7)
+    from pymbolic import var
+
+    knl = lp.make_kernel(
+        [],
+        [
+            lp.Assignment(
+                f"out_{typename}",
+                lp.TypeCast(out_type, var(f"in_{typename}"))
+                +
+                lp.TypeCast(out_type, other)
+            )
+            for typename in arith_dtypes
+        ],
+        [
+            lp.GlobalArg(f"in_{typename}", dtype=np.dtype(typename), shape=())
+            for typename in arith_dtypes
+        ] + [...]
+    )
+
+    ctx = ctx_factory()
+    code = lp.generate_code_v2(knl).device_code()
+    # just testing here that the generated code builds
+    cl.Program(ctx, code).build()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

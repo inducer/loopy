@@ -42,6 +42,7 @@ from loopy.tools import is_integer
 from loopy.types import LoopyType
 from loopy.target.c import CExpression
 from loopy.typing import ExpressionT
+from loopy.symbolic import TypeCast
 
 
 __doc__ = """
@@ -415,10 +416,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     expr.operator,
                     self.rec(expr.right, inner_type_context))
 
-    def map_type_cast(self, expr, type_context):
-        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
-        cast = var("(%s)" % registry.dtype_to_ctype(expr.type))
-        return cast(self.rec(expr.child, type_context))
+    def map_type_cast(self, expr: TypeCast, type_context: str):
+        return self.rec(expr.child, type_context, expr.type)
 
     def map_constant(self, expr, type_context):
         from loopy.symbolic import Literal
