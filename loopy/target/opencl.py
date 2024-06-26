@@ -521,13 +521,13 @@ def opencl_preamble_generator(preamble_info):
 
 class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
-    def wrap_in_typecast_lazy(self, actual_dtype, needed_dtype, s):
-        if needed_dtype.dtype.kind == "b" and actual_dtype().dtype.kind == "f":
+    def wrap_in_typecast(self, actual_type, needed_dtype, s):
+        if needed_dtype.dtype.kind == "b" and actual_type.dtype.kind == "f":
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
 
-        return super().wrap_in_typecast_lazy(actual_dtype, needed_dtype, s)
+        return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
     def map_group_hw_index(self, expr, type_context):
         return var("gid")(expr.axis)
