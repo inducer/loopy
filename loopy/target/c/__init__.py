@@ -528,16 +528,19 @@ class CMathCallable(ScalarCallable):
                     dtype))
 
             if name in ["abs", "real", "imag"]:
-                dtype = real_dtype
+                result_dtype = real_dtype
+            else:
+                result_dtype = dtype
 
-            if dtype.kind == "c" or name in ["real", "imag", "abs"]:
+            if dtype.kind == "c":
                 if name != "conj":
                     name = "c" + name
 
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype={0: NumpyType(dtype), -1:
-                            NumpyType(dtype)}),
+                        arg_id_to_dtype={
+                            0: NumpyType(dtype),
+                            -1: NumpyType(result_dtype)}),
                     callables_table)
 
         # binary functions
