@@ -431,7 +431,7 @@ def test_nan_support(ctx_factory, target):
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
-def test_opencl_emits_ternary_operators_correctly(ctx_factory, target):
+def test_emits_ternary_operators_correctly(ctx_factory, target):
     # See: https://github.com/inducer/loopy/issues/390
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
