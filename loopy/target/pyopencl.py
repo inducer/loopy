@@ -210,23 +210,15 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         else:
             raise RuntimeError
 
-    def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
-        if needed_dtype.is_complex():
-            return self.wrap_in_typecast(actual_type_func(), needed_dtype, s)
-        else:
-            return super().wrap_in_typecast_lazy(actual_type_func,
-                                                 needed_dtype, s)
-
-    def wrap_in_typecast(self, actual_type, needed_dtype, s):
-        if (actual_type.is_complex() and needed_dtype.is_complex()
-                and actual_type != needed_dtype):
-            return p.Variable("%s_cast" % self.complex_type_name(needed_dtype))(s)
-        elif not actual_type.is_complex() and needed_dtype.is_complex():
-            return p.Variable("%s_fromreal" % self.complex_type_name(needed_dtype))(
+    def wrap_in_typecast(self, actual_type, needed_type, s):
+        if (actual_type.is_complex() and needed_type.is_complex()
+                and actual_type != needed_type):
+            return p.Variable("%s_cast" % self.complex_type_name(needed_type))(s)
+        elif not actual_type.is_complex() and needed_type.is_complex():
+            return p.Variable("%s_fromreal" % self.complex_type_name(needed_type))(
                     s)
         else:
-            return super().wrap_in_typecast_lazy(actual_type,
-                                                 needed_dtype, s)
+            return super().wrap_in_typecast(actual_type, needed_type, s)
 
     def map_sum(self, expr, type_context):
         # I've added 'type_context == "i"' because of the following
