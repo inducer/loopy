@@ -557,8 +557,9 @@ def test_complex_support(ctx_factory, target):
 
     kwargs = {"in1": in1, "in2": in2}
 
+    knl = lp.set_options(knl, write_code=True)
+
     if target == lp.PyOpenCLTarget:
-        knl = lp.set_options(knl, write_code=True)
         cl_ctx = ctx_factory()
         with cl.CommandQueue(cl_ctx) as queue:
             evt, out = knl(queue, **kwargs)
