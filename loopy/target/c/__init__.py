@@ -40,7 +40,7 @@ from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.symbolic import IdentityMapper
 from loopy.target.execution import ExecutorBase
 from loopy.translation_unit import FunctionIdT, TranslationUnit
-from loopy.types import NumpyType, LoopyType
+from loopy.types import NumpyType, LoopyType, to_loopy_type
 from loopy.typing import ExpressionT
 from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
@@ -1137,6 +1137,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
         rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
+
+        if isinstance(insn.assignee, p.Lookup):
+            lhs_dtype = to_loopy_type(lhs_dtype.numpy_dtype[insn.assignee.name])
+
         if lhs_atomicity is None:
             from cgen import Assign
             return Assign(
