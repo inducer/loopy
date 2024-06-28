@@ -2013,7 +2013,7 @@ def realize_reduction_for_single_kernel(kernel, callables_table,
                         | red_realize_ctx.surrounding_insn_add_within_inames))
 
             kwargs.pop("id")
-            kwargs.pop("depends_on")
+            kwargs.pop("happens_after")
             kwargs.pop("expression")
             kwargs.pop("assignee", None)
             kwargs.pop("assignees", None)
