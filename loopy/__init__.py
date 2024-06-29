@@ -188,7 +188,7 @@ __all__ = [
 
         "InKernelCallable", "ScalarCallable", "CallableKernel",
 
-        "TranslationUnit", "make_program",
+        "TranslationUnit", "make_program", "for_each_kernel",
 
         "KernelArgument",
         "ValueArg", "ArrayArg", "GlobalArg", "ConstantArg", "ImageArg",
