@@ -280,10 +280,12 @@ class CombineMapper(CombineMapperBase):
     def map_type_cast(self, expr, *args, **kwargs):
         return self.rec(expr.child, *args, **kwargs)
 
-    def map_sub_array_ref(self, expr):
+    def map_sub_array_ref(self, expr, *args, **kwargs):
         return self.combine((
-            self.rec(expr.subscript),
-            self.combine(tuple(self.rec(idx) for idx in expr.swept_inames))))
+            self.rec(expr.subscript, *args, **kwargs),
+            self.combine(tuple(
+                         self.rec(idx, *args, **kwargs)
+                         for idx in expr.swept_inames))))
 
     map_linear_subscript = CombineMapperBase.map_subscript
 
