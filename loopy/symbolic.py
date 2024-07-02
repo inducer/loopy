@@ -277,6 +277,9 @@ class CombineMapper(CombineMapperBase):
     def map_reduction(self, expr, *args, **kwargs):
         return self.rec(expr.expr, *args, **kwargs)
 
+    def map_type_cast(self, expr, *args, **kwargs):
+        return self.rec(expr.child, *args, **kwargs)
+
     def map_sub_array_ref(self, expr):
         return self.combine((
             self.rec(expr.subscript),
