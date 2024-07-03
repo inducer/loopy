@@ -94,14 +94,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
     update_for_list = KeyBuilderBase.update_for_tuple
     update_for_set = KeyBuilderBase.update_for_frozenset
 
-    def update_for_dict(self, key_hash, key):
-        from pytools import unordered_hash
-        unordered_hash(
-            key_hash,
-            (self.rec(self.new_hash(), (k, v)).digest()
-                for k, v in key.items()))
-
-    update_for_defaultdict = update_for_dict
+    update_for_dict = KeyBuilderBase.update_for_immutabledict
+    update_for_defaultdict = KeyBuilderBase.update_for_immutabledict
 
     def update_for_BasicSet(self, key_hash, key):  # noqa
         from islpy import Printer
