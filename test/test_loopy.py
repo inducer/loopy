@@ -1342,6 +1342,9 @@ def test_save_with_base_storage(ctx_factory, debug=False):
     knl = lp.alias_temporaries(knl, ["a", "b"],
             synchronize_for_exclusive_use=False)
 
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.allocate_temporaries_for_base_storage(knl)
+
     save_and_reload_temporaries_test(queue, knl, np.arange(10), debug)
 
 
@@ -1416,6 +1419,8 @@ def test_missing_definition_check_respects_aliases():
          target=lp.CTarget(),
          silenced_warnings=frozenset(["read_no_write(b)"]))
 
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.allocate_temporaries_for_base_storage(knl)
     lp.generate_code_v2(knl)
 
 
@@ -1911,6 +1916,8 @@ def test_scalars_with_base_storage(ctx_factory):
                                   shape=(), base_storage="base"),
                 ])
 
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.allocate_temporaries_for_base_storage(knl)
     knl(queue, out_host=True)
 
 
@@ -3199,6 +3206,9 @@ def test_global_tv_with_base_storage_across_gbarrier(ctx_factory):
 
     t_unit = lp.tag_inames(t_unit, {"i": "g.0", "j": "g.0"})
 
+    t_unit = lp.preprocess_kernel(t_unit)
+    t_unit = lp.allocate_temporaries_for_base_storage(t_unit)
+
     _, (out,) = t_unit(cq)
     np.testing.assert_allclose(out.get(), np.arange(9, -1, -1))
 
@@ -3558,6 +3568,9 @@ def test_no_barrier_err_for_global_temps_with_base_storage(ctx_factory):
     )
     knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
     knl = lp.split_iname(knl, "j", 4, inner_tag="l.0", outer_tag="g.0")
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.allocate_temporaries_for_base_storage(knl)
 
     _, (out,) = knl(cq, out_host=True)
 

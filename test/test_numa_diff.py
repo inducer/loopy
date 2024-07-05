@@ -236,6 +236,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     hsv = tap_hsv
 
+    hsv = lp.preprocess_kernel(hsv)
+    hsv = lp.allocate_temporaries_for_base_storage(hsv)
+
     hsv = lp.set_options(hsv,
             build_options=[
                  "-cl-denorms-are-zero",

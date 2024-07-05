@@ -270,6 +270,8 @@ def test_alias_temporaries(ctx_factory):
 
     knl = lp.alias_temporaries(knl, ["times2_0", "times3_0", "times4_0"])
 
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.allocate_temporaries_for_base_storage(knl)
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
             parameters=dict(n=30))
