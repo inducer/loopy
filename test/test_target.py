@@ -595,6 +595,9 @@ def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
     knl = lp.tag_inames(knl, {"i": "g.0", "j": "g.0"})
     knl = lp.set_options(knl, return_dict=True)
 
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.allocate_temporaries_for_base_storage(knl)
+
     my_allocator = RecordingAllocator(cq)
     _, out = knl(cq, allocator=my_allocator)
 

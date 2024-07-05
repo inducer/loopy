@@ -988,7 +988,6 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
         only_address_space: Optional[int] = None,
         aliased=True,
         max_nbytes: Optional[int] = None,
-        _implicitly_run=False,
         ) -> LoopKernel:
     from pytools import product
 
@@ -1077,12 +1076,6 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
             new_tvs[bsi.name] = new_tvs[bsi.name].copy(shape=(new_bs_size,))
 
     if made_changes:
-        if _implicitly_run:
-            warn("Base storage allocation was performed implicitly during "
-                    "preprocessing. This is deprecated and will stop working "
-                    "in 2023. Call loopy.allocate_temporaries_for_base_storage "
-                    "explicitly to avoid this warning.", DeprecationWarning)
-
         return kernel.copy(temporary_variables=new_tvs)
     else:
         return kernel

@@ -43,7 +43,6 @@ from loopy.symbolic import RuleAwareIdentityMapper
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
         CallInstruction,  _DataObliviousInstruction)
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-from loopy.transform.data import allocate_temporaries_for_base_storage
 from loopy.kernel.array import ArrayDimImplementationTag
 from loopy.kernel.data import _ArraySeparationInfo, KernelArgument
 from loopy.translation_unit import TranslationUnit, for_each_kernel
@@ -768,10 +767,6 @@ def _preprocess_single_kernel(kernel: LoopKernel, is_entrypoint: bool) -> LoopKe
     kernel = realize_ilp(kernel)
 
     kernel = find_temporary_address_space(kernel)
-
-    # Ordering restriction: temporary address spaces need to be found before
-    # allocating base_storage
-    kernel = allocate_temporaries_for_base_storage(kernel, _implicitly_run=True)
 
     # check for atomic loads, much easier to do here now that the dependencies
     # have been established
