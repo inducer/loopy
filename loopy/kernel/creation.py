@@ -347,15 +347,8 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             new_predicates = set(result["predicates"])
 
             for pred in predicates:
-                from pymbolic.primitives import LogicalNot
                 from loopy.symbolic import parse
-                if pred.startswith("!"):
-                    from warnings import warn
-                    warn("predicates starting with '!' are deprecated. "
-                            "Simply use 'not' instead")
-                    pred = LogicalNot(parse(pred[1:]))
-                else:
-                    pred = parse(pred)
+                pred = parse(pred)
 
                 new_predicates.add(pred)
 

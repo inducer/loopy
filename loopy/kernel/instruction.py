@@ -229,14 +229,8 @@ class InstructionBase(ImmutableRecord, Taggable):
         new_predicates = set()
         for pred in predicates:
             if isinstance(pred, str):
-                from pymbolic.primitives import LogicalNot
                 from loopy.symbolic import parse
-                if pred.startswith("!"):
-                    warn("predicates starting with '!' are deprecated. "
-                            "Simply use 'not' instead")
-                    pred = LogicalNot(parse(pred[1:]))
-                else:
-                    pred = parse(pred)
+                pred = parse(pred)
 
             new_predicates.add(pred)
 
