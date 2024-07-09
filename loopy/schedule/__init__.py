@@ -565,15 +565,6 @@ class ScheduleDebugger:
         from time import time
         self.start_time = time()
 
-
-class ScheduleDebugInput(ScheduleDebugInputError):
-    def __init__(self, *args, **kwargs):
-        from warnings import warn
-        warn("ScheduleDebugInput renamed to"
-             " ScheduleDebugInputError,  will be unsupported in"
-             " 2022.", DeprecationWarning, stacklevel=2)
-        super().__init__(*args, **kwargs)
-
 # }}}
 
 
