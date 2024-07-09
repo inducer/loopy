@@ -31,7 +31,6 @@ intersphinx_mapping = {
         "pyopencl": ("https://documen.tician.de/pyopencl", None),
         "cgen": ("https://documen.tician.de/cgen", None),
         "pymbolic": ("https://documen.tician.de/pymbolic", None),
-        "pytools": ("https://documen.tician.de/pytools", None),
         "pyrsistent": ("https://pyrsistent.readthedocs.io/en/latest/", None),
         }
 

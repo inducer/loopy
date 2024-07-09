@@ -916,7 +916,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             from warnings import warn
             warn("Your kernel invocation will likely fail because your "
                     "version of PyOpenCL does not support allow_empty_ndrange. "
-                    "Please upgrade to version 2020.2 or newer.")
+                    "Please upgrade to version 2020.2 or newer.", stacklevel=2)
 
         # TODO: Generate finer-grained dependency structure
         return Suite([

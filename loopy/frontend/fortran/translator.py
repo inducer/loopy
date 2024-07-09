@@ -199,7 +199,7 @@ class Scope:
 
                 raise TranslationError(
                         "no type for '%s' found in 'implict none' routine"
-                        % name)
+                        % name) from None
 
             return self.implicit_types.get(name[0], np.dtype(np.int32))
 

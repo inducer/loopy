@@ -364,7 +364,7 @@ def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors, need_image_support
     if not cpu_devs:
         warn("No CPU device found for running reference kernel. The reference "
                 "computation will either fail because of a timeout "
-                "or take a *very* long time.")
+                "or take a *very* long time.", stacklevel=1)
 
     for dev in cpu_devs:
         yield dev

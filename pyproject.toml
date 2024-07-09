@@ -1,0 +1,88 @@
+
+[tool.ruff]
+preview = true
+
+[tool.ruff.lint]
+extend-select = [
+    "B",   # flake8-bugbear
+    "C",   # flake8-comprehensions
+    "E",   # pycodestyle
+    "F",   # pyflakes
+
+    # TODO
+    # "I",   # flake8-isort
+
+    "N",   # pep8-naming
+    "NPY", # numpy
+    "Q",   # flake8-quotes
+    "W",   # pycodestyle
+
+    # TODO
+    # "UP",  # pyupgrade
+    # "RUF", # ruff
+]
+extend-ignore = [
+    "C90",  # McCabe complexity
+    "E221", # multiple spaces before operator
+    "E241", # multiple spaces after comma
+    "E402", # module level import not at the top of file
+    "E226", # missing whitespace around operator
+    "N817", # CamelCase `SubstitutionRuleMappingContext` imported as acronym `SRMC`
+
+    # FIXME
+    "NPY002", # numpy rng
+    "C408", # unnecssary dict() -> literal
+    "E265", # block comment should start with
+    "F841", # local variable unused
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test/test_loopy.py" = ["B023"]
+"loopy/target/c/compyte/ndarray/**/*.py" = ["Q", "B", "E", "F", "N", "C4"]
+"loopy/frontend/fortran/translator.py" = ["N802", "B028"]
+"proto-tests/*.py" = ["B"]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+multiline-quotes = "double"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = [
+    "pytools",
+    "pymbolic",
+]
+known-local-folder = [
+    "modepy",
+]
+lines-after-imports = 2
+
+[tool.mypy]
+python_version = 3.8
+warn_unused_ignores = true
+
+# TODO
+# check_untyped_defs = true
+
+exclude = [
+  "loopy/target/c/compyte/ndarray/.*",
+  "loopy/target/c/compyte/array.py",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "islpy.*",
+    "pymbolic.*",
+    "cgen.*",
+    "genpy.*",
+    "pyopencl.*",
+    "colorama.*",
+    "codepy.*",
+    "mako.*",
+    "fparser.*",
+    "ply.*",
+    "pygments.*",
+    "IPython.*",
+]
+ignore_missing_imports = true

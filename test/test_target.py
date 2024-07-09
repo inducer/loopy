@@ -28,6 +28,7 @@ import pyopencl as cl
 import pyopencl.clmath
 import pyopencl.clrandom
 import pyopencl.tools
+import pyopencl.version
 import pytest
 import pymbolic.primitives as prim
 
@@ -191,7 +192,6 @@ def test_random123(ctx_factory, tp):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    import pyopencl.version  # noqa
     if cl.version.VERSION < (2016, 2):
         pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
 

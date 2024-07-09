@@ -143,7 +143,7 @@ def generate_unroll_loop(codegen_state, sched_index):
                 bounds.lower_bound_pw_aff.coalesce(),
                 constants_only=False)
     except Exception as e:
-        raise type(e)("while finding lower bound of '%s': " % iname)
+        raise type(e)("while finding lower bound of '%s': " % iname) from None
 
     result = []
 
@@ -186,7 +186,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
                 bounds.lower_bound_pw_aff.coalesce(),
                 constants_only=False)
     except Exception as e:
-        raise type(e)("while finding lower bound of '%s': " % iname)
+        raise type(e)("while finding lower bound of '%s': " % iname) from None
 
     if not lower_bound_aff.plain_is_zero():
         warn(kernel, "vec_lower_not_0",

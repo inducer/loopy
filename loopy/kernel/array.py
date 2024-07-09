@@ -368,7 +368,8 @@ def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False
             try:
                 dim_idx = dim_names.index(dim_name)
             except ValueError:
-                raise LoopyError("'%s' does not name an array axis" % dim_name)
+                raise LoopyError(
+                        "'%s' does not name an array axis" % dim_name) from None
 
             dim_tags[dim_idx] = val
 
@@ -1204,7 +1205,7 @@ def get_access_info(kernel: "LoopKernel",
                     "%d (tagged '%s'), the index was not a compile-time "
                     "constant (but it has to be in order for code to be "
                     "generated). You likely want to unroll the iname(s) '%s'."
-                    % (ary.name, i, ary.dim_tags[i], str(e)))
+                    % (ary.name, i, ary.dim_tags[i], str(e))) from None
 
         if not is_integer(result):
             raise LoopyError("subscript '%s[%s]' has non-constant "

@@ -656,7 +656,7 @@ def infer_arg_descr(program):
                                      program.entrypoints)
 
     for e in program.entrypoints:
-        def _tuple_or_None(s):
+        def _tuple_or_none(s):
             if isinstance(s, tuple):
                 return s
             elif s in [None, auto]:
@@ -669,7 +669,7 @@ def infer_arg_descr(program):
             if isinstance(arg, ArrayBase):
                 if arg.shape not in (None, auto):
                     arg_id_to_descr[arg.name] = ArrayArgDescriptor(
-                            _tuple_or_None(arg.shape), arg.address_space,
+                            _tuple_or_none(arg.shape), arg.address_space,
                             arg.dim_tags)
             elif isinstance(arg, ValueArg):
                 arg_id_to_descr[arg.name] = ValueArgDescriptor()

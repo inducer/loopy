@@ -186,7 +186,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                         name,
                         ", ".join(str(arg) for arg in arguments),
                         ", ".join(arg_deps - self.kernel.all_inames()),
-                        ))
+                        ), stacklevel=1)
 
             return super().map_substitution(
                     name, tag, arguments, expn_state)
@@ -539,7 +539,7 @@ def precompute_for_single_kernel(
         subst = kernel.substitutions[subst_name]
     except KeyError:
         raise LoopyError("substitution rule '%s' not found"
-                % subst_name)
+                % subst_name) from None
 
     c_subst_name = subst_name.replace(".", "_")
 

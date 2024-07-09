@@ -666,9 +666,8 @@ def set_argument_order(kernel, arg_names):
     for arg_name in arg_names:
         try:
             arg = old_arg_dict.pop(arg_name)
-        except KeyError:
-            raise LoopyError("unknown argument '%s'"
-                    % arg_name)
+        except KeyError as err:
+            raise LoopyError("unknown argument '%s'" % arg_name) from err
 
         new_args.append(arg)
 
@@ -775,8 +774,8 @@ def set_temporary_address_space(kernel, temp_var_names, address_space):
     if isinstance(address_space, str):
         try:
             address_space = getattr(AddressSpace, address_space.upper())
-        except AttributeError:
-            raise LoopyError("address_space '%s' unknown" % address_space)
+        except AttributeError as err:
+            raise LoopyError("address_space '%s' unknown" % address_space) from err
 
     if not isinstance(address_space, int) or address_space not in [
             AddressSpace.PRIVATE,
@@ -789,7 +788,7 @@ def set_temporary_address_space(kernel, temp_var_names, address_space):
         try:
             tv = new_temp_vars[tv_name]
         except KeyError:
-            raise LoopyError("temporary '%s' not found" % tv_name)
+            raise LoopyError("temporary '%s' not found" % tv_name) from None
 
         new_temp_vars[tv_name] = tv.copy(address_space=address_space)
 
@@ -797,7 +796,6 @@ def set_temporary_address_space(kernel, temp_var_names, address_space):
 
 
 def set_temporary_scope(kernel, temp_var_names, address_space):
-    from warnings import warn
     warn("set_temporary_scope is deprecated and will stop working in "
             "July 2022. Use set_temporary_address_space instead.",
             DeprecationWarning, stacklevel=2)
@@ -943,16 +941,14 @@ def add_padding_to_avoid_bank_conflicts(kernel, device):
                         good_incr = increment
 
             if min_mult != 1:
-                from warnings import warn
                 from loopy.diagnostic import LoopyAdvisory
                 warn("could not find a conflict-free mem layout "
                         "for local variable '%s' "
                         "(currently: %dx conflict, increment: %s, reason: %s)"
                         % (temp_var.name, min_mult, good_incr, min_why_not),
-                        LoopyAdvisory)
+                        LoopyAdvisory, stacklevel=4)
         else:
-            from warnings import warn
-            warn("unknown type of local memory")
+            warn("unknown type of local memory", stacklevel=4)
 
             new_storage_shape = storage_shape
 

@@ -123,7 +123,7 @@ class FTreeWalkerBase:
         except Exception as e:
             raise LoopyError(
                     "Error parsing expression '%s' on line %d of '%s': %s"
-                    % (expr_str, node.item.span[0], self.filename, str(e)))
+                    % (expr_str, node.item.span[0], self.filename, str(e))) from e
 
     # }}}
 

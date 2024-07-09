@@ -407,7 +407,7 @@ def parse_match(expr):
                 .format(
                     match_expr=expr,
                     err_type=type(e).__name__,
-                    err_str=str(e)))
+                    err_str=str(e))) from e
 
     if pstate.is_at_end():
         pstate.raise_parse_error("unexpected end of input")

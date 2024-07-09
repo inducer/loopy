@@ -32,7 +32,7 @@ def set_q_storage_format(kernel, name):
     return kernel
 
 
-def set_D_storage_format(kernel):
+def set_D_storage_format(kernel):  # noqa: N802
     return lp.tag_array_axes(kernel, "D", "f,f")
 
 

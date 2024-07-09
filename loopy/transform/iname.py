@@ -583,7 +583,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
                     bounds.lower_bound_pw_aff.coalesce(),
                     constants_only=False)
         except Exception as e:
-            raise type(e)("while finding lower bound of '%s': " % iname)
+            raise type(e)("while finding lower bound of '%s': " % iname) from e
 
         my_val = var(new_iname) // base_divisor
         if i+1 < len(inames):

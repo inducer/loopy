@@ -516,7 +516,7 @@ class TypeInferenceMapper(CombineMapper):
         except KeyError:
             raise LoopyError("cannot look up attribute '%s' in "
                     "aggregate expression '%s' of dtype '%s'"
-                    % (expr.aggregate, expr.name, numpy_dtype))
+                    % (expr.aggregate, expr.name, numpy_dtype)) from None
 
         dtype = field[0]
         return [NumpyType(dtype)]
@@ -1095,7 +1095,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
                 arg_dtypes = [None]
             else:
                 raise LoopyError("failed to determine type of accumulator for "
-                        "reduction '%s'" % expr)
+                        "reduction '%s'" % expr) from None
 
     reduction_dtypes = expr.operation.result_dtypes(*arg_dtypes)
 

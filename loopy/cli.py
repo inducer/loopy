@@ -88,7 +88,7 @@ def main():
         from loopy.target.cuda import CudaTarget
         target = CudaTarget
     else:
-        raise ValueError("unknown target: %s" % target)
+        raise ValueError(f"unknown target: {args.target}")
 
     lp.set_default_target(target)
 
@@ -155,9 +155,9 @@ def main():
 
         try:
             kernel = data_dic["lp_knl"]
-        except KeyError:
+        except KeyError as err:
             raise RuntimeError("loopy-lang requires 'lp_knl' "
-                    "to be defined on exit")
+                    "to be defined on exit") from err
 
         t_unit = [kernel]
 

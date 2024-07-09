@@ -553,7 +553,7 @@ def parse_reduction_op(name):
             from warnings import warn
             warn("Reductions with forced result types are no longer supported. "
                     f"Encountered '{name}', which might be one.",
-                    DeprecationWarning)
+                    DeprecationWarning, stacklevel=1)
             return None
 
     if name in _REDUCTION_OPS:

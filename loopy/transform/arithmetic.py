@@ -87,7 +87,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
                 try:
                     return name_to_index[ax]
                 except KeyError:
-                    raise LoopyError("axis name '%s' not understood " % ax)
+                    raise LoopyError("axis name '%s' not understood " % ax) from None
             else:
                 return ax
 

@@ -434,7 +434,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                  " this leads to problems with cache retrieval."
                  " Consider using `pymbolic.primitives.NaN` instead of `math.nan`."
                  " The generated code will be equivalent with the added benefit"
-                 " of sound pickling/unpickling of kernel objects.")
+                 " of sound pickling/unpickling of kernel objects.", stacklevel=1)
             from pymbolic.primitives import NaN
             data_type = expr.dtype.type if isinstance(expr, np.generic) else None
             return self.map_nan(NaN(data_type), type_context)

@@ -377,7 +377,7 @@ def _try_infer_scan_candidate_from_expr(
         except ValueError as v:
             raise ValueError(
                     "Couldn't determine a sweep iname for the scan "
-                    "expression '%s': %s" % (expr, v))
+                    "expression '%s': %s" % (expr, v)) from None
 
     try:
         sweep_lower_bound, sweep_upper_bound, scan_lower_bound = (
@@ -387,7 +387,7 @@ def _try_infer_scan_candidate_from_expr(
         raise ValueError(
                 "Couldn't determine bounds for the scan with expression '%s' "
                 "(sweep iname: '%s', scan iname: '%s'): %s"
-                % (expr, sweep_iname, scan_iname, v))
+                % (expr, sweep_iname, scan_iname, v)) from None
 
     try:
         stride = _try_infer_scan_stride(
@@ -396,7 +396,7 @@ def _try_infer_scan_candidate_from_expr(
         raise ValueError(
                 "Couldn't determine a scan stride for the scan with expression '%s' "
                 "(sweep iname: '%s', scan iname: '%s'): %s"
-                % (expr, sweep_iname, scan_iname, v))
+                % (expr, sweep_iname, scan_iname, v)) from None
 
     return _ScanCandidateParameters(
             sweep_iname=sweep_iname,
@@ -473,7 +473,7 @@ def _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname, within_ina
         sweep_upper_bound = domain.dim_max(sweep_idx)
         scan_lower_bound = domain.dim_min(scan_idx)
     except isl.Error as e:
-        raise ValueError("isl error: %s" % e)
+        raise ValueError("isl error: %s" % e) from e
 
     return (sweep_lower_bound, sweep_upper_bound, scan_lower_bound)
 
@@ -503,7 +503,7 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
                 - domain_with_sweep_param.dim_min(scan_iname_idx)
                 ).gist(domain_with_sweep_param.params())
     except isl.Error as e:
-        raise ValueError("isl error: '%s'" % e)
+        raise ValueError("isl error: '%s'" % e) from e
 
     scan_iname_pieces = scan_iname_range.get_pieces()
 
@@ -525,8 +525,9 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
     if len(coeffs) == 0:
         try:
             scan_iname_aff.get_constant_val()
-        except Exception:
-            raise ValueError("range for aff isn't constant: '%s'" % scan_iname_aff)
+        except Exception as err:
+            raise ValueError(
+                        "range for aff isn't constant: '%s'" % scan_iname_aff) from err
 
         # If this point is reached we're assuming the domain is of the form
         # {[i,j]: i=0 and j=0}, so the stride is technically 1 - any value
