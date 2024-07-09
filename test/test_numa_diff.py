@@ -69,7 +69,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
     hsv_s = lp.tag_instructions(hsv_s, "sknl")
     hsv = lp.fuse_kernels([hsv_r, hsv_s], ["_r", "_s"])
-    #hsv = hsv_s
+    # hsv = hsv_s
     hsv = lp.add_nosync(hsv, "any", "writes:rhsQ", "writes:rhsQ", force=True)
 
     from gnuma_loopy_transforms import (
@@ -89,7 +89,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         hsv = set_q_storage_format(hsv, name)
 
     hsv = set_D_storage_format(hsv)
-    #hsv = lp.add_prefetch(hsv, "volumeGeometricFactors")
+    # hsv = lp.add_prefetch(hsv, "volumeGeometricFactors")
 
     ref_hsv = hsv
 

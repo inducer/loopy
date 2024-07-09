@@ -88,16 +88,16 @@ def main():
                 [("tasksys.cpp", tasksys_source)],
                 cxx_options=["-g", "-fopenmp", "-DISPC_USE_OMP"],
                 ispc_options=([
-                    #"-g", "--no-omit-frame-pointer",
+                    # "-g", "--no-omit-frame-pointer",
                     "--target=avx2-i32x8",
                     "--opt=force-aligned-memory",
                     "--opt=disable-loop-unroll",
-                    #"--opt=fast-math",
-                    #"--opt=disable-fma",
+                    # "--opt=fast-math",
+                    # "--opt=disable-fma",
                     ]
                     + (["--addressing=64"] if INDEX_DTYPE == np.int64 else [])
                     ),
-                #ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
+                # ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
                 quiet=False,
                 )
 

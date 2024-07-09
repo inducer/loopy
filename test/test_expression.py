@@ -291,7 +291,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
         var_name = "expr%d" % i
 
         # print(expr)
-        #assert_parse_roundtrip(expr)
+        # assert_parse_roundtrip(expr)
 
         if expr_type in ["int", "int_nonneg"]:
             result_type_iinfo = np.iinfo(np.int32)
@@ -451,8 +451,8 @@ def test_indexof_vec(ctx_factory):
     knl = lp.set_options(knl, write_code=True)
 
     (evt, (out,)) = knl(queue)
-    #out = out.get()
-    #assert np.array_equal(out.ravel(order="C"), np.arange(25))
+    # out = out.get()
+    # assert np.array_equal(out.ravel(order="C"), np.arange(25))
 
 
 def test_is_expression_equal():

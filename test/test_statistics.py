@@ -1371,7 +1371,7 @@ def test_summations_and_filters():
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
-    #for k, v in op_map.items():
+    # for k, v in op_map.items():
     #    print(type(k), "\n", k.name, k.dtype, type(k.dtype), " :\n", v)
 
     op_map_dtype = op_map.group_by("dtype")

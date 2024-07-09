@@ -152,7 +152,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         gen("{} = {}.strides".format(strify(expected_strides), arg.name))
 
-        #check strides
+        # check strides
         if not skip_arg_checks:
             strides_check_expr = self.get_strides_check_expr(
                     [strify(s) for s in sym_shape],

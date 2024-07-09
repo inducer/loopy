@@ -123,7 +123,7 @@ def test_laplacian_stiffness(ctx_factory):
                 loop_priority=loop_prio)
         kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
 
-        #print lp.preprocess_kernel(var_knl)
+        # print lp.preprocess_kernel(var_knl)
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=0, op_label="GFlops",

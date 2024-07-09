@@ -313,7 +313,7 @@ class PyOpenCLExecutor(ExecutorBase):
         dev_code = codegen_result.device_code()
 
         if t_unit[self.entrypoint].options.write_code:
-            #FIXME: redirect to "translation unit" level option as well.
+            # FIXME: redirect to "translation unit" level option as well.
             output = dev_code
             if self.t_unit[self.entrypoint].options.allow_terminal_colors:
                 output = get_highlighted_code(output)
@@ -327,13 +327,13 @@ class PyOpenCLExecutor(ExecutorBase):
                     outf.write(output)
 
         if t_unit[self.entrypoint].options.edit_code:
-            #FIXME: redirect to "translation unit" level option as well.
+            # FIXME: redirect to "translation unit" level option as well.
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
 
         import pyopencl as cl
 
-        #FIXME: redirect to "translation unit" level option as well.
+        # FIXME: redirect to "translation unit" level option as well.
         cl_program = (
                 cl.Program(self.context, dev_code)
                 .build(options=t_unit[self.entrypoint].options.build_options))

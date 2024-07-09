@@ -86,7 +86,7 @@ def test_convolution(ctx_factory):
     ref_knl = knl
 
     def variant_0(knl):
-        #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        # knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
         knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
         return knl
 
@@ -108,8 +108,8 @@ def test_convolution(ctx_factory):
         return knl
 
     for variant in [
-            #variant_0,
-            #variant_1,
+            # variant_0,
+            # variant_1,
             variant_2
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
@@ -157,7 +157,7 @@ def test_convolution_with_nonzero_base(ctx_factory):
     f_w = 3
 
     def variant_0(knl):
-        #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        # knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
         knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
         return knl
 
@@ -357,7 +357,7 @@ def test_stencil(ctx_factory):
         return knl
 
     for variant in [
-            #variant_1,
+            # variant_1,
             variant_2,
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
@@ -513,7 +513,7 @@ def test_fd_demo():
         "result[i+1,j+1] = u[i + 1, j + 1]**2 + -1 + (-4)*u[i + 1, j + 1] \
                 + u[i + 1 + 1, j + 1] + u[i + 1 + -1, j + 1] \
                 + u[i + 1, j + 1 + 1] + u[i + 1, j + 1 + -1]")
-    #assumptions="n mod 16=0")
+    # assumptions="n mod 16=0")
     knl = lp.split_iname(knl,
             "i", 16, outer_tag="g.1", inner_tag="l.1")
     knl = lp.split_iname(knl,
@@ -523,8 +523,8 @@ def test_fd_demo():
             fetch_bounding_box=True,
             default_tag="l.auto")
 
-    #n = 1000
-    #u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
+    # n = 1000
+    # u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
 
     knl = lp.set_options(knl, write_code=True)
     knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
@@ -604,7 +604,7 @@ def test_poisson_fem(ctx_factory):
             ))
 
     for variant in [
-            #variant_1,
+            # variant_1,
             variant_2
             ]:
         knl = variant(knl)

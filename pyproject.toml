@@ -32,7 +32,6 @@ extend-ignore = [
     # FIXME
     "NPY002", # numpy rng
     "C408", # unnecssary dict() -> literal
-    "E265", # block comment should start with
     "F841", # local variable unused
 ]
 

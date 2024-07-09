@@ -79,7 +79,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
 
 
 def test_complicated_subst(ctx_factory):
-    #ctx = ctx_factory()
+    # ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
@@ -607,7 +607,7 @@ def test_vector_types(ctx_factory, vec_len):
 
 
 def test_conditional(ctx_factory):
-    #logging.basicConfig(level=logging.DEBUG)
+    # logging.basicConfig(level=logging.DEBUG)
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1450,7 +1450,7 @@ def test_global_temporary(ctx_factory):
     assert len(cgr.device_programs) == 2
 
     print(cgr.device_code())
-    #print(cgr.host_code())
+    # print(cgr.host_code())
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
@@ -1882,18 +1882,18 @@ def test_header_extract():
 
     knl = lp.fix_parameters(knl, n=200)
 
-    #test C
+    # test C
     cknl = knl.copy(target=lp.CTarget())
     assert str(lp.generate_header(cknl)[0]) == (
             "void loopy_kernel(float *__restrict__ T);")
 
-    #test CUDA
+    # test CUDA
     cuknl = knl.copy(target=lp.CudaTarget())
     assert str(lp.generate_header(cuknl)[0]) == (
             'extern "C" __global__ void __launch_bounds__(1) '
             "loopy_kernel(float *__restrict__ T);")
 
-    #test OpenCL
+    # test OpenCL
     oclknl = knl.copy(target=lp.PyOpenCLTarget())
     assert str(lp.generate_header(oclknl)[0]) == (
             "__kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) "
@@ -2057,7 +2057,7 @@ def test_tight_loop_bounds_codegen():
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
 
     cgr = lp.generate_code_v2(knl)
-    #print(cgr.device_code())
+    # print(cgr.device_code())
 
     for_loop = \
         "for (int j = " \

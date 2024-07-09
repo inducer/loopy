@@ -476,7 +476,7 @@ def check_atomic_loads(kernel):
             accessed_atomic_vars = (insn.dependency_names() & atomicity_candidates)\
                 - {insn.assignee_var_names()[0]}
             if not accessed_atomic_vars <= atomic_accesses:
-                #if we're missing some
+                # if we're missing some
                 missed = accessed_atomic_vars - atomic_accesses
                 for x in missed:
                     if {x} & atomicity_candidates:
