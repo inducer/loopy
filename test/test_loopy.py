@@ -902,7 +902,9 @@ def test_atomic_load(ctx_factory, dtype):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    dtype = np.float64
+    if ctx.devices[0].platform.vendor == "The pocl project":
+        pytest.skip("https://github.com/pocl/pocl/issues/1509")
+
     n = 10
 
     knl = lp.make_kernel(
