@@ -1076,7 +1076,7 @@ class _IndexStrideCoefficientCollector(CoefficientCollector):
     def map_floor_div(self, expr):
         from warnings import warn
         warn("_IndexStrideCoefficientCollector encountered FloorDiv, ignoring "
-             "denominator in expression %s" % (expr))
+             "denominator in expression %s" % (expr), stacklevel=1)
         return self.rec(expr.numerator)
 
 # }}}
@@ -1375,19 +1375,19 @@ class AccessFootprintGatherer(CombineMapper):
         try:
             access_range = get_access_map(self.domain, subscript,
                     self.kernel.assumptions).range()
-        except isl.Error:
+        except isl.Error as err:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:
                 return {}
             else:
-                raise LoopyError("failed to gather footprint: %s" % expr)
+                raise LoopyError("failed to gather footprint: %s" % expr) from err
 
-        except TypeError:
+        except TypeError as err:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:
                 return {}
             else:
-                raise LoopyError("failed to gather footprint: %s" % expr)
+                raise LoopyError("failed to gather footprint: %s" % expr) from err
 
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)

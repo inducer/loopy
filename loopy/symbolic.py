@@ -2511,7 +2511,7 @@ def get_access_map(domain, subscript, assumptions=None, shape=None,
                         "(encountered %s: %s)"
                         % (", ".join(str(si) for si in subscript),
                             # intentionally using 'outer' err
-                            type(err).__name__, str(err)))
+                            type(err).__name__, str(err))) from err
 
             # successfully converted shape[idim] to aff, but not subscript[idim]
 

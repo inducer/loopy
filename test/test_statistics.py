@@ -267,7 +267,7 @@ def test_op_counter_triangular_domain():
     expect_fallback = False
     import islpy as isl
     try:
-        isl.BasicSet.card
+        isl.BasicSet.card  # noqa: B018
     except AttributeError:
         expect_fallback = True
     else:
@@ -698,7 +698,7 @@ def test_mem_access_counter_mixed():
     expect_fallback = False
     import islpy as isl
     try:
-        isl.BasicSet.card
+        isl.BasicSet.card  # noqa: B018
     except AttributeError:
         expect_fallback = True
     else:

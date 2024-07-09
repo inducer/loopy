@@ -296,7 +296,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                             warn("Unable to generate code to automatically "
                                     f"find '{unknown_name}' "
                                     f"from '{', '.join(eqn.based_on_names)}':\n"
-                                    f"{e}", ParameterFinderWarning)
+                                    f"{e}", ParameterFinderWarning, stacklevel=1)
                             continue
 
                     # Do not use more than one bit of data from each of the

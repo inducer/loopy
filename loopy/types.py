@@ -84,7 +84,7 @@ class NumpyType(LoopyType):
         if dtype is None:
             raise TypeError("may not pass None to construct NumpyType")
 
-        if dtype == object:
+        if dtype == object:  # noqa: E721
             raise TypeError("loopy does not directly support object arrays")
 
         self.dtype = np.dtype(dtype)

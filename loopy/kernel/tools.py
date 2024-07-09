@@ -520,7 +520,7 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
             from warnings import warn
             warn("error encountered during scheduling for dep graph -- "
                     "cannot perform iname clustering: %s(%s)"
-                    % (type(e).__name__, e))
+                    % (type(e).__name__, e), stacklevel=1)
 
     dep_graph = {}
     lines = []
@@ -749,7 +749,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
         if arg.dim_tags is None:
             from warnings import warn
             warn("Strides for '%s' are not known. Local axis assignment "
-                    "is likely suboptimal." % arg.name)
+                    "is likely suboptimal." % arg.name, stacklevel=1)
             ary_strides = [1] * len(index_expr)
         else:
             ary_strides = []
@@ -1048,7 +1048,7 @@ def guess_var_shape(kernel, var_names):
                 "shape/strides for variables '%s'. "
                 "Specifying the shape manually should get rid of this. "
                 "The following error occurred: %s"
-                % (",".join(var_names), str(e)))
+                % (",".join(var_names), str(e))) from e
 
     result = []
     for var_name in var_names:

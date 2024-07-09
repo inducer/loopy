@@ -343,7 +343,8 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
             from warnings import warn
             warn("Using default C compiler because gcc-10 was not found. "
                  "These tests may take a long time, because of "
-                 "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107127.")
+                 "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107127.",
+                 stacklevel=1)
             target = target_cls()
 
     else:
@@ -391,7 +392,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
             print("reference=%r" % ref_value)
             print("loopy=%r" % lp_value)
             print(80*"-")
-            1/0
+            1/0  # noqa: B018
 
     print(lp.generate_code_v2(knl).device_code())
 

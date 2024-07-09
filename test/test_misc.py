@@ -44,7 +44,7 @@ def test_kernel_pickling_and_hashing():
     assert LoopyKeyBuilder()(knl) == LoopyKeyBuilder()(reconst_knl)
 
 
-def test_SetTrie():
+def test_set_trie():
     from loopy.kernel.tools import SetTrie
 
     s = SetTrie()
@@ -83,7 +83,7 @@ class PickleDetectorForLazilyUnpicklingDict(PickleDetector):
         self.state = None
 
 
-def test_LazilyUnpicklingDict():
+def test_lazily_unpickling_dict():
     from loopy.tools import LazilyUnpicklingDict
 
     cls = PickleDetectorForLazilyUnpicklingDict
@@ -136,7 +136,7 @@ class PickleDetectorForLazilyUnpicklingList(PickleDetector):
         self.state = None
 
 
-def test_LazilyUnpicklingList():
+def test_lazily_unpickling_list():
     from loopy.tools import LazilyUnpicklingList
 
     cls = PickleDetectorForLazilyUnpicklingList
@@ -193,7 +193,7 @@ class PickleDetectorForLazilyUnpicklingListWithEqAndPersistentHashing(
         key_builder.rec(key_hash, repr(self))
 
 
-def test_LazilyUnpicklingListWithEqAndPersistentHashing():
+def test_lazily_unpickling_list_eq_and_persistent_hashing():
     from loopy.tools import LazilyUnpicklingListWithEqAndPersistentHashing
 
     cls = PickleDetectorForLazilyUnpicklingListWithEqAndPersistentHashing
@@ -256,7 +256,7 @@ def test_Optional():  # noqa
     opt = Optional()
     assert not opt.has_value
     with pytest.raises(AttributeError):
-        opt.value
+        opt.value  # noqa: B018
 
     opt = Optional(1)
     assert opt.has_value

@@ -492,7 +492,7 @@ def test_lbm(ctx_factory):
                 f_new[i, j, 11] =  + 0.25*m[8] - 0.125*m[10] - 0.25*m[11]
            end
         end
-        """)
+        """)  # noqa: E501
 
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
 

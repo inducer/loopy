@@ -510,7 +510,7 @@ class ArrayArg(ArrayBase, KernelArgument):
 # Making this a function prevents incorrect use in isinstance.
 # Note: This is *not* deprecated, as it is super-common and
 # incrementally more convenient to use than ArrayArg directly.
-def GlobalArg(*args, **kwargs):
+def GlobalArg(*args, **kwargs):  # noqa: N802
     address_space = kwargs.pop("address_space", None)
     if address_space is not None:
         raise TypeError("may not pass 'address_space' to GlobalArg")

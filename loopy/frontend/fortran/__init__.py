@@ -37,8 +37,9 @@ def c_preprocess(source, defines=None, filename=None, include_paths=None):
     try:
         import ply.lex as lex
         import ply.cpp as cpp
-    except ImportError:
-        raise LoopyError("Using the C preprocessor requires PLY to be installed")
+    except ImportError as err:
+        raise LoopyError(
+             "Using the C preprocessor requires PLY to be installed") from err
 
     input_dirname = None
     if filename is None:
