@@ -23,11 +23,12 @@ THE SOFTWARE.
 """
 
 
-from loopy.diagnostic import StaticValueFindingError, LoopyError
+from warnings import warn
 
 import islpy as isl
 from islpy import dim_type
-from warnings import warn
+
+from loopy.diagnostic import LoopyError, StaticValueFindingError
 
 
 def pw_aff_to_aff(pw_aff):
@@ -93,6 +94,7 @@ def make_slab(space, iname, start, stop, iname_multiplier=1):
     space = zero.get_domain_space()
 
     from pymbolic.primitives import Expression
+
     from loopy.symbolic import aff_from_expr
     if isinstance(start, Expression):
         start = aff_from_expr(space, start)
@@ -230,7 +232,7 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
                     % (what, pw_aff))
         return result
 
-    from pytools import memoize, flatten
+    from pytools import flatten, memoize
 
     @memoize
     def is_bounded(set):
@@ -340,8 +342,9 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
 
 
 def is_nonnegative(expr, over_set):
-    from loopy.symbolic import aff_from_expr
     from pymbolic.primitives import Product
+
+    from loopy.symbolic import aff_from_expr
 
     if isinstance(expr, Product) and all(
             is_nonnegative(child, over_set) for child in expr.children):
@@ -684,7 +687,7 @@ def subst_into_pwqpolynomial(new_space, poly, subst_dict):
     poly, subst_domain, subst_dict = get_param_subst_domain(
             new_space, poly, subst_dict)
 
-    from loopy.symbolic import qpolynomial_to_expr, qpolynomial_from_expr
+    from loopy.symbolic import qpolynomial_from_expr, qpolynomial_to_expr
     new_pieces = []
     for valid_set, qpoly in poly.get_pieces():
         valid_set = valid_set & subst_domain
@@ -692,8 +695,7 @@ def subst_into_pwqpolynomial(new_space, poly, subst_dict):
             continue
 
         valid_set = valid_set.project_out(dim_type.param, 0, i_begin_subst_space)
-        from pymbolic.mapper.substitutor import (
-                SubstitutionMapper, make_subst_func)
+        from pymbolic.mapper.substitutor import SubstitutionMapper, make_subst_func
         sub_mapper = SubstitutionMapper(make_subst_func(subst_dict))
         expr = sub_mapper(qpolynomial_to_expr(qpoly))
         qpoly = qpolynomial_from_expr(valid_set.space, expr)
@@ -724,10 +726,11 @@ def subst_into_pwaff(new_space, pwaff, subst_dict):
         parameters of *new_space*. The expression must be affine in the param
         dims of *new_space*.
     """
-    from pymbolic.mapper.substitutor import (
-            SubstitutionMapper, make_subst_func)
-    from loopy.symbolic import aff_from_expr, aff_to_expr
     from functools import reduce
+
+    from pymbolic.mapper.substitutor import SubstitutionMapper, make_subst_func
+
+    from loopy.symbolic import aff_from_expr, aff_to_expr
 
     i_begin_subst_space = pwaff.dim(dim_type.param)
     pwaff, subst_domain, subst_dict = get_param_subst_domain(

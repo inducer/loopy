@@ -23,6 +23,7 @@ References to Canonical Names
 
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -46,15 +47,24 @@ THE SOFTWARE.
 """
 
 
-from typing import (Any, Tuple, Generic, TypeVar, Sequence, ClassVar, Optional,
-        TYPE_CHECKING)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generic,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+)
+
 
 if TYPE_CHECKING:
-    from loopy.typing import ExpressionT
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
     from loopy.target.execution import ExecutorBase
-    from loopy.translation_unit import TranslationUnit, FunctionIdT
+    from loopy.translation_unit import FunctionIdT, TranslationUnit
+    from loopy.typing import ExpressionT
 
 
 ASTType = TypeVar("ASTType")

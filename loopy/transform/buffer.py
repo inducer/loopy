@@ -20,22 +20,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+
 from immutables import Map
-from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
-        AccessDescriptor)
-from loopy.symbolic import (get_dependencies,
-        RuleAwareIdentityMapper, SubstitutionRuleMappingContext,
-        SubstitutionMapper)
-from pymbolic.mapper.substitutor import make_subst_func
-from loopy.tools import memoize_on_disk
-from loopy.diagnostic import LoopyError
-from loopy.kernel import LoopKernel
-from loopy.translation_unit import TranslationUnit
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 from pymbolic import var
+from pymbolic.mapper.substitutor import make_subst_func
 
-import logging
+from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.symbolic import (
+    RuleAwareIdentityMapper,
+    SubstitutionMapper,
+    SubstitutionRuleMappingContext,
+    get_dependencies,
+)
+from loopy.tools import memoize_on_disk
+from loopy.transform.array_buffer_map import (
+    AccessDescriptor,
+    ArrayToBufferMap,
+    NoOpArrayToBufferMap,
+)
+from loopy.translation_unit import TranslationUnit
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -228,7 +237,8 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         if not within(kernel, insn, ()):
             continue
 
-        from pymbolic.primitives import Variable, Subscript
+        from pymbolic.primitives import Subscript, Variable
+
         from loopy.symbolic import LinearSubscript
 
         for assignee in insn.assignees:

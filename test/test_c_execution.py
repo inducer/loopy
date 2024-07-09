@@ -20,13 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-import loopy as lp
+import logging
 import sys
+
+import numpy as np
 import pytest
+
+import loopy as lp
 from loopy import CACHING_ENABLED
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -295,9 +298,10 @@ def test_c_execution_with_global_temporaries():
 
 
 def test_missing_compilers():
-    from loopy.target.c import ExecutableCTarget, CTarget
-    from loopy.target.c.c_execution import CCompiler
     from codepy.toolchain import GCCToolchain
+
+    from loopy.target.c import CTarget, ExecutableCTarget
+    from loopy.target.c.c_execution import CCompiler
 
     def __test(evalfunc, target, **targetargs):
         n = 10

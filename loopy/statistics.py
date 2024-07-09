@@ -25,19 +25,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from functools import partial, cached_property
+from functools import cached_property, partial
 
-from islpy import dim_type
 import islpy as isl
+from islpy import dim_type
 from pymbolic.mapper import CombineMapper
+from pytools import ImmutableRecord, memoize_method
 
 import loopy as lp
-from loopy.kernel.data import (
-        MultiAssignmentBase, TemporaryVariable, AddressSpace)
-from loopy.diagnostic import warn_with_kernel, LoopyError
-from loopy.symbolic import CoefficientCollector
-from pytools import ImmutableRecord, memoize_method
+from loopy.diagnostic import LoopyError, warn_with_kernel
+from loopy.kernel.data import AddressSpace, MultiAssignmentBase, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel
+from loopy.symbolic import CoefficientCollector
 from loopy.translation_unit import TranslationUnit
 
 
@@ -535,7 +534,7 @@ class ToCountPolynomialMap(ToCountMap):
 # {{{ subst_into_to_count_map
 
 def subst_into_guarded_pwqpolynomial(new_space, guarded_poly, subst_dict):
-    from loopy.isl_helpers import subst_into_pwqpolynomial, get_param_subst_domain
+    from loopy.isl_helpers import get_param_subst_domain, subst_into_pwqpolynomial
 
     poly = subst_into_pwqpolynomial(
             new_space, guarded_poly.pwqpolynomial, subst_dict)
@@ -836,9 +835,11 @@ class CounterBase(CombineMapper):
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
 
-        from loopy.kernel.function_interface import (CallableKernel,
-                get_kw_pos_association)
         from loopy.kernel.data import ValueArg
+        from loopy.kernel.function_interface import (
+            CallableKernel,
+            get_kw_pos_association,
+        )
         if isinstance(clbl, CallableKernel):
             sub_result = self.kernel_rec(clbl.subkernel)
             _, pos_to_kw = get_kw_pos_association(clbl.subkernel)
@@ -1089,8 +1090,11 @@ def _get_lid_and_gid_strides(knl, array, index):
     from loopy.symbolic import get_dependencies
     my_inames = get_dependencies(index) & knl.all_inames()
 
-    from loopy.kernel.data import (LocalInameTag, GroupInameTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import (
+        GroupInameTag,
+        LocalInameTag,
+        filter_iname_tags_by_type,
+    )
     lid_to_iname = {}
     gid_to_iname = {}
     for iname in my_inames:
@@ -1111,10 +1115,11 @@ def _get_lid_and_gid_strides(knl, array, index):
     # where l0, l1, l2, g0, g1, and g2 come from flattened index
     # [... + g2*gid2 + g1*gid1 + g0*gid0 + ... + l2*lid2 + l1*lid1 + l0*lid0]
 
-    from loopy.kernel.array import FixedStrideArrayDimTag
     from pymbolic.primitives import Variable
-    from loopy.symbolic import simplify_using_aff
+
     from loopy.diagnostic import ExpressionNotAffineError
+    from loopy.kernel.array import FixedStrideArrayDimTag
+    from loopy.symbolic import simplify_using_aff
 
     def get_iname_strides(tag_to_iname_dict):
         tag_to_stride_dict = {}
@@ -1520,7 +1525,7 @@ def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
     g_used = set()
     l_used = set()
 
-    from loopy.kernel.data import LocalInameTag, GroupInameTag
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
     for iname in insn.within_inames:
         tags = knl.iname_tags_of_type(iname,
                               (LocalInameTag, GroupInameTag), max_num=1)
@@ -1671,8 +1676,12 @@ def _get_op_map_for_single_kernel(knl, callables_table,
     op_map = op_counter.new_zero_poly_map()
 
     from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
-            NoOpInstruction, BarrierInstruction)
+        Assignment,
+        BarrierInstruction,
+        CallInstruction,
+        CInstruction,
+        NoOpInstruction,
+    )
 
     for insn in knl.instructions:
         if within(knl, insn):
@@ -1763,7 +1772,7 @@ def get_op_map(program, count_redundant_work=False,
 
     assert entrypoint in program.entrypoints
 
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
     program = preprocess_program(program)
 
     from loopy.match import parse_match
@@ -1858,8 +1867,12 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
     access_map = access_counter_g.new_zero_poly_map()
 
     from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
-            NoOpInstruction, BarrierInstruction)
+        Assignment,
+        BarrierInstruction,
+        CallInstruction,
+        CInstruction,
+        NoOpInstruction,
+    )
 
     for insn in knl.instructions:
         if within(knl, insn):
@@ -1986,7 +1999,7 @@ def get_mem_access_map(program, count_redundant_work=False,
 
     assert entrypoint in program.entrypoints
 
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
 
     program = preprocess_program(program)
 
@@ -2013,8 +2026,14 @@ def _get_synchronization_map_for_single_kernel(knl, callables_table,
 
     knl = lp.get_one_linearized_kernel(knl, callables_table)
 
-    from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
-            CallKernel, ReturnFromKernel, RunInstruction)
+    from loopy.schedule import (
+        Barrier,
+        CallKernel,
+        EnterLoop,
+        LeaveLoop,
+        ReturnFromKernel,
+        RunInstruction,
+    )
 
     kernel_rec = partial(_get_synchronization_map_for_single_kernel,
             callables_table=callables_table,
@@ -2100,7 +2119,7 @@ def get_synchronization_map(program, subgroup_size=None, entrypoint=None):
         entrypoint = list(program.entrypoints)[0]
 
     assert entrypoint in program.entrypoints
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
 
     program = preprocess_program(program)
     # Ordering restriction: preprocess might insert arguments to
@@ -2167,7 +2186,7 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
         raise NotImplementedError("Currently only supported for program with "
             "only one CallableKernel.")
 
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
 
     program = preprocess_program(program)
     # Ordering restriction: preprocess might insert arguments to
@@ -2205,7 +2224,7 @@ def gather_access_footprint_bytes(program, ignore_uncountable=False):
         nonlinear indices)
     """
 
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
     kernel = infer_unknown_types(program, expect_completion=True)
 
     from loopy.kernel import KernelState

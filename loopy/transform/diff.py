@@ -21,17 +21,17 @@ THE SOFTWARE.
 """
 
 import islpy as isl
-
+import pymbolic.primitives as p
 from pymbolic.mapper.differentiator import DifferentiationMapper
 
-import pymbolic.primitives as p
+
 var = p.Variable
 
 import loopy as lp
-from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
-from loopy.isl_helpers import make_slab
 from loopy.diagnostic import LoopyError
+from loopy.isl_helpers import make_slab
 from loopy.kernel import LoopKernel
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
 
 # {{{ diff mapper

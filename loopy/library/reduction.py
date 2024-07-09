@@ -23,15 +23,16 @@ THE SOFTWARE.
 
 from typing import ClassVar, Tuple
 
-from pymbolic import var
 import numpy as np
 
-from loopy.symbolic import ResolvedFunction
-from loopy.kernel.function_interface import ScalarCallable
-from loopy.symbolic import FunctionIdentifier
+from pymbolic import var
+
 from loopy.diagnostic import LoopyError
-from loopy.types import NumpyType
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.symbolic import FunctionIdentifier, ResolvedFunction
 from loopy.tools import update_persistent_hash
+from loopy.types import NumpyType
+
 
 __doc__ = """
 .. currentmodule:: loopy.library.reduction

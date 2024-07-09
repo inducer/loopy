@@ -24,35 +24,45 @@ THE SOFTWARE.
 """
 
 
-from typing import (Type, Union, FrozenSet, Tuple, Optional, Sequence, Any, ClassVar,
-        cast)
-from sys import intern
 from dataclasses import dataclass, replace
 from enum import IntEnum
+from sys import intern
+from typing import (
+    Any,
+    ClassVar,
+    FrozenSet,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
 from warnings import warn
 
-from immutables import Map
 import numpy as np  # noqa
-from pytools import ImmutableRecord
-from pytools.tag import Taggable
-from pytools.tag import UniqueTag as UniqueTagBase, Tag
+from immutables import Map
 
-from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
+from pytools import ImmutableRecord
+from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
+
 from loopy.diagnostic import LoopyError
-from loopy.typing import ExpressionT, ShapeType
-from loopy.types import LoopyType, auto
+from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
 from loopy.kernel.instruction import (  # noqa
-        InstructionBase,
-        MemoryOrdering,
-        MemoryScope,
-        VarAtomicity,
-        AtomicInit,
-        AtomicUpdate,
-        MultiAssignmentBase,
-        Assignment,
-        CallInstruction,
-        make_assignment,
-        CInstruction)
+    Assignment,
+    AtomicInit,
+    AtomicUpdate,
+    CallInstruction,
+    CInstruction,
+    InstructionBase,
+    MemoryOrdering,
+    MemoryScope,
+    MultiAssignmentBase,
+    VarAtomicity,
+    make_assignment,
+)
+from loopy.types import LoopyType, auto
+from loopy.typing import ExpressionT, ShapeType
 
 
 __doc__ = """
@@ -85,6 +95,7 @@ __doc__ = """
 
 def _names_from_expr(expr: Union[None, ExpressionT, str]) -> FrozenSet[str]:
     from numbers import Number
+
     from loopy.symbolic import DependencyMapper
     dep_mapper = DependencyMapper()
 

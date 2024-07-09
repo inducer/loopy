@@ -20,17 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
-from pytools.tag import Tag
+import pytest
 
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
-import pytest
+from pytools.tag import Tag
 
-import logging
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -40,8 +43,8 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
         "pytest_generate_tests",
@@ -624,8 +627,7 @@ def _ensure_dim_names_match_and_align(obj_map, tgt_map):
     # sense to move this function to a location for more general-purpose
     # machinery. In the other branches, this function's name excludes the
     # leading underscore.)
-    from islpy import align_spaces
-    from islpy import dim_type as dt
+    from islpy import align_spaces, dim_type as dt
 
     # first make sure names match
     if not all(

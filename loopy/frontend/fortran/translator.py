@@ -21,24 +21,26 @@ THE SOFTWARE.
 """
 
 import re
-
 from sys import intern
+from warnings import warn
+
+import numpy as np
 from immutables import Map
 
-import loopy as lp
-import numpy as np
-from warnings import warn
-from loopy.frontend.fortran.tree import FTreeWalkerBase
-from loopy.diagnostic import warn_with_kernel
-from loopy.frontend.fortran.diagnostic import (
-        TranslationError, TranslatorWarning)
 import islpy as isl
 from islpy import dim_type
-from loopy.symbolic import (IdentityMapper, RuleAwareIdentityMapper,
-        SubstitutionRuleMappingContext)
-from loopy.diagnostic import LoopyError
+from pymbolic.primitives import Slice, Wildcard
+
+import loopy as lp
+from loopy.diagnostic import LoopyError, warn_with_kernel
+from loopy.frontend.fortran.diagnostic import TranslationError, TranslatorWarning
+from loopy.frontend.fortran.tree import FTreeWalkerBase
 from loopy.kernel.instruction import LegacyStringInstructionTag
-from pymbolic.primitives import (Wildcard, Slice)
+from loopy.symbolic import (
+    IdentityMapper,
+    RuleAwareIdentityMapper,
+    SubstitutionRuleMappingContext,
+)
 
 
 # {{{ subscript base shifter
@@ -228,6 +230,7 @@ class Scope:
 
     def process_expression_for_loopy(self, expr):
         from pymbolic.mapper.substitutor import make_subst_func
+
         from loopy.symbolic import SubstitutionMapper
 
         submap = SubstitutionMapper(
@@ -258,6 +261,7 @@ class Scope:
 class FortranDivisionToFloorDiv(IdentityMapper):
     def map_fortran_division(self, expr, *args):
         from warnings import warn
+
         from loopy.diagnostic import LoopyWarning
         warn(
                 "Integer division in Fortran do loop bound. "
@@ -286,7 +290,7 @@ class FortranDivisionSpecializer(RuleAwareIdentityMapper):
         except TypeInferenceFailure:
             return super().map_fortran_division(expr, *args)
 
-        from pymbolic.primitives import Quotient, FloorDiv
+        from pymbolic.primitives import FloorDiv, Quotient
         if num_dtype.kind in "iub" and den_dtype.kind in "iub":
             warn_with_kernel(self.kernel,
                     "fortran_int_div",
@@ -309,8 +313,8 @@ def _specialize_fortran_division_for_kernel(knl, callables):
 
 
 def specialize_fortran_division(t_unit):
-    from loopy.translation_unit import TranslationUnit, resolve_callables
     from loopy.kernel.function_interface import CallableKernel
+    from loopy.translation_unit import TranslationUnit, resolve_callables
     from loopy.type_inference import infer_unknown_types
     assert isinstance(t_unit, TranslationUnit)
 
@@ -553,7 +557,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         lhs = scope.process_expression_for_loopy(
                 self.parse_expr(node, node.variable))
-        from pymbolic.primitives import Subscript, Call
+        from pymbolic.primitives import Call, Subscript
         if isinstance(lhs, Call):
             raise TranslationError("function call (to '%s') on left hand side of"
                     "assignment--check for misspelled variable name" % lhs)
@@ -691,7 +695,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.conditions.pop()
 
-        from pymbolic.primitives import LogicalNot, LogicalAnd
+        from pymbolic.primitives import LogicalAnd, LogicalNot
         else_expr = LogicalNot(prev_cond)
         if context_cond is not None:
             else_expr = LogicalAnd((else_expr, context_cond))

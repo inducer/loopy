@@ -24,10 +24,12 @@ THE SOFTWARE.
 """
 
 
-from pytools import ImmutableRecord
-from mako.template import Template
-from loopy.kernel.function_interface import ScalarCallable
 import numpy as np
+from mako.template import Template
+
+from pytools import ImmutableRecord
+
+from loopy.kernel.function_interface import ScalarCallable
 
 
 # {{{ rng metadata

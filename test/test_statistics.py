@@ -21,18 +21,18 @@ THE SOFTWARE.
 """
 
 import sys
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl
-        as pytest_generate_tests)
-import loopy as lp
-from loopy.types import to_loopy_type
+
 import numpy as np
-from pytools import div_ceil
-from loopy.statistics import CountGranularity as CG
 
 from pymbolic.primitives import Variable
+from pyopencl.tools import (  # noqa
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
+from pytools import div_ceil
 
-
+import loopy as lp
+from loopy.statistics import CountGranularity as CG
+from loopy.types import to_loopy_type
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
@@ -1282,7 +1282,7 @@ def test_gather_access_footprint():
             name="matmul", assumptions="n >= 1")
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
 
-    from loopy.statistics import gather_access_footprints, count
+    from loopy.statistics import count, gather_access_footprints
     fp = gather_access_footprints(knl)
 
     for key, footprint in fp.items():
@@ -1296,7 +1296,7 @@ def test_gather_access_footprint_2():
             name="matmul", assumptions="n >= 1")
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
 
-    from loopy.statistics import gather_access_footprints, count
+    from loopy.statistics import count, gather_access_footprints
     fp = gather_access_footprints(knl)
 
     params = {"n": 200}
@@ -1532,9 +1532,10 @@ def test_no_loop_ops():
 
 
 def test_within_stats():
-    import loopy as lp
     import numpy as np
     import pytest
+
+    import loopy as lp
 
     knl = lp.make_kernel(
         "{[i]: 0<=i<10}",

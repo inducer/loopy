@@ -20,36 +20,51 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, TypeVar, Iterable, Optional, List, FrozenSet, cast
 import logging
+from typing import FrozenSet, Iterable, List, Optional, Tuple, TypeVar, cast
+
+
 logger = logging.getLogger(__name__)
 
-from immutables import Map
+from functools import partial
+
 import numpy as np
-
-from loopy.diagnostic import (
-        LoopyError, WriteRaceConditionWarning, warn_with_kernel,
-        LoopyAdvisory)
-
-from loopy.tools import memoize_on_disk
-from loopy.kernel.data import filter_iname_tags_by_type, ArrayArg, auto, ValueArg
-
-from loopy.kernel import LoopKernel
-# for the benefit of loopy.statistics, for now
-from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import RuleAwareIdentityMapper
-# from loopy.transform.iname import remove_any_newly_unused_inames
-
-from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
-        CallInstruction,  _DataObliviousInstruction)
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-from loopy.kernel.array import ArrayDimImplementationTag
-from loopy.kernel.data import _ArraySeparationInfo, KernelArgument
-from loopy.translation_unit import TranslationUnit, for_each_kernel
-from loopy.typing import ExpressionT
+from immutables import Map
 
 from pytools import ProcessLogger
-from functools import partial
+
+from loopy.diagnostic import (
+    LoopyAdvisory,
+    LoopyError,
+    WriteRaceConditionWarning,
+    warn_with_kernel,
+)
+from loopy.kernel import LoopKernel
+from loopy.kernel.array import ArrayDimImplementationTag
+from loopy.kernel.data import (
+    ArrayArg,
+    KernelArgument,
+    ValueArg,
+    _ArraySeparationInfo,
+    auto,
+    filter_iname_tags_by_type,
+)
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+
+# from loopy.transform.iname import remove_any_newly_unused_inames
+from loopy.kernel.instruction import (
+    CallInstruction,
+    CInstruction,
+    MultiAssignmentBase,
+    _DataObliviousInstruction,
+)
+from loopy.symbolic import RuleAwareIdentityMapper
+from loopy.tools import memoize_on_disk
+from loopy.translation_unit import TranslationUnit, for_each_kernel
+
+# for the benefit of loopy.statistics, for now
+from loopy.type_inference import infer_unknown_types
+from loopy.typing import ExpressionT
 
 
 # {{{ check for writes to predicates
@@ -206,6 +221,7 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
     vng = kernel.get_var_name_generator()
 
     from pymbolic.primitives import Expression, Variable
+
     from loopy.kernel.array import FixedStrideArrayDimTag
 
     # {{{ process arguments
@@ -320,9 +336,8 @@ def find_temporary_address_space(kernel):
     logger.debug("%s: find temporary address space" % kernel.name)
 
     new_temp_vars = {}
-    from loopy.kernel.data import (LocalInameTagBase, GroupInameTag,
-            AddressSpace)
     import loopy as lp
+    from loopy.kernel.data import AddressSpace, GroupInameTag, LocalInameTagBase
 
     writers = kernel.writer_map()
 
@@ -430,8 +445,7 @@ def find_temporary_address_space(kernel):
 def realize_ilp(kernel):
     logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
 
-    from loopy.kernel.data import (IlpBaseTag, VectorizeTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag, filter_iname_tags_by_type
 
     privatizing_inames = frozenset(
         name for name, iname in kernel.inames.items()
@@ -455,9 +469,9 @@ def check_atomic_loads(kernel):
     """
 
     logger.debug("%s: check atomic loads" % kernel.name)
-    from loopy.types import AtomicType
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.instruction import Assignment, AtomicLoad
+    from loopy.types import AtomicType
 
     # find atomic variables
     atomicity_candidates = (
@@ -504,14 +518,16 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         self.clbl_inf_ctx = clbl_inf_ctx
 
     def map_call(self, expr, expn_state, assignees=None):
+        from pymbolic.mapper.substitutor import make_subst_func
         from pymbolic.primitives import Call, Variable
-        from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import ResolvedFunction
+
         from loopy.kernel.array import ArrayBase
         from loopy.kernel.data import ValueArg
-        from pymbolic.mapper.substitutor import make_subst_func
-        from loopy.symbolic import SubstitutionMapper
-        from loopy.kernel.function_interface import get_arg_descriptor_for_expression
+        from loopy.kernel.function_interface import (
+            ValueArgDescriptor,
+            get_arg_descriptor_for_expression,
+        )
+        from loopy.symbolic import ResolvedFunction, SubstitutionMapper
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
@@ -579,9 +595,10 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         raise NotImplementedError
 
     def __call__(self, expr, kernel, insn, assignees=None):
-        from loopy.kernel.data import InstructionBase
-        from loopy.symbolic import UncachedIdentityMapper, ExpansionState
         import immutables
+
+        from loopy.kernel.data import InstructionBase
+        from loopy.symbolic import ExpansionState, UncachedIdentityMapper
         assert insn is None or isinstance(insn, InstructionBase)
 
         return UncachedIdentityMapper.__call__(self, expr,
@@ -644,11 +661,10 @@ def infer_arg_descr(program):
     :attr:`loopy.InKernelCallable.arg_id_to_descr` inferred for all the
     callables.
     """
-    from loopy.translation_unit import make_clbl_inf_ctx, resolve_callables
+    from loopy import ValueArg, auto
     from loopy.kernel.array import ArrayBase
-    from loopy.kernel.function_interface import (ArrayArgDescriptor,
-            ValueArgDescriptor)
-    from loopy import auto, ValueArg
+    from loopy.kernel.function_interface import ArrayArgDescriptor, ValueArgDescriptor
+    from loopy.translation_unit import make_clbl_inf_ctx, resolve_callables
 
     program = resolve_callables(program)
 
@@ -688,10 +704,11 @@ def infer_arg_descr(program):
 # {{{  inline_kernels_with_gbarriers
 
 def inline_kernels_with_gbarriers(program):
-    from loopy.kernel.instruction import BarrierInstruction
-    from loopy.transform.callable import inline_callable_kernel
-    from loopy.kernel.tools import get_call_graph
     from pytools.graph import compute_topological_order
+
+    from loopy.kernel.instruction import BarrierInstruction
+    from loopy.kernel.tools import get_call_graph
+    from loopy.transform.callable import inline_callable_kernel
 
     def has_gbarrier(knl):
         return any((isinstance(insn, BarrierInstruction)

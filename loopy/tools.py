@@ -20,23 +20,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import List
 import collections.abc as abc
-from functools import cached_property
-
-from immutables import Map
-import islpy as isl
-import numpy as np
-from pytools import memoize_method, ProcessLogger
-from pytools.persistent_dict import (
-        KeyBuilder as KeyBuilderBase, WriteOncePersistentDict)
-from loopy.symbolic import (UncachedWalkMapper as LoopyWalkMapper,
-                            RuleAwareIdentityMapper)
-from pymbolic.mapper.persistent_hash import (
-        PersistentHashWalkMapper as PersistentHashWalkMapperBase)
-from sys import intern
-
 import logging
+from functools import cached_property
+from sys import intern
+from typing import List
+
+import numpy as np
+from immutables import Map
+
+import islpy as isl
+from pymbolic.mapper.persistent_hash import (
+    PersistentHashWalkMapper as PersistentHashWalkMapperBase,
+)
+from pytools import ProcessLogger, memoize_method
+from pytools.persistent_dict import (
+    KeyBuilder as KeyBuilderBase,
+    WriteOncePersistentDict,
+)
+
+from loopy.symbolic import (
+    RuleAwareIdentityMapper,
+    UncachedWalkMapper as LoopyWalkMapper,
+)
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -639,7 +647,7 @@ class Optional:
 
 
 def unpickles_equally(obj):
-    from pickle import loads, dumps
+    from pickle import dumps, loads
     return loads(dumps(obj)) == obj
 
 
@@ -696,8 +704,8 @@ class _CallablesUnresolver(RuleAwareIdentityMapper):
 
 
 def _unresolve_callables(kernel, callables_table):
-    from loopy.symbolic import SubstitutionRuleMappingContext
     from loopy.kernel import KernelState
+    from loopy.symbolic import SubstitutionRuleMappingContext
 
     vng = kernel.get_var_name_generator()
     rule_mapping_context = SubstitutionRuleMappingContext(kernel.substitutions,
@@ -713,7 +721,8 @@ def _unresolve_callables(kernel, callables_table):
 
 def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
     from mako.template import Template
-    from loopy.kernel.instruction import MultiAssignmentBase, BarrierInstruction
+
+    from loopy.kernel.instruction import BarrierInstruction, MultiAssignmentBase
 
     options = {}  # options: mapping from insn_id to str of options
 
@@ -898,12 +907,14 @@ def clear_in_mem_caches() -> None:
 # {{{ memoize_on_disk
 
 def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
-    from loopy.version import DATA_MODEL_VERSION
     from functools import wraps
-    from pytools.persistent_dict import WriteOncePersistentDict
-    from loopy.translation_unit import TranslationUnit
-    from loopy.kernel import LoopKernel
+
     import pymbolic.primitives as prim
+    from pytools.persistent_dict import WriteOncePersistentDict
+
+    from loopy.kernel import LoopKernel
+    from loopy.translation_unit import TranslationUnit
+    from loopy.version import DATA_MODEL_VERSION
 
     transform_cache = WriteOncePersistentDict(
         ("loopy-memoize-cache-"

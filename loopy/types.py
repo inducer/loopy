@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,10 +24,12 @@ THE SOFTWARE.
 """
 
 from typing import Any, Mapping, Type, Union
+
 import numpy as np
 
-from loopy.typing import auto
 from loopy.diagnostic import LoopyError
+from loopy.typing import auto
+
 
 __doc__ = """
 .. currentmodule:: loopy.types

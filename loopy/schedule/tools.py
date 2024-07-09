@@ -20,16 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from functools import cached_property
 import enum
-from typing import Sequence, FrozenSet, Tuple, List, Set, Dict
 from dataclasses import dataclass
+from functools import cached_property
+from typing import Dict, FrozenSet, List, Sequence, Set, Tuple
 
-from pytools import memoize_method
 import islpy as isl
+from pytools import memoize_method
 
-from loopy.kernel.data import AddressSpace, TemporaryVariable, ArrayArg
 from loopy.kernel import LoopKernel
+from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
 
 
 # {{{ block boundary finder
@@ -40,7 +40,7 @@ def get_block_boundaries(schedule):
     :class:`loopy.schedule.BlockBeginItem`s to
     :class:`loopy.schedule.BlockEndItem`s and vice versa.
     """
-    from loopy.schedule import (BeginBlockItem, EndBlockItem)
+    from loopy.schedule import BeginBlockItem, EndBlockItem
     block_bounds = {}
     active_blocks = []
     for idx, sched_item in enumerate(schedule):
@@ -308,8 +308,14 @@ def get_return_from_kernel_mapping(kernel):
     of the active sub-kernel at 'S'.
     """
     from loopy.kernel import LoopKernel
-    from loopy.schedule import (RunInstruction, EnterLoop, LeaveLoop,
-                                CallKernel, ReturnFromKernel, Barrier)
+    from loopy.schedule import (
+        Barrier,
+        CallKernel,
+        EnterLoop,
+        LeaveLoop,
+        ReturnFromKernel,
+        RunInstruction,
+    )
     assert isinstance(kernel, LoopKernel)
     assert isinstance(kernel.linearization, list)
     return_from_kernel_idxs = {}
@@ -350,11 +356,14 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table,
         *unequal* global ids that access the same address.
     """
     import pymbolic.primitives as p
-    from loopy.symbolic import isl_set_from_expr, aff_from_expr, aff_to_expr
-    from loopy.kernel.data import (filter_iname_tags_by_type,
-                                   HardwareConcurrentTag,
-                                   AddressSpace)
+
+    from loopy.kernel.data import (
+        AddressSpace,
+        HardwareConcurrentTag,
+        filter_iname_tags_by_type,
+    )
     from loopy.kernel.tools import get_hw_axis_base_for_codegen
+    from loopy.symbolic import aff_from_expr, aff_to_expr, isl_set_from_expr
 
     assert address_space in [AddressSpace.LOCAL, AddressSpace.GLOBAL]
 
@@ -538,8 +547,9 @@ class WriteRaceChecker:
 
     @memoize_method
     def _get_access_maps(self, insn_id, access_dir):
-        from loopy.symbolic import BatchedAccessMapMapper
         from collections import defaultdict
+
+        from loopy.symbolic import BatchedAccessMapMapper
 
         insn = self.kernel.id_to_insn[insn_id]
 

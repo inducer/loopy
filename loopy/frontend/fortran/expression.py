@@ -20,14 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pymbolic.parser import Parser as ExpressionParserBase
-from loopy.frontend.fortran.diagnostic import TranslationError
-
+import re
 from sys import intern
+
 import numpy as np
 
 import pytools.lex
-import re
+from pymbolic.parser import Parser as ExpressionParserBase
+
+from loopy.frontend.fortran.diagnostic import TranslationError
 
 
 _less_than = intern("less_than")
@@ -85,9 +86,8 @@ class FortranExpressionParser(ExpressionParserBase):
     def parse_terminal(self, pstate):
         scope = self.tree_walker.scope_stack[-1]
 
-        from pymbolic.primitives import Subscript, Call, Variable
-        from pymbolic.parser import (
-            _identifier, _openpar, _closepar, _float)
+        from pymbolic.parser import _closepar, _float, _identifier, _openpar
+        from pymbolic.primitives import Call, Subscript, Variable
 
         next_tag = pstate.next_tag()
         if next_tag is _float:
@@ -151,8 +151,8 @@ class FortranExpressionParser(ExpressionParserBase):
             }
 
     def parse_prefix(self, pstate, min_precedence=0):
-        from pymbolic.parser import _PREC_UNARY
         import pymbolic.primitives as primitives
+        from pymbolic.parser import _PREC_UNARY
 
         pstate.expect_not_end()
 
@@ -165,10 +165,13 @@ class FortranExpressionParser(ExpressionParserBase):
 
     def parse_postfix(self, pstate, min_precedence, left_exp):
         from pymbolic.parser import (
-                _PREC_CALL, _PREC_COMPARISON, _openpar,
-                _PREC_LOGICAL_OR, _PREC_LOGICAL_AND)
-        from pymbolic.primitives import (
-                Comparison, LogicalAnd, LogicalOr)
+            _PREC_CALL,
+            _PREC_COMPARISON,
+            _PREC_LOGICAL_AND,
+            _PREC_LOGICAL_OR,
+            _openpar,
+        )
+        from pymbolic.primitives import Comparison, LogicalAnd, LogicalOr
 
         next_tag = pstate.next_tag()
         if next_tag is _openpar and _PREC_CALL > min_precedence:

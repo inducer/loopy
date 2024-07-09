@@ -20,26 +20,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from warnings import warn
-
 from dataclasses import dataclass, replace
-
-from typing import Optional, Tuple, Dict, cast
+from typing import Dict, Optional, Tuple, cast
+from warnings import warn
 
 import numpy as np
 from immutables import Map
-from islpy import dim_type
 
+from islpy import dim_type
 from pytools import MovedFunctionDeprecationWrapper
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel.data import AddressSpace, ImageArg, auto, TemporaryVariable
-
+from loopy.kernel import LoopKernel
+from loopy.kernel.data import AddressSpace, ImageArg, TemporaryVariable, auto
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.types import LoopyType
 from loopy.typing import ExpressionT
-from loopy.translation_unit import TranslationUnit, for_each_kernel
-from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
 
 # {{{ convenience: add_prefetch
@@ -106,8 +103,9 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
                     % str(fsub))
 
         for subst_map in kernel.applied_iname_rewrites:
-            from loopy.symbolic import SubstitutionMapper
             from pymbolic.mapper.substitutor import make_subst_func
+
+            from loopy.symbolic import SubstitutionMapper
             fsub = SubstitutionMapper(make_subst_func(subst_map))(fsub)
 
         from loopy.symbolic import get_dependencies
@@ -170,7 +168,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     from loopy.symbolic import parse
     parsed_var_name = parse(var_name)
 
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Subscript, Variable
     if isinstance(parsed_var_name, Variable):
         # nothing to see
         pass
@@ -525,9 +523,10 @@ def remove_unused_arguments(kernel):
     for insn in exp_kernel.instructions:
         refd_vars.update(insn.dependency_names())
 
+    from itertools import chain
+
     from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
     from loopy.symbolic import get_dependencies
-    from itertools import chain
 
     def tolerant_get_deps(expr):
         if expr is None or expr is lp.auto:
@@ -705,10 +704,12 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
     from pymbolic import var
     subst_dict = {old_name: var(new_name)}
 
-    from loopy.symbolic import (
-            RuleAwareSubstitutionMapper,
-            SubstitutionRuleMappingContext)
     from pymbolic.mapper.substitutor import make_subst_func
+
+    from loopy.symbolic import (
+        RuleAwareSubstitutionMapper,
+        SubstitutionRuleMappingContext,
+    )
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
     smap = RuleAwareSubstitutionMapper(rule_mapping_context,

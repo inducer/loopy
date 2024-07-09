@@ -20,46 +20,54 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
-from immutables import Map
-from typing import (Set, Mapping, Sequence, Any, FrozenSet, Union,
-       Optional, Tuple, TYPE_CHECKING)
-from dataclasses import dataclass, replace
 import logging
+import sys
+from dataclasses import dataclass, replace
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    FrozenSet,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
+
+from immutables import Map
 
 from loopy.codegen.result import CodeGenerationResult
 from loopy.translation_unit import CallablesTable, TranslationUnit
+
+
 logger = logging.getLogger(__name__)
 
-import islpy as isl
-
-from loopy.diagnostic import LoopyError, warn
-from pytools import UniqueNameGenerator
-
-from pytools.persistent_dict import WriteOncePersistentDict
-from loopy.tools import LoopyKeyBuilder, caches
-from loopy.version import DATA_MODEL_VERSION
-from loopy.types import LoopyType
-from loopy.typing import ExpressionT
-from loopy.kernel import LoopKernel
-from loopy.target import TargetBase
-
-
-from loopy.symbolic import CombineMapper
 from functools import reduce
 
-from loopy.kernel.function_interface import CallableKernel
+import islpy as isl
+from pytools import ProcessLogger, UniqueNameGenerator
+from pytools.persistent_dict import WriteOncePersistentDict
 
-from pytools import ProcessLogger
+from loopy.diagnostic import LoopyError, warn
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel
+from loopy.symbolic import CombineMapper
+from loopy.target import TargetBase
+from loopy.tools import LoopyKeyBuilder, caches
+from loopy.types import LoopyType
+from loopy.typing import ExpressionT
+from loopy.version import DATA_MODEL_VERSION
+
 
 if TYPE_CHECKING:
-    from loopy.codegen.tools import CodegenOperationCacheManager
     from loopy.codegen.result import GeneratedProgram
+    from loopy.codegen.tools import CodegenOperationCacheManager
 
 
 if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
-    from loopy.codegen.tools import CodegenOperationCacheManager  # noqa: F811
     from loopy.codegen.result import GeneratedProgram  # noqa: F811
+    from loopy.codegen.tools import CodegenOperationCacheManager  # noqa: F811
 
 
 __doc__ = """
@@ -476,9 +484,11 @@ def diverge_callee_entrypoints(program):
     If a :class:`loopy.kernel.function_interface.CallableKernel` is both an
     entrypoint and a callee, then rename the callee.
     """
-    from loopy.translation_unit import (get_reachable_resolved_callable_ids,
-                                        rename_resolved_functions_in_a_single_kernel,
-                                        make_callable_name_generator)
+    from loopy.translation_unit import (
+        get_reachable_resolved_callable_ids,
+        make_callable_name_generator,
+        rename_resolved_functions_in_a_single_kernel,
+    )
     callable_ids = get_reachable_resolved_callable_ids(program.callables_table,
                                                        program.entrypoints)
 
@@ -568,12 +578,10 @@ class TranslationUnitCodeGenerationResult:
 
 
 def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
+    # {{{ cache retrieval
+    from loopy import CACHING_ENABLED
     from loopy.kernel import LoopKernel
     from loopy.translation_unit import make_program
-
-    # {{{ cache retrieval
-
-    from loopy import CACHING_ENABLED
 
     if CACHING_ENABLED:
         input_t_unit = t_unit

@@ -22,43 +22,64 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from functools import cached_property
+from collections import defaultdict
+from dataclasses import dataclass, field, fields, replace
 from enum import IntEnum
+from functools import cached_property
 from sys import intern
 from typing import (
-        Dict, Sequence, Tuple, Mapping, Optional, FrozenSet, Any, Union,
-        Callable, Iterator, List, Set, TYPE_CHECKING)
-from dataclasses import dataclass, replace, field, fields
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    FrozenSet,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 from warnings import warn
 
-from collections import defaultdict
-
 import numpy as np
-from pytools import (memoize_method,
-        UniqueNameGenerator, generate_unique_names, natsorted)
-from pytools.tag import Taggable, Tag
-import islpy as isl
-from islpy import dim_type
 from immutables import Map
 
-from loopy.diagnostic import CannotBranchDomainTree, LoopyError
-from loopy.tools import update_persistent_hash
-from loopy.diagnostic import StaticValueFindingError
+import islpy as isl
+from islpy import dim_type
+from pytools import (
+    UniqueNameGenerator,
+    generate_unique_names,
+    memoize_method,
+    natsorted,
+)
+from pytools.tag import Tag, Taggable
+
+from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
-        _ArraySeparationInfo,
-        KernelArgument,
-        filter_iname_tags_by_type, Iname,
-        TemporaryVariable, ValueArg, ArrayArg, SubstitutionRule)
+    ArrayArg,
+    Iname,
+    KernelArgument,
+    SubstitutionRule,
+    TemporaryVariable,
+    ValueArg,
+    _ArraySeparationInfo,
+    filter_iname_tags_by_type,
+)
 from loopy.kernel.instruction import InstructionBase
-from loopy.types import LoopyType, NumpyType
 from loopy.options import Options
 from loopy.schedule import ScheduleItem
-from loopy.typing import ExpressionT
 from loopy.target import TargetBase
+from loopy.tools import update_persistent_hash
+from loopy.types import LoopyType, NumpyType
+from loopy.typing import ExpressionT
+
 
 if TYPE_CHECKING:
-    from loopy.kernel.function_interface import InKernelCallable
     from loopy.codegen import PreambleInfo
+    from loopy.kernel.function_interface import InKernelCallable
 
 
 # {{{ loop kernel object
@@ -785,9 +806,7 @@ class LoopKernel(Taggable):
 
     @memoize_method
     def global_var_names(self):
-        from loopy.kernel.data import AddressSpace
-
-        from loopy.kernel.data import ArrayArg
+        from loopy.kernel.data import AddressSpace, ArrayArg
         return (
                 {
                     arg.name for arg in self.args
@@ -909,8 +928,10 @@ class LoopKernel(Taggable):
         # }}}
 
         from loopy.kernel.data import (
-                GroupInameTag, LocalInameTag,
-                AutoLocalInameTagBase)
+            AutoLocalInameTagBase,
+            GroupInameTag,
+            LocalInameTag,
+        )
 
         for iname in all_inames_by_insns:
             tags = self.iname_tags_of_type(
@@ -1270,7 +1291,8 @@ class LoopKernel(Taggable):
         # cache retrieval for execution.
         from loopy.kernel.instruction import _get_insn_eq_key, _get_insn_hash_key
         from loopy.tools import (
-                LazilyUnpicklingListWithEqAndPersistentHashing as LazyList)
+            LazilyUnpicklingListWithEqAndPersistentHashing as LazyList,
+        )
 
         result["instructions"] = LazyList(
                 self.instructions,
@@ -1360,8 +1382,9 @@ class LoopKernel(Taggable):
 
     @memoize_method
     def __hash__(self):
-        from loopy.tools import LoopyKeyBuilder
         import hashlib
+
+        from loopy.tools import LoopyKeyBuilder
         key_hash = hashlib.sha256()
         self.update_persistent_hash(key_hash, LoopyKeyBuilder())
         return hash(key_hash.digest())

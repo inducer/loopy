@@ -23,22 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, Sequence
+from typing import Sequence, Tuple
 
 import numpy as np
+
+from cgen import Const, Declarator, Generable
 from pymbolic import var
 from pytools import memoize_method
-from cgen import Declarator, Const, Generable
 
-from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.types import NumpyType
-from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
-from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg, ArrayArg
-from loopy.kernel.function_interface import ScalarCallable
-from loopy.codegen.result import CodeGenerationResult
 from loopy.codegen import CodeGenerationState
+from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError, LoopyTypeError
+from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
+from loopy.kernel.data import AddressSpace, ArrayArg, ConstantArg, ImageArg
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.types import NumpyType
 
 
 # {{{ vector types
@@ -234,8 +235,10 @@ class CudaTarget(CFamilyTarget):
 
     @memoize_method
     def get_dtype_registry(self):
-        from loopy.target.c.compyte.dtypes import (DTypeRegistry,
-                fill_registry_with_c_types)
+        from loopy.target.c.compyte.dtypes import (
+            DTypeRegistry,
+            fill_registry_with_c_types,
+        )
 
         result = DTypeRegistry()
         fill_registry_with_c_types(result, respect_windows=True)
@@ -466,9 +469,9 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
 
-        from pymbolic.primitives import Sum
         from cgen import Statement
         from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.primitives import Sum
 
         if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
                 np.int32, np.int64, np.float32, np.float64]:
@@ -484,7 +487,8 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 return Statement("atomicAdd(&{}, {})".format(
                     lhs_expr_code, rhs_expr_code))
             else:
-                from cgen import Block, DoWhile, Assign
+                from cgen import Assign, Block, DoWhile
+
                 from loopy.target.c import POD
                 old_val_var = codegen_state.var_name_generator("loopy_old_val")
                 new_val_var = codegen_state.var_name_generator("loopy_new_val")
@@ -498,8 +502,9 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
                 lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
 
-                from pymbolic.mapper.substitutor import make_subst_func
                 from pymbolic import var
+                from pymbolic.mapper.substitutor import make_subst_func
+
                 from loopy.symbolic import SubstitutionMapper
 
                 subst = SubstitutionMapper(

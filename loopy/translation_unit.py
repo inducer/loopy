@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
@@ -24,24 +25,30 @@ THE SOFTWARE.
 
 import collections
 from collections.abc import Set as abc_Set
-from dataclasses import field, dataclass, replace
-from typing import FrozenSet, Optional, TYPE_CHECKING, Mapping, Callable, Union, Any
+from dataclasses import dataclass, field, replace
+from functools import wraps
+from typing import TYPE_CHECKING, Any, Callable, FrozenSet, Mapping, Optional, Union
 from warnings import warn
 
-from pymbolic.primitives import Variable
-from functools import wraps
-
-from loopy.symbolic import (RuleAwareIdentityMapper, ResolvedFunction,
-                            SubstitutionRuleMappingContext)
-from loopy.kernel.function_interface import (
-        CallableKernel, InKernelCallable, ScalarCallable)
-from loopy.diagnostic import LoopyError, DirectCallUncachedWarning
-from loopy.library.reduction import ReductionOpFunction
-
-from loopy.kernel import LoopKernel
-from loopy.target import TargetBase
-from pymbolic.primitives import Call
 from immutables import Map
+
+from pymbolic.primitives import Call, Variable
+
+from loopy.diagnostic import DirectCallUncachedWarning, LoopyError
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import (
+    CallableKernel,
+    InKernelCallable,
+    ScalarCallable,
+)
+from loopy.library.reduction import ReductionOpFunction
+from loopy.symbolic import (
+    ResolvedFunction,
+    RuleAwareIdentityMapper,
+    SubstitutionRuleMappingContext,
+)
+from loopy.target import TargetBase
+
 
 if TYPE_CHECKING:
     from loopy.target.execution import ExecutorBase
@@ -812,9 +819,9 @@ def resolve_callables(t_unit: TranslationUnit) -> TranslationUnit:
     Returns a :class:`TranslationUnit` with known :class:`pymbolic.primitives.Call`
     expression nodes converted to :class:`loopy.symbolic.ResolvedFunction`.
     """
-    from loopy.library.function import get_loopy_callables
     from loopy.check import validate_kernel_call_sites
     from loopy.kernel import KernelState
+    from loopy.library.function import get_loopy_callables
 
     if t_unit.state >= KernelState.CALLS_RESOLVED:
         # program's callables have been resolved

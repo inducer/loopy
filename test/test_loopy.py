@@ -20,16 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
+import pytest
+
 import pyopencl as cl
 import pyopencl.array  # noqa
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
-import pytest
 
-import logging
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -39,8 +43,8 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
         "pytest_generate_tests",
@@ -266,8 +270,9 @@ def test_ilp_write_race_detection_global():
     knl = lp.preprocess_kernel(knl)
 
     with lp.CacheMode(False):
-        from loopy.diagnostic import WriteRaceConditionWarning
         from warnings import catch_warnings
+
+        from loopy.diagnostic import WriteRaceConditionWarning
         from loopy.schedule import linearize
         with catch_warnings(record=True) as warn_list:
             linearize(knl)
@@ -2197,8 +2202,14 @@ def test_nosync_option_parsing():
 
 
 def barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
-    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop,
-            CallKernel, ReturnFromKernel)
+    from loopy.schedule import (
+        Barrier,
+        CallKernel,
+        EnterLoop,
+        LeaveLoop,
+        ReturnFromKernel,
+        RunInstruction,
+    )
     watch_for_barrier = False
     seen_barrier = False
     loop_level = 0
@@ -2309,8 +2320,8 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
 
 
 def test_multi_argument_reduction_type_inference():
-    from loopy.type_inference import TypeReader
     from loopy.library.reduction import SegmentedSumReductionOperation
+    from loopy.type_inference import TypeReader
     from loopy.types import to_loopy_type
     op = SegmentedSumReductionOperation()
 
@@ -2337,7 +2348,7 @@ def test_multi_argument_reduction_type_inference():
 
 
 def test_multi_argument_reduction_parsing():
-    from loopy.symbolic import parse, Reduction
+    from loopy.symbolic import Reduction, parse
 
     assert isinstance(
             parse("reduce(argmax, i, reduce(argmax, j, i, j))").expr,
@@ -3309,9 +3320,10 @@ def test_redn_in_predicate(ctx_factory):
 
 
 def test_obj_tagged_is_persistent_hashable():
-    from loopy.tools import LoopyKeyBuilder
-    from pytools.tag import tag_dataclass, Tag
+    from pytools.tag import Tag, tag_dataclass
+
     from loopy.match import ObjTagged
+    from loopy.tools import LoopyKeyBuilder
 
     lkb = LoopyKeyBuilder()
 

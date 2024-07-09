@@ -23,23 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, Sequence
+from typing import Sequence, Tuple
 
 import numpy as np
+
+from cgen import Declarator, Generable
 from pymbolic import var
 from pytools import memoize_method
-from cgen import Declarator, Generable
 
-from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.types import NumpyType
-from loopy.target.c import DTypeRegistryWrapper
-from loopy.kernel.array import VectorArrayDimTag, FixedStrideArrayDimTag, ArrayBase
-from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg
-from loopy.kernel.function_interface import ScalarCallable
 from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError, LoopyTypeError
+from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
+from loopy.kernel.data import AddressSpace, ConstantArg, ImageArg
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.target.c import CFamilyASTBuilder, CFamilyTarget, DTypeRegistryWrapper
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.types import NumpyType
 
 
 # {{{ dtype registry wrappers
@@ -573,8 +573,10 @@ class OpenCLTarget(CFamilyTarget):
 
     @memoize_method
     def get_dtype_registry(self):
-        from loopy.target.c.compyte.dtypes import (DTypeRegistry,
-                fill_registry_with_opencl_c_types)
+        from loopy.target.c.compyte.dtypes import (
+            DTypeRegistry,
+            fill_registry_with_opencl_c_types,
+        )
 
         result = DTypeRegistry()
         fill_registry_with_opencl_c_types(result)
@@ -672,7 +674,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
     def generate_top_of_body(self, codegen_state):
         from loopy.kernel.data import ImageArg
         if any(isinstance(arg, ImageArg) for arg in codegen_state.kernel.args):
-            from cgen import Value, Const, Initializer
+            from cgen import Const, Initializer, Value
             return [
                     Initializer(Const(Value("sampler_t", "loopy_sampler")),
                         "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
@@ -724,7 +726,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                     % address_space)
 
     def wrap_global_constant(self, decl: Declarator) -> Declarator:
-        from cgen.opencl import CLGlobal, CLConstant
+        from cgen.opencl import CLConstant, CLGlobal
         assert isinstance(decl, CLGlobal)
         decl = decl.subdecl
 
@@ -799,12 +801,13 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
         if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
                 np.int32, np.int64, np.float32, np.float64]:
-            from cgen import Block, DoWhile, Assign
+            from cgen import Assign, Block, DoWhile
+
             from loopy.target.c import POD
             old_val_var = codegen_state.var_name_generator("loopy_old_val")
             new_val_var = codegen_state.var_name_generator("loopy_new_val")
 
-            from loopy.kernel.data import TemporaryVariable, AddressSpace
+            from loopy.kernel.data import AddressSpace, TemporaryVariable
             ecm = codegen_state.expression_to_code_mapper.with_assignments(
                     {
                         old_val_var: TemporaryVariable(old_val_var, lhs_dtype,
@@ -815,8 +818,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
             lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
 
-            from pymbolic.mapper.substitutor import make_subst_func
             from pymbolic import var
+            from pymbolic.mapper.substitutor import make_subst_func
+
             from loopy.symbolic import SubstitutionMapper
 
             subst = SubstitutionMapper(
@@ -844,7 +848,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 else:
                     raise AssertionError()
 
-                from loopy.kernel.data import (TemporaryVariable, ArrayArg)
+                from loopy.kernel.data import ArrayArg, TemporaryVariable
                 if (
                         isinstance(lhs_var, ArrayArg)
                         and

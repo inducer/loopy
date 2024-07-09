@@ -20,19 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.symbolic import (
-        RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
-from loopy.diagnostic import LoopyError
-from loopy.transform.iname import remove_any_newly_unused_inames
-
-from pytools import ImmutableRecord
-from pymbolic import var
-
-from loopy.translation_unit import (for_each_kernel,
-                                    TranslationUnit)
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-
 import logging
+
+from pymbolic import var
+from pytools import ImmutableRecord
+
+from loopy.diagnostic import LoopyError
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
+from loopy.transform.iname import remove_any_newly_unused_inames
+from loopy.translation_unit import TranslationUnit, for_each_kernel
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -122,8 +121,10 @@ def extract_subst(kernel, subst_name, template, parameters=(), within=None):
             # can't nest, don't recurse
 
     from loopy.symbolic import (
-            CallbackMapper, UncachedWalkMapper as WalkMapper,
-            IdentityMapper)
+        CallbackMapper,
+        IdentityMapper,
+        UncachedWalkMapper as WalkMapper,
+    )
     dfmapper = CallbackMapper(gather_exprs, WalkMapper())
 
     from loopy.kernel.instruction import MultiAssignmentBase
@@ -384,9 +385,10 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         raise LoopyError("no assignments to variable '%s' found"
                 % lhs_name)
 
-    from loopy.symbolic import SubstitutionMapper
     from pymbolic.mapper.substitutor import make_subst_func
+
     from loopy.match import parse_stack_match
+    from loopy.symbolic import SubstitutionMapper
 
     within = parse_stack_match(within)
     vng = kernel.get_var_name_generator()
@@ -416,7 +418,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         from loopy.kernel.data import Assignment
         assert isinstance(def_insn, Assignment)
 
-        from pymbolic.primitives import Variable, Subscript
+        from pymbolic.primitives import Subscript, Variable
         if isinstance(def_insn.assignee, Subscript):
             indices = def_insn.assignee.index_tuple
         elif isinstance(def_insn.assignee, Variable):
@@ -520,8 +522,8 @@ def expand_subst(kernel, within=None):
 
     logger.debug("%s: expand subst" % kernel.name)
 
-    from loopy.symbolic import RuleAwareSubstitutionRuleExpander
     from loopy.match import parse_stack_match
+    from loopy.symbolic import RuleAwareSubstitutionRuleExpander
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
     submap = RuleAwareSubstitutionRuleExpander(

@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 import os
-from setuptools import setup, find_packages
+
+from setuptools import find_packages, setup
+
 
 ver_dic = {}
 version_file = open("loopy/version.py")
@@ -21,13 +23,13 @@ def find_git_revision(tree_root):
     # Keep this routine self-contained so that it can be copy-pasted into
     # setup.py.
 
-    from os.path import join, exists, abspath
+    from os.path import abspath, exists, join
     tree_root = abspath(tree_root)
 
     if not exists(join(tree_root, ".git")):
         return None
 
-    from subprocess import Popen, PIPE, STDOUT
+    from subprocess import PIPE, STDOUT, Popen
     p = Popen(["git", "rev-parse", "HEAD"], shell=False,
               stdin=PIPE, stdout=PIPE, stderr=STDOUT, close_fds=True,
               cwd=tree_root)

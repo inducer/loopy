@@ -23,7 +23,7 @@ THE SOFTWARE.
 import re
 
 from loopy.diagnostic import LoopyError
-from loopy.symbolic import IdentityMapper, FortranDivision
+from loopy.symbolic import FortranDivision, IdentityMapper
 
 
 class DivisionToFortranDivisionMapper(IdentityMapper):

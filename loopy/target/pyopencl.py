@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 """OpenCL target integrated with PyOpenCL."""
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -24,33 +25,51 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple, Union, cast
 from warnings import warn
-from typing import Sequence, Tuple, List, Union, Optional, cast, Any, TYPE_CHECKING
 
 import numpy as np
-import pymbolic.primitives as p
+
 import genpy
-from cgen import (Generable, Pointer, Const, FunctionBody, Collection, Initializer,
-                Line, Block)
+import pymbolic.primitives as p
+from cgen import (
+    Block,
+    Collection,
+    Const,
+    FunctionBody,
+    Generable,
+    Initializer,
+    Line,
+    Pointer,
+)
 from cgen.opencl import CLGlobal
 
-from loopy.target.opencl import (OpenCLTarget, OpenCLCASTBuilder,
-        ExpressionToOpenCLCExpressionMapper)
+from loopy.codegen import CodeGenerationState
+from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError, LoopyTypeError
+from loopy.kernel import LoopKernel
+from loopy.kernel.data import (
+    ArrayArg,
+    ConstantArg,
+    ImageArg,
+    TemporaryVariable,
+    ValueArg,
+)
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.schedule import CallKernel
+from loopy.target.opencl import (
+    ExpressionToOpenCLCExpressionMapper,
+    OpenCLCASTBuilder,
+    OpenCLTarget,
+)
 from loopy.target.pyopencl_execution import PyOpenCLExecutor
 from loopy.target.python import PythonASTBuilderBase
-from loopy.kernel import LoopKernel
 from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import NumpyType
 from loopy.typing import ExpressionT
-from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.kernel.function_interface import ScalarCallable
-from loopy.kernel.data import (
-        TemporaryVariable, ValueArg, ArrayArg, ImageArg, ConstantArg)
-from loopy.schedule import CallKernel
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -550,8 +569,9 @@ class PyOpenCLTarget(OpenCLTarget):
         result = TYPE_REGISTRY
 
         from loopy.target.opencl import (
-                DTypeRegistryWrapperWithCL1Atomics,
-                DTypeRegistryWrapperWithInt8ForBool)
+            DTypeRegistryWrapperWithCL1Atomics,
+            DTypeRegistryWrapperWithInt8ForBool,
+        )
 
         result = DTypeRegistryWrapperWithInt8ForBool(result)
         if self.atomics_flavor == "cl1":
@@ -621,10 +641,10 @@ def generate_value_arg_setup(
         ) -> genpy.Suite:
     options = kernel.options
 
+    from genpy import If, Raise, Statement as S, Suite
+
     import loopy as lp
     from loopy.kernel.array import ArrayBase
-
-    from genpy import If, Raise, Statement as S, Suite
 
     result: List[genpy.Generable] = []
     gen = result.append
@@ -707,8 +727,9 @@ def generate_value_arg_setup(
 def generate_array_arg_setup(
         kernel: LoopKernel, passed_names: Sequence[str],
         ) -> genpy.Generable:
-    from loopy.kernel.array import ArrayBase
     from genpy import Statement as S, Suite
+
+    from loopy.kernel.array import ArrayBase
 
     result: List[genpy.Generable] = []
     gen = result.append
@@ -755,7 +776,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 + list(kai.passed_arg_names)
                 + ["wait_for=None", "allocator=None"])
 
-        from genpy import (For, Function, Suite, Return, Line, Statement as S)
+        from genpy import For, Function, Line, Return, Statement as S, Suite
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
@@ -794,7 +815,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from genpy import Assign, Comment, Line
-
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
@@ -835,7 +855,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             subkernel_name: str,
             gsize: Tuple[ExpressionT, ...], lsize: Tuple[ExpressionT, ...]
             ) -> genpy.Suite:
-        from genpy import Suite, Assign, Assert, Line, Comment
+        from genpy import Assert, Assign, Comment, Line, Suite
 
         kernel = codegen_state.kernel
 
@@ -909,9 +929,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             cl_arg_count = len(skai.passed_names)
             overflow_args_code = Suite([])
 
-        from pymbolic.mapper.stringifier import PREC_NONE
-
         import pyopencl.version as cl_ver
+        from pymbolic.mapper.stringifier import PREC_NONE
         if cl_ver.VERSION < (2020, 2):
             from warnings import warn
             warn("Your kernel invocation will likely fail because your "
@@ -1089,7 +1108,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
                         codegen_state.kernel.linearization[schedule_index]
                         ).kernel_name
 
-        from cgen import FunctionDeclaration, Value, Struct
+        from cgen import FunctionDeclaration, Struct, Value
 
         name = codegen_result.current_program(codegen_state).name
         if self.target.fortran_abi:
@@ -1190,8 +1209,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
 class VolatileMemPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
     def get_expression_to_c_expression_mapper(self, codegen_state):
-        from loopy.target.opencl import \
-                VolatileMemExpressionToOpenCLCExpressionMapper
+        from loopy.target.opencl import VolatileMemExpressionToOpenCLCExpressionMapper
         return VolatileMemExpressionToOpenCLCExpressionMapper(codegen_state)
 
 

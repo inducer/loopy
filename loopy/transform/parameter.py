@@ -21,12 +21,12 @@ THE SOFTWARE.
 """
 
 
-from loopy.symbolic import (RuleAwareSubstitutionMapper,
-        SubstitutionRuleMappingContext)
 import islpy as isl
 
-from loopy.translation_unit import for_each_kernel
 from loopy.kernel import LoopKernel
+from loopy.symbolic import RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext
+from loopy.translation_unit import for_each_kernel
+
 
 __doc__ = """
 
@@ -94,7 +94,7 @@ def _fix_parameter(kernel, name, value, within=None):
     from pymbolic.mapper.substitutor import make_subst_func
     subst_func = make_subst_func({name: value})
 
-    from loopy.symbolic import SubstitutionMapper, PartialEvaluationMapper
+    from loopy.symbolic import PartialEvaluationMapper, SubstitutionMapper
     subst_map = SubstitutionMapper(subst_func)
     ev_map = PartialEvaluationMapper()
 

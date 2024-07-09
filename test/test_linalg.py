@@ -21,19 +21,20 @@ THE SOFTWARE.
 """
 
 
-import pytest
+import logging
 import sys
+
 import numpy as np
+import pytest
+
 import pyopencl as cl
 import pyopencl.array as cl_array  # noqa: F401
 import pyopencl.cltypes as cltypes
-import loopy as lp
-
-import logging
-
 from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl
-        as pytest_generate_tests)
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
+
+import loopy as lp
 
 
 DEBUG_PREAMBLE = r"""

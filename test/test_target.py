@@ -20,22 +20,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.diagnostic import LoopyError
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
+import pytest
+
+import pymbolic.primitives as prim
 import pyopencl as cl
 import pyopencl.clmath
 import pyopencl.clrandom
 import pyopencl.tools
 import pyopencl.version
-import pytest
-import pymbolic.primitives as prim
 
+import loopy as lp
+from loopy.diagnostic import LoopyError
 from loopy.target.c import CTarget
 from loopy.target.opencl import OpenCLTarget
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -45,8 +48,8 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
         "pytest_generate_tests",
@@ -388,8 +391,9 @@ def test_opencl_support_for_bool(ctx_factory):
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 def test_nan_support(ctx_factory, target):
-    from loopy.symbolic import parse
     from pymbolic.primitives import NaN, Variable
+
+    from loopy.symbolic import parse
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -485,8 +489,9 @@ def test_scalar_array_take_offset(ctx_factory):
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 def test_inf_support(ctx_factory, target, dtype):
-    from loopy.symbolic import parse
     import math
+
+    from loopy.symbolic import parse
     # See: https://github.com/inducer/loopy/issues/443 for some laughs
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -612,9 +617,10 @@ def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
 @pytest.mark.parametrize("dtype", ["float32", "float64"])
 def test_glibc_bessel_functions(dtype):
     pytest.importorskip("scipy.special")
-    from scipy.special import jn, yn  # pylint: disable=no-name-in-module
-    from loopy.target.c.c_execution import CCompiler
     from numpy.random import default_rng
+    from scipy.special import jn, yn  # pylint: disable=no-name-in-module
+
+    from loopy.target.c.c_execution import CCompiler
 
     rng = default_rng(0)
     compiler = CCompiler(cflags=["-O3"])

@@ -22,13 +22,13 @@ THE SOFTWARE.
 
 
 import numpy as np
+
 import pyopencl as cl  # noqa
-import loopy as lp
-
 from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
-
+import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 

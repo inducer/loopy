@@ -21,150 +21,198 @@ THE SOFTWARE.
 """
 
 
-from loopy.symbolic import (
-        TaggedVariable, Reduction, LinearSubscript, TypeCast)
-from loopy.diagnostic import LoopyError, LoopyWarning
-from loopy.translation_unit import for_each_kernel
-
-# {{{ imported user interface
-
-from loopy.typing import auto
-from loopy.kernel.instruction import (
-        LegacyStringInstructionTag, UseStreamingStoreTag,
-        MemoryOrdering,
-        MemoryScope,
-        VarAtomicity, OrderedAtomic, AtomicInit, AtomicUpdate,
-        InstructionBase,
-        MultiAssignmentBase, Assignment,
-        CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
-from loopy.kernel.data import (
-        KernelArgument,
-        ValueArg, ArrayArg, GlobalArg, ConstantArg, ImageArg,
-        AddressSpace,
-        TemporaryVariable,
-        SubstitutionRule,
-        CallMangleInfo)
-from loopy.kernel.function_interface import (
-        InKernelCallable, CallableKernel, ScalarCallable)
-from loopy.translation_unit import (
-        TranslationUnit, make_program)
-
-from loopy.kernel import LoopKernel, KernelState
-from loopy.kernel.tools import (
-        get_dot_dependency_graph,
-        show_dependency_graph,
-        add_dtypes,
-        add_and_infer_dtypes,
-        get_global_barrier_order,
-        find_most_recent_global_barrier,
-        get_subkernels,
-        get_subkernel_to_insn_id_map,
-        )
-from loopy.types import to_loopy_type
-from loopy.kernel.creation import make_kernel, UniqueName, make_function
-from loopy.library.reduction import register_reduction_parser
-
-# {{{ import transforms
-
-from loopy.version import VERSION, MOST_RECENT_LANGUAGE_VERSION
-
-from loopy.transform.iname import (
-        prioritize_loops, untag_inames,
-        split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
-        rename_iname, rename_inames, remove_unused_inames,
-        split_reduction_inward, split_reduction_outward,
-        affine_map_inames, find_unused_axis_tag,
-        make_reduction_inames_unique,
-        has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn, add_inames_for_unused_hw_axes, map_domain,
-        remove_inames_from_insn, remove_predicates_from_insn)
-
-from loopy.transform.instruction import (
-        find_instructions, map_instructions,
-        set_instruction_priority, add_dependency,
-        remove_instructions,
-        replace_instruction_ids,
-        tag_instructions,
-        add_nosync,
-        simplify_indices)
-
-from loopy.transform.data import (
-        add_prefetch, change_arg_to_image,
-        tag_array_axes, tag_data_axes,
-        set_array_axis_names, set_array_dim_names,
-        remove_unused_arguments,
-        alias_temporaries, set_argument_order,
-        rename_argument,
-        set_temporary_scope,
-        set_temporary_address_space,
-        allocate_temporaries_for_base_storage)
-
-from loopy.transform.subst import (extract_subst,
-        assignment_to_subst, expand_subst, find_rules_matching,
-        find_one_rule_matching)
-
-from loopy.transform.precompute import precompute
-from loopy.transform.buffer import buffer_array
-from loopy.transform.fusion import fuse_kernels
-from loopy.transform.concatenate import concatenate_arrays
-
-from loopy.transform.arithmetic import (
-        fold_constants,
-        collect_common_factors_on_increment)
-
-from loopy.transform.padding import (
-        split_array_axis, split_array_dim, split_arg_axis,
-        find_padding_multiple,
-        add_padding)
-
-from loopy.transform.privatize import (privatize_temporaries_with_inames,
-        unprivatize_temporaries_with_inames)
-from loopy.transform.batch import to_batched
-from loopy.transform.parameter import assume, fix_parameters
-from loopy.transform.save import save_and_reload_temporaries
-from loopy.transform.add_barrier import add_barrier
-from loopy.transform.callable import (register_callable,
-        merge, inline_callable_kernel, rename_callable)
-from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
-
-from loopy.transform.realize_reduction import realize_reduction
-
-# }}}
-
-from loopy.type_inference import infer_unknown_types
-from loopy.preprocess import (preprocess_kernel,
-        preprocess_program, infer_arg_descr)
-from loopy.schedule import (
-    generate_loop_schedules, get_one_scheduled_kernel,
-    get_one_linearized_kernel, linearize)
-from loopy.statistics import (ToCountMap, ToCountPolynomialMap, CountGranularity,
-        Op, MemAccess, get_op_map, get_mem_access_map,
-        get_synchronization_map, gather_access_footprints,
-        gather_access_footprint_bytes, Sync)
-from loopy.codegen import (
-        PreambleInfo,
-        generate_code, generate_code_v2, generate_body)
-from loopy.codegen.result import (
-        GeneratedProgram,
-        CodeGenerationResult)
-from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
-from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
-        parse_fortran)
-
-from loopy.target import TargetBase, ASTBuilderBase
-from loopy.target.c import (CFamilyTarget, CTarget, ExecutableCTarget,
-                            generate_header, CWithGNULibcTarget,
-                            ExecutableCWithGNULibcTarget)
+from loopy.codegen import PreambleInfo, generate_body, generate_code, generate_code_v2
+from loopy.codegen.result import CodeGenerationResult, GeneratedProgram
+from loopy.diagnostic import LoopyError, LoopyWarning
+from loopy.frontend.fortran import (
+    c_preprocess,
+    parse_fortran,
+    parse_transformed_fortran,
+)
+from loopy.kernel import KernelState, LoopKernel
+from loopy.kernel.creation import UniqueName, make_function, make_kernel
+from loopy.kernel.data import (
+    AddressSpace,
+    ArrayArg,
+    CallMangleInfo,
+    ConstantArg,
+    GlobalArg,
+    ImageArg,
+    KernelArgument,
+    SubstitutionRule,
+    TemporaryVariable,
+    ValueArg,
+)
+from loopy.kernel.function_interface import (
+    CallableKernel,
+    InKernelCallable,
+    ScalarCallable,
+)
+from loopy.kernel.instruction import (
+    Assignment,
+    AtomicInit,
+    AtomicUpdate,
+    BarrierInstruction,
+    CallInstruction,
+    CInstruction,
+    InstructionBase,
+    LegacyStringInstructionTag,
+    MemoryOrdering,
+    MemoryScope,
+    MultiAssignmentBase,
+    NoOpInstruction,
+    OrderedAtomic,
+    UseStreamingStoreTag,
+    VarAtomicity,
+)
+from loopy.kernel.tools import (
+    add_and_infer_dtypes,
+    add_dtypes,
+    find_most_recent_global_barrier,
+    get_dot_dependency_graph,
+    get_global_barrier_order,
+    get_subkernel_to_insn_id_map,
+    get_subkernels,
+    show_dependency_graph,
+)
+from loopy.library.reduction import register_reduction_parser
+from loopy.options import Options
+from loopy.preprocess import infer_arg_descr, preprocess_kernel, preprocess_program
+from loopy.schedule import (
+    generate_loop_schedules,
+    get_one_linearized_kernel,
+    get_one_scheduled_kernel,
+    linearize,
+)
+from loopy.statistics import (
+    CountGranularity,
+    MemAccess,
+    Op,
+    Sync,
+    ToCountMap,
+    ToCountPolynomialMap,
+    gather_access_footprint_bytes,
+    gather_access_footprints,
+    get_mem_access_map,
+    get_op_map,
+    get_synchronization_map,
+)
+from loopy.symbolic import LinearSubscript, Reduction, TaggedVariable, TypeCast
+from loopy.target import ASTBuilderBase, TargetBase
+from loopy.target.c import (
+    CFamilyTarget,
+    CTarget,
+    CWithGNULibcTarget,
+    ExecutableCTarget,
+    ExecutableCWithGNULibcTarget,
+    generate_header,
+)
 from loopy.target.cuda import CudaTarget
+from loopy.target.execution import ExecutorBase
+from loopy.target.ispc import ISPCTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
-from loopy.target.ispc import ISPCTarget
+from loopy.tools import Optional, clear_in_mem_caches, memoize_on_disk, t_unit_to_python
+from loopy.transform.add_barrier import add_barrier
+from loopy.transform.arithmetic import (
+    collect_common_factors_on_increment,
+    fold_constants,
+)
+from loopy.transform.batch import to_batched
+from loopy.transform.buffer import buffer_array
+from loopy.transform.callable import (
+    inline_callable_kernel,
+    merge,
+    register_callable,
+    rename_callable,
+)
+from loopy.transform.concatenate import concatenate_arrays
+from loopy.transform.data import (
+    add_prefetch,
+    alias_temporaries,
+    allocate_temporaries_for_base_storage,
+    change_arg_to_image,
+    remove_unused_arguments,
+    rename_argument,
+    set_argument_order,
+    set_array_axis_names,
+    set_array_dim_names,
+    set_temporary_address_space,
+    set_temporary_scope,
+    tag_array_axes,
+    tag_data_axes,
+)
+from loopy.transform.fusion import fuse_kernels
+from loopy.transform.iname import (
+    add_inames_for_unused_hw_axes,
+    add_inames_to_insn,
+    affine_map_inames,
+    chunk_iname,
+    duplicate_inames,
+    find_unused_axis_tag,
+    get_iname_duplication_options,
+    has_schedulable_iname_nesting,
+    join_inames,
+    make_reduction_inames_unique,
+    map_domain,
+    prioritize_loops,
+    remove_inames_from_insn,
+    remove_predicates_from_insn,
+    remove_unused_inames,
+    rename_iname,
+    rename_inames,
+    split_iname,
+    split_reduction_inward,
+    split_reduction_outward,
+    tag_inames,
+    untag_inames,
+)
+from loopy.transform.instruction import (
+    add_dependency,
+    add_nosync,
+    find_instructions,
+    map_instructions,
+    remove_instructions,
+    replace_instruction_ids,
+    set_instruction_priority,
+    simplify_indices,
+    tag_instructions,
+)
+from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
+from loopy.transform.padding import (
+    add_padding,
+    find_padding_multiple,
+    split_arg_axis,
+    split_array_axis,
+    split_array_dim,
+)
+from loopy.transform.parameter import assume, fix_parameters
+from loopy.transform.precompute import precompute
+from loopy.transform.privatize import (
+    privatize_temporaries_with_inames,
+    unprivatize_temporaries_with_inames,
+)
+from loopy.transform.realize_reduction import realize_reduction
+from loopy.transform.save import save_and_reload_temporaries
+from loopy.transform.subst import (
+    assignment_to_subst,
+    expand_subst,
+    extract_subst,
+    find_one_rule_matching,
+    find_rules_matching,
+)
+from loopy.translation_unit import TranslationUnit, for_each_kernel, make_program
 
-from loopy.tools import (Optional, t_unit_to_python, memoize_on_disk,
-                         clear_in_mem_caches)
+# }}}
+from loopy.type_inference import infer_unknown_types
+from loopy.types import to_loopy_type
 
-from loopy.target.execution import ExecutorBase
+# {{{ imported user interface
+from loopy.typing import auto
+
+# {{{ import transforms
+from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
 
 
 __all__ = [
@@ -349,7 +397,7 @@ def set_options(kernel, *args, **kwargs):
     new_opt = kernel.options.copy()
 
     if kwargs:
-        from loopy.options import _apply_legacy_map, Options
+        from loopy.options import Options, _apply_legacy_map
         kwargs = _apply_legacy_map(Options._legacy_options_map, kwargs)
 
         for key, val in kwargs.items():
@@ -422,7 +470,9 @@ def register_symbol_manglers(kernel, manglers):
 # {{{ cache control
 
 import os
+
 from pytools import strtobool
+
 
 # Caching is enabled by default, but can be disabled by setting
 # the environment variables LOOPY_NO_CACHE or CG_NO_CACHE to a
@@ -472,8 +522,11 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
     as the one given by *new_dim_tags*.
     """
 
-    from loopy.kernel.array import (parse_array_dim_tags,
-            SeparateArrayArrayDimTag, VectorArrayDimTag)
+    from loopy.kernel.array import (
+        SeparateArrayArrayDimTag,
+        VectorArrayDimTag,
+        parse_array_dim_tags,
+    )
     new_dim_tags = parse_array_dim_tags(new_dim_tags, n_axes=None)
 
     rank = len(new_dim_tags)

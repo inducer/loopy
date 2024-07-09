@@ -24,10 +24,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import FrozenSet, List, Sequence, Tuple, Union, Protocol
 from sys import intern
+from typing import FrozenSet, List, Protocol, Sequence, Tuple, Union
 
 from loopy.kernel import LoopKernel
 from loopy.kernel.instruction import InstructionBase
@@ -35,8 +35,9 @@ from loopy.kernel.instruction import InstructionBase
 
 NoneType = type(None)
 
-from pytools.lex import RE
 import pytools.tag
+from pytools.lex import RE
+
 
 __doc__ = """
 .. autoclass:: Matchable
@@ -393,7 +394,7 @@ def parse_match(expr):
     if isinstance(expr, MatchExpressionBase):
         return expr
 
-    from pytools.lex import LexIterator, lex, InvalidTokenError
+    from pytools.lex import InvalidTokenError, LexIterator, lex
     try:
         pstate = LexIterator(
             [(tag, s, idx, matchobj)

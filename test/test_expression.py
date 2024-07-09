@@ -20,18 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
+import pytest
+
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
-import pytest
-
 from pymbolic.mapper.evaluator import EvaluationMapper
 
+import loopy as lp
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -41,8 +43,8 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
         "pytest_generate_tests",
@@ -97,6 +99,7 @@ def make_random_fp_value(use_complex):
 
 def make_random_fp_expression(prefix, var_values, size, use_complex):
     from random import randrange
+
     import pymbolic.primitives as p
     v = randrange(1500)
     size[0] += 1
@@ -146,6 +149,7 @@ def make_random_int_value(nonneg):
 
 def make_random_int_expression(prefix, var_values, size, nonneg):
     from random import randrange
+
     import pymbolic.primitives as p
     if size[0] < 10:
         v = randrange(800)
@@ -456,8 +460,9 @@ def test_indexof_vec(ctx_factory):
 
 
 def test_is_expression_equal():
-    from loopy.symbolic import is_expression_equal
     from pymbolic import var
+
+    from loopy.symbolic import is_expression_equal
 
     x = var("x")
     y = var("y")
@@ -624,6 +629,7 @@ def test_bool_type_context(ctx_factory):
 
 def test_np_bool_handling(ctx_factory):
     import pymbolic.primitives as p
+
     from loopy.symbolic import parse
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

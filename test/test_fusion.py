@@ -21,12 +21,14 @@ THE SOFTWARE.
 """
 
 
-import loopy as lp
 import numpy as np
-import pyopencl as cl
 
-from pyopencl.tools import \
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests  # noqa
+import pyopencl as cl
+from pyopencl.tools import (
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+)
+
+import loopy as lp
 
 
 def test_two_kernel_fusion(ctx_factory):

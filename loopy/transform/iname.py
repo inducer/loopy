@@ -21,21 +21,21 @@ THE SOFTWARE.
 """
 
 
+from typing import FrozenSet, Optional
+
 import islpy as isl
 from islpy import dim_type
 
-from loopy.symbolic import (
-        RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
-        SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
-from typing import FrozenSet
-
-from loopy.translation_unit import (TranslationUnit,
-                                    for_each_kernel)
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
+from loopy.symbolic import (
+    RuleAwareIdentityMapper,
+    RuleAwareSubstitutionMapper,
+    SubstitutionRuleMappingContext,
+)
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 
-from typing import Optional
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -405,8 +405,9 @@ def chunk_iname(kernel, split_iname, num_chunks,
     chunk_diff = chunk_ceil - chunk_floor
     chunk_mod = size.mod_val(num_chunks)
 
-    from loopy.symbolic import pw_aff_to_expr
     from pymbolic.primitives import Min
+
+    from loopy.symbolic import pw_aff_to_expr
 
     def make_new_loop_index(inner, outer):
         # These two expressions are equivalent. Benchmarking between the
@@ -571,8 +572,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
         bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
-        from loopy.isl_helpers import (
-                static_max_of_pw_aff, static_value_of_pw_aff)
+        from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
 
         length = int(pw_aff_to_expr(
@@ -1383,6 +1383,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     var_name_gen = kernel.get_var_name_generator()
 
     from pymbolic.mapper.substitutor import make_subst_func
+
     from loopy.match import parse_stack_match
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -1627,10 +1628,9 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
                 self.old_to_new.append((iname, new_iname))
                 new_inames.append(new_iname)
 
-            from loopy.symbolic import SubstitutionMapper
             from pymbolic.mapper.substitutor import make_subst_func
 
-            from loopy.symbolic import Reduction
+            from loopy.symbolic import Reduction, SubstitutionMapper
             return Reduction(expr.operation, tuple(new_inames),
                     self.rec(
                         SubstitutionMapper(make_subst_func(subst_dict))(
@@ -1962,8 +1962,7 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # dependency maps, which may contain variable names consisting of an iname
     # suffixed with a single apostrophe.)
 
-    from loopy.isl_helpers import (
-        add_and_name_dims, add_eq_constraint_from_names)
+    from loopy.isl_helpers import add_and_name_dims, add_eq_constraint_from_names
 
     # {{{ Find any missing vars and add them to the input and output space
 
@@ -2071,8 +2070,9 @@ def map_domain(kernel, transform_map):
     var_substitutions = {}
     applied_iname_rewrites = kernel.applied_iname_rewrites
 
-    from loopy.symbolic import aff_to_expr
     from pymbolic import var
+
+    from loopy.symbolic import aff_to_expr
     for iname in transform_map_in_dims:
         subst_from_map = aff_to_expr(
             _find_aff_subst_from_map(iname, transform_map))
@@ -2271,8 +2271,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     :arg within: An instruction match as understood by
         :func:`loopy.match.parse_match`.
     """
-    from loopy.kernel.data import (LocalInameTag, GroupInameTag,
-            AutoFitLocalInameTag)
+    from loopy.kernel.data import AutoFitLocalInameTag, GroupInameTag, LocalInameTag
 
     n_local_axes = max([tag.axis
         for iname in kernel.inames.values()
@@ -2520,6 +2519,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
     \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
     """
     from itertools import product
+
     from loopy import tag_inames
 
     tags = kernel.inames[old_iname].tags

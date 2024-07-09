@@ -25,15 +25,15 @@ __doc__ = """
 .. autofunction:: concatenate_arrays
 """
 
-from typing import Sequence, Optional, List
-
-from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, auto
-from loopy.symbolic import SubstitutionRuleMappingContext
-from loopy.kernel import LoopKernel
-from loopy.translation_unit import for_each_kernel
+from typing import List, Optional, Sequence
 
 import pymbolic.primitives as prim
 from pytools import all_equal
+
+from loopy.kernel import LoopKernel
+from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, auto
+from loopy.symbolic import SubstitutionRuleMappingContext
+from loopy.translation_unit import for_each_kernel
 
 
 @for_each_kernel

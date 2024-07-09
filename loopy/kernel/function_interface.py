@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2018 Andreas Kloeckner, Kaushik Kulkarni"
 
 __license__ = """
@@ -22,16 +23,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import ClassVar, FrozenSet, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, FrozenSet, Tuple
 
 from pytools import ImmutableRecord
-from loopy.diagnostic import LoopyError
 
-from loopy.tools import update_persistent_hash
+from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase
-from loopy.kernel.data import ValueArg, ArrayArg
+from loopy.kernel.data import ArrayArg, ValueArg
 from loopy.symbolic import DependencyMapper, WalkMapper
+from loopy.tools import update_persistent_hash
+
 
 if TYPE_CHECKING:
     from loopy.translation_unit import CallablesTable, FunctionIdT
@@ -175,7 +177,7 @@ class ExpressionIsScalarChecker(WalkMapper):
             self.rec(child)
 
     def map_variable(self, expr):
-        from loopy.kernel.data import TemporaryVariable, ArrayArg, auto
+        from loopy.kernel.data import ArrayArg, TemporaryVariable, auto
         if expr.name in self.kernel.all_inames():
             # inames are scalar
             return
@@ -202,9 +204,8 @@ def get_arg_descriptor_for_expression(kernel, expr):
         describing the argument expression *expr* which occurs
         in a call in the code of *kernel*.
     """
-    from loopy.symbolic import (SubArrayRef, pw_aff_to_expr,
-            SweptInameStrideCollector)
-    from loopy.kernel.data import TemporaryVariable, ArrayArg
+    from loopy.kernel.data import ArrayArg, TemporaryVariable
+    from loopy.symbolic import SubArrayRef, SweptInameStrideCollector, pw_aff_to_expr
 
     if isinstance(expr, SubArrayRef):
         name = expr.subscript.aggregate.name
@@ -598,10 +599,11 @@ class ScalarCallable(InKernelCallable):
         if not isinstance(target, CFamilyTarget):
             raise NotImplementedError()
 
-        from loopy.kernel.instruction import CallInstruction
-        from loopy.expression import dtype_to_type_context
-        from pymbolic.mapper.stringifier import PREC_NONE
         from pymbolic import var
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        from loopy.expression import dtype_to_type_context
+        from loopy.kernel.instruction import CallInstruction
 
         assert isinstance(insn, CallInstruction)
         assert self.is_ready_for_codegen()
@@ -727,8 +729,7 @@ class CallableKernel(InKernelCallable):
             else:
                 new_args.append(arg)
 
-        from loopy.type_inference import (
-                infer_unknown_types_for_a_single_kernel)
+        from loopy.type_inference import infer_unknown_types_for_a_single_kernel
         pre_specialized_subkernel = self.subkernel.copy(
                 args=new_args)
 
@@ -941,9 +942,10 @@ class CallableKernel(InKernelCallable):
                 assignee_write_count -= 1
 
         # no type casting in array calls
-        from loopy.expression import dtype_to_type_context
-        from pymbolic.mapper.stringifier import PREC_NONE
         from pymbolic import var
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        from loopy.expression import dtype_to_type_context
 
         tgt_parameters = [ecm(par, PREC_NONE, dtype_to_type_context(target,
                                                                     par_dtype),

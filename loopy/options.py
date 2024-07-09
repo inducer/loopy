@@ -21,10 +21,11 @@ THE SOFTWARE.
 """
 
 
-from pytools import ImmutableRecord
-import re
 import os
+import re
 from warnings import warn
+
+from pytools import ImmutableRecord
 
 
 ALLOW_TERMINAL_COLORS = True

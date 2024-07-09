@@ -21,8 +21,13 @@ THE SOFTWARE.
 """
 
 from loopy.diagnostic import LoopyError
-from loopy.schedule import (Barrier, CallKernel, EnterLoop,
-                            ReturnFromKernel, RunInstruction)
+from loopy.schedule import (
+    Barrier,
+    CallKernel,
+    EnterLoop,
+    ReturnFromKernel,
+    RunInstruction,
+)
 from loopy.schedule.tools import get_block_boundaries
 
 
