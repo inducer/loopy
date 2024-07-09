@@ -881,12 +881,6 @@ def test_atomic(ctx_factory, dtype):
             and "cl_khr_int64_base_atomics" not in ctx.devices[0].extensions):
         pytest.skip("64-bit atomics not supported on device")
 
-    import pyopencl.version
-    if (
-            pyopencl.version.VERSION < (2015, 2)
-            and dtype == np.int64):
-        pytest.skip("int64 RNG not supported in PyOpenCL < 2015.2")
-
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
             "out[i%20] = out[i%20] + 2*a[i] {atomic}",
