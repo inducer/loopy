@@ -695,7 +695,7 @@ class ExecutionWrapperGeneratorBase(ABC):
         self.generate_value_arg_check(gen, program[entrypoint], kai)
         args = self.generate_arg_setup(gen, program[entrypoint], kai)
 
-        #FIXME: should we make this as a dict as well.
+        # FIXME: should we make this as a dict as well.
         host_program_name = codegen_result.host_programs[entrypoint].name
 
         self.generate_invocation(gen, program[entrypoint], kai,

@@ -902,7 +902,7 @@ def parse_instructions(instructions, defines):
 
             insn_options_stack.append(options)
 
-            #add to the if_stack
+            # add to the if_stack
             if_options = options.copy()
             if_options["insn_predicates"] = options["predicates"]
             if_predicates_stack.append(if_options)
@@ -953,7 +953,7 @@ def parse_instructions(instructions, defines):
                     | additional_preds
                     )
             if_options["predicates"] = additional_preds
-            #hold on to this for comparison / stack popping later
+            # hold on to this for comparison / stack popping later
             if_options["insn_predicates"] = options["predicates"]
 
             insn_options_stack.append(options)
@@ -967,7 +967,7 @@ def parse_instructions(instructions, defines):
 
         if insn == "end":
             obj = insn_options_stack.pop()
-            #if this object is the end of an if statement
+            # if this object is the end of an if statement
             if obj["predicates"] == if_predicates_stack[-1]["insn_predicates"] and\
                     if_predicates_stack[-1]["insn_predicates"] and\
                     obj["within_inames"] == if_predicates_stack[-1]["within_inames"]:

@@ -654,7 +654,7 @@ def set_argument_order(kernel, arg_names):
     :arg arg_names: A list (or comma-separated string) or argument
         names. All arguments must be in this list.
     """
-    #FIXME: @inducer -- shoulld this only affect the root kernel, or should it
+    # FIXME: @inducer -- shoulld this only affect the root kernel, or should it
     # take a within?
 
     if isinstance(arg_names, str):

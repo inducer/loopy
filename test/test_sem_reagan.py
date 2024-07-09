@@ -51,7 +51,7 @@ def test_tim2d(ctx_factory):
                 "ur(a,b) := simul_reduce(sum, o, D[a,o]*u[e,o,b])",
                 "us(a,b) := simul_reduce(sum, o2, D[b,o2]*u[e,a,o2])",
 
-                #"Gu(mat_entry,a,b) := G[mat_entry,e,m,j]*ur(m,j)",
+                # "Gu(mat_entry,a,b) := G[mat_entry,e,m,j]*ur(m,j)",
 
                 "Gux(a,b) := G$x[0,e,a,b]*ur(a,b)+G$x[1,e,a,b]*us(a,b)",
                 "Guy(a,b) := G$y[1,e,a,b]*ur(a,b)+G$y[2,e,a,b]*us(a,b)",

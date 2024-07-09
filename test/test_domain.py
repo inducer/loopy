@@ -301,8 +301,8 @@ def test_equality_constraints(ctx_factory):
 
     knl = lp.add_inames_to_insn(knl, "j_inner, j_outer", "id:set_b")
 
-    #print(knl)
-    #print(knl.domains[0].detect_equalities())
+    # print(knl)
+    # print(knl.domains[0].detect_equalities())
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             parameters=dict(n=n), print_ref_code=True)

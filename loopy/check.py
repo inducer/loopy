@@ -1847,9 +1847,9 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 pt = diff_set.sample_point()
                 assert not pt.is_void()
 
-                #pt_set = isl.Set.from_point(pt)
-                #lines.append("point implemented: %s" % (pt_set <= insn_impl_domain))
-                #lines.append("point desired: %s" % (pt_set <= desired_domain))
+                # pt_set = isl.Set.from_point(pt)
+                # lines.append("point implemented: %s" % (pt_set <= insn_impl_domain))
+                # lines.append("point desired: %s" % (pt_set <= desired_domain))
 
                 iname_to_dim = pt.get_space().get_var_dict()
                 point_axes = []

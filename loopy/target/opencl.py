@@ -257,7 +257,7 @@ class OpenCLCallable(ScalarCallable):
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
-                    #FIXME: Do we need to raise here?:
+                    # FIXME: Do we need to raise here?:
                     #   The pattern we generally follow is that if we don't find
                     #   a function, then we just return None
                     raise LoopyError("%s can take only two arguments." % name)

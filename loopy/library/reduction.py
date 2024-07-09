@@ -179,10 +179,10 @@ def get_le_neutral(dtype):
     if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.2, section 6.12.2
         if dtype.numpy_dtype.itemsize == 4:
-            #float
+            # float
             return var("INFINITY")
         elif dtype.numpy_dtype.itemsize == 8:
-            #double
+            # double
             return var("HUGE_VAL")
 
     elif dtype.numpy_dtype.kind == "i":
@@ -210,10 +210,10 @@ def get_ge_neutral(dtype):
     if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.2, section 6.12.2
         if dtype.numpy_dtype.itemsize == 4:
-            #float
+            # float
             return -var("INFINITY")
         elif dtype.numpy_dtype.itemsize == 8:
-            #double
+            # double
             return -var("HUGE_VAL")
     elif dtype.numpy_dtype.kind == "i":
         # OpenCL 1.1, section 6.11.3

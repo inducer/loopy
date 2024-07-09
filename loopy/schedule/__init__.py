@@ -908,8 +908,8 @@ def _generate_loop_schedules_internal(
         if debug.debug_length == len(debug.longest_rejected_schedule):
             print("WHY IS THIS A DEAD-END SCHEDULE?")
 
-    #if len(schedule) == 2:
-        #from pudb import set_trace; set_trace()
+    # if len(schedule) == 2:
+        # from pudb import set_trace; set_trace()
 
     # }}}
 

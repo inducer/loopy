@@ -85,8 +85,8 @@ def test_nbody(ctx_factory):
     n = 3000
 
     for variant in [
-            #variant_1,
-            #variant_cpu,
+            # variant_1,
+            # variant_cpu,
             variant_gpu
             ]:
         variant_knl = variant(knl)

@@ -139,7 +139,7 @@ def main():
             if cresult != presult:
                 print(a, b, cresult, presult)
 
-    #print(int_mod(552, -918), 552 % -918)
+    # print(int_mod(552, -918), 552 % -918)
     print(cmod(23, -11), 23 % -11)
 
 

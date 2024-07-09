@@ -56,11 +56,11 @@ def test_laplacian(ctx_factory):
             ],
             name="semlap", assumptions="K>=1")
 
-    #print lp.preprocess_kernel(knl, cse_ok=True)
-    #1/0
+    # print lp.preprocess_kernel(knl, cse_ok=True)
+    # 1/0
     #
-    #print knl
-    #1/0
+    # print knl
+    # 1/0
     knl = lp.realize_cse(knl, "urf", np.float32, ["o1"])
     knl = lp.realize_cse(knl, "usf", np.float32, ["o2"])
     knl = lp.realize_cse(knl, "utf", np.float32, ["o3"])
@@ -76,7 +76,7 @@ def test_laplacian(ctx_factory):
     if 0:
         pass
         #seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]", default_tag="l.auto")  # noqa
-        #seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"], default_tag="l.auto")
+        # seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"], default_tag="l.auto")
         #seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")  # noqa
     else:
         seq_knl = knl
@@ -87,11 +87,11 @@ def test_laplacian(ctx_factory):
     knl = lp.add_prefetch(knl, "D", ["m", "j"], default_tag="l.auto")
     #knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")  # noqa
 
-    #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
+    # knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
-    #print seq_knl
-    #print lp.preprocess_kernel(knl)
-    #1/0
+    # print seq_knl
+    # print lp.preprocess_kernel(knl)
+    # 1/0
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
@@ -164,11 +164,11 @@ def test_laplacian_lmem(ctx_factory):
             default_tag="l.auto")
     knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]",
             default_tag="l.auto")
-    #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
+    # knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
-    #print seq_knl
-    #print lp.preprocess_kernel(knl)
-    #1/0
+    # print seq_knl
+    # print lp.preprocess_kernel(knl)
+    # 1/0
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
@@ -240,8 +240,8 @@ def test_laplacian_lmem_ilp(ctx_factory):
     knl = lp.add_prefetch(knl, "D", ["m", "j"],
             default_tag="l.auto")
 
-    #print seq_knl
-    #1/0
+    # print seq_knl
+    # 1/0
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
@@ -447,7 +447,7 @@ def test_advect_dealias(ctx_factory):
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
     print(knl)
-    #1/0
+    # 1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
@@ -508,7 +508,7 @@ def test_interp_diff(ctx_factory):
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
     print(knl)
-    #1/0
+    # 1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
