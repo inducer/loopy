@@ -24,25 +24,26 @@ THE SOFTWARE.
 """
 
 
-from typing import cast, Tuple, Sequence
+from typing import Sequence, Tuple, cast
 
 import numpy as np  # noqa
+
 import pymbolic.primitives as p
+from cgen import Collection, Const, Declarator, Generable
 from pymbolic import var
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
-from cgen import Generable, Declarator, Const, Collection
 
-from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.diagnostic import LoopyError
-from loopy.symbolic import Literal
-from loopy.schedule import CallKernel
-from loopy.typing import ExpressionT
-from loopy.types import LoopyType
-from loopy.kernel.data import AddressSpace, TemporaryVariable, ArrayArg
 from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError
+from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
+from loopy.schedule import CallKernel
+from loopy.symbolic import Literal
+from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.types import LoopyType
+from loopy.typing import ExpressionT
 
 
 # {{{ expression mapper
@@ -116,8 +117,9 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:
                 lsize, = lsize
-                from loopy.kernel.array import get_access_info
                 from pymbolic import evaluate
+
+                from loopy.kernel.array import get_access_info
 
                 access_info = get_access_info(self.kernel, ary, expr.index,
                     lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
@@ -216,7 +218,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         codegen_state.kernel.linearization[schedule_index]
                         ).kernel_name
 
-        from cgen import (FunctionDeclaration, Value)
+        from cgen import FunctionDeclaration, Value
         from cgen.ispc import ISPCExport, ISPCTask
 
         if codegen_state.is_entrypoint:
@@ -257,7 +259,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         from pymbolic.mapper.stringifier import PREC_NONE
         result = []
-        from cgen import Statement as S, Block
+        from cgen import Block, Statement as S
         if lsize:
             result.append(
                     S(
@@ -320,7 +322,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
     def get_array_arg_declarator(
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         # FIXME restrict?
-        from cgen.ispc import ISPCUniformPointer, ISPCUniform
+        from cgen.ispc import ISPCUniform, ISPCUniformPointer
         decl = ISPCUniform(
                 ISPCUniformPointer(self.get_array_base_declarator(arg)))
 
@@ -371,8 +373,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         if insn.atomicity:
             raise NotImplementedError("atomic ops in ISPC")
 
-        from loopy.expression import dtype_to_type_context
         from pymbolic.mapper.stringifier import PREC_NONE
+
+        from loopy.expression import dtype_to_type_context
 
         rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
         rhs_code = ecm(insn.expression, prec=PREC_NONE,
@@ -387,9 +390,9 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         if UseStreamingStoreTag() in insn.tags:
             ary = ecm.find_array(lhs)
 
-            from loopy.kernel.array import get_access_info
             from pymbolic import evaluate
 
+            from loopy.kernel.array import get_access_info
             from loopy.symbolic import simplify_using_aff
             index_tuple = tuple(
                     simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
@@ -408,7 +411,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 raise LoopyError("streaming stores must have a subscript")
             subscript, = access_info.subscripts
 
-            from pymbolic.primitives import Sum, flattened_sum, Variable
+            from pymbolic.primitives import Sum, Variable, flattened_sum
             if isinstance(subscript, Sum):
                 terms = subscript.children
             else:
@@ -479,12 +482,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
             lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
-        from loopy.target.c import POD
-
-        from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
-
         from cgen.ispc import ISPCUniform
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        from loopy.target.c import POD
 
         loop = For(
                 InlineInitializer(

@@ -20,33 +20,43 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Union, Tuple, Optional, List
+import logging
+from collections import defaultdict
+from functools import reduce
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
-from islpy import dim_type
+
 import islpy as isl
-
-from loopy.symbolic import WalkMapper, CombineMapper, ResolvedFunction
-from loopy.diagnostic import (LoopyError, WriteRaceConditionWarning,
-        warn_with_kernel, LoopyIndexError)
-from loopy.type_inference import TypeReader
-from loopy.kernel.instruction import (MultiAssignmentBase, CallInstruction,
-                                      CInstruction, _DataObliviousInstruction,
-                                      NoOpInstruction)
-from loopy.kernel import LoopKernel
-from loopy.kernel.array import (
-        FixedStrideArrayDimTag, SeparateArrayArrayDimTag, ArrayBase)
-from loopy.kernel.data import auto, ArrayArg, ArrayDimImplementationTag
-from loopy.translation_unit import for_each_kernel
-from loopy.typing import ExpressionT
-
+from islpy import dim_type
 from pytools import memoize_method
 
-from collections import defaultdict
+from loopy.diagnostic import (
+    LoopyError,
+    LoopyIndexError,
+    WriteRaceConditionWarning,
+    warn_with_kernel,
+)
+from loopy.kernel import LoopKernel
+from loopy.kernel.array import (
+    ArrayBase,
+    FixedStrideArrayDimTag,
+    SeparateArrayArrayDimTag,
+)
+from loopy.kernel.data import ArrayArg, ArrayDimImplementationTag, auto
+from loopy.kernel.instruction import (
+    CallInstruction,
+    CInstruction,
+    MultiAssignmentBase,
+    NoOpInstruction,
+    _DataObliviousInstruction,
+)
+from loopy.symbolic import CombineMapper, ResolvedFunction, WalkMapper
+from loopy.translation_unit import for_each_kernel
+from loopy.type_inference import TypeReader
+from loopy.typing import ExpressionT
 
-from functools import reduce
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -189,8 +199,9 @@ def check_separated_array_consistency(kernel: LoopKernel) -> None:
 
 @for_each_kernel
 def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
+    from pymbolic.primitives import Expression, Variable
+
     from loopy.symbolic import DependencyMapper
-    from pymbolic.primitives import Variable, Expression
 
     arg_name_vars = {Variable(name) for name in kernel.arg_dict}
     dep_mapper = DependencyMapper()
@@ -334,8 +345,7 @@ def check_for_integer_subscript_indices(t_unit):
     """
     Checks if every array access is of type :class:`int`.
     """
-    from loopy.kernel.function_interface import (CallableKernel,
-                                                 ScalarCallable)
+    from loopy.kernel.function_interface import CallableKernel, ScalarCallable
     for clbl in t_unit.callables_table.values():
         if isinstance(clbl, CallableKernel):
             _check_for_integer_subscript_indices_inner(clbl.subkernel,
@@ -435,8 +445,15 @@ def check_multiple_tags_allowed(kernel):
     """
     Checks if a multiple tags of an iname are compatible.
     """
-    from loopy.kernel.data import (GroupInameTag, LocalInameTag, VectorizeTag,
-                UnrollTag, ForceSequentialTag, IlpBaseTag, filter_iname_tags_by_type)
+    from loopy.kernel.data import (
+        ForceSequentialTag,
+        GroupInameTag,
+        IlpBaseTag,
+        LocalInameTag,
+        UnrollTag,
+        VectorizeTag,
+        filter_iname_tags_by_type,
+    )
     illegal_combinations = [
         (GroupInameTag, LocalInameTag, VectorizeTag, UnrollTag, ForceSequentialTag),
         (IlpBaseTag, ForceSequentialTag)
@@ -449,7 +466,7 @@ def check_multiple_tags_allowed(kernel):
 
 
 def _check_for_double_use_of_hw_axes_inner(kernel, callables_table):
-    from loopy.kernel.data import UniqueInameTag, GroupInameTag, LocalInameTag
+    from loopy.kernel.data import GroupInameTag, LocalInameTag, UniqueInameTag
     from loopy.kernel.instruction import CallInstruction
     from loopy.symbolic import ResolvedFunction
 
@@ -477,8 +494,7 @@ def check_for_double_use_of_hw_axes(t_unit):
     Check if any instruction of *kernel* is within multiple inames tagged with
     the same hw axis tag.
     """
-    from loopy.kernel.function_interface import (CallableKernel,
-                                                 ScalarCallable)
+    from loopy.kernel.function_interface import CallableKernel, ScalarCallable
     for clbl in t_unit.callables_table.values():
         if isinstance(clbl, CallableKernel):
             _check_for_double_use_of_hw_axes_inner(clbl.subkernel,
@@ -525,8 +541,13 @@ def check_for_unused_inames(kernel):
 
 
 def _is_racing_iname_tag(tv, tag):
-    from loopy.kernel.data import (AddressSpace,
-            LocalInameTagBase, GroupInameTag, ConcurrentTag, auto)
+    from loopy.kernel.data import (
+        AddressSpace,
+        ConcurrentTag,
+        GroupInameTag,
+        LocalInameTagBase,
+        auto,
+    )
 
     if tv.address_space == AddressSpace.PRIVATE:
         return (
@@ -646,8 +667,9 @@ def _align_and_intersect_with_caller_assumption(callee_assumptions,
 
 
 def _mark_variables_from_caller(expr):
-    from loopy.symbolic import SubstitutionMapper
     import pymbolic.primitives as prim
+
+    from loopy.symbolic import SubstitutionMapper
 
     def subst_func(x):
         if isinstance(x, prim.Variable):
@@ -671,8 +693,7 @@ class _AccessCheckMapper(WalkMapper):
 
     @memoize_method
     def _get_access_range(self, domain, subscript):
-        from loopy.symbolic import (get_access_map,
-                                    UnableToDetermineAccessRangeError)
+        from loopy.symbolic import UnableToDetermineAccessRangeError, get_access_map
         try:
             return get_access_map(domain, subscript).range()
         except UnableToDetermineAccessRangeError:
@@ -757,11 +778,13 @@ class _AccessCheckMapper(WalkMapper):
         super().map_call(expr, domain, insn_id)
 
         import pymbolic.primitives as prim
-        from loopy.kernel.function_interface import (CallableKernel,
-                                                     get_kw_pos_association)
-        from loopy.symbolic import (guarded_aff_from_expr,
-                                    get_dependencies)
+
         from loopy.diagnostic import ExpressionToAffineConversionError
+        from loopy.kernel.function_interface import (
+            CallableKernel,
+            get_kw_pos_association,
+        )
+        from loopy.symbolic import get_dependencies, guarded_aff_from_expr
 
         if (isinstance(expr.function, ResolvedFunction)
             and isinstance(self.callables_table[expr.function.name],
@@ -919,8 +942,10 @@ def check_write_destinations(kernel):
 
 @for_each_kernel
 def check_has_schedulable_iname_nesting(kernel):
-    from loopy.transform.iname import (has_schedulable_iname_nesting,
-            get_iname_duplication_options)
+    from loopy.transform.iname import (
+        get_iname_duplication_options,
+        has_schedulable_iname_nesting,
+    )
     if not has_schedulable_iname_nesting(kernel):
         import itertools as it
         opt = get_iname_duplication_options(kernel)
@@ -964,7 +989,7 @@ def declares_nosync_with(kernel, var_address_space, dep_a, dep_b):
 
 
 def _get_address_space(kernel, var):
-    from loopy.kernel.data import ValueArg, AddressSpace, ArrayArg
+    from loopy.kernel.data import AddressSpace, ArrayArg, ValueArg
     if var in kernel.temporary_variables:
         address_space = kernel.temporary_variables[var].address_space
     else:
@@ -989,6 +1014,7 @@ def _get_topological_order(kernel):
     :class:`loopy.diagnostic.DependencyCycleFound` exception.
     """
     from pytools.graph import compute_sccs
+
     from loopy.diagnostic import DependencyCycleFound
 
     dep_map = {insn.id: insn.depends_on for insn in kernel.instructions}
@@ -1303,9 +1329,16 @@ def check_for_nested_base_storage(kernel: LoopKernel) -> None:
 
 def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
         sched_index=None):
-    from loopy.schedule import (CallKernel, RunInstruction,
-            Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
-            get_insn_ids_for_block_at, gather_schedule_block)
+    from loopy.schedule import (
+        Barrier,
+        CallKernel,
+        EnterLoop,
+        LeaveLoop,
+        ReturnFromKernel,
+        RunInstruction,
+        gather_schedule_block,
+        get_insn_ids_for_block_at,
+    )
 
     if sched_index is None:
         group_axes = set()
@@ -1329,8 +1362,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, callables_table,
 
     # alternative: just disregard length-1 dimensions?
 
-    from loopy.kernel.data import (LocalInameTag, AutoLocalInameTagBase,
-                        GroupInameTag)
+    from loopy.kernel.data import AutoLocalInameTagBase, GroupInameTag, LocalInameTag
 
     while i < loop_end_i:
         sched_item = kernel.linearization[i]
@@ -1462,7 +1494,9 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
         locally_defined_base_storage = set()
 
         from loopy.schedule.tools import (
-                temporaries_written_in_subkernel, temporaries_read_in_subkernel)
+            temporaries_read_in_subkernel,
+            temporaries_written_in_subkernel,
+        )
 
         for temporary in temporaries_written_in_subkernel(kernel, subkernel):
             tval = kernel.temporary_variables[temporary]
@@ -1526,10 +1560,10 @@ def check_that_all_insns_are_scheduled(kernel):
 # {{{ check that shapes and strides are arguments
 
 def check_that_shapes_and_strides_are_arguments(kernel):
-    from loopy.kernel.data import ValueArg
-    from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
-    from loopy.symbolic import get_dependencies
     import loopy as lp
+    from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
+    from loopy.kernel.data import ValueArg
+    from loopy.symbolic import get_dependencies
 
     integer_arg_names = {
             arg.name
@@ -1601,9 +1635,9 @@ def _are_sub_array_refs_equivalent(sar1, sar2, caller):
             != _get_sub_array_ref_swept_range(caller, sar2)):
         return False
 
-    from loopy.symbolic import SubstitutionMapper
     from pymbolic.mapper.substitutor import make_subst_func
-    from loopy.symbolic import simplify_via_aff
+
+    from loopy.symbolic import SubstitutionMapper, simplify_via_aff
     subst_func = make_subst_func({iname1.name:  iname2
                                   for iname1, iname2 in zip(sar1.swept_inames,
                                                             sar2.swept_inames)
@@ -1621,8 +1655,8 @@ def _are_sub_array_refs_equivalent(sar1, sar2, caller):
 
 def _validate_kernel_call_insn(caller, call_insn, callee):
     assert call_insn.expression.function.name == callee.name
-    from loopy.symbolic import SubArrayRef
     from loopy.kernel.array import ArrayBase
+    from loopy.symbolic import SubArrayRef
 
     arg_id_to_arg = call_insn.arg_id_to_arg()
 
@@ -1671,6 +1705,7 @@ def _validate_kernel_call_insn(caller, call_insn, callee):
 
 def _validate_kernel_call_sites_inner(kernel, callables):
     from pymbolic.primitives import Call
+
     from loopy.kernel.function_interface import CallableKernel
 
     for insn in kernel.instructions:
@@ -1764,9 +1799,7 @@ def pre_codegen_checks(t_unit):
 # {{{ sanity-check for implemented domains of each instruction
 
 def check_implemented_domains(kernel, implemented_domains, code=None):
-    from islpy import dim_type
-
-    from islpy import align_two
+    from islpy import align_two, dim_type
 
     last_idomains = None
     last_insn_inames = None
@@ -1799,8 +1832,8 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 (insn_impl_domain & assumptions)
                 .project_out_except(insn_inames, [dim_type.set]))
 
-        from loopy.kernel.instruction import BarrierInstruction
         from loopy.kernel.data import LocalInameTag
+        from loopy.kernel.instruction import BarrierInstruction
         if isinstance(insn, BarrierInstruction):
             # project out local-id-mapped inames, solves #94 on gitlab
             non_lid_inames = frozenset(iname for iname in insn_inames

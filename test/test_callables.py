@@ -20,19 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import sys
+
 import numpy as np
+import pytest
+
 import pyopencl as cl
 import pyopencl.clrandom  # noqa: F401
-import loopy as lp
-import pytest
-import sys
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 from pytools import ImmutableRecord
 
-
-from pyopencl.tools import (  # noqa: F401
-        pytest_generate_tests_for_pyopencl
-        as pytest_generate_tests)
-
+import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
@@ -657,9 +657,9 @@ def test_inlining_with_callee_domain_param(ctx_factory):
 
 
 def test_double_resolving():
-    from loopy.translation_unit import resolve_callables
     from loopy.kernel import KernelState
     from loopy.symbolic import ResolvedFunction
+    from loopy.translation_unit import resolve_callables
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<10}",
@@ -737,8 +737,7 @@ def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
 
 
 def test_symbol_mangler_in_call(ctx_factory):
-    from library_for_test import (symbol_x,
-                                  preamble_for_x)
+    from library_for_test import preamble_for_x, symbol_x
     ctx = cl.create_some_context()
     cq = cl.CommandQueue(ctx)
 
@@ -760,6 +759,7 @@ def test_symbol_mangler_in_call(ctx_factory):
 @pytest.mark.parametrize("which", ["max", "min"])
 def test_int_max_min_c_target(ctx_factory, which):
     from numpy.random import default_rng
+
     from pymbolic import parse
     rng = default_rng()
 
@@ -935,6 +935,7 @@ def test_non1_step_slices(ctx_factory, start, inline):
 
 def test_check_bounds_with_caller_assumptions(ctx_factory):
     import islpy as isl
+
     from loopy.diagnostic import LoopyIndexError
 
     arange = lp.make_function(

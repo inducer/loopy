@@ -22,10 +22,11 @@ THE SOFTWARE.
 
 
 from typing import FrozenSet
+
 import islpy as isl
 from islpy import dim_type
-from loopy.codegen.tools import CodegenOperationCacheManager
 
+from loopy.codegen.tools import CodegenOperationCacheManager
 from loopy.kernel import LoopKernel
 
 
@@ -81,8 +82,8 @@ def get_usable_inames_for_conditional(
     #  - local indices may not be used in conditionals that cross barriers.
     #  - ILP indices and vector lane indices are not available in loop
     #    bounds, they only get defined at the innermost level of nesting.
+    from loopy.kernel.data import IlpBaseTag, LocalInameTagBase, VectorizeTag
     from loopy.schedule import find_used_inames_within
-    from loopy.kernel.data import VectorizeTag, LocalInameTagBase, IlpBaseTag
     usable_concurrent_inames_in_subkernel = frozenset(
             iname for iname in concurrent_inames_in_subkernel
             if (not (kernel.iname_tags_of_type(iname, LocalInameTagBase)

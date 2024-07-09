@@ -20,11 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.kernel.function_interface import ScalarCallable
+import numpy as np
+
 from loopy.diagnostic import LoopyError
+from loopy.kernel.function_interface import ScalarCallable
 from loopy.translation_unit import CallablesTable
 from loopy.types import NumpyType
-import numpy as np
 
 
 class MakeTupleCallable(ScalarCallable):
@@ -69,8 +70,9 @@ class IndexOfCallable(ScalarCallable):
 
         ary = expression_to_code_mapper.find_array(arg)
 
-        from loopy.kernel.array import get_access_info
         from pymbolic import evaluate
+
+        from loopy.kernel.array import get_access_info
         access_info = get_access_info(expression_to_code_mapper.kernel,
                 ary, arg.index, lambda expr: evaluate(expr,
                     expression_to_code_mapper.codegen_state.var_subst_map),

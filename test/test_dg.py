@@ -21,17 +21,16 @@ THE SOFTWARE.
 """
 
 
+import logging  # noqa
+
 import numpy as np
 import pyopencl as cl
 import pyopencl.array  # noqa
-import loopy as lp
-
-import logging  # noqa
-
 from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
-
+import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 

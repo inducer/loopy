@@ -23,17 +23,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
-import loopy as lp
-import pyopencl as cl
-import sys
-import os
-
 import logging
+import os
+import sys
+
+import pytest
+
+import pyopencl as cl
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
         "pytest_generate_tests",
@@ -73,8 +77,10 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     hsv = lp.add_nosync(hsv, "any", "writes:rhsQ", "writes:rhsQ", force=True)
 
     from gnuma_loopy_transforms import (
-          fix_euler_parameters,
-          set_q_storage_format, set_D_storage_format)
+        fix_euler_parameters,
+        set_D_storage_format,
+        set_q_storage_format,
+    )
 
     hsv = lp.fix_parameters(hsv, Nq=Nq)
     hsv = lp.prioritize_loops(hsv, "e,k,j,i")

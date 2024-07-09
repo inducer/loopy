@@ -20,9 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import (Any, Sequence, Mapping, Tuple, Optional, TYPE_CHECKING, Union,
-                    Dict, List)
 from dataclasses import dataclass, replace
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import islpy as isl
 
@@ -301,8 +310,8 @@ def merge_codegen_results(
 
 def wrap_in_if(codegen_state, condition_exprs, inner):
     if condition_exprs:
-        from pymbolic.primitives import LogicalAnd
         from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.primitives import LogicalAnd
         cur_ast = inner.current_ast(codegen_state)
         return inner.with_new_ast(
                 codegen_state,

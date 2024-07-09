@@ -21,18 +21,22 @@ THE SOFTWARE.
 """
 
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
-import pyopencl as cl
-import pyopencl.clrandom  # noqa
 import pytest
 
-import logging
+import pyopencl as cl
+import pyopencl.clrandom  # noqa
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
         "pytest_generate_tests",

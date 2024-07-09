@@ -21,11 +21,12 @@ THE SOFTWARE.
 """
 
 
+from loopy.kernel import LoopKernel
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
 from loopy.translation_unit import for_each_kernel
-from loopy.kernel import LoopKernel
+
 
 __doc__ = """
 .. currentmodule:: loopy

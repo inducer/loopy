@@ -1,9 +1,12 @@
 import numpy as np
+
 import pyopencl as cl  # noqa
+from pyopencl.tools import (
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+)
+
 import loopy as lp
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests  # noqa
 
 1/0  # inspect me
 

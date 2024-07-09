@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-from os import system
 import ctypes
+from os import system
+
 
 C_SRC = """
 #include <stdlib.h>

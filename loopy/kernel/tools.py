@@ -23,26 +23,30 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence, Mapping, FrozenSet, Dict, AbstractSet, Set, List
-
+import logging
 import sys
-
+from functools import reduce
 from sys import intern
+from typing import AbstractSet, Dict, FrozenSet, List, Mapping, Sequence, Set
 
 import numpy as np
+
 import islpy as isl
 from islpy import dim_type
-from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg, natsorted
+
+from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
-from loopy.translation_unit import (TranslationUnit,
-                                    for_each_kernel)
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (
-        MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
+    CInstruction,
+    MultiAssignmentBase,
+    _DataObliviousInstruction,
+)
 from loopy.symbolic import CombineMapper
-from functools import reduce
-import logging
+from loopy.translation_unit import TranslationUnit, for_each_kernel
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -394,10 +398,11 @@ class SetOperationCacheManager:
 
         from loopy.diagnostic import StaticValueFindingError
         from loopy.isl_helpers import (
-                static_max_of_pw_aff,
-                static_min_of_pw_aff,
-                static_value_of_pw_aff,
-                find_max_of_pwaff_with_params)
+            find_max_of_pwaff_with_params,
+            static_max_of_pw_aff,
+            static_min_of_pw_aff,
+            static_value_of_pw_aff,
+        )
         from loopy.symbolic import pw_aff_to_expr
 
         # {{{ first: try to find static lower bound value
@@ -525,7 +530,7 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
     dep_graph = {}
     lines = []
 
-    from loopy.kernel.data import MultiAssignmentBase, CInstruction
+    from loopy.kernel.data import CInstruction, MultiAssignmentBase
 
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
@@ -585,8 +590,13 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
 
     if iname_cluster:
         from loopy.schedule import (
-                EnterLoop, LeaveLoop, RunInstruction, Barrier,
-                CallKernel, ReturnFromKernel)
+            Barrier,
+            CallKernel,
+            EnterLoop,
+            LeaveLoop,
+            ReturnFromKernel,
+            RunInstruction,
+        )
 
         for sched_item in kernel.linearization:
             if isinstance(sched_item, EnterLoop):
@@ -735,8 +745,9 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     # maps inames to "aggregate stride"
     aggregate_strides = {}
 
-    from loopy.symbolic import CoefficientCollector
     from pymbolic.primitives import Variable
+
+    from loopy.symbolic import CoefficientCollector
 
     for aae in global_ary_acc_exprs:
         index_expr = aae.index
@@ -802,8 +813,11 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
     # TODO: do the tag removal rigorously, might be easier after switching
     # to set() from tuple()
 
-    from loopy.kernel.data import (AutoLocalInameTagBase, LocalInameTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import (
+        AutoLocalInameTagBase,
+        LocalInameTag,
+        filter_iname_tags_by_type,
+    )
 
     # Realize that at this point in time, axis lengths are already
     # fixed. So we compute them once and pass them to our recursive
@@ -1026,7 +1040,7 @@ class ArrayChanger:
 # {{{ guess_var_shape
 
 def guess_var_shape(kernel, var_names):
-    from loopy.symbolic import SubstitutionRuleExpander, BatchedAccessMapMapper
+    from loopy.symbolic import BatchedAccessMapMapper, SubstitutionRuleExpander
 
     armap = BatchedAccessMapMapper(kernel, var_names)
 
@@ -1813,8 +1827,7 @@ def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[s
 
     assert kernel.linearization is not None
 
-    from loopy.schedule import (
-            sched_item_to_insn_id, CallKernel, ReturnFromKernel)
+    from loopy.schedule import CallKernel, ReturnFromKernel, sched_item_to_insn_id
 
     subkernel = None
     result: Dict[str, Set[str]] = {}
@@ -1957,7 +1970,7 @@ def infer_args_are_input_output(kernel):
         then the array is inferred as an input argument if it is either read at
         some point in the kernel or it is neither read nor written.
     """
-    from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
+    from loopy.kernel.data import ArrayArg, ConstantArg, ImageArg, ValueArg
     new_args = []
 
     for arg in kernel.args:
@@ -2065,6 +2078,7 @@ def get_call_graph(t_unit, only_kernel_callables=False):
     :arg t_unit: An instance of :class:`TranslationUnit`.
     """
     from pyrsistent import pmap
+
     from loopy.kernel import KernelState
 
     if t_unit.state < KernelState.CALLS_RESOLVED:
@@ -2121,8 +2135,8 @@ def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
     offsetting expression
     during the hardware ina
     """
-    from loopy.kernel.data import HardwareConcurrentTag
     from loopy.isl_helpers import static_min_of_pw_aff
+    from loopy.kernel.data import HardwareConcurrentTag
 
     assert kernel.iname_tags_of_type(iname, HardwareConcurrentTag)
     bounds = kernel.get_iname_bounds(iname)

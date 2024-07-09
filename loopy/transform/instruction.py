@@ -20,13 +20,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence, Mapping, List, Tuple
+from typing import List, Mapping, Sequence, Tuple
+
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.kernel.instruction import InstructionBase
-from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.symbolic import RuleAwareIdentityMapper
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 # {{{ find_instructions
@@ -489,8 +490,9 @@ class IndexSimplifier(RuleAwareIdentityMapper):
         self.kernel = kernel
 
     def map_subscript(self, expr, expn_state):
-        from loopy.symbolic import simplify_using_aff
         from pymbolic.primitives import Subscript
+
+        from loopy.symbolic import simplify_using_aff
 
         new_indices = tuple(simplify_using_aff(self.kernel,
                                                self.rec(idx, expn_state))

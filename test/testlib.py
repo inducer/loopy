@@ -1,5 +1,6 @@
-import loopy as lp
 import numpy as np
+
+import loopy as lp
 
 
 # {{{ test_barrier_in_overridden_get_grid_size_expanded_kernel

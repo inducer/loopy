@@ -21,30 +21,43 @@ THE SOFTWARE.
 """
 
 
-from typing import (Callable, Mapping, Tuple, Union, Set, FrozenSet, List, Dict,
-        Optional, Sequence, Any)
+import logging
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    FrozenSet,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 from immutables import Map
 
-from abc import ABC, abstractmethod
-from loopy.diagnostic import LoopyError
-from pytools.py_codegen import PythonFunctionGenerator
-from pytools.codegen import Indentation, CodeGenerator
-
 from pymbolic import var
+from pytools.codegen import CodeGenerator, Indentation
+from pytools.py_codegen import PythonFunctionGenerator
 
-import logging
+from loopy.diagnostic import LoopyError
+
+
 logger = logging.getLogger(__name__)
 
 from pytools.persistent_dict import WriteOncePersistentDict
-from loopy.tools import LoopyKeyBuilder, caches
-from loopy.typing import ExpressionT
-from loopy.types import LoopyType, NumpyType
+
 from loopy.kernel import KernelState, LoopKernel
-from loopy.kernel.data import _ArraySeparationInfo, ArrayArg, auto
-from loopy.translation_unit import TranslationUnit
+from loopy.kernel.data import ArrayArg, _ArraySeparationInfo, auto
 from loopy.schedule.tools import KernelArgInfo
+from loopy.tools import LoopyKeyBuilder, caches
+from loopy.translation_unit import TranslationUnit
+from loopy.types import LoopyType, NumpyType
+from loopy.typing import ExpressionT
 from loopy.version import DATA_MODEL_VERSION
 
 
@@ -154,10 +167,10 @@ class ExecutionWrapperGeneratorBase(ABC):
     def generate_integer_arg_finding_from_array_data(
             self, gen: CodeGenerator, kernel: LoopKernel, kai: KernelArgInfo
             ) -> None:
-        from loopy.kernel.data import ArrayArg
-        from loopy.kernel.array import get_strides
-        from loopy.symbolic import DependencyMapper, StringifyMapper
         from loopy.diagnostic import ParameterFinderWarning
+        from loopy.kernel.array import get_strides
+        from loopy.kernel.data import ArrayArg
+        from loopy.symbolic import DependencyMapper, StringifyMapper
         dep_map = DependencyMapper()
 
         # {{{ find equations
@@ -415,9 +428,8 @@ class ExecutionWrapperGeneratorBase(ABC):
             ) -> Sequence[str]:
         options = kernel.options
         import loopy as lp
-
-        from loopy.kernel.data import ImageArg
         from loopy.kernel.array import ArrayBase
+        from loopy.kernel.data import ImageArg
         from loopy.symbolic import StringifyMapper
         from loopy.types import NumpyType
 
@@ -941,8 +953,8 @@ def get_highlighted_code(text, python=False):
     except ImportError:
         return text
     else:
-        from pygments.lexers import CLexer, PythonLexer
         from pygments.formatters import TerminalFormatter
+        from pygments.lexers import CLexer, PythonLexer
 
         return highlight(text, CLexer() if not python else PythonLexer(),
                          TerminalFormatter())

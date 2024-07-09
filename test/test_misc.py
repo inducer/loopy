@@ -20,14 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from pickle import loads, dumps
+import logging
+import sys
+from pickle import dumps, loads
 
 import pytest
+
 import loopy as lp
 
-import sys
 
-import logging
 logger = logging.getLogger(__name__)
 
 

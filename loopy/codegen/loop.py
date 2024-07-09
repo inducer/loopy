@@ -21,12 +21,13 @@ THE SOFTWARE.
 """
 
 
-from loopy.diagnostic import warn, LoopyError
-from loopy.codegen.result import merge_codegen_results
 import islpy as isl
 from islpy import dim_type
-from loopy.codegen.control import build_loop_nest
 from pymbolic.mapper.stringifier import PREC_NONE
+
+from loopy.codegen.control import build_loop_nest
+from loopy.codegen.result import merge_codegen_results
+from loopy.diagnostic import LoopyError, warn
 
 
 # {{{ conditional-reducing slab decomposition
@@ -125,8 +126,7 @@ def generate_unroll_loop(codegen_state, sched_index):
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
-    from loopy.isl_helpers import (
-            static_max_of_pw_aff, static_value_of_pw_aff)
+    from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
     length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
@@ -167,8 +167,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
-    from loopy.isl_helpers import (
-            static_max_of_pw_aff, static_value_of_pw_aff)
+    from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
     length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
@@ -232,9 +231,14 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         hw_inames_left=None):
     kernel = codegen_state.kernel
 
-    from loopy.kernel.data import (UniqueInameTag, HardwareConcurrentTag,
-                LocalInameTag, GroupInameTag, VectorizeTag, InameImplementationTag)
-
+    from loopy.kernel.data import (
+        GroupInameTag,
+        HardwareConcurrentTag,
+        InameImplementationTag,
+        LocalInameTag,
+        UniqueInameTag,
+        VectorizeTag,
+    )
     from loopy.schedule import get_insn_ids_for_block_at
     insn_ids_for_block = get_insn_ids_for_block_at(kernel.linearization,
                                                    schedule_index)

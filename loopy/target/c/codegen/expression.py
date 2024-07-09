@@ -22,28 +22,34 @@ THE SOFTWARE.
 
 
 from typing import Optional
-import numpy as np
 
-from pymbolic.mapper import RecursiveMapper, IdentityMapper
-from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
-        PREC_SHIFT,
-        PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND,
-        PREC_BITWISE_AND, PREC_BITWISE_OR, PREC_BITWISE_XOR)
+import numpy as np
 
 import islpy as isl
 import pymbolic.primitives as p
 from pymbolic import var
-
-
-from loopy.expression import dtype_to_type_context
-from loopy.type_inference import TypeReader
+from pymbolic.mapper import IdentityMapper, RecursiveMapper
+from pymbolic.mapper.stringifier import (
+    PREC_BITWISE_AND,
+    PREC_BITWISE_OR,
+    PREC_BITWISE_XOR,
+    PREC_CALL,
+    PREC_LOGICAL_AND,
+    PREC_LOGICAL_OR,
+    PREC_NONE,
+    PREC_PRODUCT,
+    PREC_SHIFT,
+    PREC_UNARY,
+)
 
 from loopy.diagnostic import LoopyError
-from loopy.tools import is_integer
-from loopy.types import LoopyType
-from loopy.target.c import CExpression
-from loopy.typing import ExpressionT
+from loopy.expression import dtype_to_type_context
 from loopy.symbolic import TypeCast
+from loopy.target.c import CExpression
+from loopy.tools import is_integer
+from loopy.type_inference import TypeReader
+from loopy.types import LoopyType
+from loopy.typing import ExpressionT
 
 
 __doc__ = """
@@ -140,7 +146,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     # }}}
 
     def map_variable(self, expr, type_context):
-        from loopy.kernel.data import ValueArg, AddressSpace
+        from loopy.kernel.data import AddressSpace, ValueArg
 
         def postproc(x):
             return x
@@ -218,9 +224,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         ary = self.find_array(expr)
 
-        from loopy.kernel.array import get_access_info
         from pymbolic import evaluate
 
+        from loopy.kernel.array import get_access_info
         from loopy.symbolic import simplify_using_aff
         index_tuple = tuple(
                 simplify_using_aff(self.kernel, idx) for idx in expr.index_tuple)
@@ -229,8 +235,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 
-        from loopy.kernel.data import (
-                ImageArg, ArrayArg, TemporaryVariable, ConstantArg)
+        from loopy.kernel.data import ArrayArg, ConstantArg, ImageArg, TemporaryVariable
 
         if isinstance(ary, ImageArg):
             extra_axes = 0
@@ -647,8 +652,8 @@ class CExpressionToCodeMapper(RecursiveMapper):
             return repr(expr)
 
     def map_call(self, expr, enclosing_prec):
+        from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
         from pymbolic.primitives import Variable
-        from pymbolic.mapper.stringifier import PREC_NONE, PREC_CALL
         if isinstance(expr.function, Variable):
             func = expr.function.name
         else:
@@ -698,7 +703,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
     map_max = map_min
 
     def map_if(self, expr, enclosing_prec):
-        from pymbolic.mapper.stringifier import PREC_NONE, PREC_CALL
+        from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
         return "({} ? {} : {})".format(
                 # Force parentheses around the condition to prevent compiler
                 # warnings regarding precedence (e.g. with POCL 1.8/LLVM 12):

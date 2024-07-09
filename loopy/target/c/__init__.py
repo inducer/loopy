@@ -23,34 +23,47 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import cast, Tuple, Optional, Sequence, Any
 import re
+from typing import Any, Optional, Sequence, Tuple, cast
 
 import numpy as np  # noqa
 
-from cgen import (Collection, Pointer, NestedDeclarator, Block, Generable,
-                  Declarator, Const)
+import pymbolic.primitives as p
+from cgen import (
+    Block,
+    Collection,
+    Const,
+    Declarator,
+    Generable,
+    NestedDeclarator,
+    Pointer,
+)
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
-import pymbolic.primitives as p
 from pytools import memoize_method
 
-from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
-from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.symbolic import IdentityMapper
-from loopy.target.execution import ExecutorBase
-from loopy.translation_unit import FunctionIdT, TranslationUnit
-from loopy.types import NumpyType, LoopyType, to_loopy_type
-from loopy.typing import ExpressionT
-from loopy.kernel import LoopKernel
-from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
-from loopy.kernel.data import (TemporaryVariable, AddressSpace, ArrayArg,
-        ConstantArg, ImageArg, ValueArg)
-from loopy.kernel.function_interface import ScalarCallable
-from loopy.schedule import CallKernel
-from loopy.tools import remove_common_indentation
 from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError, LoopyTypeError
+from loopy.kernel import LoopKernel
+from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
+from loopy.kernel.data import (
+    AddressSpace,
+    ArrayArg,
+    ConstantArg,
+    ImageArg,
+    TemporaryVariable,
+    ValueArg,
+)
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.schedule import CallKernel
+from loopy.symbolic import IdentityMapper
+from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
+from loopy.target.execution import ExecutorBase
+from loopy.tools import remove_common_indentation
+from loopy.translation_unit import FunctionIdT, TranslationUnit
+from loopy.types import LoopyType, NumpyType, to_loopy_type
+from loopy.typing import ExpressionT
 
 
 __doc__ = """
@@ -421,7 +434,9 @@ class CFamilyTarget(TargetBase):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c_types)
+            DTypeRegistry,
+            fill_registry_with_c_types,
+        )
         result = DTypeRegistry()
         fill_registry_with_c_types(result, respect_windows=False,
                 include_bool=True)
@@ -782,10 +797,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         kernel = codegen_state.kernel
         assert kernel.linearization is not None
 
-        from cgen import (
-                FunctionBody,
-                Initializer,
-                Line)
+        from cgen import FunctionBody, Initializer, Line
 
         result = []
 
@@ -880,12 +892,14 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         # {{{ declare temporaries
 
         from cgen import Initializer, Line
+
         # Getting the temporary variables that are needed for the current
         # sub-kernel.
         from loopy.schedule.tools import (
-                temporaries_read_in_subkernel,
-                temporaries_written_in_subkernel,
-                supporting_temporary_names)
+            supporting_temporary_names,
+            temporaries_read_in_subkernel,
+            temporaries_written_in_subkernel,
+        )
         subkernel_name = kernel.linearization[schedule_index].kernel_name
         sub_knl_temps = (
                 temporaries_read_in_subkernel(kernel, subkernel_name)
@@ -1135,8 +1149,8 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         else:
             lhs_atomicity = None
 
-        from loopy.kernel.data import AtomicInit, AtomicUpdate
         from loopy.expression import dtype_to_type_context
+        from loopy.kernel.data import AtomicInit, AtomicUpdate
 
         lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
         rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
@@ -1230,10 +1244,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
-        from pymbolic import var
-        from pymbolic.primitives import Comparison
-        from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
+        from pymbolic import var
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.primitives import Comparison
 
         loop = For(
                 InlineInitializer(
@@ -1263,7 +1277,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
         decl = POD(self, dtype, name)
 
-        from cgen import Initializer, Const
+        from cgen import Const, Initializer
 
         if is_const:
             decl = Const(decl)
@@ -1352,8 +1366,10 @@ class CTarget(CFamilyTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c99_stdint_types,
-                fill_registry_with_c99_complex_types)
+            DTypeRegistry,
+            fill_registry_with_c99_complex_types,
+            fill_registry_with_c99_stdint_types,
+        )
         result = DTypeRegistry()
         fill_registry_with_c99_stdint_types(result)
         fill_registry_with_c99_complex_types(result)

@@ -21,11 +21,14 @@ THE SOFTWARE.
 """
 
 
-from loopy.diagnostic import LoopyError
-from loopy.translation_unit import for_each_kernel
+import logging
+
 import pymbolic
 
-import logging
+from loopy.diagnostic import LoopyError
+from loopy.translation_unit import for_each_kernel
+
+
 logger = logging.getLogger(__name__)
 
 

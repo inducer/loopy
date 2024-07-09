@@ -21,11 +21,12 @@ THE SOFTWARE.
 """
 
 
-from typing import Union, Tuple, TypeVar, Optional
+from typing import Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
 from pymbolic.primitives import Expression
+
 
 IntegralT = Union[int, np.int8, np.int16, np.int32, np.int64, np.uint8,
                   np.uint16, np.uint32, np.uint64]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -25,20 +26,33 @@ THE SOFTWARE.
 import logging
 import sys
 from dataclasses import dataclass, replace
-from typing import (FrozenSet, Hashable, Sequence, AbstractSet, Any, Set, TypeVar,
-                    Mapping, Dict, Tuple, Iterator, Optional, TYPE_CHECKING)
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Any,
+    Dict,
+    FrozenSet,
+    Hashable,
+    Iterator,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    TypeVar,
+)
 
 from immutables import Map
-from pytools import ImmutableRecord
+
 import islpy as isl
-from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
-
-from pytools import MinRecursionLimit, ProcessLogger
-
+from pytools import ImmutableRecord, MinRecursionLimit, ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
+
+from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
 from loopy.kernel.instruction import InstructionBase
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.version import DATA_MODEL_VERSION
+
 
 if TYPE_CHECKING:
     from loopy.kernel import LoopKernel
@@ -446,7 +460,10 @@ def format_insn(kernel, insn_id):
     Fore = kernel.options._fore  # noqa
     Style = kernel.options._style  # noqa
     from loopy.kernel.instruction import (
-            MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
+        BarrierInstruction,
+        MultiAssignmentBase,
+        NoOpInstruction,
+    )
     if isinstance(insn, MultiAssignmentBase):
         return "{}{}{} = {}{}{}  {{id={}}""}".format(
             Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
@@ -2043,8 +2060,12 @@ def _generate_loop_schedules_inner(
         for item in preschedule
         for insn_id in sched_item_to_insn_id(item)}
 
-    from loopy.kernel.data import (IlpBaseTag, ConcurrentTag, VectorizeTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import (
+        ConcurrentTag,
+        IlpBaseTag,
+        VectorizeTag,
+        filter_iname_tags_by_type,
+    )
     ilp_inames = {
             name
             for name, iname in kernel.inames.items()
@@ -2157,8 +2178,7 @@ def _generate_loop_schedules_inner(
                     linearization=gen_sched,
                     state=KernelState.LINEARIZED)
 
-            from loopy.schedule.device_mapping import \
-                    map_schedule_onto_host_or_device
+            from loopy.schedule.device_mapping import map_schedule_onto_host_or_device
             if kernel.state != KernelState.LINEARIZED:
                 # Device mapper only gets run once.
                 new_kernel = map_schedule_onto_host_or_device(new_kernel)
@@ -2259,9 +2279,8 @@ def get_one_scheduled_kernel(kernel, callables_table):
 
 
 def linearize(t_unit: TranslationUnit) -> TranslationUnit:
-    from loopy.kernel.function_interface import (CallableKernel,
-                                                 ScalarCallable)
     from loopy.check import pre_schedule_checks
+    from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 
     pre_schedule_checks(t_unit)
 

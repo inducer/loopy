@@ -22,14 +22,17 @@ THE SOFTWARE.
 
 
 import sys
-import pytest
-import loopy as lp
+
 import numpy as np
+import pytest
+
 import pyopencl as cl
 import pyopencl.array
+from pyopencl.tools import (
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+)
 
-from pyopencl.tools import \
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests  # noqa
+import loopy as lp
 
 
 def test_make_einsum_error_handling():

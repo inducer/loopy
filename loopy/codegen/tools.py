@@ -20,17 +20,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
 from functools import cached_property
+from typing import Dict, FrozenSet, List
+
 from pytools import memoize_method
 
-from loopy.schedule import (EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel,
-                            Barrier, BeginBlockItem, gather_schedule_block,
-                            ScheduleItem)
-from dataclasses import dataclass
-from typing import FrozenSet, List, Dict
-from loopy.kernel.instruction import InstructionBase
 from loopy.kernel import LoopKernel
 from loopy.kernel.data import Iname
+from loopy.kernel.instruction import InstructionBase
+from loopy.schedule import (
+    Barrier,
+    BeginBlockItem,
+    CallKernel,
+    EnterLoop,
+    LeaveLoop,
+    ReturnFromKernel,
+    ScheduleItem,
+    gather_schedule_block,
+)
 
 
 __doc__ = """

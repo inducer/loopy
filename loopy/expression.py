@@ -115,9 +115,10 @@ class VectorizabilityChecker(RecursiveMapper):
 
         index = expr.index_tuple
 
-        from loopy.symbolic import get_dependencies
-        from loopy.kernel.array import VectorArrayDimTag
         from pymbolic.primitives import Variable
+
+        from loopy.kernel.array import VectorArrayDimTag
+        from loopy.symbolic import get_dependencies
 
         possible = None
         for i in range(len(var.shape)):

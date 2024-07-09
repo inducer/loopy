@@ -9,8 +9,7 @@ extend-select = [
     "E",   # pycodestyle
     "F",   # pyflakes
 
-    # TODO
-    # "I",   # flake8-isort
+    "I",   # flake8-isort
 
     "N",   # pep8-naming
     "NPY", # numpy
@@ -51,9 +50,13 @@ combine-as-imports = true
 known-first-party = [
     "pytools",
     "pymbolic",
+    "islpy",
+    "pyopencl",
+    "cgen",
+    "genpy",
 ]
 known-local-folder = [
-    "modepy",
+    "loopy",
 ]
 lines-after-imports = 2
 

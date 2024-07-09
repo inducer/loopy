@@ -23,29 +23,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-
-from pymbolic.mapper import CSECachingMapperMixin
-from pymbolic.primitives import Slice, Variable, Subscript, Call
-from loopy.kernel.array import FixedStrideArrayDimTag
-from loopy.tools import intern_frozenset_of_ids, Optional
-from loopy.symbolic import (
-        IdentityMapper, WalkMapper, SubArrayRef)
-from loopy.kernel.data import (
-        InstructionBase,
-        MultiAssignmentBase, Assignment,
-        SubstitutionRule, AddressSpace, ValueArg, auto)
-from loopy.translation_unit import for_each_kernel
-from loopy.diagnostic import LoopyError, warn_with_kernel
-import islpy as isl
-from islpy import dim_type
-from pytools import ProcessLogger
-
+import logging
+import re
 from sys import intern
 
-import re
+import numpy as np
 
-import logging
+import islpy as isl
+from islpy import dim_type
+from pymbolic.mapper import CSECachingMapperMixin
+from pymbolic.primitives import Call, Slice, Subscript, Variable
+from pytools import ProcessLogger
+
+from loopy.diagnostic import LoopyError, warn_with_kernel
+from loopy.kernel.array import FixedStrideArrayDimTag
+from loopy.kernel.data import (
+    AddressSpace,
+    Assignment,
+    InstructionBase,
+    MultiAssignmentBase,
+    SubstitutionRule,
+    ValueArg,
+    auto,
+)
+from loopy.symbolic import IdentityMapper, SubArrayRef, WalkMapper
+from loopy.tools import Optional, intern_frozenset_of_ids
+from loopy.translation_unit import for_each_kernel
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -80,7 +85,9 @@ def _normalize_string_tag(tag):
     from pytools.tag import Tag
 
     from loopy.kernel.instruction import (
-            UseStreamingStoreTag, LegacyStringInstructionTag)
+        LegacyStringInstructionTag,
+        UseStreamingStoreTag,
+    )
     if tag == "!streaming_store":
         return UseStreamingStoreTag()
     else:
@@ -169,6 +176,7 @@ def expand_defines_in_expr(expr, defines):
         return expr
 
     from pymbolic.primitives import Variable
+
     from loopy.symbolic import parse
 
     def subst_func(var):
@@ -182,7 +190,7 @@ def expand_defines_in_expr(expr, defines):
         else:
             return None
 
-    from loopy.symbolic import SubstitutionMapper, PartialEvaluationMapper
+    from loopy.symbolic import PartialEvaluationMapper, SubstitutionMapper
     return PartialEvaluationMapper()(
             SubstitutionMapper(subst_func)(expr))
 
@@ -210,6 +218,7 @@ def get_default_insn_options_dict():
 
 
 from collections import namedtuple
+
 
 _NosyncParseResult = namedtuple("_NosyncParseResult", "expr, scope")
 
@@ -501,7 +510,8 @@ def parse_insn(groups, insn_options):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Subscript, Lookup
+    from pymbolic.primitives import Lookup, Subscript, Variable
+
     from loopy.symbolic import TypeAnnotation
 
     if not isinstance(lhs, tuple):
@@ -584,7 +594,7 @@ def parse_subst_rule(groups):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Call
+    from pymbolic.primitives import Call, Variable
     if isinstance(lhs, Variable):
         subst_name = lhs.name
         arg_names = []
@@ -631,7 +641,7 @@ def parse_special_insn(groups, insn_options):
                     else insn_id),
                 **insn_options)
 
-    from loopy.kernel.instruction import NoOpInstruction, BarrierInstruction
+    from loopy.kernel.instruction import BarrierInstruction, NoOpInstruction
     special_insn_kind = groups["kind"]
     # check for bad options
     check_illegal_options(insn_options, special_insn_kind)
@@ -1186,7 +1196,7 @@ class ArgumentGuesser:
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
         import loopy as lp
-        from loopy.kernel.data import ValueArg, ArrayArg
+        from loopy.kernel.data import ArrayArg, ValueArg
 
         if arg_name in self.all_params:
             return ValueArg(arg_name)
@@ -1575,8 +1585,9 @@ def determine_shapes_of_temporaries(knl):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             vars_needing_shape_inference.add(tv.name)
 
-    from loopy.kernel.instruction import Assignment
     from pymbolic.primitives import Variable
+
+    from loopy.kernel.instruction import Assignment
     for insn in knl.instructions:
         # If there's an assignment to a var without a subscript
         # then assume that the variable is a scalar.
@@ -1769,8 +1780,8 @@ def _is_wildcard(s):
 
 
 def _resolve_dependencies(what, knl, insn, deps):
-    from loopy.transform.instruction import find_instructions
     from loopy.match import MatchExpressionBase
+    from loopy.transform.instruction import find_instructions
 
     new_deps = []
 
@@ -1960,8 +1971,9 @@ def normalize_slice_params(slice, dimension_length):
     :arg slice: An instance of :class:`pymbolic.primitives.Slice`.
     :arg dimension_length: Length of the axis being sliced.
     """
-    from pymbolic.primitives import Slice
     from numbers import Integral
+
+    from pymbolic.primitives import Slice
 
     assert isinstance(slice, Slice)
     start, stop, step = slice.start, slice.stop, slice.step
@@ -2318,9 +2330,8 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     # {{{ handle kernel language version
 
-    from loopy.version import LANGUAGE_VERSION_SYMBOLS
-
     import loopy.version as v
+    from loopy.version import LANGUAGE_VERSION_SYMBOLS
     version_to_symbol = {
             getattr(v, lvs): lvs
             for lvs in LANGUAGE_VERSION_SYMBOLS}
@@ -2348,10 +2359,12 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
         if lang_version is None:
             from warnings import warn
+
             from loopy.diagnostic import LoopyWarning
             from loopy.version import (
-                    MOST_RECENT_LANGUAGE_VERSION,
-                    FALLBACK_LANGUAGE_VERSION)
+                FALLBACK_LANGUAGE_VERSION,
+                MOST_RECENT_LANGUAGE_VERSION,
+            )
             warn("'lang_version' was not passed to make_function(). "
                     "To avoid this warning, pass "
                     "lang_version={ver} in this invocation. "
@@ -2376,7 +2389,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     # {{{ separate temporary variables and arguments, take care of names with commas
 
-    from loopy.kernel.data import TemporaryVariable, ArrayBase
+    from loopy.kernel.data import ArrayBase, TemporaryVariable
 
     if isinstance(kernel_data, str):
         kernel_data = kernel_data.split(",")
@@ -2456,8 +2469,8 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     # }}}
 
-    from loopy.kernel.data import Iname
     from loopy.kernel import _get_inames_from_domains
+    from loopy.kernel.data import Iname
     inames = {name: Iname(name, frozenset())
               for name in _get_inames_from_domains(domains)}
 
@@ -2477,7 +2490,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     kwargs["substitutions"] = substitutions
 
-    from pytools.tag import normalize_tags, check_tag_uniqueness
+    from pytools.tag import check_tag_uniqueness, normalize_tags
     tags = check_tag_uniqueness(normalize_tags(kwargs.pop("tags", frozenset())))
 
     index_dtype = kwargs.pop("index_dtype", None)

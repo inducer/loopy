@@ -23,32 +23,41 @@ THE SOFTWARE.
 
 from dataclasses import dataclass
 from typing import FrozenSet, List, Optional, Sequence, Type, Union
+
 from immutables import Map
+
 import islpy as isl
-from pytools.tag import Tag
-from loopy.kernel import LoopKernel
-from loopy.typing import ExpressionT, auto, not_none
-from loopy.match import ToStackMatchCovertible
-from loopy.symbolic import (get_dependencies,
-        RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
-        SubstitutionRuleMappingContext, CombineMapper)
-from loopy.diagnostic import LoopyError
-from pymbolic.mapper.substitutor import make_subst_func
-from loopy.translation_unit import CallablesTable, TranslationUnit
-from loopy.kernel.instruction import InstructionBase, MultiAssignmentBase
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-from loopy.kernel.tools import (kernel_has_global_barriers,
-                                find_most_recent_global_barrier)
-from loopy.kernel.data import AddressSpace
-from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
-
 from pymbolic import var
+from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_on_first_arg
+from pytools.tag import Tag
 
-from loopy.transform.array_buffer_map import (ArrayToBufferMap,
-                                              ArrayToBufferMapBase,
-                                              NoOpArrayToBufferMap,
-                                              AccessDescriptor)
+from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
+from loopy.kernel.data import AddressSpace
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.instruction import InstructionBase, MultiAssignmentBase
+from loopy.kernel.tools import (
+    find_most_recent_global_barrier,
+    kernel_has_global_barriers,
+)
+from loopy.match import ToStackMatchCovertible
+from loopy.symbolic import (
+    CombineMapper,
+    RuleAwareIdentityMapper,
+    RuleAwareSubstitutionMapper,
+    SubstitutionRuleMappingContext,
+    get_dependencies,
+)
+from loopy.transform.array_buffer_map import (
+    AccessDescriptor,
+    ArrayToBufferMap,
+    ArrayToBufferMapBase,
+    NoOpArrayToBufferMap,
+)
+from loopy.translation_unit import CallablesTable, TranslationUnit
+from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
+from loopy.typing import ExpressionT, auto, not_none
 
 
 # {{{ contains_subst_rule_invocation
@@ -82,8 +91,9 @@ def _get_calls_in_expr(expr):
 @memoize_on_first_arg
 def _get_called_names(insn):
     assert isinstance(insn, MultiAssignmentBase)
-    from pymbolic.primitives import Expression
     from functools import reduce
+
+    from pymbolic.primitives import Expression
     return ((_get_calls_in_expr(insn.expression)
              if isinstance(insn.expression, Expression)
              else frozenset())
@@ -498,8 +508,9 @@ def precompute_for_single_kernel(
     subst_name: Optional[str] = None
     subst_tag = None
 
-    from pymbolic.primitives import Variable, Call
-    from loopy.symbolic import parse, TaggedVariable
+    from pymbolic.primitives import Call, Variable
+
+    from loopy.symbolic import TaggedVariable, parse
 
     for use in subst_use:
         if isinstance(use, str):
@@ -551,7 +562,7 @@ def precompute_for_single_kernel(
     # {{{ process invocations in footprint generators, start access_descriptors
 
     if footprint_generators:
-        from pymbolic.primitives import Variable, Call
+        from pymbolic.primitives import Call, Variable
 
         access_descriptors = []
 

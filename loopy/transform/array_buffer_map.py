@@ -21,18 +21,19 @@ THE SOFTWARE.
 """
 
 
-from dataclasses import dataclass, replace
 from abc import ABC, abstractmethod
-from typing import Optional, Callable, Sequence, Tuple, Any
+from dataclasses import dataclass, replace
+from typing import Any, Callable, Optional, Sequence, Tuple
+
 from typing_extensions import Self
+
 import islpy as isl
 from islpy import dim_type
-from loopy.symbolic import (get_dependencies, SubstitutionMapper)
-from pymbolic.mapper.substitutor import make_subst_func
-
-from pytools import memoize_method
 from pymbolic import var
+from pymbolic.mapper.substitutor import make_subst_func
+from pytools import memoize_method
 
+from loopy.symbolic import SubstitutionMapper, get_dependencies
 from loopy.typing import ExpressionT
 
 
@@ -354,7 +355,7 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
 
         domain = domain & renamed_aug_domain
 
-        from loopy.isl_helpers import convexify, boxify
+        from loopy.isl_helpers import boxify, convexify
         if boxify_sweep:
             return boxify(self.kernel.cache_manager, domain,
                     new_non1_storage_axis_names, self.kernel.assumptions)

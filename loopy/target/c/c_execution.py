@@ -20,33 +20,37 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Callable, Any, Union, Tuple, Sequence, Optional
-import tempfile
-import os
 import ctypes
+import logging
+import os
+import tempfile
 from dataclasses import dataclass
-
-from immutables import Map
-from pytools import memoize_method
-from pytools.codegen import Indentation, CodeGenerator
-from pytools.prefork import ExecError
-from codepy.toolchain import guess_toolchain, ToolchainGuessError, GCCToolchain
-from codepy.jit import compile_from_string
+from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 import numpy as np
+from codepy.jit import compile_from_string
+from codepy.toolchain import GCCToolchain, ToolchainGuessError, guess_toolchain
+from immutables import Map
 
-from loopy.typing import ExpressionT
-from loopy.types import LoopyType
+from pytools import memoize_method
+from pytools.codegen import CodeGenerator, Indentation
+from pytools.prefork import ExecError
+
+from loopy.codegen.result import GeneratedProgram
 from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase
 from loopy.kernel.data import ArrayArg
 from loopy.schedule.tools import KernelArgInfo
-from loopy.codegen.result import GeneratedProgram
+from loopy.target.execution import (
+    ExecutionWrapperGeneratorBase,
+    ExecutorBase,
+    get_highlighted_code,
+)
 from loopy.translation_unit import TranslationUnit
-from loopy.target.execution import (ExecutorBase,
-                             ExecutionWrapperGeneratorBase, get_highlighted_code)
+from loopy.types import LoopyType
+from loopy.typing import ExpressionT
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 DEF_EVEN_DIV_FUNCTION = """

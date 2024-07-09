@@ -22,13 +22,12 @@ THE SOFTWARE.
 
 
 from pytools import MovedFunctionDeprecationWrapper
-from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
-from loopy.translation_unit import (for_each_kernel,
-                                    TranslationUnit)
+from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
-from loopy.diagnostic import LoopyError
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 class SubscriptRewriter(RuleAwareIdentityMapper):

@@ -1,7 +1,8 @@
 import sys
 
-import loopy as lp
 import numpy as np
+
+import loopy as lp
 
 
 def to_python_literal(value):
@@ -123,8 +124,8 @@ def main():
     if lang == "loopy":
         # {{{ path wrangling
 
-        from os.path import dirname, abspath
         from os import getcwd
+        from os.path import abspath, dirname
 
         infile_dirname = dirname(args.infile)
         if infile_dirname:

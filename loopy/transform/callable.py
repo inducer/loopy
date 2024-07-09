@@ -20,22 +20,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import islpy as isl
 from immutables import Map
 
+import islpy as isl
 from pytools import UniqueNameGenerator
 
-from loopy.kernel import LoopKernel
 from loopy.diagnostic import LoopyError
-from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
-        Assignment, CInstruction, _DataObliviousInstruction)
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.instruction import (
+    Assignment,
+    CallInstruction,
+    CInstruction,
+    MultiAssignmentBase,
+    _DataObliviousInstruction,
+)
 from loopy.symbolic import (
-        RuleAwareIdentityMapper,
-        RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext)
-from loopy.kernel.function_interface import (
-        CallableKernel, ScalarCallable)
-from loopy.translation_unit import (TranslationUnit,
-                                    for_each_kernel)
+    RuleAwareIdentityMapper,
+    RuleAwareSubstitutionMapper,
+    SubstitutionRuleMappingContext,
+)
+from loopy.translation_unit import TranslationUnit, for_each_kernel
+
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -130,8 +136,8 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
     def map_subscript(self, expr, expn_state):
         if expr.aggregate.name in self.callee_knl.arg_dict:
-            from pymbolic.primitives import Subscript, Variable
             from pymbolic import substitute
+            from pymbolic.primitives import Subscript, Variable
 
             sar = self.callee_arg_to_call_param[expr.aggregate.name]  # SubArrayRef
 
@@ -179,6 +185,7 @@ def substitute_into_domain(domain, param_name, expr, allowed_param_dims):
     :arg allowed_deps: A :class:`list` of :class:`str` that are
     """
     import pymbolic.primitives as prim
+
     from loopy.symbolic import get_dependencies, isl_set_from_expr
     if param_name not in domain.get_var_dict():
         # param_name not in domain => domain will be unchanged
@@ -241,6 +248,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     """
     import pymbolic.primitives as prim
     from pymbolic.mapper.substitutor import make_subst_func
+
     from loopy.kernel.data import ValueArg
 
     # {{{ sanity checks
@@ -505,7 +513,7 @@ def inline_callable_kernel(translation_unit, function_name):
     Returns a copy of *translation_unit* with the callable kernel
     named *function_name* inlined at all call-sites.
     """
-    from loopy.preprocess import infer_arg_descr, filter_reachable_callables
+    from loopy.preprocess import filter_reachable_callables, infer_arg_descr
     from loopy.translation_unit import resolve_callables
 
     # {{{ must have argument shape information at call sites to inline
@@ -533,10 +541,12 @@ def rename_callable(program, old_name, new_name=None, existing_ok=False):
     :arg new_name: New name for the callable to be renamed
     :arg existing_ok: An instance of :class:`bool`
     """
-    from loopy.symbolic import (
-            RuleAwareSubstitutionMapper,
-            SubstitutionRuleMappingContext)
     from pymbolic import var
+
+    from loopy.symbolic import (
+        RuleAwareSubstitutionMapper,
+        SubstitutionRuleMappingContext,
+    )
 
     assert isinstance(program, TranslationUnit)
     assert isinstance(old_name, str)

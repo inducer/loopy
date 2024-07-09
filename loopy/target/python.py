@@ -27,16 +27,16 @@ from typing import Optional, Sequence, Tuple
 
 import numpy as np
 
+from genpy import Collection, Generable, Suite
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
-from genpy import Generable, Suite, Collection
 
-from loopy.type_inference import TypeReader
-from loopy.kernel.data import ValueArg
-from loopy.diagnostic import LoopyError  # noqa
-from loopy.target import ASTBuilderBase
 from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError  # noqa
+from loopy.kernel.data import ValueArg
+from loopy.target import ASTBuilderBase
+from loopy.type_inference import TypeReader
 
 
 # {{{ expression to code
@@ -195,8 +195,8 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
 
         result = []
 
-        from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
+        from pymbolic.mapper.stringifier import PREC_NONE
 
         for tv in sorted(
                 kernel.temporary_variables.values(),
@@ -234,8 +234,8 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
             lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
-        from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
+        from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
 
         if hints:
             raise ValueError("hints for python loops not supported")
@@ -279,8 +279,8 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         if insn.atomicity:
             raise NotImplementedError("atomic ops in Python")
 
-        from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
+        from pymbolic.mapper.stringifier import PREC_NONE
 
         return Assign(
                 ecm(insn.assignee, prec=PREC_NONE, type_context=None),

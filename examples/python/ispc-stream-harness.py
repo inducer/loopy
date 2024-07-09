@@ -1,14 +1,19 @@
-import loopy as lp
-import numpy as np
-import numpy.linalg as la
 import ctypes
 import ctypes.util
 import os
-from time import time
 from tempfile import TemporaryDirectory
+from time import time
 
-from loopy.tools import (empty_aligned, address_from_numpy,
-        build_ispc_shared_lib, cptr_from_numpy)
+import numpy as np
+import numpy.linalg as la
+
+import loopy as lp
+from loopy.tools import (
+    address_from_numpy,
+    build_ispc_shared_lib,
+    cptr_from_numpy,
+    empty_aligned,
+)
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
