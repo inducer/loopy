@@ -2423,15 +2423,6 @@ class PrimeAdder(IdentityMapper):
 
 # {{{ get access range
 
-class UnableToDetermineAccessRange(UnableToDetermineAccessRangeError):
-    def __init__(self, *args, **kwargs):
-        from warnings import warn
-        warn("UnableToDetermineAccessRange renamed to"
-             " UnableToDetermineAccessRangeError,  will be unsupported in"
-             " 2022.", DeprecationWarning, stacklevel=2)
-        super().__init__(*args, **kwargs)
-
-
 def get_access_map(domain, subscript, assumptions=None, shape=None,
         allowed_constant_names=None):
     """
