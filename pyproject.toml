@@ -18,7 +18,9 @@ extend-select = [
 
     # TODO
     # "UP",  # pyupgrade
-    # "RUF", # ruff
+    # "RUF",  # ruff
+
+    "RUF022", # __all__ isn't sorted
 ]
 extend-ignore = [
     "C90",  # McCabe complexity

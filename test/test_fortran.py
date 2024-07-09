@@ -39,9 +39,9 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate
 
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # "cl.create_some_context"
-        ]
+    "cl",  # "cl.create_some_context"
+    "pytest_generate_tests"
+]
 
 
 pytest.importorskip("fparser")
