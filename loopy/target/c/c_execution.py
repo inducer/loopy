@@ -318,16 +318,19 @@ class CCompiler:
         return os.path.join(self.tempdir, name)
 
     def build(self, name, code, debug=False, wait_on_error=None,
-                     debug_recompile=True):
+              debug_recompile=True, extra_build_options: Sequence[str] = ()):
         """Compile code, build and load shared library."""
         logger.debug(code)
         c_fname = self._tempname("code." + self.source_suffix)
 
         # build object
         _, mod_name, ext_file, recompiled = \
-            compile_from_string(self.toolchain, name, code, c_fname,
-                                self.tempdir, debug, wait_on_error,
-                                debug_recompile, False)
+            compile_from_string(
+                self.toolchain.copy(
+                    cflags=self.toolchain.cflags+list(extra_build_options)),
+                name, code, c_fname,
+                self.tempdir, debug, wait_on_error,
+                debug_recompile, False)
 
         if recompiled:
             logger.debug(f"Kernel {name} compiled from source")
@@ -426,7 +429,8 @@ class CompiledCKernel:
         # get code and build
         self.code = dev_code
         self.comp = comp if comp is not None else CCompiler()
-        self.dll = self.comp.build(devprog.name, self.code)
+        self.dll = self.comp.build(devprog.name, self.code,
+                                   extra_build_options=kernel.options.build_options)
 
         # get the function declaration for interface with ctypes
         self._fn = getattr(self.dll, devprog.name)
