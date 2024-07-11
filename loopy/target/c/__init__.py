@@ -547,8 +547,8 @@ class CMathCallable(ScalarCallable):
             else:
                 result_dtype = dtype
 
-            if dtype.kind == "c":
-                if name != "conj":
+            if dtype.kind == "c" or name in ["real", "realf", "imag", "imagf"]:
+                if name not in ["conj", "conjf"]:
                     name = "c" + name
 
             return (
