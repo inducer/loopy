@@ -684,6 +684,9 @@ class CMathCallable(ScalarCallable):
               return 0;
             }}""")
 
+        if isinstance(target, CTarget):
+            yield ("50_cmath", "#include <math.h>")
+
 
 class GNULibcCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, callables_table):
