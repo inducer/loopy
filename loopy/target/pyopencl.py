@@ -116,12 +116,12 @@ class PyOpenCLCallable(ScalarCallable):
                                 np.dtype(dtype.numpy_dtype.type(0).real))}),
                         callables_table)
 
-        if name in ["real", "imag"]:
+        if name in ["real", "imag", "conj"]:
             if not dtype.is_complex():
                 tpname = dtype.numpy_dtype.type.__name__
                 return (
                         self.copy(
-                            name_in_target=f"lpy_{name}_{tpname}",
+                            name_in_target=f"_lpy_{name}_{tpname}",
                             arg_id_to_dtype={0: dtype, -1: dtype}),
                         callables_table)
 
@@ -154,8 +154,10 @@ class PyOpenCLCallable(ScalarCallable):
 
     def generate_preambles(self, target):
         name = self.name_in_target
-        if name.startswith("lpy_real") or name.startswith("lpy_imag"):
-            if name.startswith("lpy_real"):
+        if (name.startswith("_lpy_real")
+                or name.startswith("_lpy_conj")
+                or name.startswith("_lpy_imag")):
+            if name.startswith("_lpy_real") or name.startswith("_lpy_conj"):
                 ret = "x"
             else:
                 ret = "0"
