@@ -307,8 +307,6 @@ class InstructionBase(ImmutableRecord, Taggable):
                 # The Taggable constructor call does extra validation.
                 tags=tags)
 
-        Taggable.__init__(self, tags)
-
     # {{{ abstract interface
 
     def read_dependency_names(self):
