@@ -701,7 +701,7 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
         assert isinstance(tags, frozenset)
         assert tags
 
-        Taggable.__init__(self, tags)
+        self.tags = tags
 
     def __getinitargs__(self):
         return self.name, self.tags
