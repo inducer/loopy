@@ -1123,7 +1123,7 @@ def _check_variable_access_ordered_inner(kernel):
             # for each *pred*, we will calculate all the direct/indirect
             # instructions that can be reached.
             seen_successors = set()
-            # first let us start with direct sucessors
+            # first let us start with direct successors
             to_check = edges[pred].copy()
             while to_check:
                 successor = to_check.pop()
@@ -1219,7 +1219,7 @@ def check_variable_access_ordered(kernel):
     """Checks that between each write to a variable and all other accesses to
     the variable there is either:
 
-    * a direct/indirect depdendency edge, or
+    * a direct/indirect dependency edge, or
     * an explicit statement that no ordering is necessary (expressed
       through a bi-directional :attr:`loopy.InstructionBase.no_sync_with`)
     """

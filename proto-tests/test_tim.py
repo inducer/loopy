@@ -190,7 +190,7 @@ def test_tim3d(ctx_factory):
     knl = lp.split_iname(knl, "k", n, inner_tag="l.2")  # , slabs=(0, 1))
     knl = lp.split_iname(knl, "i", n, inner_tag="l.0")  # , slabs=(0, 1))
 
-#    knl = lp.tag_inames(knl, dict(k_nner="unr"))
+#    knl = lp.tag_inames(knl, dict(k_inner="unr"))
 
     knl = lp.tag_inames(knl, dict(o="unr"))
     knl = lp.tag_inames(knl, dict(m="unr"))

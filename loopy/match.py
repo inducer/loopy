@@ -1,4 +1,4 @@
-"""Matching functionality for instruction ids and subsitution
+"""Matching functionality for instruction ids and substitution
 rule invocations stacks."""
 
 

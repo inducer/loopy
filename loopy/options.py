@@ -118,7 +118,7 @@ class Options(ImmutableRecord):
 
     .. attribute:: cl_exec_manage_array_events
 
-        Within the PyOpenCL executor, respect and udpate
+        Within the PyOpenCL executor, respect and update
         :attr:`pyopencl.array.Array.events`.
 
         Defaults to *True*.
@@ -156,7 +156,7 @@ class Options(ImmutableRecord):
 
         Allow re-ordering of floating point arithmetic. Re-ordering may
         give different results as floating point arithmetic is not
-        associative in addition and mulitplication. Default is *True*.
+        associative in addition and multiplication. Default is *True*.
         Note that the implementation of this option is currently incomplete.
 
     .. attribute:: build_options

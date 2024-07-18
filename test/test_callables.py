@@ -1397,8 +1397,8 @@ def test_inline_deps(ctx_factory):
     prg = lp.merge([parent_knl, child_knl])
     inlined = lp.inline_callable_kernel(prg, "func")
 
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    apply_single_writer_depencency_heuristic(inlined, error_if_used=True)
+    from loopy.kernel.creation import apply_single_writer_dependency_heuristic
+    apply_single_writer_dependency_heuristic(inlined, error_if_used=True)
 
     _evt, (a_dev,) = inlined(cq)
 

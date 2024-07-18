@@ -718,7 +718,7 @@ def get_insns_in_topologically_sorted_order(
         for dep in insn.depends_on:
             rev_dep_map[dep].add(insn.id)
 
-    # For breaking ties, we compare the features of an intruction
+    # For breaking ties, we compare the features of an instruction
     # so that instructions with the same set of features are lumped
     # together. This helps in :method:`schedule_as_many_run_insns_as_possible`
     # which bails after 5 insns that don't have the same feature.
@@ -1196,7 +1196,7 @@ def _generate_loop_schedules_internal(
                                 print(
                                     "%(warn)swarning:%(reset_all)s '%(iname)s', "
                                     "which the schedule is "
-                                    "currently stuck inside of, seems mis-nested. "
+                                    "currently stuck inside of, seems misnested. "
                                     "'%(subdep)s' must occur " "before '%(dep)s', "
                                     "but '%(subdep)s must be outside "
                                     "'%(iname)s', whereas '%(dep)s' must be back "
@@ -1404,7 +1404,7 @@ def _generate_loop_schedules_internal(
                     get_priority_tiers(wanted, sched_state.kernel.loop_priority))
 
             # Update the loop priority set, because some constraints may have
-            # have been contradictary.
+            # have been contradictory.
             loop_priority_set = set().union(*[set(t) for t in priority_tiers])
 
             priority_tiers.append(

@@ -672,7 +672,7 @@ class ScalarCallable(InKernelCallable):
 
 class CallableKernel(InKernelCallable):
     """
-    Records informations about a callee kernel. Also provides interface through
+    Records information about a callee kernel. Also provides interface through
     member methods to make the callee kernel compatible to be called from a
     caller kernel.
 

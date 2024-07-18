@@ -90,3 +90,29 @@ module = [
     "IPython.*",
 ]
 ignore_missing_imports = true
+
+[tool.typos.default]
+extend-ignore-re = [
+  "(?Rm)^.*(#|//)\\s*spellchecker:\\s*disable-line$"
+]
+
+[tool.typos.default.extend-words]
+# like the numpy function, array range
+arange = "arange"
+# N-Dimensional
+ND = "ND"
+# used for 'diff_output'
+dout = "dout"
+# an element-wise slice of array u
+ue = "ue"
+# used in an ordering context, "ab" / "ba"
+ba = "ba"
+
+"dependees" = "dependees"
+
+[tool.typos.files]
+extend-exclude = [
+  "loopy/target/c/compyte",
+  "notes/*/*.eps",
+]
+

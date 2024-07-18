@@ -1540,7 +1540,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
                 break
 
         if not found:
-            raise LoopyError("invlaid tag kind: %s" % kind)
+            raise LoopyError("invalid tag kind: %s" % kind)
 
     from loopy.match import parse_match
     match = parse_match(insn_match)
@@ -2265,7 +2265,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     Current limitations:
 
     * Only one iname in the kernel may be tagged with each of the unused hw axes.
-    * Occurence of an ``l.auto`` tag when an instruction is missing one of the
+    * Occurrence of an ``l.auto`` tag when an instruction is missing one of the
       local hw axes.
 
     :arg within: An instruction match as understood by

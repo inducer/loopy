@@ -324,7 +324,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 # -ffp-contract=fast which is the default for PTX codegen, but
                 # for some unknown reason, clang fails to see the FMAs.
                 #
-                # We need to do this only for complex as we haev temporaries
+                # We need to do this only for complex as we have temporaries
                 # only in complex. For reals, the code generated looks like
                 #
                 #    res = c + a * b
@@ -879,7 +879,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         value_arg_code = generate_value_arg_setup(
                 codegen_state.kernel, regular_arg_names)
-        arry_arg_code = generate_array_arg_setup(
+        array_arg_code = generate_array_arg_setup(
                 codegen_state.kernel, regular_arg_names)
 
         if struct_overflow_arg_names:
@@ -952,7 +952,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                    "argument count of the kernel ({_lpy_knl.num_args}).'"),
             Line(),
             value_arg_code,
-            arry_arg_code,
+            array_arg_code,
             overflow_args_code,
             Assign("_lpy_evt",
                    f"{self.target.pyopencl_module_name}.enqueue_nd_range_kernel("
@@ -1207,7 +1207,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 # }}}
 
 
-# {{{ volatile mem acccess target
+# {{{ volatile mem access target
 
 class VolatileMemPyOpenCLCASTBuilder(PyOpenCLCASTBuilder):
     def get_expression_to_c_expression_mapper(self, codegen_state):

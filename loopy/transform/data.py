@@ -252,7 +252,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
                     footprint_subscripts, var_descr)
 
     # Our _not_provided is actually a different object from the one in the
-    # precompute module, but precompute acutally uses that to adjust its
+    # precompute module, but precompute actually uses that to adjust its
     # warning message.
 
     from loopy.transform.precompute import precompute_for_single_kernel
@@ -653,7 +653,7 @@ def set_argument_order(kernel, arg_names):
     :arg arg_names: A list (or comma-separated string) or argument
         names. All arguments must be in this list.
     """
-    # FIXME: @inducer -- shoulld this only affect the root kernel, or should it
+    # FIXME: @inducer -- should this only affect the root kernel, or should it
     # take a within?
 
     if isinstance(arg_names, str):

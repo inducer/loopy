@@ -94,21 +94,21 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             return f"_lpy_np.dtype(_lpy_np.{name})"
         raise Exception(f"dtype: {dtype} not recognized")
 
-    # {{{ handle non numpy arguements
+    # {{{ handle non numpy arguments
 
     def handle_non_numpy_arg(self, gen, arg):
         pass
 
     # }}}
 
-    # {{{ handle allocation of unspecified arguements
+    # {{{ handle allocation of unspecified arguments
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
             strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
             skip_arg_checks: bool) -> None:
         """
-        Handle allocation of non-specified arguements for C-execution
+        Handle allocation of non-specified arguments for C-execution
         """
         from pymbolic import var
 
@@ -181,7 +181,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def initialize_system_args(self, gen):
         """
-        Initializes possibly empty system arguements
+        Initializes possibly empty system arguments
         """
         pass
 
@@ -238,7 +238,7 @@ class CCompiler:
     The general strategy here is as follows:
 
     1.  A :class:`codepy.Toolchain` is guessed from distutils.
-        The user may override any flags obtained therein by passing in arguements
+        The user may override any flags obtained therein by passing in arguments
         to cc, cflags, etc.
 
     2.  The kernel source is built into and object first, then made into a shared

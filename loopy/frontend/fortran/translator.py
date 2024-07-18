@@ -200,7 +200,7 @@ class Scope:
                     return None
 
                 raise TranslationError(
-                        "no type for '%s' found in 'implict none' routine"
+                        "no type for '%s' found in 'implicit none' routine"
                         % name) from None
 
             return self.implicit_types.get(name[0], np.dtype(np.int32))
@@ -426,7 +426,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
             scope.implicit_types = None
 
         for stmt, specs in node.items:
-            if scope.implict_types is None:
+            if scope.implict_types is None:  # spellchecker: disable-line
                 raise TranslationError("implicit decl not allowed after "
                         "'implicit none'")
             tp = self.dtype_from_stmt(stmt)

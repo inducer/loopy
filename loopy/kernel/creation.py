@@ -1884,7 +1884,7 @@ def add_inferred_inames(knl):
 # {{{ apply single-writer heuristic
 
 @for_each_kernel
-def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True,
+def apply_single_writer_dependency_heuristic(kernel, warn_if_used=True,
         error_if_used=False):
     logger.debug("%s: default deps" % kernel.name)
 
@@ -2023,7 +2023,7 @@ class SliceToInameReplacer(IdentityMapper):
     .. attribute:: subarray_ref_bounds
 
         A :class:`list` (one entry for each :class:`SubArrayRef` to be created)
-        of :class:`dict` instances to store the slices enountered in the
+        of :class:`dict` instances to store the slices encountered in the
         expressions as a mapping from ``iname`` to a tuple of ``(start, stop,
         step)``, which describes the boxy (i.e. affine) constraints imposed on
         the ``iname`` by the corresponding slice notation its intended to
@@ -2574,7 +2574,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
     knl = resolve_dependencies(knl)
-    knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=False)
+    knl = apply_single_writer_dependency_heuristic(knl, warn_if_used=False)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:
