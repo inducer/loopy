@@ -563,18 +563,18 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
 
     indices = ["i%d" % i for i in range(rank)]
     shape = ["n%d" % i for i in range(rank)]
-    commad_indices = ", ".join(indices)
+    command_indices = ", ".join(indices)
     bounds = " and ".join(
             f"0<={ind}<{shape_i}"
             for ind, shape_i in zip(indices, shape))
 
     set_str = "{{[{}]: {} }}".format(
-                commad_indices,
+                command_indices,
                 bounds
                 )
     result = make_kernel(set_str,
             "output[%s] = input[%s]"
-            % (commad_indices, commad_indices),
+            % (command_indices, command_indices),
             lang_version=MOST_RECENT_LANGUAGE_VERSION,
             default_offset=auto)
 

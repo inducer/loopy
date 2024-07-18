@@ -76,7 +76,7 @@ class ArrayAccessPatternContext:
 class Array:
     def __init__(self, ctx, name, shape, strides, elements_per_row=None):
         # Each array element stores a tuple:
-        # (timestamp, subgroup, g0, g1, g2, ) of last acccess
+        # (timestamp, subgroup, g0, g1, g2, ) of last access
 
         assert len(shape) == len(strides)
 

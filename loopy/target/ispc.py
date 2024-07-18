@@ -112,7 +112,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
         if (isinstance(ary, TemporaryVariable)
                 and ary.address_space == AddressSpace.PRIVATE):
-            # generate access code for acccess to private-index temporaries
+            # generate access code for access to private-index temporaries
 
             gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:

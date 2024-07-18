@@ -165,7 +165,7 @@ class AtomicNumpyType(NumpyType, AtomicType):
 class OpaqueType(LoopyType):
     """An opaque data type is truly opaque - it has no allocations, no
     temporaries of that type, etc. The only thing allowed is to be pass in
-    through one ValueArg and go out to another. It is introduced to accomodate
+    through one ValueArg and go out to another. It is introduced to accommodate
     functional calls to external libraries.
     """
     def __init__(self, name: str) -> None:

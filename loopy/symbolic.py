@@ -683,7 +683,7 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
         A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
         provide metadata on this object. Legacy string tags are converted to
         :class:`~loopy.LegacyStringInstructionTag` or, if they used to carry
-        a functional meaning, the tag carrying that same fucntional meaning
+        a functional meaning, the tag carrying that same functional meaning
         (e.g. :class:`~loopy.UseStreamingStoreTag`).
 
     Inherits from :class:`pymbolic.primitives.Variable`
@@ -737,7 +737,7 @@ class Reduction(LoopyExpressionBase):
     .. attribute:: allow_simultaneous
 
         A :class:`bool`. If not *True*, an iname is allowed to be used
-        in precisely one reduction, to avoid mis-nesting errors.
+        in precisely one reduction, to avoid misnesting errors.
     """
 
     init_arg_names = ("operation", "inames", "expr", "allow_simultaneous")

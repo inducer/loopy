@@ -825,8 +825,8 @@ def preprocess_program(t_unit: TranslationUnit) -> TranslationUnit:
     from loopy.transform.subst import expand_subst
     t_unit = expand_subst(t_unit)
 
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    t_unit = apply_single_writer_depencency_heuristic(t_unit)
+    from loopy.kernel.creation import apply_single_writer_dependency_heuristic
+    t_unit = apply_single_writer_dependency_heuristic(t_unit)
 
     # Ordering restrictions:
     #

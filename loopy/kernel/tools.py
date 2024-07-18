@@ -263,7 +263,7 @@ def find_all_insn_inames(kernel):
             if insn.within_inames_is_final:
                 continue
 
-            # {{{ depdency-based propagation
+            # {{{ dependency-based propagation
 
             inames_old = insn_id_to_inames[insn.id]
             inames_new = inames_old | guess_iname_deps_based_on_var_use(
@@ -513,8 +513,8 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
     """
 
     # make sure all automatically added stuff shows up
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=False)
+    from loopy.kernel.creation import apply_single_writer_dependency_heuristic
+    kernel = apply_single_writer_dependency_heuristic(kernel, warn_if_used=False)
 
     if iname_cluster and not kernel.linearization:
         try:
@@ -1252,9 +1252,9 @@ def find_recursive_dependencies(kernel, insn_ids):
 
         for insn_id in queue:
             insn = kernel.id_to_insn[insn_id]
-            additionals = insn.depends_on - result
-            result.update(additionals)
-            new_queue.extend(additionals)
+            additional = insn.depends_on - result
+            result.update(additional)
+            new_queue.extend(additional)
 
         queue = new_queue
 
@@ -1735,7 +1735,7 @@ def get_global_barrier_order(kernel):
 
 @memoize_on_first_arg
 def find_most_recent_global_barrier(kernel, insn_id):
-    """Return the id of the latest occuring global barrier which the
+    """Return the id of the latest occurring global barrier which the
     given instruction (indirectly or directly) depends on, or *None* if this
     instruction does not depend on a global barrier.
 
@@ -1995,7 +1995,7 @@ def infer_args_are_input_output(kernel):
         elif isinstance(arg, (ConstantArg, ImageArg, ValueArg)):
             pass
         else:
-            raise NotImplementedError("Unkonwn argument type %s." % type(arg))
+            raise NotImplementedError("Unknown argument type %s." % type(arg))
 
         if not (arg.is_input or arg.is_output):
             raise LoopyError("Kernel argument must be either input or output."

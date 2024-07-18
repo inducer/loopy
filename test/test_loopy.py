@@ -2306,7 +2306,7 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
 
     from testlib import GridOverride
 
-    # artifically expand via overridden_get_grid_sizes_for_insn_ids
+    # artificially expand via overridden_get_grid_sizes_for_insn_ids
     knl = prog["loopy_kernel"]
     knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
         knl.copy(), vecsize))

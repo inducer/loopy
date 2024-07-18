@@ -413,17 +413,17 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
                 except_inames=frozenset(self.primed_sweep_inames))
 
         s2s_domain = stor2sweep.domain()
-        s2s_domain, aligned_g_s2s_parm_dom = isl.align_two(
+        s2s_domain, aligned_g_s2s_param_dom = isl.align_two(
                 s2s_domain, global_s2s_par_dom)
 
         arg_restrictions = (
-                aligned_g_s2s_parm_dom
+                aligned_g_s2s_param_dom
                 .eliminate(dim_type.set, 0,
-                    aligned_g_s2s_parm_dom.dim(dim_type.set))
+                    aligned_g_s2s_param_dom.dim(dim_type.set))
                 .remove_divs())
 
         return (arg_restrictions & s2s_domain).is_subset(
-                aligned_g_s2s_parm_dom)
+                aligned_g_s2s_param_dom)
 
 
 class NoOpArrayToBufferMap(ArrayToBufferMapBase):

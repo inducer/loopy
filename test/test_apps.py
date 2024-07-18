@@ -324,7 +324,7 @@ def test_rob_stroud_bernstein_full():
 def test_stencil(ctx_factory):
     ctx = ctx_factory()
 
-    # n=32 causes corner case behavior in size calculations for temprorary (a
+    # n=32 causes corner case behavior in size calculations for temporary (a
     # non-unifiable, two-constant-segments PwAff as the base index)
 
     n = 256

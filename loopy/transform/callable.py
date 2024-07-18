@@ -102,7 +102,7 @@ def merge(translation_units):
                 if (prg_i.callables_table[clbl_name]
                         != prg_j.callables_table[clbl_name]):
                     # TODO: generate unique names + rename for the colliding
-                    # callables (if entrypoints are colliding that shuold still
+                    # callables (if entrypoints are colliding that should still
                     # be an error)
                     raise NotImplementedError("Translation units to be merged"
                                               " must have different callable names"

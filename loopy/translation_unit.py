@@ -196,7 +196,7 @@ class TranslationUnit:
     .. attribute:: func_id_to_in_knl_callables_mappers
 
         A :class:`frozenset` of functions of the signature ``(target:
-        TargetBase, function_indentifier: str)`` that returns an instance
+        TargetBase, function_identifier: str)`` that returns an instance
         of :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
 
     .. automethod:: executor

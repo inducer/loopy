@@ -425,7 +425,7 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
     if not nosync_to_add and not empty_ok:
         raise LoopyError("No nosync annotations were added as a result "
                 "of this call. add_nosync will (by default) only add them to "
-                "accompany existing depencies or group exclusions. Maybe you want "
+                "accompany existing dependencies or group exclusions. Maybe you want "
                 "to pass force=True?")
 
     new_instructions = list(kernel.instructions)

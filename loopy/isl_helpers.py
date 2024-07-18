@@ -186,7 +186,7 @@ def simplify_pw_aff(pw_aff, context=None):
                     continue
 
                 if aff_i.gist(dom_j).is_equal(aff_j):
-                    # aff_i is sufficient to conver aff_j, eliminate aff_j
+                    # aff_i is sufficient to cover aff_j, eliminate aff_j
                     new_pieces = pieces[:]
                     if i < j:
                         new_pieces.pop(j)

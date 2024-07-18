@@ -327,8 +327,8 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     # {{{ establish the relevant definition of lhs_name for each usage site
 
     dep_kernel = expand_subst(kernel)
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    dep_kernel = apply_single_writer_depencency_heuristic(dep_kernel)
+    from loopy.kernel.creation import apply_single_writer_dependency_heuristic
+    dep_kernel = apply_single_writer_dependency_heuristic(dep_kernel)
     assigning_insn_ids = {insn.id
                           for insn in dep_kernel.instructions
                           if lhs_name in insn.assignee_var_names()}
@@ -354,7 +354,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
         if len(rel_def_ids) > 1:
             raise LoopyError("more than one write to '%s' found in "
-                    "depdendencies of '%s'--definition cannot be resolved "
+                    "dependencies of '%s'--definition cannot be resolved "
                     "(writer instructions ids: %s)"
                     % (lhs_name, usage_insn_id, ", ".join(rel_def_ids)))
 
@@ -433,7 +433,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         for i in indices:
             if not isinstance(i, Variable):
                 raise LoopyError("In defining instruction '%s': "
-                        "asignee index '%s' is not a plain variable. "
+                        "assignee index '%s' is not a plain variable. "
                         "Perhaps use loopy.affine_map_inames() "
                         "to perform substitution." % (def_id, i))
 

@@ -164,7 +164,7 @@ class LoopKernel(Taggable):
     .. attribute:: loop_priority
 
         A frozenset of priority constraints to the kernel. Each such constraint
-        is a tuple of inames. Inames occuring in such a tuple will be scheduled
+        is a tuple of inames. Inames occurring in such a tuple will be scheduled
         earlier than any iname following in the tuple. This applies only to inames
         with non-parallel implementation tags.
 
@@ -515,7 +515,7 @@ class LoopKernel(Taggable):
         for iname in inames:
             home_domain_index = hdm[iname]
             if home_domain_index in domain_indices:
-                # nothin' new
+                # nothing new
                 continue
 
             domain_path_to_root = [home_domain_index] + ppd[home_domain_index]

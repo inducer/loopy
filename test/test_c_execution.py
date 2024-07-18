@@ -95,17 +95,17 @@ def test_c_target_strides_nonsquare():
     from loopy.target.c import ExecutableCTarget
 
     def __get_kernel(order="C"):
-        indicies = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
+        indices = ["i", "j", "k"]
+        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indicies, sizes):
+        for idx, size in zip(indices, sizes):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
         statement = "out[{indexed}] = 2 * a[{indexed}]".format(
-            indexed=", ".join(indicies))
+            indexed=", ".join(indices))
         return lp.make_kernel(
                 domains,
                 statement,
@@ -142,17 +142,17 @@ def test_c_optimizations():
     from loopy.target.c import ExecutableCTarget
 
     def __get_kernel(order="C"):
-        indicies = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
+        indices = ["i", "j", "k"]
+        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indicies, sizes):
+        for idx, size in zip(indices, sizes):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
         statement = "out[{indexed}] = 2 * a[{indexed}]".format(
-            indexed=", ".join(indicies))
+            indexed=", ".join(indices))
         return lp.make_kernel(
                 domains,
                 statement,
