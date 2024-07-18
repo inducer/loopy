@@ -396,7 +396,7 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_type_cast(self, expr):
         subtype, = self.rec(expr.child)
-        if not issubclass(subtype.dtype.type, np.number):
+        if not issubclass(subtype.dtype.type, (np.number, np.bool_)):
             raise LoopyError(f"Can't cast a '{subtype}' to '{expr.type}'")
         return [expr.type]
 
