@@ -463,6 +463,9 @@ class InstructionBase(ImmutableRecord, Taggable):
         self.within_inames = (
                 intern_frozenset_of_ids(self.within_inames))
 
+    def _with_new_tags(self, tags: FrozenSet[Tag]):
+        return self.copy(tags=tags)
+
 # }}}
 
 
