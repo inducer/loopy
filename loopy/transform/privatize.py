@@ -247,7 +247,7 @@ def privatize_temporaries_with_inames(
                     "Kernel '%s': Instruction '%s': touched variable that "
                     "(for privatization, e.g. as performed for ILP) "
                     "required iname(s) '%s', but that the instruction was not "
-                    "previously within the iname(s). To remedy this, first promote"
+                    "previously within the iname(s). To remedy this, first promote "
                     "the instruction into the iname."
                     % (kernel.name, insn.id, ", ".join(
                         eiii.seen_priv_axis_inames - insn.within_inames)))
