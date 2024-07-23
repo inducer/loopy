@@ -1312,9 +1312,12 @@ def check_for_nested_base_storage(kernel: LoopKernel) -> None:
             storage_array = name_to_array.get(ary.base_storage, None)
 
             if storage_array is None:
-                raise ValueError("nothing known about storage array "
+                raise LoopyError("Nothing known about storage array "
                         f"'{ary.base_storage}' serving as base_storage of "
-                        f"'{ary.name}'")
+                        f"'{ary.name}'. "
+                        "(Note: base storage is no longer automatically allocated. "
+                        "Call allocate_temporaries_for_base_storage to automatically "
+                        "allocate.)")
 
             if storage_array.base_storage:
                 raise ValueError("storage array "
