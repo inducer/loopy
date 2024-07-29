@@ -2536,13 +2536,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     assert len(knl.instructions) == len(inames_to_dup)
 
-    from loopy import duplicate_inames
-    from loopy.match import Id
-    for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
-        for old_iname, new_iname in insn_inames_to_dup:
-            knl = duplicate_inames(knl, old_iname,
-                    within=Id(insn.id), new_inames=new_iname)
-
     check_for_nonexistent_iname_deps(knl)
 
     knl = create_temporaries(knl, default_order)
@@ -2563,6 +2556,27 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     knl = add_inferred_inames(knl)
     from loopy.transform.parameter import fix_parameters
     knl = fix_parameters(knl, **fixed_parameters)
+
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must duplicate inames after adding all the inames to the instructions.
+    # To duplicate an iname "i" in statement "S", lp.duplicate requires that
+    # the statement "S" be nested within the iname "i".
+    # -------------------------------------------------------------------------
+    from loopy import duplicate_inames
+    from loopy.match import Id
+    for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
+        for old_iname, new_iname in insn_inames_to_dup:
+            knl = duplicate_inames(knl, old_iname,
+                    within=Id(insn.id), new_inames=new_iname)
+            new_insn = knl.id_to_insn[insn.id]
+            assert old_iname not in (
+                new_insn.within_inames
+                | new_insn.reduction_inames()
+                | new_insn.sub_array_ref_inames()
+            )
+
     # -------------------------------------------------------------------------
     # Ordering dependency:
     # -------------------------------------------------------------------------
