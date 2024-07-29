@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-from typing import FrozenSet, Optional
+from typing import Any, FrozenSet, Optional
 
 import islpy as isl
 from islpy import dim_type
@@ -29,6 +29,7 @@ from islpy import dim_type
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
+from loopy.kernel.instruction import InstructionBase
 from loopy.symbolic import (
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
@@ -919,9 +920,13 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             old_to_new=dict(list(zip(inames, new_inames))),
             within=within)
 
-    def _does_access_old_inames(kernel, insn, *args):
-        return bool(frozenset(inames) & (insn.dependency_names()
-                                         | insn.reduction_inames()))
+    def _does_access_old_inames(kernel: LoopKernel,
+                                insn: InstructionBase,
+                                *args: Any) -> bool:
+        all_inames = (insn.within_inames
+                      | insn.reduction_inames()
+                      | insn.sub_array_ref_inames())
+        return bool(frozenset(inames) & all_inames)
 
     kernel = rule_mapping_context.finish_kernel(
             indup.map_kernel(kernel, within=_does_access_old_inames,
