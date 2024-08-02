@@ -71,6 +71,10 @@ include = [
     "loopy*",
 ]
 
+[tool.setuptools.package-data]
+loopy = [
+    "py.typed",
+]
 
 [tool.ruff]
 preview = true
