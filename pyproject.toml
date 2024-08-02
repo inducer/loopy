@@ -1,3 +1,76 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools>=63",
+]
+
+[project]
+name = "loopy"
+version = "2024.1"
+description = "A code generator for array-based code on CPUs and GPUs"
+readme = "README.rst"
+license = { text = "MIT" }
+authors = [
+    { name = "Andreas Kloeckner", email = "inform@tiker.net" },
+]
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Other Audience",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "pytools>=2024.1.5",
+    "pymbolic>=2022.1",
+    "genpy>=2016.1.2",
+
+    # https://github.com/inducer/loopy/pull/419
+    "numpy>=1.19",
+
+    "cgen>=2016.1",
+    "islpy>=2019.1",
+    "codepy>=2017.1",
+    "colorama",
+    "Mako",
+    "pyrsistent",
+    "immutables",
+    "typing_extensions",
+]
+[project.optional-dependencies]
+pyopencl = [
+    "pyopencl>=2022.3",
+]
+fortran = [
+    # Note that this is *not* regular 'f2py2e', this is
+    # the Fortran parser from the (unfinished) third-edition
+    # f2py, as linked below. This package is not on the package index, AFAIK.
+    # -AK, 2024-08-02
+    "f2py @ git+https://github.com/pearu/f2py.git",
+    "ply>=3.6",
+]
+
+[project.scripts]
+
+[project.urls]
+Documentation = "https://documen.tician.de/loopy"
+Homepage = "https://github.com/inducer/loopy"
+
+[tool.setuptools.packages.find]
+include = [
+    "loopy*",
+]
+
 
 [tool.ruff]
 preview = true
