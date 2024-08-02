@@ -35,7 +35,13 @@ from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
-from loopy.kernel.data import AddressSpace, ArrayArg, ConstantArg, ImageArg
+from loopy.kernel.data import (
+    AddressSpace,
+    ArrayArg,
+    ConstantArg,
+    ImageArg,
+    TemporaryVariable,
+)
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
@@ -461,6 +467,39 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def get_image_arg_declarator(
             self, arg: ImageArg, is_written: bool) -> Declarator:
         raise NotImplementedError("not yet: texture arguments in CUDA")
+
+    def emit_temp_var_decl_for_tv_with_base_storage(self,
+                                                    codegen_state: CodeGenerationState,
+                                                    tv: TemporaryVariable) -> Generable:
+        from cgen import Initializer
+
+        from loopy.target.c import POD, _ConstPointer, _ConstRestrictPointer
+
+        assert tv.base_storage is not None
+        ecm = codegen_state.expression_to_code_mapper
+
+        cast_decl = POD(self, tv.dtype, "")
+        temp_var_decl = POD(self, tv.dtype, tv.name)
+
+        if tv._base_storage_access_may_be_aliasing:
+            ptrtype = _ConstPointer
+        else:
+            # The 'restrict' part of this is a complete lie--of course
+            # all these temporaries are aliased. But we're promising to
+            # not use them to shovel data from one representation to the
+            # other. That counts, right?
+            ptrtype = _ConstRestrictPointer
+
+        cast_decl = ptrtype(cast_decl)
+        temp_var_decl = ptrtype(temp_var_decl)
+
+        cast_tp, cast_d = cast_decl.get_decl_pair()
+        return Initializer(
+            temp_var_decl,
+            "({} {}) ({} + {})".format(
+                " ".join(cast_tp), cast_d, tv.base_storage, ecm(tv.offset)
+            ),
+        )
 
     # }}}
 

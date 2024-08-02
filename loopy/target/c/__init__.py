@@ -35,6 +35,7 @@ from cgen import (
     Const,
     Declarator,
     Generable,
+    Initializer,
     NestedDeclarator,
     Pointer,
 )
@@ -800,7 +801,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         kernel = codegen_state.kernel
         assert kernel.linearization is not None
 
-        from cgen import FunctionBody, Initializer, Line
+        from cgen import FunctionBody, Line
 
         result = []
 
@@ -883,6 +884,42 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             lsize: Tuple[ExpressionT, ...]) -> Optional[Generable]:
         return None
 
+    def emit_temp_var_decl_for_tv_with_base_storage(self,
+                                                    codegen_state: CodeGenerationState,
+                                                    tv: TemporaryVariable) -> Generable:
+        """
+        Returns the statement for initializing a :class:`loopy.TemporaryVariable`
+        with a user-provided :attr:`loopy.TemporaryVariable.base_storage`.
+        """
+        assert tv.base_storage is not None
+        assert isinstance(tv.address_space, AddressSpace)
+        ecm = codegen_state.expression_to_code_mapper
+
+        cast_decl = POD(self, tv.dtype, "")
+        temp_var_decl = POD(self, tv.dtype, tv.name)
+
+        if tv._base_storage_access_may_be_aliasing:
+            ptrtype = _ConstPointer
+        else:
+            # The 'restrict' part of this is a complete lie--of course
+            # all these temporaries are aliased. But we're promising to
+            # not use them to shovel data from one representation to the
+            # other. That counts, right?
+            ptrtype = _ConstRestrictPointer
+
+        cast_decl = self.wrap_decl_for_address_space(
+                ptrtype(cast_decl), tv.address_space)
+        temp_var_decl = self.wrap_decl_for_address_space(
+                ptrtype(temp_var_decl), tv.address_space)
+
+        cast_tp, cast_d = cast_decl.get_decl_pair()
+        return Initializer(
+            temp_var_decl,
+            "({} {}) ({} + {})".format(
+                " ".join(cast_tp), cast_d, tv.base_storage, ecm(tv.offset)
+            ),
+        )
+
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import AddressSpace
 
@@ -930,33 +967,9 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
             else:
                 assert tv.initializer is None
-
-                cast_decl = POD(self, tv.dtype, "")
-                temp_var_decl = POD(self, tv.dtype, tv.name)
-
-                if tv._base_storage_access_may_be_aliasing:
-                    ptrtype = _ConstPointer
-                else:
-                    # The 'restrict' part of this is a complete lie--of course
-                    # all these temporaries are aliased. But we're promising to
-                    # not use them to shovel data from one representation to the
-                    # other. That counts, right?
-                    ptrtype = _ConstRestrictPointer
-
-                cast_decl = self.wrap_decl_for_address_space(
-                        ptrtype(cast_decl), tv.address_space)
-                temp_var_decl = self.wrap_decl_for_address_space(
-                        ptrtype(temp_var_decl), tv.address_space)
-
-                cast_tp, cast_d = cast_decl.get_decl_pair()
-                temp_var_decl = Initializer(
-                        temp_var_decl,
-                        "({} {}) ({} + {})".format(
-                            " ".join(cast_tp), cast_d,
-                            tv.base_storage,
-                            ecm(tv.offset)
-                            ))
-
+                temp_var_decl = self.emit_temp_var_decl_for_tv_with_base_storage(
+                    codegen_state, tv
+                )
                 temp_decls_using_base_storage.append(temp_var_decl)
 
         # }}}
