@@ -1025,6 +1025,11 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
             raise LoopyError(
                     f"Temporary '{tv.name}' has an offset and no base_storage. "
                     "That's not allowed.")
+        if not isinstance(tv.dtype, LoopyType):
+            raise LoopyError(
+                f"Dtype of temporary '{tv.name}' "
+                " is not inferred. Call lp.infer_unknown_types"
+                " first.")
 
         if (tv.base_storage
                 and tv.base_storage not in kernel.temporary_variables
