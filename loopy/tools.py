@@ -408,6 +408,9 @@ class _PickledObject:
     def __getstate__(self):
         return {"objstring": self.objstring}
 
+    def __repr__(self) -> str:
+        return type(self).__name__ + "(" + repr(self.unpickle()) + ")"
+
 
 class _PickledObjectWithEqAndPersistentHashKeys(_PickledObject):
     """Like :class:`_PickledObject`, with two additional attributes:
@@ -466,6 +469,9 @@ class LazilyUnpicklingDict(abc.MutableMapping):
             key: _PickledObject(val)
             for key, val in self._map.items()}}
 
+    def __repr__(self) -> str:
+        return type(self).__name__ + "(" + repr(self._map) + ")"
+
 # }}}
 
 
@@ -503,6 +509,9 @@ class LazilyUnpicklingList(abc.MutableSequence):
 
     def __mul__(self, other):
         return self._list * other
+
+    def __repr__(self) -> str:
+        return type(self).__name__ + "(" + repr(self._list) + ")"
 
 
 class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
