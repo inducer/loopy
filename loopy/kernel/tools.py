@@ -44,7 +44,8 @@ from loopy.kernel.instruction import (
     _DataObliviousInstruction,
 )
 from loopy.symbolic import CombineMapper
-from loopy.translation_unit import TranslationUnit, for_each_kernel
+from loopy.translation_unit import TranslationUnit, TUnitOrKernelT, for_each_kernel
+from loopy.types import ToLoopyTypeConvertible
 
 
 logger = logging.getLogger(__name__)
@@ -52,15 +53,20 @@ logger = logging.getLogger(__name__)
 
 # {{{ add and infer argument dtypes
 
-def add_dtypes(prog_or_kernel, dtype_dict):
+def add_dtypes(
+            kernel: TUnitOrKernelT,
+            dtype_dict: Mapping[str, ToLoopyTypeConvertible],
+        ) -> TUnitOrKernelT:
     """Specify remaining unspecified argument/temporary variable types.
 
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
-    if isinstance(prog_or_kernel, TranslationUnit):
+    if isinstance(kernel, TranslationUnit):
+        t_unit = kernel
+        del kernel
         kernel_names = [clbl.subkernel.name for clbl in
-                prog_or_kernel.callables_table.values() if isinstance(clbl,
+                t_unit.callables_table.values() if isinstance(clbl,
                     CallableKernel)]
         if len(kernel_names) != 1:
             raise LoopyError("add_dtypes may not take a TranslationUnit with more"
@@ -69,10 +75,10 @@ def add_dtypes(prog_or_kernel, dtype_dict):
 
         kernel_name, = kernel_names
 
-        return prog_or_kernel.with_kernel(
-                add_dtypes(prog_or_kernel[kernel_name], dtype_dict))
+        return t_unit.with_kernel(
+                add_dtypes(t_unit[kernel_name], dtype_dict))
 
-    assert isinstance(prog_or_kernel, LoopKernel)
+    assert isinstance(kernel, LoopKernel)
 
     processed_dtype_dict = {}
 
@@ -83,13 +89,13 @@ def add_dtypes(prog_or_kernel, dtype_dict):
                 processed_dtype_dict[subkey] = v
 
     dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(
-            prog_or_kernel, processed_dtype_dict)
+            kernel, processed_dtype_dict)
 
     if dtype_dict_remainder:
         raise RuntimeError("unused argument dtypes: %s"
                 % ", ".join(dtype_dict_remainder))
 
-    return prog_or_kernel.copy(args=new_args, temporary_variables=new_temp_vars)
+    return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
 def _add_dtypes_overdetermined(kernel, dtype_dict):
