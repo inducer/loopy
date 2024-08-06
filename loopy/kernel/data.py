@@ -1,5 +1,7 @@
 """Data used by the kernel object."""
 
+from __future__ import annotations
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -38,7 +40,6 @@ from typing import (
     Union,
     cast,
 )
-from warnings import warn
 
 import numpy as np  # noqa
 from immutables import Map
@@ -61,8 +62,8 @@ from loopy.kernel.instruction import (  # noqa
     VarAtomicity,
     make_assignment,
 )
-from loopy.types import LoopyType, auto
-from loopy.typing import ExpressionT, ShapeType
+from loopy.types import LoopyType, ToLoopyTypeConvertible
+from loopy.typing import ExpressionT, ShapeType, auto
 
 
 __doc__ = """
@@ -390,12 +391,6 @@ class KernelArgument(ImmutableRecord):
     def __init__(self, **kwargs):
         kwargs["name"] = intern(kwargs.pop("name"))
 
-        target = kwargs.pop("target", None)
-        if target is not None:
-            warn("Passing 'target' is deprecated and will stop working in 2023. "
-                    "It is already being ignored.",
-                    DeprecationWarning, stacklevel=2)
-
         dtype = kwargs.pop("dtype", None)
 
         for_atomic = kwargs.pop("for_atomic", False)
@@ -521,7 +516,7 @@ class ArrayArg(ArrayBase, KernelArgument):
 # Making this a function prevents incorrect use in isinstance.
 # Note: This is *not* deprecated, as it is super-common and
 # incrementally more convenient to use than ArrayArg directly.
-def GlobalArg(*args, **kwargs):  # noqa: N802
+def GlobalArg(*args, **kwargs) -> ArrayArg:  # noqa: N802
     address_space = kwargs.pop("address_space", None)
     if address_space is not None:
         raise TypeError("may not pass 'address_space' to GlobalArg")
@@ -580,8 +575,14 @@ class ImageArg(ArrayBase, KernelArgument):
 
 
 class ValueArg(KernelArgument, Taggable):
-    def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output=False, is_input=True, tags=None):
+    def __init__(self,
+                name: str,
+                dtype: ToLoopyTypeConvertible | None = None,
+                approximately: int = 1000,
+                is_output: bool = False,
+                is_input: bool = True,
+                tags: frozenset[Tag] | None = None,
+             ) -> None:
         """
         :arg tags: A an instance of or Iterable of instances of
             :class:`pytools.tag.Tag` intended for consumption by an
@@ -594,7 +595,6 @@ class ValueArg(KernelArgument, Taggable):
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
-                target=target,
                 is_output=is_output,
                 is_input=is_input,
                 tags=tags)
