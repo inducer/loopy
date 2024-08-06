@@ -23,6 +23,7 @@ THE SOFTWARE.
 
 import os
 import re
+from typing import Any
 from warnings import warn
 
 from pytools import ImmutableRecord
@@ -214,7 +215,7 @@ class Options(ImmutableRecord):
             # All defaults are further required to be False when cast to bool
             # for the update() functionality to work.
 
-            self, **kwargs):
+            self, **kwargs: Any) -> None:
 
         kwargs = _apply_legacy_map(self._legacy_options_map, kwargs)
 

@@ -85,6 +85,9 @@ def concatenate_arrays(
         axis_length += ary.shape[axis_nr]
 
     new_ary = arrays[0]
+    if not isinstance(new_ary.shape, tuple):
+        raise ValueError("one of the arrays has indeterminate shape")
+
     new_shape = list(new_ary.shape)
     new_shape[axis_nr] = axis_length
     new_ary = new_ary.copy(shape=tuple(new_shape))
