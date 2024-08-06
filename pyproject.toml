@@ -45,7 +45,9 @@ dependencies = [
     "Mako",
     "pyrsistent",
     "immutables",
-    "typing_extensions",
+
+    # for Self
+    "typing-extensions>=4; python_version<'3.12'",
 ]
 [project.optional-dependencies]
 pyopencl = [
