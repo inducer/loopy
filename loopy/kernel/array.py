@@ -620,88 +620,14 @@ def _parse_shape_or_strides(x):
 
 class ArrayBase(ImmutableRecord, Taggable):
     """
-    .. attribute :: name
-
-    .. attribute :: dtype
-
-        The :class:`loopy.types.LoopyType` of the array. If this is *None*,
-        :mod:`loopy` will try to continue without knowing the type of this
-        array, where the idea is that precise knowledge of the type will become
-        available at invocation time.  Calling the kernel
-        (via :meth:`loopy.LoopKernel.__call__`)
-        automatically adds this type information based on invocation arguments.
-
-        Note that some transformations, such as :func:`loopy.add_padding`
-        cannot be performed without knowledge of the exact *dtype*.
-
-    .. attribute :: shape
-
-        May be one of the following:
-
-        * *None*. In this case, no shape is intended to be specified,
-          only the strides will be used to access the array. Bounds checking
-          will not be performed.
-
-        * :class:`loopy.auto`. The shape will be determined by finding the
-          access footprint.
-
-        * a tuple like like :attr:`numpy.ndarray.shape`.
-
-          Each entry of the tuple is also allowed to be a :mod:`pymbolic`
-          expression involving kernel parameters, or a (potentially-comma
-          separated) or a string that can be parsed to such an expression.
-
-          Any element of the shape tuple not used to compute strides
-          may be *None*.
-
-    .. attribute:: dim_tags
-
-        See :ref:`data-dim-tags`.
-
-    .. attribute:: offset
-
-        Offset from the beginning of the buffer to the point from
-        which the strides are counted, in units of the :attr:`dtype`.
-        May be one of
-
-            * 0 or None
-            * a string (that is interpreted as an argument name).
-            * a pymbolic expression
-            * :class:`loopy.auto`, in which case an offset argument
-              is added automatically, immediately following this argument.
-
-    .. attribute:: dim_names
-
-        A tuple of strings providing names for the array axes, or *None*.
-        If given, must have the same number of entries as :attr:`dim_tags`
-        and :attr:`dim_tags`. These do not live in any particular namespace
-        (i.e. collide with no other names) and serve a purely
-        informational/documentational purpose. On occasion, they are used
-        to generate more informative names than could be achieved by
-        axis numbers.
-
-    .. attribute:: alignment
-
-        Memory alignment of the array in bytes. For temporary arrays,
-        this ensures they are allocated with this alignment. For arguments,
-        this entails a promise that the incoming array obeys this alignment
-        restriction.
-
-        Defaults to *None*.
-
-        If an integer N is given, the array would be declared
-        with ``__attribute__((aligned(N)))`` in code generation for
-        :class:`loopy.CFamilyTarget`.
-
-        .. versionadded:: 2018.1
-
-    .. attribute:: tags
-
-        A (possibly empty) frozenset of instances of
-        :class:`pytools.tag.Tag` intended for
-        consumption by an application.
-
-        .. versionadded:: 2020.2.2
+    .. autoattribute:: name
+    .. autoattribute:: dtype
+    .. autoattribute:: shape
+    .. autoattribute:: dim_tags
+    .. autoattribute:: offset
+    .. autoattribute:: dim_names
+    .. autoattribute:: alignment
+    .. autoattribute:: tags
 
     .. automethod:: __init__
     .. automethod:: __eq__
@@ -712,13 +638,88 @@ class ArrayBase(ImmutableRecord, Taggable):
     (supports persistent hashing)
     """
     name: str
+
     dtype: Optional[LoopyType]
+    """The :class:`loopy.types.LoopyType` of the array. If this is *None*,
+    :mod:`loopy` will try to continue without knowing the type of this
+    array, where the idea is that precise knowledge of the type will become
+    available at invocation time.  Calling the kernel
+    (via :meth:`loopy.LoopKernel.__call__`)
+    automatically adds this type information based on invocation arguments.
+
+    Note that some transformations, such as :func:`loopy.add_padding`
+    cannot be performed without knowledge of the exact *dtype*.
+    """
+
     shape: Union[ShapeType, Type["auto"], None]
+    """
+    May be one of the following:
+
+    * *None*. In this case, no shape is intended to be specified,
+      only the strides will be used to access the array. Bounds checking
+      will not be performed.
+
+    * :class:`loopy.auto`. The shape will be determined by finding the
+      access footprint.
+
+    * a tuple like like :attr:`numpy.ndarray.shape`.
+
+      Each entry of the tuple is also allowed to be a :mod:`pymbolic`
+      expression involving kernel parameters, or a (potentially-comma
+      separated) or a string that can be parsed to such an expression.
+
+      Any element of the shape tuple not used to compute strides
+      may be *None*.
+      """
+
     dim_tags: Optional[Sequence[ArrayDimImplementationTag]]
+    """See :ref:`data-dim-tags`.
+    """
+
     offset: Union[ExpressionT, str, None]
+    """Offset from the beginning of the buffer to the point from
+    which the strides are counted, in units of the :attr:`dtype`.
+    May be one of
+
+    * 0 or None
+    * a string (that is interpreted as an argument name).
+    * a pymbolic expression
+    * :class:`loopy.auto`, in which case an offset argument
+      is added automatically, immediately following this argument.
+    """
+
     dim_names: Optional[Tuple[str, ...]]
+    """A tuple of strings providing names for the array axes, or *None*.
+    If given, must have the same number of entries as :attr:`dim_tags`
+    and :attr:`dim_tags`. These do not live in any particular namespace
+    (i.e. collide with no other names) and serve a purely
+    informational/documentational purpose. On occasion, they are used
+    to generate more informative names than could be achieved by
+    axis numbers.
+    """
+
     alignment: Optional[int]
+    """Memory alignment of the array in bytes. For temporary arrays,
+    this ensures they are allocated with this alignment. For arguments,
+    this entails a promise that the incoming array obeys this alignment
+    restriction.
+
+    Defaults to *None*.
+
+    If an integer N is given, the array would be declared
+    with ``__attribute__((aligned(N)))`` in code generation for
+    :class:`loopy.CFamilyTarget`.
+
+    .. versionadded:: 2018.1
+    """
+
     tags: FrozenSet[Tag]
+    """A (possibly empty) frozenset of instances of
+    :class:`pytools.tag.Tag` intended for
+    consumption by an application.
+
+    .. versionadded:: 2020.2.2
+    """
 
     # Note that order may also wind up in attributes, if the
     # number of dimensions has not yet been determined.
