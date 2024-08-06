@@ -23,7 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, ClassVar, FrozenSet, Tuple
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Callable, ClassVar, FrozenSet, Tuple, TypeVar
 
 from pytools import ImmutableRecord
 
@@ -36,6 +37,8 @@ from loopy.tools import update_persistent_hash
 
 
 if TYPE_CHECKING:
+    from typing_extensions import Self
+
     from loopy.translation_unit import CallablesTable, FunctionIdT
 
 __doc__ = """
@@ -57,7 +60,23 @@ __doc__ = """
 
 # {{{ argument descriptors
 
-class ValueArgDescriptor(ImmutableRecord):
+ArgDescriptorT = TypeVar("ArgDescriptorT", bound="ArgDescriptor")
+
+
+class ArgDescriptor(ABC, ImmutableRecord):
+    @abstractmethod
+    def map_expr(
+                self,
+                subst_mapper: Callable[[ArgDescriptorT], ArgDescriptorT]
+            ) -> Self:
+        ...
+
+    @abstractmethod
+    def depends_on(self) -> frozenset[str]:
+        ...
+
+
+class ValueArgDescriptor(ArgDescriptor):
     hash_fields = ()
 
     def map_expr(self, subst_mapper):
@@ -69,7 +88,7 @@ class ValueArgDescriptor(ImmutableRecord):
     update_persistent_hash = update_persistent_hash
 
 
-class ArrayArgDescriptor(ImmutableRecord):
+class ArrayArgDescriptor(ArgDescriptor):
     """
     Records information about an array argument to an in-kernel callable. To be
     passed to and returned from
