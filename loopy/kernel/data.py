@@ -682,11 +682,28 @@ class TemporaryVariable(ArrayBase):
             "_base_storage_access_may_be_aliasing",
             )
 
-    def __init__(self, name, dtype=None, shape=auto, address_space=None,
-            dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
-            base_indices=None, storage_shape=None,
-            base_storage=None, initializer=None, read_only=False,
-            _base_storage_access_may_be_aliasing=False, **kwargs):
+    def __init__(
+                self,
+                name: str,
+                dtype: ToLoopyTypeConvertible = None,
+                shape: Union[ShapeType, Type["auto"], None] = auto,
+                address_space: Union[AddressSpace, Type[auto], None] = None,
+                dim_tags: Optional[Sequence[ArrayDimImplementationTag]] = None,
+                offset: Union[ExpressionT, str, None] = 0,
+                dim_names: Optional[Tuple[str, ...]] = None,
+                strides: Optional[Tuple[ExpressionT, ...]] = None,
+                order: str | None = None,
+
+                base_indices: Optional[Tuple[ExpressionT, ...]] = None,
+                storage_shape: ShapeType | None = None,
+
+                base_storage: Optional[str] = None,
+                initializer: Optional[np.ndarray] = None,
+                read_only: bool = False,
+
+                _base_storage_access_may_be_aliasing: bool = False,
+                **kwargs: Any
+            ) -> None:
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -695,12 +712,6 @@ class TemporaryVariable(ArrayBase):
 
         if address_space is None:
             address_space = auto
-
-        if address_space is None:
-            raise LoopyError(
-                    "temporary variable '%s': "
-                    "address_space must not be None"
-                    % name)
 
         if initializer is None:
             pass
@@ -736,7 +747,12 @@ class TemporaryVariable(ArrayBase):
         if order is None:
             order = "C"
 
-        if base_indices is None and shape is not auto:
+        if shape is not None:
+            from loopy.kernel.array import _parse_shape_or_strides
+            shape = _parse_shape_or_strides(shape)
+
+        if base_indices is None and shape is not auto and shape is not None:
+            assert isinstance(shape, tuple)
             base_indices = (0,) * len(shape)
 
         if not read_only and initializer is not None:
@@ -775,7 +791,7 @@ class TemporaryVariable(ArrayBase):
                     _base_storage_access_may_be_aliasing),
                 **kwargs)
 
-    def copy(self, **kwargs):
+    def copy(self, **kwargs: Any) -> TemporaryVariable:
         address_space = kwargs.pop("address_space", None)
 
         if address_space is not None:
@@ -784,15 +800,23 @@ class TemporaryVariable(ArrayBase):
         return super().copy(**kwargs)
 
     @property
-    def nbytes(self):
-        shape = self.shape
+    def nbytes(self) -> ExpressionT:
         if self.storage_shape is not None:
             shape = self.storage_shape
+        else:
+            if self.shape is None:
+                raise ValueError("shape is None")
+            if self.shape is auto:
+                raise ValueError("shape is auto")
+            shape = cast(Tuple[ExpressionT], self.shape)
+
+        if self.dtype is None:
+            raise ValueError("data type is indeterminate")
 
         from pytools import product
         return product(si for si in shape)*self.dtype.itemsize
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.address_space is auto:
             aspace_str = "auto"
         else:

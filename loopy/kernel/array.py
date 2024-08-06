@@ -45,6 +45,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np  # noqa
+from typing_extensions import TypeAlias
 
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable
@@ -52,7 +53,7 @@ from pytools.tag import Tag, Taggable
 from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT, ShapeType
+from loopy.typing import ExpressionT, ShapeType, auto
 
 
 if TYPE_CHECKING:
@@ -593,29 +594,33 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
 # {{{ array base class (for arguments and temporary arrays)
 
-def _pymbolic_parse_if_necessary(x):
-    if isinstance(x, str):
-        from pymbolic import parse
-        return parse(x)
-    else:
-        return x
+ToShapeLikeConvertible: TypeAlias = (Tuple[ExpressionT | str, ...]
+                | ExpressionT | type[auto] | str | tuple[str, ...])
 
 
-def _parse_shape_or_strides(x):
-    import loopy as lp
+def _parse_shape_or_strides(
+            x: ToShapeLikeConvertible,
+        ) -> ShapeType | type[auto]:
+    from pymbolic import parse
+
     if x == "auto":
-        warn("use of 'auto' as a shape or stride won't work "
-                "any more--use loopy.auto instead",
-                stacklevel=3)
-    x = _pymbolic_parse_if_necessary(x)
-    if isinstance(x, lp.auto):
-        return x
-    assert not isinstance(x, list)
+        raise ValueError("use of 'auto' as a shape or stride won't work "
+                "any more--use loopy.auto instead")
+
+    if x is auto:
+        return auto
+
+    if isinstance(x, str):
+        x = parse(x)
+
+    if isinstance(x, list):
+        raise ValueError("shape can't be a list")
+
     if not isinstance(x, tuple):
-        assert x is not lp.auto
+        assert x is not auto
         x = (x,)
 
-    return tuple(_pymbolic_parse_if_necessary(xi) for xi in x)
+    return tuple(parse(xi) if isinstance(xi, str) else xi for xi in x)
 
 
 class ArrayBase(ImmutableRecord, Taggable):

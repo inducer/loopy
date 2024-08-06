@@ -402,8 +402,6 @@ class InstructionBase(ImmutableRecord, Taggable):
                 # The Taggable constructor call does extra validation.
                 tags=tags)
 
-        Taggable.__init__(self, tags)
-
     def get_copy_kwargs(self, **kwargs):
         passed_depends_on = "depends_on" in kwargs
 
@@ -938,7 +936,8 @@ class Assignment(MultiAssignmentBase):
                  predicates: Optional[FrozenSet[str]] = None,
                  tags: Optional[FrozenSet[Tag]] = None,
                  temp_var_type: Union[
-                     Type[_not_provided], None, LoopyOptional] = _not_provided,
+                     Type[_not_provided], None, LoopyOptional,
+                     LoopyType] = _not_provided,
                  atomicity: Tuple[VarAtomicity, ...] = (),
                  *,
                  depends_on: Union[FrozenSet[str], str, None] = None,
