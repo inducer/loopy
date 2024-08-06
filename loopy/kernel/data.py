@@ -1,5 +1,7 @@
 """Data used by the kernel object."""
 
+from __future__ import annotations
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -38,7 +40,6 @@ from typing import (
     Union,
     cast,
 )
-from warnings import warn
 
 import numpy as np  # noqa
 from immutables import Map
@@ -61,8 +62,8 @@ from loopy.kernel.instruction import (  # noqa
     VarAtomicity,
     make_assignment,
 )
-from loopy.types import LoopyType, auto
-from loopy.typing import ExpressionT, ShapeType
+from loopy.types import LoopyType, ToLoopyTypeConvertible
+from loopy.typing import ExpressionT, ShapeType, auto
 
 
 __doc__ = """
@@ -390,12 +391,6 @@ class KernelArgument(ImmutableRecord):
     def __init__(self, **kwargs):
         kwargs["name"] = intern(kwargs.pop("name"))
 
-        target = kwargs.pop("target", None)
-        if target is not None:
-            warn("Passing 'target' is deprecated and will stop working in 2023. "
-                    "It is already being ignored.",
-                    DeprecationWarning, stacklevel=2)
-
         dtype = kwargs.pop("dtype", None)
 
         for_atomic = kwargs.pop("for_atomic", False)
@@ -521,7 +516,7 @@ class ArrayArg(ArrayBase, KernelArgument):
 # Making this a function prevents incorrect use in isinstance.
 # Note: This is *not* deprecated, as it is super-common and
 # incrementally more convenient to use than ArrayArg directly.
-def GlobalArg(*args, **kwargs):  # noqa: N802
+def GlobalArg(*args, **kwargs) -> ArrayArg:  # noqa: N802
     address_space = kwargs.pop("address_space", None)
     if address_space is not None:
         raise TypeError("may not pass 'address_space' to GlobalArg")
@@ -579,18 +574,15 @@ class ImageArg(ArrayBase, KernelArgument):
                 )
 
 
-"""
-    :attribute tags: A (possibly empty) frozenset of instances of
-        :class:`pytools.tag.Tag` intended for consumption by an
-        application.
-
-        ..versionadded: 2020.2.2
-"""
-
-
 class ValueArg(KernelArgument, Taggable):
-    def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output=False, is_input=True, tags=None):
+    def __init__(self,
+                name: str,
+                dtype: ToLoopyTypeConvertible | None = None,
+                approximately: int = 1000,
+                is_output: bool = False,
+                is_input: bool = True,
+                tags: frozenset[Tag] | None = None,
+             ) -> None:
         """
         :arg tags: A an instance of or Iterable of instances of
             :class:`pytools.tag.Tag` intended for consumption by an
@@ -603,7 +595,6 @@ class ValueArg(KernelArgument, Taggable):
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
-                target=target,
                 is_output=is_output,
                 is_input=is_input,
                 tags=tags)
@@ -641,48 +632,42 @@ class ValueArg(KernelArgument, Taggable):
 
 class TemporaryVariable(ArrayBase):
     __doc__ = cast(str, ArrayBase.__doc__) + """
-    .. attribute:: storage_shape
-    .. attribute:: base_indices
-    .. attribute:: address_space
-
-        What memory this temporary variable lives in.
-        One of the values in :class:`AddressSpace`,
-        or :class:`loopy.auto` if this is
-        to be automatically determined.
-
-    .. attribute:: base_storage
-
-        The name of a storage array that is to be used to actually
-        hold the data in this temporary, or *None*. If not *None* or the name
-        of an existing variable, a variable of this name and appropriate size
-        will be created.
-
-    .. attribute:: initializer
-
-        *None* or a :class:`numpy.ndarray` of data to be used to initialize the
-        array.
-
-    .. attribute:: read_only
-
-        A :class:`bool` indicating whether the variable may be written during
-        its lifetime. If *True*, *initializer* must be given.
-
-    .. attribute:: _base_storage_access_may_be_aliasing
-
-        Whether the temporary is used to alias the underlying base storage.
-        Defaults to *False*. If *False*, C-based code generators will declare
-        the temporary as a ``restrict`` const pointer to the base storage
-        memory location. If *True*, the restrict part is omitted on this
-        declaration.
+    .. autoattribute:: storage_shape
+    .. autoattribute:: base_indices
+    .. autoattribute:: address_space
+    .. autoattribute:: base_storage
+    .. autoattribute:: initializer
+    .. autoattribute:: read_only
+    .. autoattribute:: _base_storage_access_may_be_aliasing
     """
 
     storage_shape: Optional[ShapeType]
     base_indices: Optional[Tuple[ExpressionT, ...]]
     address_space: Union[AddressSpace, Type[auto]]
     base_storage: Optional[str]
+    """The name of a storage array that is to be used to actually
+    hold the data in this temporary, or *None*. If not *None* or the name
+    of an existing variable, a variable of this name and appropriate size
+    will be created.
+    """
+
     initializer: Optional[np.ndarray]
+    """*None* or a :class:`numpy.ndarray` of data to be used to initialize the
+    array.
+    """
+
     read_only: bool
+    """A :class:`bool` indicating whether the variable may be written during
+    its lifetime. If *True*, *initializer* must be given.
+    """
+
     _base_storage_access_may_be_aliasing: bool
+    """Whether the temporary is used to alias the underlying base storage.
+    Defaults to *False*. If *False*, C-based code generators will declare
+    the temporary as a ``restrict`` const pointer to the base storage
+    memory location. If *True*, the restrict part is omitted on this
+    declaration.
+    """
 
     min_target_axes: ClassVar[int] = 0
     max_target_axes: ClassVar[int] = 1
@@ -697,11 +682,28 @@ class TemporaryVariable(ArrayBase):
             "_base_storage_access_may_be_aliasing",
             )
 
-    def __init__(self, name, dtype=None, shape=auto, address_space=None,
-            dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
-            base_indices=None, storage_shape=None,
-            base_storage=None, initializer=None, read_only=False,
-            _base_storage_access_may_be_aliasing=False, **kwargs):
+    def __init__(
+                self,
+                name: str,
+                dtype: ToLoopyTypeConvertible = None,
+                shape: Union[ShapeType, Type["auto"], None] = auto,
+                address_space: Union[AddressSpace, Type[auto], None] = None,
+                dim_tags: Optional[Sequence[ArrayDimImplementationTag]] = None,
+                offset: Union[ExpressionT, str, None] = 0,
+                dim_names: Optional[Tuple[str, ...]] = None,
+                strides: Optional[Tuple[ExpressionT, ...]] = None,
+                order: str | None = None,
+
+                base_indices: Optional[Tuple[ExpressionT, ...]] = None,
+                storage_shape: ShapeType | None = None,
+
+                base_storage: Optional[str] = None,
+                initializer: Optional[np.ndarray] = None,
+                read_only: bool = False,
+
+                _base_storage_access_may_be_aliasing: bool = False,
+                **kwargs: Any
+            ) -> None:
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -710,12 +712,6 @@ class TemporaryVariable(ArrayBase):
 
         if address_space is None:
             address_space = auto
-
-        if address_space is None:
-            raise LoopyError(
-                    "temporary variable '%s': "
-                    "address_space must not be None"
-                    % name)
 
         if initializer is None:
             pass
@@ -751,7 +747,12 @@ class TemporaryVariable(ArrayBase):
         if order is None:
             order = "C"
 
-        if base_indices is None and shape is not auto:
+        if shape is not None:
+            from loopy.kernel.array import _parse_shape_or_strides
+            shape = _parse_shape_or_strides(shape)
+
+        if base_indices is None and shape is not auto and shape is not None:
+            assert isinstance(shape, tuple)
             base_indices = (0,) * len(shape)
 
         if not read_only and initializer is not None:
@@ -790,7 +791,7 @@ class TemporaryVariable(ArrayBase):
                     _base_storage_access_may_be_aliasing),
                 **kwargs)
 
-    def copy(self, **kwargs):
+    def copy(self, **kwargs: Any) -> TemporaryVariable:
         address_space = kwargs.pop("address_space", None)
 
         if address_space is not None:
@@ -799,15 +800,23 @@ class TemporaryVariable(ArrayBase):
         return super().copy(**kwargs)
 
     @property
-    def nbytes(self):
-        shape = self.shape
+    def nbytes(self) -> ExpressionT:
         if self.storage_shape is not None:
             shape = self.storage_shape
+        else:
+            if self.shape is None:
+                raise ValueError("shape is None")
+            if self.shape is auto:
+                raise ValueError("shape is auto")
+            shape = cast(Tuple[ExpressionT], self.shape)
+
+        if self.dtype is None:
+            raise ValueError("data type is indeterminate")
 
         from pytools import product
         return product(si for si in shape)*self.dtype.itemsize
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.address_space is auto:
             aspace_str = "auto"
         else:
@@ -871,34 +880,26 @@ class TemporaryVariable(ArrayBase):
 
 # {{{ substitution rule
 
-class SubstitutionRule(ImmutableRecord):
+@dataclass(frozen=True)
+class SubstitutionRule:
     """
-    .. attribute:: name
-    .. attribute:: arguments
-
-        A tuple of strings
-
-    .. attribute:: expression
+    .. autoattribute:: name
+    .. autoattribute:: arguments
+    .. autoattribute:: expression
     """
 
-    def __init__(self, name, arguments, expression):
-        assert isinstance(arguments, tuple)
+    name: str
+    arguments: Sequence[str]
+    expression: ExpressionT
 
-        ImmutableRecord.__init__(self,
-                name=name, arguments=arguments, expression=expression)
-
-    def __str__(self):
-        return "{}({}) := {}".format(
-                self.name, ", ".join(self.arguments), self.expression)
+    def copy(self, **kwargs: Any) -> SubstitutionRule:
+        return replace(self, **kwargs)
 
     def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.arguments)
         key_builder.update_for_pymbolic_expression(key_hash, self.expression)
+
 
 # }}}
 

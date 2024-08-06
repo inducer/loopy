@@ -27,10 +27,20 @@ import collections
 from collections.abc import Set as abc_Set
 from dataclasses import dataclass, field, replace
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, FrozenSet, Mapping, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    FrozenSet,
+    Mapping,
+    Optional,
+    TypeVar,
+    Union,
+)
 from warnings import warn
 
 from immutables import Map
+from typing_extensions import Self
 
 from pymbolic.primitives import Call, Variable
 
@@ -182,6 +192,8 @@ class TranslationUnit:
         The :class:`~loopy.LoopKernel` representing the main entrypoint
         of the program, if defined. Currently, this attribute may only be
         accessed if there is exactly one entrypoint in the translation unit.
+        Will raise an error if the default entrypoint is not a
+        :class:`~loopy.LoopKernel`.
 
     .. attribute:: callables_table
 
@@ -226,9 +238,9 @@ class TranslationUnit:
 
         object.__setattr__(self, "_program_executor_cache", {})
 
-    def copy(self, **kwargs):
+    def copy(self, **kwargs: Any) -> Self:
         target = kwargs.pop("target", None)
-        program = replace(self, **kwargs)
+        t_unit = replace(self, **kwargs)
         if target:
             from loopy.kernel import KernelState
             if max(callable_knl.subkernel.state
@@ -240,7 +252,7 @@ class TranslationUnit:
                             "preprocessed, cannot modify target now.")
 
             new_callables = {}
-            for func_id, clbl in program.callables_table.items():
+            for func_id, clbl in t_unit.callables_table.items():
                 if isinstance(clbl, CallableKernel):
                     knl = clbl.subkernel
                     knl = knl.copy(target=target)
@@ -251,16 +263,12 @@ class TranslationUnit:
                     raise NotImplementedError()
                 new_callables[func_id] = clbl
 
-            program = replace(
+            t_unit = replace(
                     self, callables_table=Map(new_callables), target=target)
 
-        return program
+        return t_unit
 
-    def with_entrypoints(self, entrypoints):
-        """
-        :param entrypoints: Either a comma-separated :class:`str` or
-        :class:`frozenset`.
-        """
+    def with_entrypoints(self, entrypoints: str | frozenset[str]) -> Self:
         if isinstance(entrypoints, str):
             entrypoints = frozenset([e.strip() for e in
                 entrypoints.split(",")])
@@ -278,7 +286,7 @@ class TranslationUnit:
                     if isinstance(callable_knl, CallableKernel)),
                    default=KernelState.INITIAL)
 
-    def with_kernel(self, kernel):
+    def with_kernel(self, kernel: LoopKernel) -> Self:
         """
         If *self* contains a callable kernel with *kernel*'s name, replaces its
         subkernel and returns a copy of *self*. Else records a new callable
@@ -300,9 +308,9 @@ class TranslationUnit:
             new_callables = self.callables_table.set(kernel.name, clbl)
             return self.copy(callables_table=new_callables)
 
-    def __getitem__(self, name):
+    def __getitem__(self, name) -> LoopKernel:
         """
-        For the callable named *name*, return a :class:`loopy.LoopKernel` if
+        For the callable named *name*, return a :class:`loopy.LoopKernel`. if
         it's a :class:`~loopy.kernel.function_interface.CallableKernel`
         otherwise return the callable itself.
         """
@@ -310,13 +318,20 @@ class TranslationUnit:
         if isinstance(result, CallableKernel):
             return result.subkernel
         else:
-            return result
+            raise ValueError("TranslationUnit.__getitem__ "
+                             "can only be used for instances of LoopKernel. "
+                             "Access all other callables via callables_table.")
 
     @property
-    def default_entrypoint(self):
+    def default_entrypoint(self) -> LoopKernel:
         if len(self.entrypoints) == 1:
-            entrypoint, = self.entrypoints
-            return self[entrypoint]
+            ep_name, = self.entrypoints
+            entrypoint = self[ep_name]
+
+            if not isinstance(entrypoint, LoopKernel):
+                raise ValueError("default entrypoint is not a kernel")
+
+            return entrypoint
         else:
             raise ValueError("TranslationUnit has multiple possible entrypoints."
                              " The default entrypoint kernel is not uniquely"
@@ -724,6 +739,9 @@ class CallablesInferenceContext:
         return result
 
 # }}}
+
+
+TUnitOrKernelT = TypeVar("TUnitOrKernelT", LoopKernel, TranslationUnit)
 
 
 # {{{ helper functions
