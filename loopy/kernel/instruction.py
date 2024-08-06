@@ -24,7 +24,7 @@ from collections.abc import Mapping as MappingABC, Set as abc_Set
 from dataclasses import dataclass
 from functools import cached_property
 from sys import intern
-from typing import FrozenSet, Mapping, Optional, Tuple, Type, Union
+from typing import Any, FrozenSet, Mapping, Optional, Sequence, Tuple, Type, Union
 from warnings import warn
 
 import islpy as isl
@@ -33,6 +33,7 @@ from pytools.tag import Tag, Taggable, tag_dataclass
 
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional as LoopyOptional
+from loopy.types import LoopyType
 from loopy.typing import ExpressionT
 
 
@@ -1286,10 +1287,16 @@ def modify_assignee_for_array_call(assignee):
                 "SubArrayRef as its inputs")
 
 
-def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
+def make_assignment(assignees: tuple[ExpressionT, ...],
+                    expression: ExpressionT,
+                    temp_var_types: (
+                        Sequence[LoopyType | None] | None) = None,
+                    **kwargs: Any) -> Assignment | CallInstruction:
 
-    if temp_var_types is None:
-        temp_var_types = (LoopyOptional(),) * len(assignees)
+    if temp_var_types is not None:
+        tv_types: Sequence[LoopyType | LoopyOptional | None] = temp_var_types
+    else:
+        tv_types = (LoopyOptional(),) * len(assignees)
 
     if len(assignees) != 1 or is_array_call(assignees, expression):
         atomicity = kwargs.pop("atomicity", ())
@@ -1319,7 +1326,7 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
                     assignees=tuple(modify_assignee_for_array_call(
                         assignee) for assignee in assignees),
                     expression=expression,
-                    temp_var_types=temp_var_types,
+                    temp_var_types=tuple(tv_types),
                     **kwargs)
     else:
         def _is_array(expr):
@@ -1339,10 +1346,13 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
             raise LoopyError("Array calls only supported as instructions"
                     " with function call as RHS for now.")
 
+        assignee, = assignees
+        tv_type, = tv_types
+
         return Assignment(
-                assignee=assignees[0],
+                assignee=assignee,
                 expression=expression,
-                temp_var_type=temp_var_types[0],
+                temp_var_type=tv_type,
                 **kwargs)
 
 
