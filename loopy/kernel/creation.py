@@ -26,6 +26,7 @@ THE SOFTWARE.
 import logging
 import re
 from sys import intern
+from typing import Any
 
 import numpy as np
 
@@ -48,7 +49,7 @@ from loopy.kernel.data import (
 )
 from loopy.symbolic import IdentityMapper, SubArrayRef, WalkMapper
 from loopy.tools import Optional, intern_frozenset_of_ids
-from loopy.translation_unit import for_each_kernel
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 logger = logging.getLogger(__name__)
@@ -2614,7 +2615,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
 # {{{ make_kernel
 
-def make_kernel(*args, **kwargs):
+def make_kernel(*args: Any, **kwargs: Any) -> TranslationUnit:
     tunit = make_function(*args, **kwargs)
     name, = tunit.callables_table
     return tunit.with_entrypoints(name)
