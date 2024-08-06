@@ -27,10 +27,20 @@ import collections
 from collections.abc import Set as abc_Set
 from dataclasses import dataclass, field, replace
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, FrozenSet, Mapping, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    FrozenSet,
+    Mapping,
+    Optional,
+    TypeVar,
+    Union,
+)
 from warnings import warn
 
 from immutables import Map
+from typing_extensions import Self
 
 from pymbolic.primitives import Call, Variable
 
@@ -228,9 +238,9 @@ class TranslationUnit:
 
         object.__setattr__(self, "_program_executor_cache", {})
 
-    def copy(self, **kwargs):
+    def copy(self, **kwargs: Any) -> Self:
         target = kwargs.pop("target", None)
-        program = replace(self, **kwargs)
+        t_unit = replace(self, **kwargs)
         if target:
             from loopy.kernel import KernelState
             if max(callable_knl.subkernel.state
@@ -242,7 +252,7 @@ class TranslationUnit:
                             "preprocessed, cannot modify target now.")
 
             new_callables = {}
-            for func_id, clbl in program.callables_table.items():
+            for func_id, clbl in t_unit.callables_table.items():
                 if isinstance(clbl, CallableKernel):
                     knl = clbl.subkernel
                     knl = knl.copy(target=target)
@@ -253,16 +263,12 @@ class TranslationUnit:
                     raise NotImplementedError()
                 new_callables[func_id] = clbl
 
-            program = replace(
+            t_unit = replace(
                     self, callables_table=Map(new_callables), target=target)
 
-        return program
+        return t_unit
 
-    def with_entrypoints(self, entrypoints):
-        """
-        :param entrypoints: Either a comma-separated :class:`str` or
-        :class:`frozenset`.
-        """
+    def with_entrypoints(self, entrypoints: str | frozenset[str]) -> Self:
         if isinstance(entrypoints, str):
             entrypoints = frozenset([e.strip() for e in
                 entrypoints.split(",")])
@@ -280,7 +286,7 @@ class TranslationUnit:
                     if isinstance(callable_knl, CallableKernel)),
                    default=KernelState.INITIAL)
 
-    def with_kernel(self, kernel):
+    def with_kernel(self, kernel: LoopKernel) -> Self:
         """
         If *self* contains a callable kernel with *kernel*'s name, replaces its
         subkernel and returns a copy of *self*. Else records a new callable
