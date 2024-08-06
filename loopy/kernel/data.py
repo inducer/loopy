@@ -632,48 +632,42 @@ class ValueArg(KernelArgument, Taggable):
 
 class TemporaryVariable(ArrayBase):
     __doc__ = cast(str, ArrayBase.__doc__) + """
-    .. attribute:: storage_shape
-    .. attribute:: base_indices
-    .. attribute:: address_space
-
-        What memory this temporary variable lives in.
-        One of the values in :class:`AddressSpace`,
-        or :class:`loopy.auto` if this is
-        to be automatically determined.
-
-    .. attribute:: base_storage
-
-        The name of a storage array that is to be used to actually
-        hold the data in this temporary, or *None*. If not *None* or the name
-        of an existing variable, a variable of this name and appropriate size
-        will be created.
-
-    .. attribute:: initializer
-
-        *None* or a :class:`numpy.ndarray` of data to be used to initialize the
-        array.
-
-    .. attribute:: read_only
-
-        A :class:`bool` indicating whether the variable may be written during
-        its lifetime. If *True*, *initializer* must be given.
-
-    .. attribute:: _base_storage_access_may_be_aliasing
-
-        Whether the temporary is used to alias the underlying base storage.
-        Defaults to *False*. If *False*, C-based code generators will declare
-        the temporary as a ``restrict`` const pointer to the base storage
-        memory location. If *True*, the restrict part is omitted on this
-        declaration.
+    .. autoattribute:: storage_shape
+    .. autoattribute:: base_indices
+    .. autoattribute:: address_space
+    .. autoattribute:: base_storage
+    .. autoattribute:: initializer
+    .. autoattribute:: read_only
+    .. autoattribute:: _base_storage_access_may_be_aliasing
     """
 
     storage_shape: Optional[ShapeType]
     base_indices: Optional[Tuple[ExpressionT, ...]]
     address_space: Union[AddressSpace, Type[auto]]
     base_storage: Optional[str]
+    """The name of a storage array that is to be used to actually
+    hold the data in this temporary, or *None*. If not *None* or the name
+    of an existing variable, a variable of this name and appropriate size
+    will be created.
+    """
+
     initializer: Optional[np.ndarray]
+    """*None* or a :class:`numpy.ndarray` of data to be used to initialize the
+    array.
+    """
+
     read_only: bool
+    """A :class:`bool` indicating whether the variable may be written during
+    its lifetime. If *True*, *initializer* must be given.
+    """
+
     _base_storage_access_may_be_aliasing: bool
+    """Whether the temporary is used to alias the underlying base storage.
+    Defaults to *False*. If *False*, C-based code generators will declare
+    the temporary as a ``restrict`` const pointer to the base storage
+    memory location. If *True*, the restrict part is omitted on this
+    declaration.
+    """
 
     min_target_axes: ClassVar[int] = 0
     max_target_axes: ClassVar[int] = 1
