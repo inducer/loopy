@@ -579,15 +579,6 @@ class ImageArg(ArrayBase, KernelArgument):
                 )
 
 
-"""
-    :attribute tags: A (possibly empty) frozenset of instances of
-        :class:`pytools.tag.Tag` intended for consumption by an
-        application.
-
-        ..versionadded: 2020.2.2
-"""
-
-
 class ValueArg(KernelArgument, Taggable):
     def __init__(self, name, dtype=None, approximately=1000, target=None,
             is_output=False, is_input=True, tags=None):
