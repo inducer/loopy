@@ -20,6 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Sequence
+
 from immutables import Map
 
 import islpy as isl
@@ -27,7 +29,11 @@ from pytools import UniqueNameGenerator
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.function_interface import (
+    CallableKernel,
+    InKernelCallable,
+    ScalarCallable,
+)
 from loopy.kernel.instruction import (
     Assignment,
     CallInstruction,
@@ -40,7 +46,7 @@ from loopy.symbolic import (
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
 )
-from loopy.translation_unit import TranslationUnit, for_each_kernel
+from loopy.translation_unit import FunctionIdT, TranslationUnit, for_each_kernel
 
 
 __doc__ = """
@@ -80,10 +86,8 @@ def register_callable(translation_unit, function_identifier, callable_,
             callables_table=new_callables)
 
 
-def merge(translation_units):
+def merge(translation_units: Sequence[TranslationUnit]) -> TranslationUnit:
     """
-    :param translation_units: A sequence of :class:`loopy.TranslationUnit`.
-
     :returns: An instance of :class:`loopy.TranslationUnit` which contains all the
         callables from each of the *translation_units.
     """
@@ -110,7 +114,7 @@ def merge(translation_units):
 
     # }}}
 
-    callables_table = {}
+    callables_table: dict[FunctionIdT, InKernelCallable] = {}
     for trans_unit in translation_units:
         callables_table.update(trans_unit.callables_table)
 
@@ -534,7 +538,12 @@ def inline_callable_kernel(translation_unit, function_name):
 
 # {{{ rename_callable
 
-def rename_callable(program, old_name, new_name=None, existing_ok=False):
+def rename_callable(
+            t_unit: TranslationUnit,
+            old_name: str,
+            new_name: str | None = None,
+            existing_ok=False
+        ) -> TranslationUnit:
     """
     :arg program: An instance of :class:`loopy.TranslationUnit`
     :arg old_name: The callable to be renamed
@@ -548,21 +557,21 @@ def rename_callable(program, old_name, new_name=None, existing_ok=False):
         SubstitutionRuleMappingContext,
     )
 
-    assert isinstance(program, TranslationUnit)
+    assert isinstance(t_unit, TranslationUnit)
     assert isinstance(old_name, str)
 
-    if (new_name in program.callables_table) and not existing_ok:
+    if (new_name in t_unit.callables_table) and not existing_ok:
         raise LoopyError(f"callables named '{new_name}' already exists")
 
     if new_name is None:
-        namegen = UniqueNameGenerator(program.callables_table.keys())
+        namegen = UniqueNameGenerator(t_unit.callables_table.keys())
         new_name = namegen(old_name)
 
     assert isinstance(new_name, str)
 
     new_callables_table = {}
 
-    for name, clbl in program.callables_table.items():
+    for name, clbl in t_unit.callables_table.items():
         if name == old_name:
             name = new_name
 
@@ -582,12 +591,12 @@ def rename_callable(program, old_name, new_name=None, existing_ok=False):
 
         new_callables_table[name] = clbl
 
-    new_entrypoints = program.entrypoints.copy()
+    new_entrypoints = t_unit.entrypoints.copy()
     if old_name in new_entrypoints:
         new_entrypoints = ((new_entrypoints | frozenset([new_name]))
                            - frozenset([old_name]))
 
-    return program.copy(callables_table=Map(new_callables_table),
+    return t_unit.copy(callables_table=Map(new_callables_table),
                         entrypoints=new_entrypoints)
 
 # }}}
