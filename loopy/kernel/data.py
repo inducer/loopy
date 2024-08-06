@@ -862,34 +862,26 @@ class TemporaryVariable(ArrayBase):
 
 # {{{ substitution rule
 
-class SubstitutionRule(ImmutableRecord):
+@dataclass(frozen=True)
+class SubstitutionRule:
     """
-    .. attribute:: name
-    .. attribute:: arguments
-
-        A tuple of strings
-
-    .. attribute:: expression
+    .. autoattribute:: name
+    .. autoattribute:: arguments
+    .. autoattribute:: expression
     """
 
-    def __init__(self, name, arguments, expression):
-        assert isinstance(arguments, tuple)
+    name: str
+    arguments: Sequence[str]
+    expression: ExpressionT
 
-        ImmutableRecord.__init__(self,
-                name=name, arguments=arguments, expression=expression)
-
-    def __str__(self):
-        return "{}({}) := {}".format(
-                self.name, ", ".join(self.arguments), self.expression)
+    def copy(self, **kwargs: Any) -> SubstitutionRule:
+        return replace(self, **kwargs)
 
     def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.arguments)
         key_builder.update_for_pymbolic_expression(key_hash, self.expression)
+
 
 # }}}
 
