@@ -44,6 +44,7 @@ from loopy.kernel.array import (
     SeparateArrayArrayDimTag,
 )
 from loopy.kernel.data import ArrayArg, ArrayDimImplementationTag, auto
+from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (
     CallInstruction,
     CInstruction,
@@ -52,7 +53,7 @@ from loopy.kernel.instruction import (
     _DataObliviousInstruction,
 )
 from loopy.symbolic import CombineMapper, ResolvedFunction, WalkMapper
-from loopy.translation_unit import for_each_kernel
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.type_inference import TypeReader
 from loopy.typing import ExpressionT
 
@@ -1725,11 +1726,12 @@ def _validate_kernel_call_sites_inner(kernel, callables):
             raise NotImplementedError(type(insn))
 
 
-def validate_kernel_call_sites(translation_unit):
+def validate_kernel_call_sites(translation_unit: TranslationUnit) -> None:
     for name in translation_unit.callables_table:
-        clbl = translation_unit[name]
-        if isinstance(clbl, LoopKernel):
-            _validate_kernel_call_sites_inner(clbl, translation_unit.callables_table)
+        clbl = translation_unit.callables_table[name]
+        if isinstance(clbl, CallableKernel):
+            _validate_kernel_call_sites_inner(
+                  clbl.subkernel, translation_unit.callables_table)
 
 
 # }}}
