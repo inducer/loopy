@@ -43,7 +43,11 @@ from loopy.symbolic import (
     parse_tagged_name,
 )
 from loopy.tools import is_integer
-from loopy.translation_unit import CallablesInferenceContext, make_clbl_inf_ctx
+from loopy.translation_unit import (
+    CallablesInferenceContext,
+    TranslationUnit,
+    make_clbl_inf_ctx,
+)
 from loopy.types import NumpyType
 
 
@@ -1026,31 +1030,34 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     return type_specialized_kernel, clbl_inf_ctx
 
 
-def infer_unknown_types(program, expect_completion=False):
+def infer_unknown_types(
+            t_unit: TranslationUnit,
+            expect_completion: bool = False
+        ) -> TranslationUnit:
     """Infer types on temporaries and arguments."""
     from loopy.kernel.data import auto
     from loopy.translation_unit import resolve_callables
 
-    program = resolve_callables(program)
+    t_unit = resolve_callables(t_unit)
 
     # {{{ early-exit criterion
 
     if all(clbl.is_type_specialized()
-           for clbl in program.callables_table.values()):
+           for clbl in t_unit.callables_table.values()):
         # all the callables including the kernels have inferred their types
         # => no need for type inference
-        return program
+        return t_unit
 
     # }}}
 
-    clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
-            program.entrypoints)
+    clbl_inf_ctx = make_clbl_inf_ctx(t_unit.callables_table,
+            t_unit.entrypoints)
 
-    for e in program.entrypoints:
+    for e in t_unit.entrypoints:
         logger.debug(f"Entering entrypoint: {e}")
         arg_id_to_dtype = {arg.name: arg.dtype for arg in
-                program[e].args if arg.dtype not in (None, auto)}
-        new_callable, clbl_inf_ctx = program.callables_table[e].with_types(
+                t_unit[e].args if arg.dtype not in (None, auto)}
+        new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_types(
                 arg_id_to_dtype, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
@@ -1073,7 +1080,7 @@ def infer_unknown_types(program, expect_completion=False):
                     raise LoopyError("could not determine type of"
                             f" '{vars_not_inferred.pop()}' of kernel '{e}'.")
 
-    return clbl_inf_ctx.finish_program(program)
+    return clbl_inf_ctx.finish_program(t_unit)
 
 # }}}
 
