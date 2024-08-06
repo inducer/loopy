@@ -182,6 +182,8 @@ class TranslationUnit:
         The :class:`~loopy.LoopKernel` representing the main entrypoint
         of the program, if defined. Currently, this attribute may only be
         accessed if there is exactly one entrypoint in the translation unit.
+        Will raise an error if the default entrypoint is not a
+        :class:`~loopy.LoopKernel`.
 
     .. attribute:: callables_table
 
@@ -300,9 +302,9 @@ class TranslationUnit:
             new_callables = self.callables_table.set(kernel.name, clbl)
             return self.copy(callables_table=new_callables)
 
-    def __getitem__(self, name):
+    def __getitem__(self, name) -> LoopKernel:
         """
-        For the callable named *name*, return a :class:`loopy.LoopKernel` if
+        For the callable named *name*, return a :class:`loopy.LoopKernel`. if
         it's a :class:`~loopy.kernel.function_interface.CallableKernel`
         otherwise return the callable itself.
         """
@@ -310,13 +312,20 @@ class TranslationUnit:
         if isinstance(result, CallableKernel):
             return result.subkernel
         else:
-            return result
+            raise ValueError("TranslationUnit.__getitem__ "
+                             "can only be used for instances of LoopKernel. "
+                             "Access all other callables via callables_table.")
 
     @property
-    def default_entrypoint(self):
+    def default_entrypoint(self) -> LoopKernel:
         if len(self.entrypoints) == 1:
-            entrypoint, = self.entrypoints
-            return self[entrypoint]
+            ep_name, = self.entrypoints
+            entrypoint = self[ep_name]
+
+            if not isinstance(entrypoint, LoopKernel):
+                raise ValueError("default entrypoint is not a kernel")
+
+            return entrypoint
         else:
             raise ValueError("TranslationUnit has multiple possible entrypoints."
                              " The default entrypoint kernel is not uniquely"
