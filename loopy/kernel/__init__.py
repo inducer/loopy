@@ -274,11 +274,11 @@ class LoopKernel(Taggable):
                 | {arg.name for arg in self.args}
                 | set(self.all_inames()))
 
-    def get_var_name_generator(self):
+    def get_var_name_generator(self) -> UniqueNameGenerator:
         return UniqueNameGenerator(self.all_variable_names())
 
-    def get_instruction_id_generator(self, based_on="insn"):
-        used_ids = {insn.id for insn in self.instructions}
+    def get_instruction_id_generator(self, based_on="insn") -> UniqueNameGenerator:
+        used_ids = {insn.id for insn in self.instructions if insn.id is not None}
 
         return UniqueNameGenerator(used_ids)
 
