@@ -735,6 +735,9 @@ class CallablesInferenceContext:
 # }}}
 
 
+TUnitOrKernelT = TypeVar("TUnitOrKernelT", LoopKernel, TranslationUnit)
+
+
 # {{{ helper functions
 
 def make_program(kernel: LoopKernel) -> TranslationUnit:
