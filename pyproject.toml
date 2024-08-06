@@ -140,7 +140,7 @@ known-local-folder = [
 lines-after-imports = 2
 
 [tool.mypy]
-python_version = 3.8
+python_version = "3.10"
 warn_unused_ignores = true
 
 # TODO
