@@ -49,7 +49,11 @@ from loopy.kernel.data import (
     auto,
     filter_iname_tags_by_type,
 )
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.function_interface import (
+    ArgDescriptor,
+    CallableKernel,
+    ScalarCallable,
+)
 
 # from loopy.transform.iname import remove_any_newly_unused_inames
 from loopy.kernel.instruction import (
@@ -655,7 +659,7 @@ def traverse_to_infer_arg_descr(kernel, callables_table):
     return descr_inferred_kernel, arg_descr_inf_mapper.clbl_inf_ctx
 
 
-def infer_arg_descr(program):
+def infer_arg_descr(t_unit: TranslationUnit) -> TranslationUnit:
     """
     Returns a copy of *program* with the
     :attr:`loopy.InKernelCallable.arg_id_to_descr` inferred for all the
@@ -666,12 +670,12 @@ def infer_arg_descr(program):
     from loopy.kernel.function_interface import ArrayArgDescriptor, ValueArgDescriptor
     from loopy.translation_unit import make_clbl_inf_ctx, resolve_callables
 
-    program = resolve_callables(program)
+    t_unit = resolve_callables(t_unit)
 
-    clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
-                                     program.entrypoints)
+    clbl_inf_ctx = make_clbl_inf_ctx(t_unit.callables_table,
+                                     t_unit.entrypoints)
 
-    for e in program.entrypoints:
+    for e in t_unit.entrypoints:
         def _tuple_or_none(s):
             if isinstance(s, tuple):
                 return s
@@ -680,8 +684,8 @@ def infer_arg_descr(program):
             else:
                 return s,
 
-        arg_id_to_descr = {}
-        for arg in program[e].args:
+        arg_id_to_descr: dict[str, ArgDescriptor] = {}
+        for arg in t_unit[e].args:
             if isinstance(arg, ArrayBase):
                 if arg.shape not in (None, auto):
                     arg_id_to_descr[arg.name] = ArrayArgDescriptor(
@@ -691,12 +695,12 @@ def infer_arg_descr(program):
                 arg_id_to_descr[arg.name] = ValueArgDescriptor()
             else:
                 raise NotImplementedError()
-        new_callable, clbl_inf_ctx = program.callables_table[e].with_descrs(
+        new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_descrs(
                 arg_id_to_descr, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
 
-    return clbl_inf_ctx.finish_program(program)
+    return clbl_inf_ctx.finish_program(t_unit)
 
 # }}}
 
