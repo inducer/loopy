@@ -88,6 +88,7 @@ __doc__ = """
 
 .. autofunction:: for_each_kernel
 
+.. autoclass:: TUnitOrKernelT
 """
 
 

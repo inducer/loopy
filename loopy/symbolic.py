@@ -35,6 +35,7 @@ import immutables
 import numpy as np
 
 import islpy as isl
+import pymbolic.primitives  # FIXME: also import by full name to allow sphinx to resolve
 import pymbolic.primitives as p
 import pytools.lex
 from islpy import dim_type
@@ -60,7 +61,7 @@ from pymbolic.mapper.substitutor import (
 from pymbolic.mapper.unifier import UnidirectionalUnifier as UnidirectionalUnifierBase
 from pymbolic.parser import Parser as ParserBase
 from pytools import ImmutableRecord, memoize, memoize_method, memoize_on_first_arg
-from pytools.tag import Taggable
+from pytools.tag import Tag, Taggable
 
 from loopy.diagnostic import (
     ExpressionToAffineConversionError,
@@ -76,8 +77,6 @@ if TYPE_CHECKING:
 
 
 __doc__ = """
-.. currentmodule:: loopy.symbolic
-
 Loopy-specific expression types
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -89,6 +88,8 @@ Loopy-specific expression types
 
 .. autoclass:: TypedCSE
 
+.. currentmodule:: loopy
+
 .. autoclass:: TypeCast
 
 .. autoclass:: TaggedVariable
@@ -96,6 +97,8 @@ Loopy-specific expression types
 .. autoclass:: Reduction
 
 .. autoclass:: LinearSubscript
+
+.. currentmodule:: loopy.symbolic
 
 .. autoclass:: RuleArgument
 
@@ -686,19 +689,21 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     may then be used to address these uses--such as by prefetching only
     accesses tagged a certain way.
 
-    .. attribute:: tags
-
-        A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
-        provide metadata on this object. Legacy string tags are converted to
-        :class:`~loopy.LegacyStringInstructionTag` or, if they used to carry
-        a functional meaning, the tag carrying that same functional meaning
-        (e.g. :class:`~loopy.UseStreamingStoreTag`).
+    .. autoattribute:: tags
 
     Inherits from :class:`pymbolic.primitives.Variable`
     and :class:`pytools.tag.Taggable`.
     """
 
     init_arg_names = ("name", "tags")
+
+    tags: frozenset[Tag]
+    """A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
+    provide metadata on this object. Legacy string tags are converted to
+    :class:`~loopy.LegacyStringInstructionTag` or, if they used to carry
+    a functional meaning, the tag carrying that same functional meaning
+    (e.g. :class:`~loopy.UseStreamingStoreTag`).
+    """
 
     def __init__(self, name, tags):
         p.Variable.__init__(self, name)
@@ -744,6 +749,7 @@ class Reduction(LoopyExpressionBase):
     expr: ExpressionT
     """An expression which may have tuple type. If the expression has tuple
     type, it must be one of the following:
+
     * a :class:`tuple` of :class:`pymbolic.primitives.Expression`, or
     * a :class:`loopy.symbolic.Reduction`, or
     * a function call or substitution rule invocation.
@@ -756,7 +762,8 @@ class Reduction(LoopyExpressionBase):
 
     def __init__(self,
                  operation: ReductionOperation | str,
-                 inames: tuple[str | p.Variable, ...] | p.Variable | str,
+                 inames: (tuple[str | pymbolic.primitives.Variable, ...]
+                     | pymbolic.primitives.Variable | str),
                  expr: ExpressionT,
                  allow_simultaneous: bool = False
              ) -> None:

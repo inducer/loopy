@@ -709,7 +709,7 @@ class MemAccess(ImmutableRecord):
     .. attribute:: variable_tags
 
        A :class:`frozenset` of subclasses of :class:`~pytools.tag.Tag`
-       that reflects :attr:`~loopy.symbolic.TaggedVariable.tags` of
+       that reflects :attr:`~loopy.TaggedVariable.tags` of
        an accessed variable.
 
     .. attribute:: count_granularity

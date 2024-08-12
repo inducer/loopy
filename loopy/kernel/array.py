@@ -1,5 +1,3 @@
-"""Implementation tagging of array axes."""
-
 from __future__ import annotations
 
 
@@ -70,8 +68,6 @@ T = TypeVar("T")
 
 
 __doc__ = """
-.. currentmodule:: loopy.kernel.array
-
 .. autoclass:: ArrayDimImplementationTag
 
 .. autoclass:: _StrideArrayDimTagBase
@@ -85,6 +81,23 @@ __doc__ = """
 .. autoclass:: VectorArrayDimTag
 
 .. autofunction:: parse_array_dim_tags
+
+Cross-references
+----------------
+
+(This section shouldn't exist: Sphinx should be able to resolve these on its own.)
+
+.. class:: ShapeType
+
+    See :class:`loopy.typing.ShapeType`
+
+.. class:: ExpressionT
+
+    See :class:`loopy.typing.ExpressionT`
+
+.. class:: Tag
+
+    See :class:`pytools.tag.Tag`
 """
 
 

@@ -46,7 +46,7 @@ dependencies = [
     "pyrsistent",
     "immutables",
 
-    # for Self
+    # for Self, TypeAlias
     "typing-extensions>=4; python_version<'3.12'",
 ]
 [project.optional-dependencies]
