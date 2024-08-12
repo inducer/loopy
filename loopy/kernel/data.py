@@ -41,7 +41,8 @@ from typing import (
     cast,
 )
 
-import numpy as np  # noqa
+import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
+import numpy as np
 from immutables import Map
 
 from pytools import ImmutableRecord
@@ -651,7 +652,7 @@ class TemporaryVariable(ArrayBase):
     will be created.
     """
 
-    initializer: Optional[np.ndarray]
+    initializer: Optional[numpy.ndarray]
     """*None* or a :class:`numpy.ndarray` of data to be used to initialize the
     array.
     """

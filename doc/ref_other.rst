@@ -1,6 +1,11 @@
 Reference: Other Functionality
 ==============================
 
+Auxiliary Data Types
+--------------------
+
+.. automodule:: loopy.typing
+
 Obtaining Kernel Performance Statistics
 ---------------------------------------
 
