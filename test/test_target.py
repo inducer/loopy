@@ -314,10 +314,7 @@ def test_ispc_streaming_stores():
     knl = lp.split_iname(knl, "i_inner", 8, inner_tag="l.0")
     knl = lp.tag_instructions(knl, "!streaming_store")
 
-    knl = lp.add_and_infer_dtypes(knl, {
-        var: stream_dtype
-        for var in vars
-        })
+    knl = lp.add_and_infer_dtypes(knl, dict.fromkeys(vars, stream_dtype))
 
     knl = lp.set_argument_order(knl, vars + ["n"])
 
