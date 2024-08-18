@@ -34,6 +34,7 @@ import numpy as np
 import islpy as isl
 from islpy import dim_type
 from pytools import memoize_on_first_arg, natsorted
+from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
@@ -1483,7 +1484,7 @@ def draw_dependencies_as_unicode_arrows(
 
 # {{{ stringify_instruction_list
 
-def stringify_instruction_tag(tag):
+def stringify_instruction_tag(tag: Tag) -> str:
     from loopy.kernel.instruction import LegacyStringInstructionTag
     if isinstance(tag, LegacyStringInstructionTag):
         return f"S({tag.value})"
@@ -1491,7 +1492,7 @@ def stringify_instruction_tag(tag):
         return str(tag)
 
 
-def stringify_instruction_list(kernel):
+def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
     # {{{ topological sort
 
     printed_insn_ids = set()
@@ -1525,7 +1526,7 @@ def stringify_instruction_list(kernel):
 
     leader = " " * uniform_arrow_length
     lines = []
-    current_inames = [set()]
+    current_inames: list[set[str]] = [set()]
 
     if uniform_arrow_length:
         indent_level = [1]
@@ -1536,13 +1537,13 @@ def stringify_instruction_list(kernel):
 
     iname_order = kernel._get_iname_order_for_printing()
 
-    def add_pre_line(s):
+    def add_pre_line(s: str) -> None:
         lines.append(leader + " " * indent_level[0] + s)
 
-    def add_main_line(s):
+    def add_main_line(s: str) -> None:
         lines.append(arrows + " " * indent_level[0] + s)
 
-    def add_post_line(s):
+    def add_post_line(s: str) -> None:
         lines.append(extender + " " * indent_level[0] + s)
 
     def adapt_to_new_inames_list(new_inames):
