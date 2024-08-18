@@ -40,7 +40,7 @@ from typing import (
 from warnings import warn
 
 from immutables import Map
-from typing_extensions import Self
+from typing_extensions import Concatenate, ParamSpec, Self
 
 from pymbolic.primitives import Call, Variable
 
@@ -86,9 +86,16 @@ __doc__ = """
 
 .. autofunction:: make_program
 
+.. autofunction:: check_each_kernel
+
 .. autofunction:: for_each_kernel
 
 .. autoclass:: TUnitOrKernelT
+
+.. class:: P
+
+    A :class:`typing.ParamSpec` for use in annotating :func:`for_each_kernel` and
+    :func:`check_each_kernel`.
 """
 
 
@@ -760,21 +767,46 @@ def make_program(kernel: LoopKernel) -> TranslationUnit:
             entrypoints=frozenset())
 
 
-def for_each_kernel(transform):
+P = ParamSpec("P")
+
+
+def check_each_kernel(
+            check: Callable[Concatenate[LoopKernel, P], None]
+        ) -> Callable[Concatenate[TranslationUnit, P], None]:
+    def _collective_check(
+                t_unit_or_kernel: TranslationUnit | LoopKernel, /,
+                *args: P.args,
+                **kwargs: P.kwargs
+            ) -> None:
+        if isinstance(t_unit_or_kernel, TranslationUnit):
+            for clbl in t_unit_or_kernel.callables_table.values():
+                if isinstance(clbl, CallableKernel):
+                    check(clbl.subkernel, *args, **kwargs)
+                elif isinstance(clbl, ScalarCallable):
+                    pass
+                else:
+                    raise NotImplementedError(f"{type(clbl)}")
+        elif isinstance(t_unit_or_kernel, LoopKernel):
+            check(t_unit_or_kernel, *args, **kwargs)
+        else:
+            raise TypeError("expected LoopKernel or TranslationUnit")
+
+    return wraps(check)(_collective_check)
+
+
+def for_each_kernel(
+            transform: Callable[Concatenate[LoopKernel, P], LoopKernel]
+        ) -> Callable[Concatenate[TUnitOrKernelT, P], TUnitOrKernelT]:
     """
     Function wrapper for transformations of the type ``transform(kernel:
     LoopKernel, *args, **kwargs) -> LoopKernel``. Returns a function that would
     apply *transform* to all callable kernels in a :class:`loopy.TranslationUnit`.
     """
-    def _collective_transform(*args, **kwargs):
-        if "translation_unit" in kwargs:
-            t_unit_or_kernel = kwargs.pop("translation_unit")
-        elif "kernel" in kwargs:
-            t_unit_or_kernel = kwargs.pop("kernel")
-        else:
-            t_unit_or_kernel = args[0]
-            args = args[1:]
-
+    def _collective_transform(
+                t_unit_or_kernel: TUnitOrKernelT, /,
+                *args: P.args,
+                **kwargs: P.kwargs
+            ) -> TUnitOrKernelT:
         if isinstance(t_unit_or_kernel, TranslationUnit):
             t_unit = t_unit_or_kernel
             new_callables = {}
@@ -790,10 +822,11 @@ def for_each_kernel(transform):
                 new_callables[func_id] = clbl
 
             return t_unit.copy(callables_table=Map(new_callables))
-        else:
-            assert isinstance(t_unit_or_kernel, LoopKernel)
+        elif isinstance(t_unit_or_kernel, LoopKernel):
             kernel = t_unit_or_kernel
             return transform(kernel, *args, **kwargs)
+        else:
+            raise TypeError("expected LoopKernel or TranslationUnit")
 
     return wraps(transform)(_collective_transform)
 
