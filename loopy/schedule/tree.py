@@ -154,15 +154,15 @@ class Tree(Generic[NodeT]):
                      .set(node, ())),
                     self._child_to_parent.set(node, parent))
 
-    def replace_node(self, node: NodeT, new_id: NodeT) -> "Tree[NodeT]":
+    def replace_node(self, node: NodeT, new_node: NodeT) -> "Tree[NodeT]":
         """
-        Returns a copy of *self* with *node* replaced with *new_id*.
+        Returns a copy of *self* with *node* replaced with *new_node*.
         """
-        if not self.is_a_node(node):
+        if node not in self:
             raise ValueError(f"'{node}' not present in tree.")
 
-        if self.is_a_node(new_id):
-            raise ValueError(f"cannot rename to '{new_id}', as its already a part"
+        if new_node in self:
+            raise ValueError(f"cannot replace with '{new_node}', as its already a part"
                              " of the tree.")
 
         parent = self.parent(node)
