@@ -164,34 +164,31 @@ class Tree(Generic[NodeT]):
 
         # {{{ update child to parent
 
-        new_child_to_parent = (self._child_to_parent.delete(node)
-                               .set(new_id, parent))
+        child_to_parent_mut = self._child_to_parent.mutate()
+        del child_to_parent_mut[node]
+        child_to_parent_mut[new_node] = parent
 
         for child in children:
-            new_child_to_parent = (new_child_to_parent
-                                   .set(child, new_id))
+            child_to_parent_mut[child] = new_node
 
         # }}}
 
         # {{{ update parent_to_children
 
-        new_parent_to_children = (self._parent_to_children
-                                  .delete(node)
-                                  .set(new_id, self.children(node)))
+        parent_to_children_mut = self._parent_to_children.mutate()
+        del parent_to_children_mut[node]
+        parent_to_children_mut[new_node] = children
 
         if parent is not None:
             # update the child's name in the parent's children
-            new_parent_to_children = (new_parent_to_children
-                                      .delete(parent)
-                                      .set(parent, tuple(
-                                                    frozenset(self.children(parent))
-                                                    - frozenset([node]))
-                                                    + (new_id,)))
+            parent_to_children_mut[parent] = (
+                            *(frozenset(self.children(parent)) - frozenset([node])),
+                            new_node,)
 
         # }}}
 
-        return Tree(new_parent_to_children,
-                    new_child_to_parent)
+        return Tree(parent_to_children_mut.finish(),
+                    child_to_parent_mut.finish())
 
     def move_node(self, node: NodeT, new_parent: Optional[NodeT]) -> "Tree[NodeT]":
         """
