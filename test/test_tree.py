@@ -37,14 +37,14 @@ def test_tree_simple():
     assert tree.depth("bar") == 1
     assert tree.depth("baz") == 2
 
-    assert tree.is_a_node("")
-    assert tree.is_a_node("bar")
-    assert tree.is_a_node("baz")
-    assert not tree.is_a_node("foo")
+    assert "" in tree
+    assert "bar" in tree
+    assert "baz" in tree
+    assert "foo" not in tree
 
     tree = tree.replace_node("bar", "foo")
-    assert not tree.is_a_node("bar")
-    assert tree.is_a_node("foo")
+    assert "bar" not in tree
+    assert "foo" in tree
 
     tree = tree.move_node("baz", new_parent="")
     assert tree.depth("baz") == 1

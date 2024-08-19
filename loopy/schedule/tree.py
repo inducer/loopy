@@ -47,12 +47,15 @@ class Tree(Generic[NodeT]):
     .. automethod:: replace_node
     .. automethod:: move_node
 
+    .. automethod:: __contains__
+
     .. note::
 
        Almost all the operations are implemented recursively. NOT suitable for
        deep trees. At the very least if the Python implementation is CPython
        this allocates a new stack frame for each iteration of the operation.
     """
+
     _parent_to_children: Map[NodeT, Tuple[NodeT, ...]]
     _child_to_parent: Map[NodeT, Optional[NodeT]]
 
@@ -75,7 +78,7 @@ class Tree(Generic[NodeT]):
         """
         Returns a :class:`tuple` of nodes that are ancestors of *node*.
         """
-        assert self.is_a_node(node)
+        assert node in self
 
         if self.is_root(node):
             # => root
@@ -90,7 +93,7 @@ class Tree(Generic[NodeT]):
         """
         Returns the parent of *node*.
         """
-        assert self.is_a_node(node)
+        assert node in self
 
         return self._child_to_parent[node]
 
@@ -98,15 +101,15 @@ class Tree(Generic[NodeT]):
         """
         Returns the children of *node*.
         """
-        assert self.is_a_node(node)
+        assert node in self
 
         return self._parent_to_children[node]
 
     def depth(self, node: NodeT) -> int:
         """
-        Returns the depth of *node*.
+        Returns the depth of *node*, with the root having depth 0.
         """
-        assert self.is_a_node(node)
+        assert node in self
 
         if self.is_root(node):
             # => None
@@ -118,27 +121,25 @@ class Tree(Generic[NodeT]):
         return 1 + self.depth(parent_of_node)
 
     def is_root(self, node: NodeT) -> bool:
-        assert self.is_a_node(node)
+        assert node in self
 
         return self.parent(node) is None
 
     def is_leaf(self, node: NodeT) -> bool:
-        assert self.is_a_node(node)
+        assert node in self
 
         return len(self.children(node)) == 0
 
-    def is_a_node(self, node: NodeT) -> bool:
-        return node in self._child_to_parent
-
     def __contains__(self, node: NodeT) -> bool:
-        return self.is_a_node(node)
+        """Return *True* if *node* is a node in the tree."""
+        return node in self._child_to_parent
 
     def add_node(self, node: NodeT, parent: NodeT) -> "Tree[NodeT]":
         """
         Returns a :class:`Tree` with added node *node* having a parent
         *parent*.
         """
-        if self.is_a_node(node):
+        if node in self:
             raise ValueError(f"'{node}' already present in tree.")
 
         siblings = self._parent_to_children[parent]
@@ -194,7 +195,7 @@ class Tree(Generic[NodeT]):
         """
         Returns a copy of *self* with node *node* as a child of *new_parent*.
         """
-        if not self.is_a_node(node):
+        if node not in self:
             raise ValueError(f"'{node}' not a part of the tree => cannot move.")
 
         if self.is_root(node):
@@ -206,7 +207,7 @@ class Tree(Generic[NodeT]):
         if new_parent is None:
             raise ValueError("Making multiple roots not allowed")
 
-        if not self.is_a_node(new_parent):
+        if new_parent not in self:
             raise ValueError(f"Cannot move to '{new_parent}' as it's not in tree.")
 
         parent = self.parent(node)
