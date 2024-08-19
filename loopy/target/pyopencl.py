@@ -888,7 +888,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     struct_overflow_arg_names)
 
             py_passed_args = []
-            struct_pack_types = []
+            struct_pack_types: list[str] = []
             struct_pack_args = []
 
             for arg_name in skai.passed_names:
