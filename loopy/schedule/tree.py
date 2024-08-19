@@ -1,3 +1,8 @@
+# mypy: disallow-untyped-defs
+
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2022 Kaushik Kulkarni
 Copyright (C) 2022-24 University of Illinois Board of Trustees
@@ -24,7 +29,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import Generic, Hashable, Iterator, List, Optional, Tuple, TypeVar
+from typing import Generic, Hashable, Iterator, List, Optional, Sequence, Tuple, TypeVar
 
 from immutables import Map
 
@@ -249,11 +254,11 @@ class Tree(Generic[NodeT]):
         def rec(node: NodeT) -> List[str]:
             children_result = [rec(c) for c in self.children(node)]
 
-            def post_process_non_last_child(child):
-                return ["├── " + child[0]] + [f"│   {c}" for c in child[1:]]
+            def post_process_non_last_child(children: Sequence[str]) -> list[str]:
+                return ["├── " + children[0]] + [f"│   {c}" for c in children[1:]]
 
-            def post_process_last_child(child):
-                return ["└── " + child[0]] + [f"    {c}" for c in child[1:]]
+            def post_process_last_child(children: Sequence[str]) -> list[str]:
+                return ["└── " + children[0]] + [f"    {c}" for c in children[1:]]
 
             children_result = ([post_process_non_last_child(c)
                                 for c in children_result[:-1]]
