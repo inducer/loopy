@@ -74,7 +74,7 @@ from loopy.schedule import ScheduleItem
 from loopy.target import TargetBase
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import ExpressionT
+from loopy.typing import ExpressionT, InameStr
 
 
 if TYPE_CHECKING:
@@ -117,82 +117,25 @@ class LoopKernel(Taggable):
         even if it contains mutable data types. See :meth:`copy` for an easy
         way of producing a modified copy.
 
-    .. attribute:: domains
-
-        a list of :class:`islpy.BasicSet` instances representing the
-        :ref:`domain-tree`.
-
-    .. attribute:: instructions
-
-        A list of :class:`InstructionBase` instances, e.g.
-        :class:`Assignment`. See :ref:`instructions`.
-
-    .. attribute:: args
-
-        A list of :class:`loopy.KernelArgument`
-
-    .. attribute:: schedule
-
-        *None* or a list of :class:`loopy.schedule.ScheduleItem`
-
-    .. attribute:: name
-    .. attribute:: preambles
-    .. attribute:: preamble_generators
-    .. attribute:: assumptions
-
-        A :class:`islpy.BasicSet` parameter domain.
-
-    .. attribute:: temporary_variables
-
-        A :class:`dict` of mapping variable names to
-        :class:`loopy.TemporaryVariable`
-        instances.
-
-    .. attribute:: symbol_manglers
-
-    .. attribute:: substitutions
-
-        a mapping from substitution names to
-        :class:`SubstitutionRule` objects
-
-    .. attribute:: iname_slab_increments
-
-        a dictionary mapping inames to (lower_incr,
-        upper_incr) tuples that will be separated out in the execution to generate
-        'bulk' slabs with fewer conditionals.
-
-    .. attribute:: loop_priority
-
-        A frozenset of priority constraints to the kernel. Each such constraint
-        is a tuple of inames. Inames occurring in such a tuple will be scheduled
-        earlier than any iname following in the tuple. This applies only to inames
-        with non-parallel implementation tags.
-
-    .. attribute:: silenced_warnings
-
-    .. attribute:: applied_iname_rewrites
-
-        A list of past substitution dictionaries that
-        were applied to the kernel. These are stored so that they may be repeated
-        on expressions the user specifies later.
-
-    .. attribute:: options
-
-        An instance of :class:`loopy.Options`
-
-    .. attribute:: state
-
-        A value from :class:`KernelState`.
-
-    .. attribute:: target
-
-        A subclass of :class:`loopy.TargetBase`.
-
-    .. attribute:: inames
-
-        An instance of :class:`dict`, a mapping from the names of kernel's
-        inames to their corresponding instances of :class:`loopy.kernel.data.Iname`.
-        An entry is guaranteed to be present for each iname.
+    .. autoattribute:: domains
+    .. autoattribute:: instructions
+    .. autoattribute:: args
+    .. autoattribute:: schedule
+    .. autoattribute:: name
+    .. autoattribute:: preambles
+    .. autoattribute:: preamble_generators
+    .. autoattribute:: assumptions
+    .. autoattribute:: temporary_variables
+    .. autoattribute:: symbol_manglers
+    .. autoattribute:: substitutions
+    .. autoattribute:: iname_slab_increments
+    .. autoattribute:: loop_priority
+    .. autoattribute:: silenced_warnings
+    .. autoattribute:: applied_iname_rewrites
+    .. autoattribute:: options
+    .. autoattribute:: state
+    .. autoattribute:: target
+    .. autoattribute:: inames
 
     .. automethod:: __call__
     .. automethod:: copy
@@ -201,11 +144,25 @@ class LoopKernel(Taggable):
     .. automethod:: without_tags
     """
     domains: Sequence[isl.BasicSet]
+    """Represents the :ref:`domain-tree`."""
+
     instructions: Sequence[InstructionBase]
+    """
+    See :ref:`instructions`.
+    """
+
     args: Sequence[KernelArgument]
     assumptions: isl.BasicSet
+    """
+    Must be a :class:`islpy.BasicSet` parameter domain.
+    """
+
     temporary_variables: Mapping[str, TemporaryVariable]
-    inames: Mapping[str, Iname]
+    inames: Mapping[InameStr, Iname]
+    """
+    An entry is guaranteed to be present for each iname.
+    """
+
     substitutions: Mapping[str, SubstitutionRule]
     options: Options
     target: TargetBase
@@ -218,11 +175,29 @@ class LoopKernel(Taggable):
     symbol_manglers: Sequence[
             Callable[["LoopKernel", str], Optional[Tuple[LoopyType, str]]]] = ()
     linearization: Optional[Sequence[ScheduleItem]] = None
-    iname_slab_increments: Mapping[str, Tuple[int, int]] = field(
+    iname_slab_increments: Mapping[InameStr, Tuple[int, int]] = field(
             default_factory=Map)
-    loop_priority: FrozenSet[Tuple[str]] = field(
+    """
+    A mapping from inames to (lower_incr,
+    upper_incr) tuples that will be separated out in the execution to generate
+    'bulk' slabs with fewer conditionals.
+    """
+
+    loop_priority: FrozenSet[Tuple[InameStr, ...]] = field(
             default_factory=frozenset)
-    applied_iname_rewrites: Tuple[Dict[str, ExpressionT], ...] = ()
+    """
+    A frozenset of priority constraints to the kernel. Each such constraint
+    is a tuple of inames. Inames occurring in such a tuple will be scheduled
+    earlier than any iname following in the tuple. This applies only to inames
+    with non-parallel implementation tags.
+    """
+
+    applied_iname_rewrites: Tuple[Dict[InameStr, ExpressionT], ...] = ()
+    """
+    A list of past substitution dictionaries that
+    were applied to the kernel. These are stored so that they may be repeated
+    on expressions the user specifies later.
+    """
     index_dtype: NumpyType = NumpyType(np.dtype(np.int32))
     silenced_warnings: FrozenSet[str] = frozenset()
 
