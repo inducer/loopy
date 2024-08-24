@@ -42,7 +42,7 @@ from loopy.typing import InameStr, not_none
 
 # {{{ block boundary finder
 
-def get_block_boundaries(schedule):
+def get_block_boundaries(schedule: Sequence[ScheduleItem]) -> Mapping[int, int]:
     """
     Return a dictionary mapping indices of
     :class:`loopy.schedule.BlockBeginItem`s to
@@ -309,7 +309,7 @@ def get_subkernel_arg_info(
 
 # {{{ get_return_from_kernel_mapping
 
-def get_return_from_kernel_mapping(kernel):
+def get_return_from_kernel_mapping(kernel: LoopKernel) -> Mapping[int, int | None]:
     """
     Returns a mapping from schedule index of every schedule item (S) in
     *kernel* to the schedule index of :class:`loopy.schedule.ReturnFromKernel`
@@ -326,8 +326,8 @@ def get_return_from_kernel_mapping(kernel):
     )
     assert isinstance(kernel, LoopKernel)
     assert isinstance(kernel.linearization, list)
-    return_from_kernel_idxs = {}
-    current_return_from_kernel = None
+    return_from_kernel_idxs: dict[int, int | None] = {}
+    current_return_from_kernel: int | None = None
     for sched_idx, sched_item in list(enumerate(kernel.linearization))[::-1]:
         if isinstance(sched_item, CallKernel):
             return_from_kernel_idxs[sched_idx] = current_return_from_kernel
