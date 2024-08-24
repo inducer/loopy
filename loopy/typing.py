@@ -51,6 +51,8 @@ ExpressionT: TypeAlias = Union[IntegralT, FloatT, Expression]
 ShapeType: TypeAlias = Tuple[ExpressionT, ...]
 StridesType: TypeAlias = ShapeType
 
+InameStr: TypeAlias = str
+
 
 class auto:  # noqa
     """A generic placeholder object for something that should be automatically

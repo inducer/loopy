@@ -34,7 +34,7 @@ from pytools.tag import Tag, Taggable, tag_dataclass
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional as LoopyOptional
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+from loopy.typing import ExpressionT, InameStr
 
 
 # {{{ instruction tags
@@ -248,7 +248,7 @@ class InstructionBase(ImmutableRecord, Taggable):
     conflicts_with_groups: FrozenSet[str]
     no_sync_with: FrozenSet[Tuple[str, str]]
     predicates: FrozenSet[ExpressionT]
-    within_inames: FrozenSet[str]
+    within_inames: FrozenSet[InameStr]
     within_inames_is_final: bool
     priority: int
 
