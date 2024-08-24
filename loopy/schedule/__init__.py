@@ -65,12 +65,11 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
-.. currentmodule:: loopy.schedule
-
 .. autoclass:: ScheduleItem
 .. autoclass:: BeginBlockItem
 .. autoclass:: EndBlockItem
 .. autoclass:: CallKernel
+.. autoclass:: ReturnFromKernel
 .. autoclass:: Barrier
 .. autoclass:: RunInstruction
 

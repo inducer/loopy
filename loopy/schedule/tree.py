@@ -8,6 +8,12 @@ Copyright (C) 2022 Kaushik Kulkarni
 Copyright (C) 2022-24 University of Illinois Board of Trustees
 """
 
+
+__doc__ = """
+.. autoclass:: NodeT
+.. autoclass:: Tree
+"""
+
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
