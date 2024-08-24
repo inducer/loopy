@@ -56,6 +56,7 @@ from loopy.kernel.instruction import (
     BarrierInstruction,
     CallInstruction,
     CInstruction,
+    HappensAfter,
     InstructionBase,
     LegacyStringInstructionTag,
     MemoryOrdering,
@@ -203,15 +204,9 @@ from loopy.transform.subst import (
     find_rules_matching,
 )
 from loopy.translation_unit import TranslationUnit, for_each_kernel, make_program
-
-# }}}
 from loopy.type_inference import infer_unknown_types
 from loopy.types import to_loopy_type
-
-# {{{ imported user interface
 from loopy.typing import auto
-
-# {{{ import transforms
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
 
 
@@ -242,6 +237,7 @@ __all__ = [
     "ExecutorBase",
     "GeneratedProgram",
     "GlobalArg",
+    "HappensAfter",
     "ISPCTarget",
     "ImageArg",
     "InKernelCallable",
