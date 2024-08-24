@@ -262,6 +262,7 @@ Instructions
 
 .. {{{
 
+.. autoclass:: HappensAfter
 .. autoclass:: InstructionBase
 
 .. _assignments:
