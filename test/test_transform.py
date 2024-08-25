@@ -1720,6 +1720,7 @@ def test_duplicate_iname_not_read_only_nested(ctx_factory):
         """,
         [lp.GlobalArg("A,x,y", shape=lp.auto, dtype=np.float32),
          ...],
+         seq_dependencies=True,
     )
     ref_t_unit = t_unit
 
