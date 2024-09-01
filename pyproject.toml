@@ -78,6 +78,10 @@ loopy = [
     "py.typed",
 ]
 
+[tool.setuptools.package-dir]
+# https://github.com/Infleqtion/client-superstaq/pull/715
+"" = "."
+
 [tool.ruff]
 preview = true
 
