@@ -822,7 +822,7 @@ enabling some cost savings:
       {
         int const i_outer = -1 + n + -1 * ((3 * n) / 4);
     <BLANKLINE>
-        if (-1 + n >= 0)
+        if (i_outer >= 0)
         {
           a[4 * i_outer] = (float) (0.0f);
           if (-2 + -4 * i_outer + n >= 0)
