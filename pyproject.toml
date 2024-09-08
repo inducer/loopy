@@ -45,6 +45,7 @@ dependencies = [
     "Mako",
     "pyrsistent",
     "immutables",
+    "immutabledict",
 
     # for Self, TypeAlias
     "typing-extensions>=4; python_version<'3.12'",
