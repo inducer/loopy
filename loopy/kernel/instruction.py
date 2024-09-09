@@ -22,7 +22,6 @@ THE SOFTWARE.
 
 from collections.abc import (
     Mapping as MappingABC,
-    MutableMapping as MutableMappingABC,
     Set as abc_Set,
 )
 from dataclasses import dataclass
@@ -319,7 +318,9 @@ class InstructionBase(ImmutableRecord, Taggable):
             raise LoopyError("Setting depends_on_is_final to True requires "
                     "actually specifying happens_after/depends_on")
 
-        if happens_after is None:
+        if isinstance(happens_after, immutabledict):
+            pass
+        elif happens_after is None:
             happens_after = immutabledict()
         elif isinstance(happens_after, str):
             warn("Passing a string for happens_after/depends_on is deprecated and "
@@ -338,9 +339,8 @@ class InstructionBase(ImmutableRecord, Taggable):
                         variable_name=None,
                         instances_rel=None)
                     for after_id in happens_after})
-        elif isinstance(happens_after, MappingABC):
-            if isinstance(happens_after, dict):
-                happens_after = immutabledict(happens_after)
+        elif isinstance(happens_after, dict):
+            happens_after = immutabledict(happens_after)
         else:
             raise TypeError("'happens_after' has unexpected type: "
                             f"{type(happens_after)}")
@@ -394,9 +394,9 @@ class InstructionBase(ImmutableRecord, Taggable):
         assert isinstance(happens_after, MappingABC) or happens_after is None
         assert isinstance(groups, abc_Set)
         assert isinstance(conflicts_with_groups, abc_Set)
-        if isinstance(happens_after, MappingABC):
-            # Verify that happens_after is hashable.
-            assert not isinstance(happens_after, MutableMappingABC)
+
+        from loopy.tools import is_hashable
+        assert is_hashable(happens_after)
 
         ImmutableRecord.__init__(self,
                 id=id,
