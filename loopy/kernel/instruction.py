@@ -20,7 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Mapping as MappingABC, Set as abc_Set
+from collections.abc import (
+    Mapping as MappingABC,
+    Set as abc_Set,
+)
 from dataclasses import dataclass
 from functools import cached_property
 from sys import intern
@@ -283,6 +286,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                  *,
                  depends_on: Union[FrozenSet[str], str, None] = None,
                  ) -> None:
+        from immutabledict import immutabledict
 
         if predicates is None:
             predicates = frozenset()
@@ -314,28 +318,29 @@ class InstructionBase(ImmutableRecord, Taggable):
             raise LoopyError("Setting depends_on_is_final to True requires "
                     "actually specifying happens_after/depends_on")
 
-        if happens_after is None:
-            happens_after = {}
+        if isinstance(happens_after, immutabledict):
+            pass
+        elif happens_after is None:
+            happens_after = immutabledict()
         elif isinstance(happens_after, str):
             warn("Passing a string for happens_after/depends_on is deprecated and "
                  "will stop working in 2025. Instead, pass a full-fledged "
                  "happens_after data structure.", DeprecationWarning, stacklevel=2)
 
-            happens_after = {
+            happens_after = immutabledict({
                     after_id.strip(): HappensAfter(
                         variable_name=None,
                         instances_rel=None)
                     for after_id in happens_after.split(",")
-                    if after_id.strip()}
+                    if after_id.strip()})
         elif isinstance(happens_after, frozenset):
-            happens_after = {
+            happens_after = immutabledict({
                     after_id: HappensAfter(
                         variable_name=None,
                         instances_rel=None)
-                    for after_id in happens_after}
-        elif isinstance(happens_after, MappingABC):
-            if isinstance(happens_after, dict):
-                happens_after = happens_after
+                    for after_id in happens_after})
+        elif isinstance(happens_after, dict):
+            happens_after = immutabledict(happens_after)
         else:
             raise TypeError("'happens_after' has unexpected type: "
                             f"{type(happens_after)}")
@@ -389,6 +394,9 @@ class InstructionBase(ImmutableRecord, Taggable):
         assert isinstance(happens_after, MappingABC) or happens_after is None
         assert isinstance(groups, abc_Set)
         assert isinstance(conflicts_with_groups, abc_Set)
+
+        from loopy.tools import is_hashable
+        assert is_hashable(happens_after)
 
         ImmutableRecord.__init__(self,
                 id=id,
@@ -573,13 +581,15 @@ class InstructionBase(ImmutableRecord, Taggable):
     def __setstate__(self, val):
         super().__setstate__(val)
 
+        from immutabledict import immutabledict
+
         from loopy.tools import intern_frozenset_of_ids
 
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
-        self.happens_after = {
+        self.happens_after = immutabledict({
                 intern(after_id): ha
-                for after_id, ha in self.happens_after.items()}
+                for after_id, ha in self.happens_after.items()})
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
