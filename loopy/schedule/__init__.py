@@ -2252,8 +2252,10 @@ def _generate_loop_schedules_inner(
         return
 
     except V2SchedulerNotImplementedError as e:
-        from warnings import warn
-        warn(f"Falling back to a slow scheduler implementation due to: {e}",
+        warn_with_kernel(
+            kernel,
+            "v1_scheduler_fallback",
+            f"Falling back to a slow scheduler implementation due to: {e}",
              stacklevel=1)
 
     schedule_count = 0
