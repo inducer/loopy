@@ -438,7 +438,8 @@ with identical bounds, for the use of the transpose:
     ...     out[ii,jj] = 2*out[ii,jj]  {dep=transpose}
     ...     """,
     ...     [lp.GlobalArg("out", shape=lp.auto, is_input=False), ...])
-    >>> knl = lp.prioritize_loops(knl, "i,j,ii,jj")
+    >>> knl = lp.prioritize_loops(knl, "i,j")
+    >>> knl = lp.prioritize_loops(knl, "ii,jj")
 
 :func:`loopy.duplicate_inames` can be used to achieve the same goal.
 Now the intended code is generated and our test passes.
@@ -957,7 +958,7 @@ Consider the following example:
     ...     "{ [i_outer,i_inner, k]:  "
     ...          "0<= 16*i_outer + i_inner <n and 0<= i_inner,k <16}",
     ...     """
-    ...     <> a_temp[i_inner] = a[16*i_outer + i_inner] {priority=10}
+    ...     <> a_temp[i_inner] = a[16*i_outer + i_inner]
     ...     out[16*i_outer + i_inner] = sum(k, a_temp[k])
     ...     """)
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
@@ -1207,6 +1208,12 @@ Let us start with an example. Consider the kernel from above with a
    ...     name="rotate_v2",
    ...     assumptions="n mod 16 = 0")
    >>> prog = lp.split_iname(prog, "i", 16, inner_tag="l.0", outer_tag="g.0")
+
+.. testsetup::
+
+    >>> prog = prog.with_kernel(
+    ...    prog.default_entrypoint.copy(
+    ...        silenced_warnings=["v1_scheduler_fallback"]))
 
 Here is what happens when we try to generate code for the kernel:
 
