@@ -43,13 +43,10 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     UncachedWalkMapper as LoopyWalkMapper,
 )
+from .typing import is_integer  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-
-def is_integer(obj):
-    return isinstance(obj, (int, np.integer))
 
 
 def update_persistent_hash(obj, key_hash, key_builder):

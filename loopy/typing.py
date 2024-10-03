@@ -34,7 +34,7 @@ THE SOFTWARE.
 from typing import Optional, Tuple, TypeVar
 
 import numpy as np
-from typing_extensions import TypeAlias
+from typing_extensions import TypeAlias, TypeIs
 
 from pymbolic.primitives import Expression
 from pymbolic.typing import ExpressionT, IntegerT
@@ -59,6 +59,10 @@ T = TypeVar("T")
 def not_none(obj: Optional[T]) -> T:
     assert obj is not None
     return obj
+
+
+def is_integer(obj: object) -> TypeIs[int | np.integer]:
+    return isinstance(obj, (int, np.integer))
 
 
 def integer_or_err(expr: ExpressionT) -> IntegerT:
