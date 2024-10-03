@@ -60,4 +60,15 @@ nitpick_ignore_regex = [
         # As of 2022-06-22, it doesn't look like there's sphinx documentation
         # available.
         ["py:class", r"immutables\.(.+)"],
+
+        # Reference not found from "<unknown>"? I'm not even sure where to look.
+        ["py:class", r"Expression"],
         ]
+
+autodoc_type_aliases = {
+    "ToLoopyTypeConvertible": "ToLoopyTypeConvertible",
+    "ExpressionT": "ExpressionT",
+    "InameStr": "InameStr",
+    "ShapeType": "ShapeType",
+    "StridesType": "StridesType",
+}

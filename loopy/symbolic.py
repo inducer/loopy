@@ -47,6 +47,7 @@ import pymbolic.primitives  # FIXME: also import by full name to allow sphinx to
 import pymbolic.primitives as p
 import pytools.lex
 from islpy import dim_type
+from pymbolic import Variable
 from pymbolic.mapper import (
     CachedCombineMapper as CombineMapperBase,
     CachedIdentityMapper as IdentityMapperBase,
@@ -91,33 +92,23 @@ Loopy-specific expression types
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: Literal
-
 .. autoclass:: ArrayLiteral
-
 .. autoclass:: FunctionIdentifier
-
 .. autoclass:: TypedCSE
 
 .. currentmodule:: loopy
 
 .. autoclass:: TypeCast
-
 .. autoclass:: TaggedVariable
-
 .. autoclass:: Reduction
-
 .. autoclass:: LinearSubscript
 
 .. currentmodule:: loopy.symbolic
 
 .. autoclass:: RuleArgument
-
 .. autoclass:: ExpansionState
-
 .. autoclass:: RuleAwareIdentityMapper
-
 .. autoclass:: ResolvedFunction
-
 .. autoclass:: SubArrayRef
 
 
@@ -125,6 +116,13 @@ Expression Manipulation Helpers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: simplify_using_aff
+
+References
+^^^^^^^^^^
+
+.. class:: Variable
+
+    See :class:`pymbolic.Variable`.
 """
 
 
@@ -153,7 +151,7 @@ class IdentityMapperMixin:
 
         new_inames = []
         for iname, new_sym_iname in zip(expr.inames, mapped_inames):
-            if not isinstance(new_sym_iname, p.Variable):
+            if not isinstance(new_sym_iname, Variable):
                 from loopy.diagnostic import LoopyError
                 raise LoopyError("%s did not map iname '%s' to a variable"
                         % (type(self).__name__, iname))
@@ -429,7 +427,7 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_reduction(self, expr, *args, **kwargs):
         deps = self.rec(expr.expr, *args, **kwargs)
-        return deps - {p.Variable(iname) for iname in expr.inames}
+        return deps - {Variable(iname) for iname in expr.inames}
 
     def map_tagged_variable(self, expr, *args, **kwargs):
         return {expr}
@@ -642,7 +640,7 @@ class TypeCast(LoopyExpressionBase):
 
 
 @p.expr_dataclass(init=False)
-class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
+class TaggedVariable(LoopyExpressionBase, Variable, Taggable):
     """This is an identifier with tags, such as ``matrix$one``, where
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
@@ -663,7 +661,7 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     """
 
     def __init__(self, name: str, tags: ToTagSetConvertible) -> None:
-        p.Variable.__init__(self, name)
+        Variable.__init__(self, name)
         if isinstance(tags, str):
             from loopy.kernel.creation import _normalize_string_tag
             tags = frozenset({_normalize_string_tag(tags)})
@@ -723,13 +721,13 @@ class Reduction(LoopyExpressionBase):
         if isinstance(inames, str):
             inames = tuple(iname.strip() for iname in inames.split(","))
 
-        elif isinstance(inames, p.Variable):
+        elif isinstance(inames, Variable):
             inames = (inames,)
 
         assert isinstance(inames, tuple)
 
         def strip_var(iname: Any) -> str:
-            if isinstance(iname, p.Variable):
+            if isinstance(iname, Variable):
                 iname = iname.name
 
             assert isinstance(iname, str)
@@ -804,19 +802,19 @@ class ResolvedFunction(LoopyExpressionBase):
     .. autoattribute:: function
     .. autoattribute:: name
     """
-    function: p.Variable | ReductionOpFunction
+    function: Variable | ReductionOpFunction
 
     def __init__(self, function: Variable | ReductionOpFunction) -> None:
         if isinstance(function, str):
-            function = p.Variable(function)
+            function = Variable(function)
         from loopy.library.reduction import ReductionOpFunction
-        assert isinstance(function, (p.Variable, ReductionOpFunction))
+        assert isinstance(function, (Variable, ReductionOpFunction))
         object.__setattr__(self, "function", function)
 
     @property
     def name(self) -> str | ReductionOpFunction:
         from loopy.library.reduction import ReductionOpFunction
-        if isinstance(self.function, p.Variable):
+        if isinstance(self.function, Variable):
             return self.function.name
         elif isinstance(self.function, ReductionOpFunction):
             return self.function
@@ -844,7 +842,7 @@ class EvaluatorWithDeficientContext(PartialEvaluationMapper):
 
 class VariableInAnExpression(CombineMapper):
     def __init__(self, variables_to_search):
-        assert all(isinstance(variable, p.Variable) for variable in
+        assert all(isinstance(variable, Variable) for variable in
             variables_to_search)
         self.variables_to_search = variables_to_search
 
@@ -912,7 +910,7 @@ class SubArrayRef(LoopyExpressionBase):
 
     .. automethod:: is_equal
     """
-    swept_inames: tuple[p.Variable, ...]
+    swept_inames: tuple[Variable, ...]
     subscript: p.Subscript
 
     def __post_init__(self):
