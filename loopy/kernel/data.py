@@ -45,6 +45,7 @@ import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
 from immutables import Map
 
+from pymbolic import ArithmeticExpressionT
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
 
@@ -809,7 +810,7 @@ class TemporaryVariable(ArrayBase):
                 raise ValueError("shape is None")
             if self.shape is auto:
                 raise ValueError("shape is auto")
-            shape = cast(Tuple[ExpressionT], self.shape)
+            shape = cast(Tuple[ArithmeticExpressionT], self.shape)
 
         if self.dtype is None:
             raise ValueError("data type is indeterminate")

@@ -64,7 +64,7 @@ from loopy.target.execution import ExecutorBase
 from loopy.tools import remove_common_indentation
 from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import LoopyType, NumpyType, to_loopy_type
-from loopy.typing import ExpressionT
+from loopy.typing import ExpressionT, auto
 
 
 __doc__ = """
@@ -1071,10 +1071,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             self, temp_var: TemporaryVariable, is_written: bool) -> Declarator:
         if temp_var.address_space == AddressSpace.GLOBAL:
             from cgen import RestrictPointer
+            assert temp_var.address_space is not auto
+
             arg_decl = RestrictPointer(
                     self.wrap_decl_for_address_space(
                         self.get_array_base_declarator(temp_var),
-                        temp_var.address_space))
+                        cast(AddressSpace, temp_var.address_space)))
             if not is_written:
                 arg_decl = Const(arg_decl)
 

@@ -49,6 +49,7 @@ from immutables import Map
 
 import islpy as isl
 from islpy import dim_type
+from pymbolic import ArithmeticExpressionT
 from pytools import (
     UniqueNameGenerator,
     generate_unique_names,
@@ -1042,7 +1043,9 @@ class LoopKernel(Taggable):
     def get_grid_size_upper_bounds_as_exprs(
             self, callables_table,
             ignore_auto=False, return_dict=False
-            ) -> Tuple[Tuple[ExpressionT, ...], Tuple[ExpressionT, ...]]:
+            ) -> Tuple[
+                    Tuple[ArithmeticExpressionT, ...],
+                    Tuple[ArithmeticExpressionT, ...]]:
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 

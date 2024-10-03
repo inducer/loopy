@@ -806,7 +806,7 @@ class ResolvedFunction(LoopyExpressionBase):
     """
     function: p.Variable | ReductionOpFunction
 
-    def __init__(self, function):
+    def __init__(self, function: Variable | ReductionOpFunction) -> None:
         if isinstance(function, str):
             function = p.Variable(function)
         from loopy.library.reduction import ReductionOpFunction
@@ -814,7 +814,7 @@ class ResolvedFunction(LoopyExpressionBase):
         object.__setattr__(self, "function", function)
 
     @property
-    def name(self):
+    def name(self) -> str | ReductionOpFunction:
         from loopy.library.reduction import ReductionOpFunction
         if isinstance(self.function, p.Variable):
             return self.function.name

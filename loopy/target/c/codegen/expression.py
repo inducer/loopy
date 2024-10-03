@@ -124,7 +124,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         return s
 
     def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):  # type: ignore[override]
-        result = Mapper.rec(self, expr, type_context)
+        result = super().rec(expr, type_context)
+
         if needed_type is None:
             return result
         else:

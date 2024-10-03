@@ -30,6 +30,7 @@ import numpy as np
 
 import islpy as isl
 from islpy import dim_type
+from pymbolic.primitives import Variable, is_arithmetic_expression
 from pytools import memoize_method
 
 from loopy.diagnostic import (
@@ -1669,6 +1670,8 @@ def _are_sub_array_refs_equivalent(
     if len(sar1.swept_inames) != len(sar2.swept_inames):
         return False
 
+    assert isinstance(sar1.subscript.aggregate, Variable)
+    assert isinstance(sar2.subscript.aggregate, Variable)
     if sar1.subscript.aggregate.name != sar2.subscript.aggregate.name:
         return False
 
@@ -1692,7 +1695,10 @@ def _are_sub_array_refs_equivalent(
 
     for idx1, idx2 in zip(sar1.subscript.index_tuple,
                           sar2.subscript.index_tuple):
-        if simplify_via_aff(subst_mapper(idx1) - idx2) != 0:
+        subst_idx1 = subst_mapper(idx1)
+        assert is_arithmetic_expression(subst_idx1)
+        assert is_arithmetic_expression(idx2)
+        if simplify_via_aff(subst_idx1 - idx2) != 0:
             return False
     return True
 

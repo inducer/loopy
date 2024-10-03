@@ -22,12 +22,13 @@ THE SOFTWARE.
 
 
 from dataclasses import dataclass
-from typing import FrozenSet, List, Optional, Sequence, Type, Union
+from typing import FrozenSet, List, Optional, Sequence, Type, Union, cast
 
+import numpy as np
 from immutables import Map
 
 import islpy as isl
-from pymbolic import var
+from pymbolic import ArithmeticExpressionT, var
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_on_first_arg
 from pytools.tag import Tag
@@ -58,7 +59,13 @@ from loopy.transform.array_buffer_map import (
 )
 from loopy.translation_unit import CallablesTable, TranslationUnit
 from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
-from loopy.typing import ExpressionT, auto, not_none
+from loopy.typing import (
+    ExpressionT,
+    auto,
+    integer_expr_or_err,
+    integer_or_err,
+    not_none,
+)
 
 
 # {{{ contains_subst_rule_invocation
@@ -126,7 +133,7 @@ def contains_a_subst_rule_invocation(kernel, insn):
 
 @dataclass(frozen=True)
 class RuleAccessDescriptor(AccessDescriptor):
-    args: Optional[Sequence[ExpressionT]] = None
+    args: Optional[Sequence[ArithmeticExpressionT]] = None
 
 
 def access_descriptor_id(args, expansion_stack):
@@ -528,7 +535,7 @@ def precompute_for_single_kernel(
 
         if isinstance(subst_name_as_expr, TaggedVariable):
             new_subst_name = subst_name_as_expr.name
-            new_subst_tag = subst_name_as_expr.tag
+            new_subst_tag, = subst_name_as_expr.tags
         elif isinstance(subst_name_as_expr, Variable):
             new_subst_name = subst_name_as_expr.name
             new_subst_tag = None
@@ -569,9 +576,9 @@ def precompute_for_single_kernel(
 
         for fpg in footprint_generators:
             if isinstance(fpg, Variable):
-                args = ()
+                args: tuple[ArithmeticExpressionT, ...] = ()
             elif isinstance(fpg, Call):
-                args = fpg.parameters
+                args = cast(tuple[ArithmeticExpressionT, ...], fpg.parameters)
             else:
                 raise ValueError("footprint generator must "
                         "be substitution rule invocation")
@@ -929,7 +936,7 @@ def precompute_for_single_kernel(
 
         storage_axis_subst_dict[
                 prior_storage_axis_name_dict.get(arg_name, arg_name)] = \
-                        flatten(arg+base_index)
+                        flatten(arg+integer_expr_or_err(base_index))
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
@@ -1115,7 +1122,8 @@ def precompute_for_single_kernel(
                         len(temp_var.shape), len(new_temp_shape)))
 
         new_temp_shape = tuple(
-                max(i, ex_i)
+                # https://github.com/numpy/numpy/issues/27251
+                np.maximum(integer_or_err(i), integer_or_err(ex_i))
                 for i, ex_i in zip(new_temp_shape, temp_var.shape))
 
         temp_var = temp_var.copy(shape=new_temp_shape)
