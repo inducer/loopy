@@ -26,17 +26,22 @@ THE SOFTWARE.
 from typing import Any, Mapping, Type, Union
 
 import numpy as np
+from typing_extensions import TypeAlias
 
 from loopy.diagnostic import LoopyError
 from loopy.typing import auto
 
 
 __doc__ = """
-.. currentmodule:: loopy.types
+.. currentmodule:: loopy
 
 .. autoclass:: LoopyType
 
+.. autoclass:: ToLoopyTypeConvertible
+
 .. autoclass:: NumpyType
+
+.. currentmodule:: loopy.types
 
 .. autoclass:: AtomicType
 
@@ -197,7 +202,7 @@ class OpaqueType(LoopyType):
 # }}}
 
 
-ToLoopyTypeConvertible = Union[Type[auto], None, np.dtype, LoopyType]
+ToLoopyTypeConvertible: TypeAlias = Union[Type[auto], None, np.dtype, LoopyType]
 
 
 def to_loopy_type(dtype: ToLoopyTypeConvertible,

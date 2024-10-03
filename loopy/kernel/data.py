@@ -88,6 +88,13 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
+
+References
+^^^^^^^^^^
+
+.. class:: ToLoopyTypeConvertible
+
+    See :class:`loopy.ToLoopyTypeConvertible`.
 """
 
 # This docstring is included in ref_internals. Do not include parts of the public
