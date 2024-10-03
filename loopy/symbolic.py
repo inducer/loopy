@@ -388,39 +388,6 @@ class StringifyMapper(StringifyMapperBase):
         return f"[FORTRANDIV]({result})"
 
 
-class EqualityPreservingStringifyMapper(StringifyMapperBase):
-    """
-    For the benefit of
-    :meth:`loopy.tools.LoopyEqKeyBuilder.update_for_pymbolic_field`,
-    this mapper satisfies the invariant
-
-    ``mapper(expr_1) == mapper(expr_2)``
-    if and only if
-    ``expr_1 == expr_2``
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def map_constant(self, expr, enclosing_prec):
-        if isinstance(expr, np.generic):
-            # Explicitly typed: Emitted string must reflect type exactly.
-
-            # FIXME: This syntax cannot currently be parsed.
-
-            return "{}({})".format(type(expr).__name__, repr(expr))
-        else:
-            result = repr(expr)
-
-            from pymbolic.mapper.stringifier import PREC_SUM
-            if not (result.startswith("(") and result.endswith(")")) \
-                    and ("-" in result or "+" in result) \
-                    and (enclosing_prec > PREC_SUM):
-                return self.parenthesize(result)
-            else:
-                return result
-
-
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
         if not isinstance(other, type(expr)):
@@ -1603,7 +1570,8 @@ TRAILING_FLOAT_TAG_RE = re.compile("^(.*?)([a-zA-Z]*)$")
 class LoopyParser(ParserBase):
     lex_table = [
             (_open_dbl_bracket, pytools.lex.RE(r"\[\[")),
-            ] + ParserBase.lex_table
+            *ParserBase.lex_table
+            ]
 
     def parse_float(self, s):
         match = TRAILING_FLOAT_TAG_RE.match(s)
