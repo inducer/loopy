@@ -1,6 +1,4 @@
 """
-.. autoclass:: IntegralT
-.. autoclass:: FloatT
 .. autoclass:: ExpressionT
 .. autoclass:: ShapeType
 .. autoclass:: auto
@@ -33,21 +31,15 @@ THE SOFTWARE.
 """
 
 
-from typing import Optional, Tuple, TypeVar, Union
+from typing import Optional, Tuple, TypeVar
 
 import numpy as np
 from typing_extensions import TypeAlias
 
 from pymbolic.primitives import Expression
+from pymbolic.typing import ExpressionT, IntegerT
 
 
-IntegralT: TypeAlias = Union[int, np.int8, np.int16, np.int32, np.int64, np.uint8,
-                  np.uint16, np.uint32, np.uint64]
-FloatT: TypeAlias = Union[float, complex, np.float32, np.float64, np.complex64,
-        np.complex128]
-
-
-ExpressionT: TypeAlias = Union[IntegralT, FloatT, Expression]
 ShapeType: TypeAlias = Tuple[ExpressionT, ...]
 StridesType: TypeAlias = ShapeType
 
@@ -67,3 +59,17 @@ T = TypeVar("T")
 def not_none(obj: Optional[T]) -> T:
     assert obj is not None
     return obj
+
+
+def integer_or_err(expr: ExpressionT) -> IntegerT:
+    if isinstance(expr, (int, np.integer)):
+        return expr
+    else:
+        raise ValueError(f"expected integer, got {type(expr)}")
+
+
+def integer_expr_or_err(expr: ExpressionT) -> IntegerT | Expression:
+    if isinstance(expr, (int, np.integer, Expression)):
+        return expr
+    else:
+        raise ValueError(f"expected integer or expression, got {type(expr)}")
