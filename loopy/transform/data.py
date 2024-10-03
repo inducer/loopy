@@ -991,8 +991,7 @@ class _BaseStorageInfo:
 def _sym_max(a: ExpressionT, b: ExpressionT) -> ExpressionT:
     from numbers import Number
     if isinstance(a, Number) and isinstance(b, Number):
-        # https://github.com/python/mypy/issues/3186
-        return max(a, b)  # type: ignore[call-overload]
+        return max(a, b)
     else:
         from pymbolic.primitives import Max
         return Max((a, b))

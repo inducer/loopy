@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
 
 import numpy as np
 from immutables import Map
@@ -31,12 +31,13 @@ from immutables import Map
 from pytools import memoize_method
 from pytools.codegen import CodeGenerator, Indentation
 
+from loopy.codegen.result import CodeGenerationResult
 from loopy.kernel import LoopKernel
 from loopy.kernel.data import ArrayArg
 from loopy.schedule.tools import KernelArgInfo
 from loopy.target.execution import ExecutionWrapperGeneratorBase, ExecutorBase
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+from loopy.typing import ExpressionT, integer_expr_or_err
 
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     pyopencl execution
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         system_args = [
             "_lpy_cl_kernels", "queue", "allocator=None", "wait_for=None",
             # ignored if options.no_numpy
@@ -66,7 +67,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             ]
         super().__init__(system_args)
 
-    def python_dtype_str_inner(self, dtype):
+    def python_dtype_str_inner(self, dtype: np.dtype) -> str:
         import pyopencl.tools as cl_tools
         # Test for types built into numpy. dtype.isbuiltin does not work:
         # https://github.com/numpy/numpy/issues/4317
@@ -82,7 +83,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ handle non-numpy args
 
-    def handle_non_numpy_arg(self, gen, arg):
+    def handle_non_numpy_arg(self, gen: CodeGenerator, arg: ArrayArg) -> None:
         gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
         with Indentation(gen):
             gen("# retain originally passed array")
@@ -108,7 +109,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[ExpressionT], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for pyopencl execution
@@ -136,9 +137,10 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 for i in range(num_axes))
         sym_shape = tuple(arg.shape[i] for i in range(num_axes))
 
-        size_expr = (sum(astrd*(alen-1)
-            for alen, astrd in zip(sym_shape, sym_ustrides))
-            + 1)
+        size_expr = 1 + sum(
+                integer_expr_or_err(astrd)*(integer_expr_or_err(alen)-1)
+                for alen, astrd in zip(sym_shape, sym_ustrides)
+            )
 
         gen("_lpy_size = %s" % strify(size_expr))
         sym_strides = tuple(itemsize*s_i for s_i in sym_ustrides)
@@ -158,7 +160,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # }}}
 
-    def target_specific_preamble(self, gen):
+    def target_specific_preamble(self, gen: CodeGenerator) -> None:
         """
         Add default pyopencl imports to preamble
         """
@@ -170,7 +172,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         from loopy.target.c.c_execution import DEF_EVEN_DIV_FUNCTION
         gen.add_to_preamble(DEF_EVEN_DIV_FUNCTION)
 
-    def initialize_system_args(self, gen):
+    def initialize_system_args(self, gen: CodeGenerator) -> None:
         """
         Initializes possibly empty system arguments
         """
@@ -259,7 +261,9 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # }}}
 
-    def generate_host_code(self, gen, codegen_result):
+    def generate_host_code(
+                self, gen: CodeGenerator, codegen_result: CodeGenerationResult
+            ) -> None:
         gen.add_to_preamble(codegen_result.host_code())
 
     def get_arg_pass(self, arg):

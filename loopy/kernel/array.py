@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from loopy.symbolic import flatten
-
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -47,10 +45,13 @@ from warnings import warn
 import numpy as np  # noqa
 from typing_extensions import TypeAlias
 
+from pymbolic import ArithmeticExpressionT
+from pymbolic.primitives import is_arithmetic_expression
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable
 
 from loopy.diagnostic import LoopyError
+from loopy.symbolic import flatten
 from loopy.types import LoopyType
 from loopy.typing import ExpressionT, ShapeType, auto, is_integer
 
@@ -624,17 +625,30 @@ def _parse_shape_or_strides(
     if x is auto:
         return auto
 
-    if isinstance(x, str):
-        x = parse(x)
+    if not isinstance(x, str):
+        x_parsed = x
+    else:
+        x_parsed = parse(x)
 
-    if isinstance(x, list):
+    if isinstance(x_parsed, list):
         raise ValueError("shape can't be a list")
 
-    if not isinstance(x, tuple):
-        assert x is not auto
-        x = (x,)
+    if isinstance(x_parsed, tuple):
+        x_tup: tuple[ExpressionT | str, ...] = x_parsed
+    else:
+        assert x_parsed is not auto
+        x_tup = (cast(ExpressionT, x_parsed),)
 
-    return tuple(parse(xi) if isinstance(xi, str) else xi for xi in x)
+    def parse_arith(x: ExpressionT | str) -> ArithmeticExpressionT:
+        if isinstance(x, str):
+            res = parse(x)
+        else:
+            res = x
+
+        assert is_arithmetic_expression(res)
+        return res
+
+    return tuple(parse_arith(xi) for xi in x_tup)
 
 
 class ArrayBase(ImmutableRecord, Taggable):
@@ -1221,11 +1235,12 @@ def get_access_info(kernel: "LoopKernel",
 
     import loopy as lp
 
-    def eval_expr_assert_integer_constant(i, expr):
+    def eval_expr_assert_integer_constant(i, expr) -> int:
         from pymbolic.mapper.evaluator import UnknownVariableError
         try:
             result = eval_expr(expr)
         except UnknownVariableError as e:
+            assert ary.dim_tags is not None
             raise LoopyError("When trying to index the array '%s' along axis "
                     "%d (tagged '%s'), the index was not a compile-time "
                     "constant (but it has to be in order for code to be "

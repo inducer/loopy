@@ -37,10 +37,10 @@ import numpy as np
 from typing_extensions import TypeAlias, TypeIs
 
 from pymbolic.primitives import Expression
-from pymbolic.typing import ExpressionT, IntegerT
+from pymbolic.typing import ArithmeticExpressionT, ExpressionT, IntegerT
 
 
-ShapeType: TypeAlias = Tuple[ExpressionT, ...]
+ShapeType: TypeAlias = Tuple[ArithmeticExpressionT, ...]
 StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str

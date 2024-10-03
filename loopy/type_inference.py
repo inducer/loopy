@@ -596,7 +596,8 @@ class TypeInferenceMapper(CombineMapper):
     def map_sub_array_ref(self, expr):
         return self.rec(expr.subscript)
 
-    map_fortran_division = map_quotient
+    def map_fortran_division(self, expr):
+        return self.combine((self.rec(expr.numerator), self.rec(expr.denominator)))
 
     def map_nan(self, expr):
         if expr.data_type is None:
