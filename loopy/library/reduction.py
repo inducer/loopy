@@ -25,6 +25,7 @@ import numpy as np
 
 from pymbolic import var
 from pymbolic.primitives import expr_dataclass
+from pytools.persistent_dict import Hash, KeyBuilder
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import ScalarCallable
@@ -127,6 +128,10 @@ class ScalarReductionOperation(ReductionOperation):
         result = type(self).__name__.replace("ReductionOperation", "").lower()
 
         return result
+
+    def update_persistent_hash(self, key_hash: Hash, key_builder: KeyBuilder) -> None:
+        # They're all stateless.
+        key_builder.rec(key_hash, type(self))
 
 
 class SumReductionOperation(ScalarReductionOperation):
