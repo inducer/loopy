@@ -87,6 +87,12 @@ __doc__ = """
 .. automodule:: loopy.codegen.result
 
 .. automodule:: loopy.codegen.tools
+
+References
+^^^^^^^^^^
+.. class:: Expression
+
+    See :class:`pymbolic.Expression`.
 """
 
 
