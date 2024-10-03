@@ -953,7 +953,9 @@ class Assignment(MultiAssignmentBase):
         if isinstance(assignee, str):
             assignee = parse(assignee)
         if isinstance(expression, str):
-            expression = parse(expression)
+            parsed_expression = parse(expression)
+        else:
+            parsed_expression = expression
 
         from pymbolic.primitives import Lookup, Subscript, Variable
 
@@ -962,7 +964,7 @@ class Assignment(MultiAssignmentBase):
             raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignee = assignee
-        self.expression = expression
+        self.expression = parsed_expression
 
         self.temp_var_type = _check_and_fix_temp_var_type(temp_var_type)
         self.atomicity = atomicity

@@ -27,6 +27,8 @@ __doc__ = """
 
 from typing import List, Optional, Sequence
 
+import numpy as np
+
 import pymbolic.primitives as prim
 from pytools import all_equal
 
@@ -82,7 +84,11 @@ def concatenate_arrays(
         offsets[array_name] = axis_length
         ary = kernel.temporary_variables[array_name]
         assert isinstance(ary.shape, tuple)
-        axis_length += ary.shape[axis_nr]
+        shape_ax = ary.shape[axis_nr]
+        if not isinstance(shape_ax, (int, np.integer)):
+            raise TypeError(f"array '{array_name}' axis {axis_nr+1} (1-based) has "
+                            "non-constant length.")
+        axis_length += shape_ax
 
     new_ary = arrays[0]
     if not isinstance(new_ary.shape, tuple):

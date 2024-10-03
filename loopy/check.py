@@ -30,6 +30,7 @@ import numpy as np
 
 import islpy as isl
 from islpy import dim_type
+from pymbolic.primitives import Variable
 from pytools import memoize_method
 
 from loopy.diagnostic import (
@@ -1669,6 +1670,8 @@ def _are_sub_array_refs_equivalent(
     if len(sar1.swept_inames) != len(sar2.swept_inames):
         return False
 
+    assert isinstance(sar1.subscript.aggregate, Variable)
+    assert isinstance(sar2.subscript.aggregate, Variable)
     if sar1.subscript.aggregate.name != sar2.subscript.aggregate.name:
         return False
 

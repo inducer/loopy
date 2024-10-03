@@ -623,16 +623,20 @@ def _parse_shape_or_strides(
         return auto
 
     if isinstance(x, str):
-        x = parse(x)
+        x_parsed = parse(x)
+    else:
+        x_parsed = x
 
-    if isinstance(x, list):
+    if isinstance(x_parsed, list):
         raise ValueError("shape can't be a list")
 
-    if not isinstance(x, tuple):
+    if isinstance(x_parsed, tuple):
+        x_tup: tuple[ExpressionT, ...] = x_parsed
+    else:
         assert x is not auto
-        x = (x,)
+        x_tup = (x_parsed,)
 
-    return tuple(parse(xi) if isinstance(xi, str) else xi for xi in x)
+    return tuple(parse(xi) if isinstance(xi, str) else xi for xi in x_tup)
 
 
 class ArrayBase(ImmutableRecord, Taggable):
@@ -1219,11 +1223,12 @@ def get_access_info(kernel: "LoopKernel",
 
     import loopy as lp
 
-    def eval_expr_assert_integer_constant(i, expr):
+    def eval_expr_assert_integer_constant(i, expr) -> int:
         from pymbolic.mapper.evaluator import UnknownVariableError
         try:
             result = eval_expr(expr)
         except UnknownVariableError as e:
+            assert ary.dim_tags is not None
             raise LoopyError("When trying to index the array '%s' along axis "
                     "%d (tagged '%s'), the index was not a compile-time "
                     "constant (but it has to be in order for code to be "
