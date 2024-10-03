@@ -51,9 +51,8 @@ from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable
 
 from loopy.diagnostic import LoopyError
-from loopy.tools import is_integer
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT, ShapeType, auto
+from loopy.typing import ExpressionT, ShapeType, auto, is_integer
 
 
 if TYPE_CHECKING:

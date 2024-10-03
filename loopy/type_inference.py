@@ -42,13 +42,13 @@ from loopy.symbolic import (
     SubstitutionRuleMappingContext,
     parse_tagged_name,
 )
-from loopy.tools import is_integer
 from loopy.translation_unit import (
     CallablesInferenceContext,
     TranslationUnit,
     make_clbl_inf_ctx,
 )
 from loopy.types import NumpyType
+from loopy.typing import is_integer
 
 
 logger = logging.getLogger(__name__)
