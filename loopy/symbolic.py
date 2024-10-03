@@ -33,11 +33,11 @@ from typing import (
     TYPE_CHECKING,
     AbstractSet,
     Any,
-    ClassVar,
     Mapping,
     Sequence,
-    Tuple,
+    cast,
 )
+from warnings import warn
 
 import immutables
 import numpy as np
@@ -69,20 +69,21 @@ from pymbolic.mapper.substitutor import (
 )
 from pymbolic.mapper.unifier import UnidirectionalUnifier as UnidirectionalUnifierBase
 from pymbolic.parser import Parser as ParserBase
+from pymbolic.typing import ArithmeticOrExpressionT
 from pytools import ImmutableRecord, memoize, memoize_method, memoize_on_first_arg
-from pytools.tag import Tag, Taggable
+from pytools.tag import Tag, Taggable, ToTagSetConvertible
 
 from loopy.diagnostic import (
     ExpressionToAffineConversionError,
     LoopyError,
     UnableToDetermineAccessRangeError,
 )
-from loopy.types import ToLoopyTypeConvertible
+from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible
 from loopy.typing import ExpressionT
 
 
 if TYPE_CHECKING:
-    from loopy.library.reduction import ReductionOperation
+    from loopy.library.reduction import ReductionOperation, ReductionOpFunction
 
 
 __doc__ = """
@@ -208,8 +209,8 @@ class FlattenMapper(FlattenMapperBase, IdentityMapperMixin):
     pass
 
 
-def flatten(expr):
-    return FlattenMapper()(expr)
+def flatten(expr: ArithmeticOrExpressionT) -> ArithmeticOrExpressionT:
+    return cast(ArithmeticOrExpressionT, FlattenMapper()(expr))
 
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
@@ -545,6 +546,7 @@ class LoopyExpressionBase(p.Expression):
         return StringifyMapper()
 
 
+@p.expr_dataclass()
 class Literal(LoopyExpressionBase):
     """A literal to be used during code generation.
 
@@ -555,17 +557,10 @@ class Literal(LoopyExpressionBase):
         similar mappers). Not for use in Loopy source representation.
     """
 
-    def __init__(self, s):
-        self.s = s
-
-    def __getinitargs__(self):
-        return (self.s,)
-
-    init_arg_names = ("s",)
-
-    mapper_method = "map_literal"
+    s: str
 
 
+@p.expr_dataclass()
 class ArrayLiteral(LoopyExpressionBase):
     """An array literal.
 
@@ -576,27 +571,15 @@ class ArrayLiteral(LoopyExpressionBase):
         similar mappers). Not for use in Loopy source representation.
     """
 
-    def __init__(self, children):
-        self.children = children
-
-    def __getinitargs__(self):
-        return (self.children,)
-
-    init_arg_names = ("children",)
-
-    mapper_method = "map_array_literal"
+    children: tuple[ExpressionT, ...]
 
 
+@p.expr_dataclass()
 class HardwareAxisIndex(LoopyExpressionBase):
-    def __init__(self, axis):
-        self.axis = axis
-
-    def __getinitargs__(self):
-        return (self.axis,)
-
-    init_arg_names = ("axis",)
+    axis: int
 
 
+@p.expr_dataclass()
 class GroupHardwareAxisIndex(HardwareAxisIndex):
     """
     .. note::
@@ -608,6 +591,7 @@ class GroupHardwareAxisIndex(HardwareAxisIndex):
     mapper_method = "map_group_hw_index"
 
 
+@p.expr_dataclass()
 class LocalHardwareAxisIndex(HardwareAxisIndex):
     """
     .. note::
@@ -619,55 +603,55 @@ class LocalHardwareAxisIndex(HardwareAxisIndex):
     mapper_method = "map_local_hw_index"
 
 
+@p.expr_dataclass()
 class FunctionIdentifier(LoopyExpressionBase):
     """A base class for symbols representing functions."""
 
-    init_arg_names: ClassVar[Tuple[str, ...]] = ()
-
-    mapper_method = intern("map_loopy_function_identifier")
+    mapper_method = "map_loopy_function_identifier"
 
 
+@p.expr_dataclass()
 class TypedCSE(LoopyExpressionBase, p.CommonSubexpression):
     """A :class:`pymbolic.primitives.CommonSubexpression` annotated with
-    a :class:`numpy.dtype`.
+    a type.
+
+    .. autoattribute:: dtype
     """
 
-    def __init__(self, child, prefix=None, dtype=None):
-        super().__init__(child, prefix=prefix, scope=p.cse_scope.EVALUATION)
-        self.dtype = dtype
-
-    def __getinitargs__(self):
-        return (self.child, self.dtype, self.prefix)
+    dtype: LoopyType | None = None
 
     def get_extra_properties(self):
         return {"dtype": self.dtype}
 
 
+@p.expr_dataclass()
 class TypeAnnotation(LoopyExpressionBase):
     """Undocumented for now. Currently only used internally around LHSs of
     assignments that create temporaries.
+
+    .. autoattribute:: type
+    .. autoattribute:: child
     """
 
-    def __init__(self, type, child):
-        super().__init__()
-        self.type = type
-        self.child = child
-
-    def __getinitargs__(self):
-        return (self.type, self.child)
-
-    mapper_method = intern("map_type_annotation")
+    type: LoopyType
+    child: ExpressionT
 
 
+@p.expr_dataclass(init=False)
 class TypeCast(LoopyExpressionBase):
     """Only defined for numerical types with semantics matching
     :meth:`numpy.ndarray.astype`.
 
-    .. attribute:: child
-
-        The expression to be cast.
+    .. autoattribute:: child
+    .. autoattribute:: type
     """
+
+    # We're storing the type as a name for now to avoid
+    # numpy pickling bug madness. (see loopy.types)
+    _type_name: str
+
     child: ExpressionT
+    """The expression to be cast."""
 
     def __init__(self, type: ToLoopyTypeConvertible, child: ExpressionT):
         super().__init__()
@@ -681,25 +665,16 @@ class TypeCast(LoopyExpressionBase):
             raise LoopyError("TypeCast only supports numerical numpy types, "
                     "not '%s'" % type)
 
-        # We're storing the type as a name for now to avoid
-        # numpy pickling bug madness. (see loopy.types)
-        self._type_name = type.dtype.name
-        self.child = child
+        object.__setattr__(self, "_type_name", type.dtype.name)
+        object.__setattr__(self, "child", child)
 
     @property
-    def type(self):
+    def type(self) -> NumpyType:
         from loopy.types import NumpyType
         return NumpyType(np.dtype(self._type_name))
 
-    # init_arg_names is a misnomer--they're attribute names used for pickling.
-    init_arg_names = ("_type_name", "child")
 
-    def __getinitargs__(self):
-        return (self._type_name, self.child)
-
-    mapper_method = intern("map_type_cast")
-
-
+@p.expr_dataclass(init=False)
 class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     """This is an identifier with tags, such as ``matrix$one``, where
     'one' identifies this specific use of the identifier. This mechanism
@@ -712,8 +687,6 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     and :class:`pytools.tag.Taggable`.
     """
 
-    init_arg_names = ("name", "tags")
-
     tags: frozenset[Tag]
     """A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
     provide metadata on this object. Legacy string tags are converted to
@@ -722,7 +695,7 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     (e.g. :class:`~loopy.UseStreamingStoreTag`).
     """
 
-    def __init__(self, name, tags):
+    def __init__(self, name: str, tags: ToTagSetConvertible) -> None:
         p.Variable.__init__(self, name)
         if isinstance(tags, str):
             from loopy.kernel.creation import _normalize_string_tag
@@ -731,19 +704,15 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
         assert isinstance(tags, frozenset)
         assert tags
 
-        self.tags = tags
-
-    def __getinitargs__(self):
-        return self.name, self.tags
+        object.__setattr__(self, "tags", tags)
 
     def copy(self, *, name=None, tags=None):
         name = self.name if name is None else name
         tags = self.tags if tags is None else tags
         return TaggedVariable(name, tags)
 
-    mapper_method = intern("map_tagged_variable")
 
-
+@p.expr_dataclass(init=False)
 class Reduction(LoopyExpressionBase):
     """
     Represents a reduction operation on :attr:`expr` across :attr:`inames`.
@@ -824,22 +793,10 @@ class Reduction(LoopyExpressionBase):
             elif isinstance(expr, Reduction) and expr.is_tuple_typed:
                 raise LoopyError("got a tuple typed argument to a scalar reduction")
 
-        self.operation = operation
-        self.inames = inames
-        self.expr = expr
-        self.allow_simultaneous = allow_simultaneous
-
-    def __getinitargs__(self):
-        return (self.operation, self.inames, self.expr, self.allow_simultaneous)
-
-    def get_hash(self):
-        return hash((self.__class__, self.operation, self.inames, self.expr))
-
-    def is_equal(self, other):
-        return (other.__class__ == self.__class__
-                and other.operation == self.operation
-                and other.inames == self.inames
-                and other.expr == self.expr)
+        object.__setattr__(self, "operation", operation)
+        object.__setattr__(self, "inames", inames)
+        object.__setattr__(self, "expr", expr)
+        object.__setattr__(self, "allow_simultaneous", allow_simultaneous)
 
     @property
     def is_tuple_typed(self):
@@ -849,43 +806,27 @@ class Reduction(LoopyExpressionBase):
     def inames_set(self):
         return set(self.inames)
 
-    mapper_method = intern("map_reduction")
 
-
+@p.expr_dataclass()
 class LinearSubscript(LoopyExpressionBase):
     """Represents a linear index into a multi-dimensional array, completely
     ignoring any multi-dimensional layout.
     """
-
-    init_arg_names = ("aggregate", "index")
-
-    def __init__(self, aggregate, index):
-        self.aggregate = aggregate
-        self.index = index
-
-    def __getinitargs__(self):
-        return self.aggregate, self.index
-
-    mapper_method = intern("map_linear_subscript")
+    aggregate: ExpressionT
+    index: ExpressionT
 
 
+@p.expr_dataclass()
 class RuleArgument(LoopyExpressionBase):
     """Represents a (numbered) argument of a :class:`loopy.SubstitutionRule`.
     Only used internally in the rule-aware mappers to match subst rules
     independently of argument names.
     """
 
-    init_arg_names = ("index",)
-
-    def __init__(self, index):
-        self.index = index
-
-    def __getinitargs__(self):
-        return (self.index,)
-
-    mapper_method = intern("map_rule_argument")
+    index: int
 
 
+@p.expr_dataclass(init=False)
 class ResolvedFunction(LoopyExpressionBase):
     """
     A function identifier whose definition is known in a :mod:`loopy` program.
@@ -893,19 +834,17 @@ class ResolvedFunction(LoopyExpressionBase):
     name maps to  an :class:`~loopy.kernel.function_interface.InKernelCallable`
     in :attr:`loopy.TranslationUnit.callables_table`. Refer to :ref:`func-interface`.
 
-    .. attribute:: function
-
-        An instance of :class:`pymbolic.primitives.Variable` or
-        :class:`loopy.library.reduction.ReductionOpFunction`.
+    .. autoattribute:: function
+    .. autoattribute:: name
     """
-    init_arg_names = ("function", )
+    function: p.Variable | ReductionOpFunction
 
     def __init__(self, function):
         if isinstance(function, str):
             function = p.Variable(function)
         from loopy.library.reduction import ReductionOpFunction
         assert isinstance(function, (p.Variable, ReductionOpFunction))
-        self.function = function
+        object.__setattr__(self, "function", function)
 
     @property
     def name(self):
@@ -918,14 +857,10 @@ class ResolvedFunction(LoopyExpressionBase):
             raise LoopyError("Unexpected function type %s in ResolvedFunction." %
                     type(self.function))
 
-    def __getinitargs__(self):
-        return (self.function, )
+# }}}
 
-    def make_stringifier(self, originating_stringifier=None):
-        return StringifyMapper()
 
-    mapper_method = intern("map_resolved_function")
-
+# {{{ more mappers
 
 class EvaluatorWithDeficientContext(PartialEvaluationMapper):
     """Evaluation Mapper that does not need values of all the variables
@@ -991,6 +926,7 @@ def get_start_subscript_from_sar(sar, kernel):
             sar.subscript)
 
 
+@p.expr_dataclass()
 class SubArrayRef(LoopyExpressionBase):
     """
     An algebraic expression to map an affine memory layout pattern (known as
@@ -1012,47 +948,20 @@ class SubArrayRef(LoopyExpressionBase):
     swept_inames: tuple[p.Variable, ...]
     subscript: p.Subscript
 
-    init_arg_names = ("swept_inames", "subscript")
-
-    def __init__(self,
-                  swept_inames: tuple[p.Variable, ...] | p.Variable,
-                  subscript: p.Subscript) -> None:
-
+    def __post_init__(self):
         # {{{ sanity checks
 
-        if not isinstance(swept_inames, tuple):
-            assert isinstance(swept_inames, p.Variable)
-            swept_inames = (swept_inames,)
+        if not isinstance(self.swept_inames, tuple):
+            warn(
+                "swept_inames passed to SubArrayRef was not a tuple. "
+                "This is deprecated and will stop working in 2025. "
+                "Pass a tuple instead.", DeprecationWarning, stacklevel=3
+            )
+            object.__setattr__(self, "swept_inames", (self.swept_inames,))
 
-        assert isinstance(swept_inames, tuple)
-
-        for iname in swept_inames:
+        for iname in self.swept_inames:
             assert isinstance(iname, p.Variable)
-        assert isinstance(subscript, p.Subscript)
-
-        # }}}
-
-        self.swept_inames = swept_inames
-        self.subscript = subscript
-
-    def __getinitargs__(self):
-        return (self.swept_inames, self.subscript)
-
-    def get_hash(self):
-        return hash((self.__class__, self.swept_inames, self.subscript))
-
-    def is_equal(self, other):
-        """
-        Returns *True* iff the sub-array refs have identical expressions.
-        """
-        return (other.__class__ == self.__class__
-                and other.subscript == self.subscript
-                and other.swept_inames == self.swept_inames)
-
-    def make_stringifier(self, originating_stringifier=None):
-        return StringifyMapper()
-
-    mapper_method = intern("map_sub_array_ref")
+        assert isinstance(self.subscript, p.Subscript)
 
 
 class FortranDivision(p.QuotientBase, LoopyExpressionBase):
@@ -1150,7 +1059,6 @@ class ExpansionState(ImmutableRecord):
     """
     def __init__(self, kernel, instruction, stack, arg_context):
         if not isinstance(arg_context, immutables.Map):
-            from warnings import warn
             warn(f"Got a {type(arg_context)} for arg_context,"
                  " expected `immutables.Map`. This is deprecated"
                  " and will result in an error from 2023.",
@@ -1856,7 +1764,6 @@ def aff_to_expr(aff: isl.Aff) -> ExpressionT:
 def pw_aff_to_expr(pw_aff: isl.PwAff, int_ok: bool = False) -> ExpressionT:
     if isinstance(pw_aff, int):
         if not int_ok:
-            from warnings import warn
             warn("expected PwAff, got int", stacklevel=2)
 
         return pw_aff
@@ -2590,7 +2497,6 @@ def get_access_map(domain, subscript, assumptions=None, shape=None,
 
 def get_access_range(domain, subscript, assumptions=None, shape=None,
         allowed_constant_names=None):
-    from warnings import warn
     warn("Call get_access_map(...).range() instead. Will be removed in 2022.x",
             DeprecationWarning, stacklevel=2)
     return get_access_map(domain, subscript, assumptions, shape,
