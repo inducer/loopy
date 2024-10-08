@@ -47,8 +47,7 @@ dependencies = [
     "immutables",
     "immutabledict",
 
-    # for Self, TypeAlias
-    "typing-extensions>=4; python_version<'3.12'",
+    "typing-extensions>=4",
 ]
 [project.optional-dependencies]
 pyopencl = [
