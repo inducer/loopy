@@ -46,10 +46,9 @@ from loopy.diagnostic import LoopyError
 from loopy.expression import dtype_to_type_context
 from loopy.symbolic import TypeCast
 from loopy.target.c import CExpression
-from loopy.tools import is_integer
 from loopy.type_inference import TypeReader
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+from loopy.typing import ExpressionT, is_integer
 
 
 __doc__ = """
@@ -124,7 +123,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return s
 
-    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):
+    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):  # type: ignore[override]
         result = RecursiveMapper.rec(self, expr, type_context)
 
         if needed_type is None:

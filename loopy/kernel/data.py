@@ -87,6 +87,13 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
+
+References
+^^^^^^^^^^
+
+.. class:: ToLoopyTypeConvertible
+
+    See :class:`loopy.ToLoopyTypeConvertible`.
 """
 
 # This docstring is included in ref_internals. Do not include parts of the public
@@ -853,8 +860,7 @@ class TemporaryVariable(ArrayBase):
         """
 
         super().update_persistent_hash(key_hash, key_builder)
-        self.update_persistent_hash_for_shape(key_hash, key_builder,
-                self.storage_shape)
+        key_builder.rec(key_hash, self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.base_storage)
@@ -899,7 +905,7 @@ class SubstitutionRule:
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.arguments)
-        key_builder.update_for_pymbolic_expression(key_hash, self.expression)
+        key_builder.rec(key_hash, self.expression)
 
 
 # }}}
