@@ -174,7 +174,7 @@ class ArrayArgDescriptor(ArgDescriptor):
         return frozenset(var.name for var in result)
 
     def update_persistent_hash(self, key_hash, key_builder):
-        key_builder.update_for_pymbolic_expression(key_hash, self.shape)
+        key_builder.rec(key_hash, self.shape)
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.dim_tags)
 

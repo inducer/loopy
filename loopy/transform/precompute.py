@@ -24,6 +24,7 @@ THE SOFTWARE.
 from dataclasses import dataclass
 from typing import FrozenSet, List, Optional, Sequence, Type, Union
 
+import numpy as np
 from immutables import Map
 
 import islpy as isl
@@ -57,7 +58,13 @@ from loopy.transform.array_buffer_map import (
 )
 from loopy.translation_unit import CallablesTable, TranslationUnit
 from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
-from loopy.typing import ExpressionT, auto, not_none
+from loopy.typing import (
+    ExpressionT,
+    auto,
+    integer_expr_or_err,
+    integer_or_err,
+    not_none,
+)
 
 
 # {{{ contains_subst_rule_invocation
@@ -527,7 +534,7 @@ def precompute_for_single_kernel(
 
         if isinstance(subst_name_as_expr, TaggedVariable):
             new_subst_name = subst_name_as_expr.name
-            new_subst_tag = subst_name_as_expr.tag
+            new_subst_tag, = subst_name_as_expr.tags
         elif isinstance(subst_name_as_expr, Variable):
             new_subst_name = subst_name_as_expr.name
             new_subst_tag = None
@@ -568,7 +575,7 @@ def precompute_for_single_kernel(
 
         for fpg in footprint_generators:
             if isinstance(fpg, Variable):
-                args = ()
+                args: tuple[ExpressionT, ...] = ()
             elif isinstance(fpg, Call):
                 args = fpg.parameters
             else:
@@ -928,7 +935,7 @@ def precompute_for_single_kernel(
 
         storage_axis_subst_dict[
                 prior_storage_axis_name_dict.get(arg_name, arg_name)] = \
-                        arg+base_index
+                        arg+integer_expr_or_err(base_index)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
@@ -1114,7 +1121,8 @@ def precompute_for_single_kernel(
                         len(temp_var.shape), len(new_temp_shape)))
 
         new_temp_shape = tuple(
-                max(i, ex_i)
+                # https://github.com/numpy/numpy/issues/27251
+                np.maximum(integer_or_err(i), integer_or_err(ex_i))
                 for i, ex_i in zip(new_temp_shape, temp_var.shape))
 
         temp_var = temp_var.copy(shape=new_temp_shape)

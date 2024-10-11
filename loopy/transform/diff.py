@@ -60,7 +60,8 @@ def func_map(i, func, args, allowed_nonsmoothness):
         raise NotImplementedError("derivative of '%s'" % func.name)
 
 
-class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
+# It has a point: https://github.com/inducer/pymbolic/issues/149
+class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):  # type: ignore[misc]
     def __init__(self, rule_mapping_context, diff_context, diff_inames,
             allowed_nonsmoothness=None):
         RuleAwareIdentityMapper.__init__(self, rule_mapping_context)
