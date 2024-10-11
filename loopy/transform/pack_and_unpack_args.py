@@ -48,7 +48,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 
     :arg call_name: An instance of :class:`str` denoting the function call in
         the *kernel*.
-    :arg args_to_unpack: A list of the arguments as instances of :class:`str` which
+    :arg args_to_pack: A list of the arguments as instances of :class:`str` which
         must be packed. If set *None*, it is interpreted that all the array
         arguments would be packed.
     :arg args_to_unpack: A list of the arguments as instances of :class:`str`
