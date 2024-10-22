@@ -54,6 +54,7 @@ from pymbolic.mapper.constant_folder import (
 )
 from pymbolic.mapper.dependency import CachedDependencyMapper as DependencyMapperBase
 from pymbolic.mapper.evaluator import CachedEvaluationMapper as EvaluationMapperBase
+from pymbolic.mapper.flattener import FlattenMapper as FlattenMapperBase
 from pymbolic.mapper.stringifier import StringifyMapper as StringifyMapperBase
 from pymbolic.mapper.substitutor import (
     CachedSubstitutionMapper as SubstitutionMapperBase,
@@ -193,6 +194,14 @@ class IdentityMapperMixin:
     map_rule_argument = map_group_hw_index
 
     map_fortran_division = IdentityMapperBase.map_quotient
+
+
+class FlattenMapper(FlattenMapperBase, IdentityMapperMixin):
+    pass
+
+
+def flatten(expr: ExpressionT) -> ExpressionT:
+    return FlattenMapper()(expr)
 
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
@@ -1833,7 +1842,7 @@ def aff_to_expr(aff: isl.Aff) -> ExpressionT:
         if coeff:
             result += coeff*aff_to_expr(aff.get_div(i))
 
-    return result // denom
+    return flatten(result // denom)
 
 
 def pw_aff_to_expr(pw_aff: isl.PwAff, int_ok: bool = False) -> ExpressionT:
@@ -2178,13 +2187,16 @@ def qpolynomial_to_expr(qpoly):
     assert all(isinstance(num, int) for num in numerators)
     assert isinstance(common_denominator, int)
 
+    # FIXME: Delete if in favor of the general case once we depend on pymbolic 2024.1.
     if common_denominator == 1:
-        return sum(num * monomial
+        res = sum(num * monomial
                    for num, monomial in zip(numerators, monomials))
     else:
-        return FloorDiv(sum(num * monomial
+        res = FloorDiv(sum(num * monomial
                             for num, monomial in zip(numerators, monomials)),
                         common_denominator)
+
+    return flatten(res)
 
 # }}}
 
