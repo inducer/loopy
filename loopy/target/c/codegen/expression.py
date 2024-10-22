@@ -28,7 +28,7 @@ import numpy as np
 import islpy as isl
 import pymbolic.primitives as p
 from pymbolic import var
-from pymbolic.mapper import IdentityMapper, RecursiveMapper
+from pymbolic.mapper import IdentityMapper, Mapper
 from pymbolic.mapper.stringifier import (
     PREC_BITWISE_AND,
     PREC_BITWISE_OR,
@@ -124,9 +124,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return s
 
-    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):
-        result = RecursiveMapper.rec(self, expr, type_context)
-
+    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):  # type: ignore[override]
+        result = Mapper.rec(self, expr, type_context)
         if needed_type is None:
             return result
         else:
@@ -604,7 +603,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
 # {{{ C expression to code mapper
 
-class CExpressionToCodeMapper(RecursiveMapper):
+class CExpressionToCodeMapper(Mapper):
 
     # {{{ helpers
 
