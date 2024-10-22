@@ -38,6 +38,7 @@ from typing import (
 from immutables import Map
 
 from loopy.codegen.result import CodeGenerationResult
+from loopy.library.reduction import ReductionOpFunction
 from loopy.translation_unit import CallablesTable, TranslationUnit
 
 
@@ -86,6 +87,12 @@ __doc__ = """
 .. automodule:: loopy.codegen.result
 
 .. automodule:: loopy.codegen.tools
+
+References
+^^^^^^^^^^
+.. class:: Expression
+
+    See :class:`pymbolic.Expression`.
 """
 
 
@@ -661,8 +668,15 @@ def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
             ast=t_unit.target.get_device_ast_builder().ast_module.Collection(
                 callee_fdecls+[device_programs[0].ast]))] +
             device_programs[1:])
+
+    def not_reduction_op(name: str | ReductionOpFunction) -> str:
+        assert isinstance(name, str)
+        return name
+
     cgr = TranslationUnitCodeGenerationResult(
-            host_programs=host_programs,
+            host_programs={
+                not_reduction_op(name): prg
+                for name, prg in host_programs.items()},
             device_programs=device_programs,
             device_preambles=device_preambles)
 

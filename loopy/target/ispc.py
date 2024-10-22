@@ -80,7 +80,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             elif type_context in ["i", "b"]:
                 return expr
             else:
-                from loopy.tools import is_integer
+                from loopy.typing import is_integer
                 if is_integer(expr):
                     return expr
 

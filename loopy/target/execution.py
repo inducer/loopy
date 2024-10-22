@@ -57,7 +57,7 @@ from loopy.schedule.tools import KernelArgInfo
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.translation_unit import TranslationUnit
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import ExpressionT
+from loopy.typing import ExpressionT, integer_expr_or_err
 from loopy.version import DATA_MODEL_VERSION
 
 
@@ -187,7 +187,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         if shape_i is not None:
                             equations.append(
                                 _ArgFindingEquation(
-                                    lhs=var(arg.name).attr("shape").index(axis_nr),
+                                    lhs=var(arg.name).attr("shape")[axis_nr],
                                     rhs=shape_i,
                                     order=0,
                                     based_on_names=frozenset({arg.name})))
@@ -198,7 +198,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         equations.append(
                                 _ArgFindingEquation(
                                     lhs=var("_lpy_even_div")(
-                                        var(arg.name).attr("strides").index(axis_nr),
+                                        var(arg.name).attr("strides")[axis_nr],
                                         arg.dtype.itemsize),
                                     rhs=_str_to_expr(stride_i),
                                     order=0,
@@ -211,8 +211,9 @@ class ExecutionWrapperGeneratorBase(ABC):
                             # arguments.
                             equations.append(
                                     _ArgFindingEquation(
-                                        lhs=(strides[axis_nr + 1]
-                                             * arg.shape[axis_nr + 1])
+                                        lhs=(integer_expr_or_err(strides[axis_nr + 1])
+                                             * integer_expr_or_err(
+                                                            arg.shape[axis_nr + 1]))
                                         if axis_nr + 1 < len(strides)
                                         else 1,
                                         rhs=_str_to_expr(stride_i),
