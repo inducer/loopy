@@ -187,7 +187,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         if shape_i is not None:
                             equations.append(
                                 _ArgFindingEquation(
-                                    lhs=var(arg.name).attr("shape").index(axis_nr),
+                                    lhs=var(arg.name).attr("shape")[axis_nr],
                                     rhs=shape_i,
                                     order=0,
                                     based_on_names=frozenset({arg.name})))
@@ -198,7 +198,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         equations.append(
                                 _ArgFindingEquation(
                                     lhs=var("_lpy_even_div")(
-                                        var(arg.name).attr("strides").index(axis_nr),
+                                        var(arg.name).attr("strides")[axis_nr],
                                         arg.dtype.itemsize),
                                     rhs=_str_to_expr(stride_i),
                                     order=0,
