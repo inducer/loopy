@@ -1318,7 +1318,7 @@ The kernel translates into two OpenCL kernels.
      int tmp;
    <BLANKLINE>
      tmp = tmp_save_slot[16 * gid(0) + lid(0)];
-     arr[(lid(0) + gid(0) * 16 + 1) % n] = tmp;
+     arr[(1 + lid(0) + gid(0) * 16) % n] = tmp;
    }
 
 Now we can execute the kernel.

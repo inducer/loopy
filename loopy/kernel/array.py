@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loopy.symbolic import flatten
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -1318,7 +1320,7 @@ def get_access_info(kernel: "LoopKernel",
                         "make_temporaries_for_offsets_and_strides "
                         "during preprocessing.")
 
-            subscripts[dim_tag.target_axis] += (stride // vector_size)*idx
+            subscripts[dim_tag.target_axis] += flatten((stride // vector_size)*idx)
 
         elif isinstance(dim_tag, SeparateArrayArrayDimTag):
             raise AssertionError()
