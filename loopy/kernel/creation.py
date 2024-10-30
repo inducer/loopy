@@ -1070,7 +1070,8 @@ def parse_domains(domains, defines):
         if isinstance(dom, str):
             dom, = expand_defines(dom, defines)
 
-            if not dom.lstrip().startswith("["):
+            # pylint warning is spurious
+            if not dom.lstrip().startswith("["):  # pylint: disable=no-member
                 # i.e. if no parameters are already given
                 parameters = (_gather_isl_identifiers(dom)
                         - _find_inames_in_set(dom)
