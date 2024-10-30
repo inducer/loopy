@@ -36,7 +36,7 @@ import loopy as lp
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel.data import AddressSpace, MultiAssignmentBase, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel
-from loopy.symbolic import CoefficientCollector
+from loopy.symbolic import CoefficientCollector, flatten
 from loopy.translation_unit import TranslationUnit
 
 
@@ -1167,7 +1167,7 @@ def _get_lid_and_gid_strides(knl, array, index):
 
                 total_iname_stride += axis_tag_stride*coeff
 
-            tag_to_stride_dict[tag] = total_iname_stride
+            tag_to_stride_dict[tag] = flatten(total_iname_stride)
 
         return tag_to_stride_dict
 

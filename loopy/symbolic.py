@@ -29,7 +29,17 @@ THE SOFTWARE.
 import re
 from functools import cached_property, reduce
 from sys import intern
-from typing import TYPE_CHECKING, AbstractSet, Any, ClassVar, Mapping, Sequence, Tuple
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Any,
+    ClassVar,
+    Mapping,
+    Sequence,
+    Tuple,
+    TypeVar,
+    cast,
+)
 
 import immutables
 import numpy as np
@@ -39,6 +49,7 @@ import pymbolic.primitives  # FIXME: also import by full name to allow sphinx to
 import pymbolic.primitives as p
 import pytools.lex
 from islpy import dim_type
+from pymbolic import ArithmeticExpressionT
 from pymbolic.mapper import (
     CachedCombineMapper as CombineMapperBase,
     CachedIdentityMapper as IdentityMapperBase,
@@ -200,8 +211,14 @@ class FlattenMapper(FlattenMapperBase, IdentityMapperMixin):
     pass
 
 
-def flatten(expr: ExpressionT) -> ExpressionT:
-    return FlattenMapper()(expr)
+ArithmeticOrExpressionT = TypeVar(
+                "ArithmeticOrExpressionT",
+                ArithmeticExpressionT,
+                ExpressionT)
+
+
+def flatten(expr: ArithmeticOrExpressionT) -> ArithmeticOrExpressionT:
+    return cast(ArithmeticOrExpressionT, FlattenMapper()(expr))
 
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
@@ -2127,7 +2144,8 @@ def simplify_using_aff(kernel, expr):
     try:
         aff = guarded_aff_from_expr(domain.space, expr)
     except ExpressionToAffineConversionError:
-        return expr
+        # Accomplish at least *some* simplification
+        return flatten(expr)
 
     # FIXME: Deal with assumptions, too.
     aff = aff.gist(domain)
