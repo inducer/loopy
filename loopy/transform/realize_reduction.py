@@ -711,7 +711,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
             needs_replacement = True
 
-            # {{{ generate a new assignent instruction
+            # {{{ generate a new assignment instruction
 
             new_assignee_name = var_name_gen(
                     "{insn_id}_retval_{assignee_nr}"

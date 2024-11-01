@@ -422,16 +422,16 @@ class ToCountMap:
             bytes_map = get_mem_access_map(knl).to_bytes()
             params = {"n": 512, "m": 256, "l": 128}
 
-            s1_g_ld_byt = bytes_map.filter_by(
+            s1_g_ld_bytes = bytes_map.filter_by(
                                 mtype=["global"], lid_strides={0: 1},
                                 direction=["load"]).eval_and_sum(params)
-            s2_g_ld_byt = bytes_map.filter_by(
+            s2_g_ld_bytes = bytes_map.filter_by(
                                 mtype=["global"], lid_strides={0: 2},
                                 direction=["load"]).eval_and_sum(params)
-            s1_g_st_byt = bytes_map.filter_by(
+            s1_g_st_bytes = bytes_map.filter_by(
                                 mtype=["global"], lid_strides={0: 1},
                                 direction=["store"]).eval_and_sum(params)
-            s2_g_st_byt = bytes_map.filter_by(
+            s2_g_st_bytes = bytes_map.filter_by(
                                 mtype=["global"], lid_strides={0: 2},
                                 direction=["store"]).eval_and_sum(params)
 
