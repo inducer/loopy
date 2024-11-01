@@ -47,6 +47,7 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
+    flatten,
     get_dependencies,
 )
 from loopy.transform.array_buffer_map import (
@@ -928,7 +929,7 @@ def precompute_for_single_kernel(
 
         storage_axis_subst_dict[
                 prior_storage_axis_name_dict.get(arg_name, arg_name)] = \
-                        arg+base_index
+                        flatten(arg+base_index)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
