@@ -886,7 +886,7 @@ def _order_loop_nests(
     _update_nesting_constraints(relaxed_priorities, warn)
 
     # ordered_loop_nests: A mapping from the unordered loop nests to their
-    # ordered couterparts. For example. If we had only one loop nest
+    # ordered counterparts. For example. If we had only one loop nest
     # `frozenset({"i", "j", "k"})`, and the prioirities said added the
     # constraint that "i" must be nested within "k", then `ordered_loop_nests`
     # would be: `{frozenset({"i", "j", "k"}): ["j", "k", "i"]}` i.e. the loop
