@@ -297,7 +297,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
         new_outer_expr = var(self.temporary_name)
         if stor_subscript:
-            new_outer_expr = new_outer_expr.index(tuple(stor_subscript))
+            new_outer_expr = new_outer_expr[tuple(stor_subscript)]
 
         # Can't possibly be nested, and no need to traverse
         # further as compute expression has already been seen
