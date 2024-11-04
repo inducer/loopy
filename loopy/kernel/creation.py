@@ -23,29 +23,35 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+import re
+from sys import intern
+from typing import Any
+
 import numpy as np
 
-from pymbolic.mapper import CSECachingMapperMixin
-from pymbolic.primitives import Slice, Variable, Subscript, Call
-from loopy.tools import intern_frozenset_of_ids, Optional
-from loopy.symbolic import (
-        IdentityMapper, WalkMapper, SubArrayRef)
-from loopy.kernel.data import (
-        InstructionBase,
-        MultiAssignmentBase, Assignment,
-        SubstitutionRule, AddressSpace, ValueArg)
-from loopy.translation_unit import for_each_kernel
-from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
+from pymbolic.mapper import CSECachingMapperMixin
+from pymbolic.primitives import Call, Slice, Subscript, Variable
 from pytools import ProcessLogger
 
-from sys import intern
-import loopy.version
+from loopy.diagnostic import LoopyError, warn_with_kernel
+from loopy.kernel.array import FixedStrideArrayDimTag
+from loopy.kernel.data import (
+    AddressSpace,
+    Assignment,
+    InstructionBase,
+    MultiAssignmentBase,
+    SubstitutionRule,
+    ValueArg,
+    auto,
+)
+from loopy.symbolic import IdentityMapper, SubArrayRef, WalkMapper
+from loopy.tools import Optional, intern_frozenset_of_ids
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 
-import re
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -80,7 +86,9 @@ def _normalize_string_tag(tag):
     from pytools.tag import Tag
 
     from loopy.kernel.instruction import (
-            UseStreamingStoreTag, LegacyStringInstructionTag)
+        LegacyStringInstructionTag,
+        UseStreamingStoreTag,
+    )
     if tag == "!streaming_store":
         return UseStreamingStoreTag()
     else:
@@ -169,6 +177,7 @@ def expand_defines_in_expr(expr, defines):
         return expr
 
     from pymbolic.primitives import Variable
+
     from loopy.symbolic import parse
 
     def subst_func(var):
@@ -182,7 +191,7 @@ def expand_defines_in_expr(expr, defines):
         else:
             return None
 
-    from loopy.symbolic import SubstitutionMapper, PartialEvaluationMapper
+    from loopy.symbolic import PartialEvaluationMapper, SubstitutionMapper
     return PartialEvaluationMapper()(
             SubstitutionMapper(subst_func)(expr))
 
@@ -210,6 +219,7 @@ def get_default_insn_options_dict():
 
 
 from collections import namedtuple
+
 
 _NosyncParseResult = namedtuple("_NosyncParseResult", "expr, scope")
 
@@ -340,22 +350,15 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 result["within_inames_is_final"] = True
 
             result["within_inames"] = intern_frozenset_of_ids(
-                    opt_value.split(":"))
+                    [s for s in opt_value.split(":") if s])
 
         elif opt_key == "if" and opt_value is not None:
             predicates = opt_value.split(":")
-            new_predicates = set()
+            new_predicates = set(result["predicates"])
 
             for pred in predicates:
-                from pymbolic.primitives import LogicalNot
                 from loopy.symbolic import parse
-                if pred.startswith("!"):
-                    from warnings import warn
-                    warn("predicates starting with '!' are deprecated. "
-                            "Simply use 'not' instead")
-                    pred = LogicalNot(parse(pred[1:]))
-                else:
-                    pred = parse(pred)
+                pred = parse(pred)
 
                 new_predicates.add(pred)
 
@@ -508,7 +511,8 @@ def parse_insn(groups, insn_options):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Subscript, Lookup
+    from pymbolic.primitives import Lookup, Subscript, Variable
+
     from loopy.symbolic import TypeAnnotation
 
     if not isinstance(lhs, tuple):
@@ -591,7 +595,7 @@ def parse_subst_rule(groups):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Call
+    from pymbolic.primitives import Call, Variable
     if isinstance(lhs, Variable):
         subst_name = lhs.name
         arg_names = []
@@ -638,7 +642,7 @@ def parse_special_insn(groups, insn_options):
                     else insn_id),
                 **insn_options)
 
-    from loopy.kernel.instruction import NoOpInstruction, BarrierInstruction
+    from loopy.kernel.instruction import BarrierInstruction, NoOpInstruction
     special_insn_kind = groups["kind"]
     # check for bad options
     check_illegal_options(insn_options, special_insn_kind)
@@ -909,7 +913,7 @@ def parse_instructions(instructions, defines):
 
             insn_options_stack.append(options)
 
-            #add to the if_stack
+            # add to the if_stack
             if_options = options.copy()
             if_options["insn_predicates"] = options["predicates"]
             if_predicates_stack.append(if_options)
@@ -960,7 +964,7 @@ def parse_instructions(instructions, defines):
                     | additional_preds
                     )
             if_options["predicates"] = additional_preds
-            #hold on to this for comparison / stack popping later
+            # hold on to this for comparison / stack popping later
             if_options["insn_predicates"] = options["predicates"]
 
             insn_options_stack.append(options)
@@ -974,7 +978,7 @@ def parse_instructions(instructions, defines):
 
         if insn == "end":
             obj = insn_options_stack.pop()
-            #if this object is the end of an if statement
+            # if this object is the end of an if statement
             if obj["predicates"] == if_predicates_stack[-1]["insn_predicates"] and\
                     if_predicates_stack[-1]["insn_predicates"] and\
                     obj["within_inames"] == if_predicates_stack[-1]["within_inames"]:
@@ -992,6 +996,9 @@ def parse_instructions(instructions, defines):
         subst_match = SUBST_RE.match(insn)
         if subst_match is not None:
             subst = parse_subst_rule(subst_match.groupdict())
+            if subst.name in substitutions:
+                raise LoopyError("attempt to redefine substitution rule "
+                                 f"'{subst.name}'")
             substitutions[subst.name] = subst
             continue
 
@@ -1063,7 +1070,8 @@ def parse_domains(domains, defines):
         if isinstance(dom, str):
             dom, = expand_defines(dom, defines)
 
-            if not dom.lstrip().startswith("["):
+            # pylint warning is spurious
+            if not dom.lstrip().startswith("["):  # pylint: disable=no-member
                 # i.e. if no parameters are already given
                 parameters = (_gather_isl_identifiers(dom)
                         - _find_inames_in_set(dom)
@@ -1190,7 +1198,7 @@ class ArgumentGuesser:
     def make_new_arg(self, arg_name):
         arg_name = arg_name.strip()
         import loopy as lp
-        from loopy.kernel.data import ValueArg, ArrayArg
+        from loopy.kernel.data import ArrayArg, ValueArg
 
         if arg_name in self.all_params:
             return ValueArg(arg_name)
@@ -1579,8 +1587,9 @@ def determine_shapes_of_temporaries(knl):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             vars_needing_shape_inference.add(tv.name)
 
-    from loopy.kernel.instruction import Assignment
     from pymbolic.primitives import Variable
+
+    from loopy.kernel.instruction import Assignment
     for insn in knl.instructions:
         # If there's an assignment to a var without a subscript
         # then assume that the variable is a scalar.
@@ -1732,8 +1741,30 @@ def apply_default_order_to_args(kernel, default_order):
 
     processed_args = []
     for arg in kernel.args:
-        if isinstance(arg, ArrayBase) and arg.order is None:
-            arg = arg.copy(order=default_order)
+        if isinstance(arg, ArrayBase):
+            if default_order in ["c", "f", "C", "F"]:
+                if arg.dim_tags is None:
+                    arg = arg.copy(order=default_order)
+                else:
+                    # leave them the way they are
+                    pass
+            elif default_order is auto:
+                if arg.dim_tags is None and arg.shape is not None:
+                    assert arg.shape is not auto
+                    arg = arg.copy(
+                            dim_tags=tuple(
+                                FixedStrideArrayDimTag(auto)
+                                for i in range(len(arg.shape))))
+                    arg = arg.copy(
+                            dim_tags=tuple(
+                                FixedStrideArrayDimTag(auto)
+                                if isinstance(dim_tag, FixedStrideArrayDimTag)
+                                else dim_tag
+                                for dim_tag in arg.dim_tags))
+            else:
+                raise ValueError("unexpected value for default_order: "
+                                 f"'{default_order}'")
+
         processed_args.append(arg)
 
     return kernel.copy(args=processed_args)
@@ -1751,8 +1782,8 @@ def _is_wildcard(s):
 
 
 def _resolve_dependencies(what, knl, insn, deps):
-    from loopy.transform.instruction import find_instructions
     from loopy.match import MatchExpressionBase
+    from loopy.transform.instruction import find_instructions
 
     new_deps = []
 
@@ -1855,7 +1886,7 @@ def add_inferred_inames(knl):
 # {{{ apply single-writer heuristic
 
 @for_each_kernel
-def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True,
+def apply_single_writer_dependency_heuristic(kernel, warn_if_used=True,
         error_if_used=False):
     logger.debug("%s: default deps" % kernel.name)
 
@@ -1942,8 +1973,9 @@ def normalize_slice_params(slice, dimension_length):
     :arg slice: An instance of :class:`pymbolic.primitives.Slice`.
     :arg dimension_length: Length of the axis being sliced.
     """
-    from pymbolic.primitives import Slice
     from numbers import Integral
+
+    from pymbolic.primitives import Slice
 
     assert isinstance(slice, Slice)
     start, stop, step = slice.start, slice.stop, slice.step
@@ -1993,7 +2025,7 @@ class SliceToInameReplacer(IdentityMapper):
     .. attribute:: subarray_ref_bounds
 
         A :class:`list` (one entry for each :class:`SubArrayRef` to be created)
-        of :class:`dict` instances to store the slices enountered in the
+        of :class:`dict` instances to store the slices encountered in the
         expressions as a mapping from ``iname`` to a tuple of ``(start, stop,
         step)``, which describes the boxy (i.e. affine) constraints imposed on
         the ``iname`` by the corresponding slice notation its intended to
@@ -2144,7 +2176,7 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
 # }}}
 
 
-# {{{ kernel creation top-level
+# {{{ make_function
 
 def make_function(domains, instructions, kernel_data=None, **kwargs):
     """User-facing kernel creation entrypoint.
@@ -2196,7 +2228,10 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     :arg preamble_generators: a list of functions of signature
         (seen_dtypes, seen_functions) where seen_functions is a set of
         (name, c_name, arg_dtypes), generating extra entries for *preambles*.
-    :arg default_order: "C" (default) or "F"
+    :arg default_order: "C" (default), "F" or :class:`loopy.auto`.
+        The default memory layout of arrays that are not explicitly
+        specified. If :class:`loopy.auto`, variables for strides are
+        automatically created.
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
         *offset* in :attr:`ArrayArg` for guessed arguments.
         Defaults to 0.
@@ -2297,10 +2332,10 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     # {{{ handle kernel language version
 
+    import loopy.version as v
     from loopy.version import LANGUAGE_VERSION_SYMBOLS
-
     version_to_symbol = {
-            getattr(loopy.version, lvs): lvs
+            getattr(v, lvs): lvs
             for lvs in LANGUAGE_VERSION_SYMBOLS}
 
     lang_version = kwargs.pop("lang_version", None)
@@ -2326,10 +2361,12 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
         if lang_version is None:
             from warnings import warn
+
             from loopy.diagnostic import LoopyWarning
             from loopy.version import (
-                    MOST_RECENT_LANGUAGE_VERSION,
-                    FALLBACK_LANGUAGE_VERSION)
+                FALLBACK_LANGUAGE_VERSION,
+                MOST_RECENT_LANGUAGE_VERSION,
+            )
             warn("'lang_version' was not passed to make_function(). "
                     "To avoid this warning, pass "
                     "lang_version={ver} in this invocation. "
@@ -2354,7 +2391,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     # {{{ separate temporary variables and arguments, take care of names with commas
 
-    from loopy.kernel.data import TemporaryVariable, ArrayBase
+    from loopy.kernel.data import ArrayBase, TemporaryVariable
 
     if isinstance(kernel_data, str):
         kernel_data = kernel_data.split(",")
@@ -2434,8 +2471,8 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     # }}}
 
-    from loopy.kernel.data import Iname
     from loopy.kernel import _get_inames_from_domains
+    from loopy.kernel.data import Iname
     inames = {name: Iname(name, frozenset())
               for name in _get_inames_from_domains(domains)}
 
@@ -2446,9 +2483,16 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     kernel_args = arg_guesser.convert_names_to_full_args(kernel_args)
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)
 
+    for name, rule in kwargs.pop("substitutions", {}).items():
+        if name in substitutions:
+            raise LoopyError(f"substitution rule '{name}' declared both in-line "
+                             "and via substitutions argument")
+
+        substitutions[name] = rule
+
     kwargs["substitutions"] = substitutions
 
-    from pytools.tag import normalize_tags, check_tag_uniqueness
+    from pytools.tag import check_tag_uniqueness, normalize_tags
     tags = check_tag_uniqueness(normalize_tags(kwargs.pop("tags", frozenset())))
 
     index_dtype = kwargs.pop("index_dtype", None)
@@ -2494,13 +2538,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     assert len(knl.instructions) == len(inames_to_dup)
 
-    from loopy import duplicate_inames
-    from loopy.match import Id
-    for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
-        for old_iname, new_iname in insn_inames_to_dup:
-            knl = duplicate_inames(knl, old_iname,
-                    within=Id(insn.id), new_inames=new_iname)
-
     check_for_nonexistent_iname_deps(knl)
 
     knl = create_temporaries(knl, default_order)
@@ -2521,6 +2558,27 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     knl = add_inferred_inames(knl)
     from loopy.transform.parameter import fix_parameters
     knl = fix_parameters(knl, **fixed_parameters)
+
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must duplicate inames after adding all the inames to the instructions.
+    # To duplicate an iname "i" in statement "S", lp.duplicate requires that
+    # the statement "S" be nested within the iname "i".
+    # -------------------------------------------------------------------------
+    from loopy import duplicate_inames
+    from loopy.match import Id
+    for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
+        for old_iname, new_iname in insn_inames_to_dup:
+            knl = duplicate_inames(knl, old_iname,
+                    within=Id(insn.id), new_inames=new_iname)
+            new_insn = knl.id_to_insn[insn.id]
+            assert old_iname not in (
+                new_insn.within_inames
+                | new_insn.reduction_inames()
+                | new_insn.sub_array_ref_inames()
+            )
+
     # -------------------------------------------------------------------------
     # Ordering dependency:
     # -------------------------------------------------------------------------
@@ -2532,7 +2590,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
     knl = resolve_dependencies(knl)
-    knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=False)
+    knl = apply_single_writer_dependency_heuristic(knl, warn_if_used=False)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:
@@ -2553,10 +2611,14 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     from loopy.translation_unit import make_program
     return make_program(knl)
 
+# }}}
 
-def make_kernel(*args, **kwargs):
+
+# {{{ make_kernel
+
+def make_kernel(*args: Any, **kwargs: Any) -> TranslationUnit:
     tunit = make_function(*args, **kwargs)
-    name, = [name for name in tunit.callables_table]
+    name, = tunit.callables_table
     return tunit.with_entrypoints(name)
 
 

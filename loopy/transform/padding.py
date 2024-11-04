@@ -22,16 +22,15 @@ THE SOFTWARE.
 
 
 from pytools import MovedFunctionDeprecationWrapper
-from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
-from loopy.translation_unit import (for_each_kernel,
-                                    TranslationUnit)
+from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
-from loopy.diagnostic import LoopyError
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
-class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
+class SubscriptRewriter(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, arg_names, handler):
         super().__init__(rule_mapping_context)
         self.arg_names = arg_names
@@ -42,6 +41,20 @@ class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
             return self.handler(expr)
         else:
             return super().map_subscript(expr, expn_state)
+
+    def map_kernel(self, kernel, within=lambda *args: True):
+        new_insns = [
+            # While subst rules are not allowed in assignees, the mapper
+            # may perform tasks entirely unrelated to subst rules, so
+            # we must map assignees, too.
+            insn if not kernel.substitutions and not within(kernel, insn, ())
+            and not any(name in self.arg_names for name in insn.dependency_names())
+            else self.map_instruction(kernel,
+                insn.with_transformed_expressions(
+                    lambda expr: self(expr, kernel, insn)))  # noqa: B023
+            for insn in kernel.instructions]
+
+        return kernel.copy(instructions=new_insns)
 
 
 # {{{ split_array_dim (deprecated since June 2016)
@@ -236,7 +249,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
-    aash = ArrayAxisSplitHelper(rule_mapping_context,
+    aash = SubscriptRewriter(rule_mapping_context,
             set(array_to_rest.keys()), split_access_axis)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
@@ -367,7 +380,7 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
-    aash = ArrayAxisSplitHelper(rule_mapping_context,
+    aash = SubscriptRewriter(rule_mapping_context,
             {array_name}, split_access_axis)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 

@@ -1,0 +1,201 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools>=63",
+]
+
+[project]
+name = "loopy"
+version = "2024.1"
+description = "A code generator for array-based code on CPUs and GPUs"
+readme = "README.rst"
+license = { text = "MIT" }
+authors = [
+    { name = "Andreas Kloeckner", email = "inform@tiker.net" },
+]
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Other Audience",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "pytools>=2024.1.5",
+    "pymbolic>=2022.1",
+    "genpy>=2016.1.2",
+
+    # https://github.com/inducer/loopy/pull/419
+    "numpy>=1.19",
+
+    "cgen>=2016.1",
+    "islpy>=2019.1",
+    "codepy>=2017.1",
+    "colorama",
+    "Mako",
+    "pyrsistent",
+    "immutables",
+    "immutabledict",
+
+    "typing-extensions>=4",
+]
+[project.optional-dependencies]
+pyopencl = [
+    "pyopencl>=2022.3",
+]
+fortran = [
+    # Note that this is *not* regular 'f2py2e', this is
+    # the Fortran parser from the (unfinished) third-edition
+    # f2py, as linked below. This package is not on the package index, AFAIK.
+    # -AK, 2024-08-02
+    "f2py @ git+https://github.com/pearu/f2py.git",
+    "ply>=3.6",
+]
+
+[project.scripts]
+
+[project.urls]
+Documentation = "https://documen.tician.de/loopy"
+Homepage = "https://github.com/inducer/loopy"
+
+[tool.setuptools.packages.find]
+include = [
+    "loopy*",
+]
+
+[tool.setuptools.package-data]
+loopy = [
+    "py.typed",
+]
+
+[tool.setuptools.package-dir]
+# https://github.com/Infleqtion/client-superstaq/pull/715
+"" = "."
+
+[tool.ruff]
+preview = true
+
+[tool.ruff.lint]
+extend-select = [
+    "B",   # flake8-bugbear
+    "C",   # flake8-comprehensions
+    "E",   # pycodestyle
+    "F",   # pyflakes
+
+    "I",   # flake8-isort
+
+    "N",   # pep8-naming
+    "NPY", # numpy
+    "Q",   # flake8-quotes
+    "W",   # pycodestyle
+
+    # TODO
+    # "UP",  # pyupgrade
+    # "RUF",  # ruff
+
+    "RUF022", # __all__ isn't sorted
+]
+extend-ignore = [
+    "C90",  # McCabe complexity
+    "E221", # multiple spaces before operator
+    "E241", # multiple spaces after comma
+    "E402", # module level import not at the top of file
+    "E226", # missing whitespace around operator
+    "N817", # CamelCase `SubstitutionRuleMappingContext` imported as acronym `SRMC`
+
+    # FIXME
+    "NPY002", # numpy rng
+    "C408", # unnecssary dict() -> literal
+    "F841", # local variable unused
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test/test_loopy.py" = ["B023"]
+"loopy/target/c/compyte/ndarray/**/*.py" = ["Q", "B", "E", "F", "N", "C4"]
+"loopy/frontend/fortran/translator.py" = ["N802", "B028"]
+"proto-tests/*.py" = ["B"]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+multiline-quotes = "double"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = [
+    "pytools",
+    "pymbolic",
+    "islpy",
+    "pyopencl",
+    "cgen",
+    "genpy",
+]
+known-local-folder = [
+    "loopy",
+]
+lines-after-imports = 2
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+
+# TODO
+# check_untyped_defs = true
+
+exclude = [
+  "loopy/target/c/compyte/ndarray/.*",
+  "loopy/target/c/compyte/array.py",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "islpy.*",
+    "pymbolic.*",
+    "cgen.*",
+    "genpy.*",
+    "pyopencl.*",
+    "colorama.*",
+    "codepy.*",
+    "mako.*",
+    "fparser.*",
+    "ply.*",
+    "pygments.*",
+    "IPython.*",
+]
+ignore_missing_imports = true
+
+[tool.typos.default]
+extend-ignore-re = [
+  "(?Rm)^.*(#|//)\\s*spellchecker:\\s*disable-line$"
+]
+
+[tool.typos.default.extend-words]
+# like the numpy function, array range
+arange = "arange"
+# N-Dimensional
+ND = "ND"
+# used for 'diff_output'
+dout = "dout"
+# an element-wise slice of array u
+ue = "ue"
+# used in an ordering context, "ab" / "ba"
+ba = "ba"
+
+"dependees" = "dependees"
+
+[tool.typos.files]
+extend-exclude = [
+  "loopy/target/c/compyte",
+  "notes/*/*.eps",
+]
+

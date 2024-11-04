@@ -20,37 +20,55 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, TypeVar, Iterable, Optional, List, FrozenSet, cast
 import logging
+from typing import FrozenSet, Iterable, List, Optional, Tuple, TypeVar, cast
+
+
 logger = logging.getLogger(__name__)
 
-from immutables import Map
+from functools import partial
+
 import numpy as np
-
-from loopy.diagnostic import (
-        LoopyError, WriteRaceConditionWarning, warn_with_kernel,
-        LoopyAdvisory)
-
-from loopy.tools import memoize_on_disk
-from loopy.kernel.data import filter_iname_tags_by_type, ArrayArg, auto, ValueArg
-
-from loopy.kernel import LoopKernel
-# for the benefit of loopy.statistics, for now
-from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import RuleAwareIdentityMapper
-# from loopy.transform.iname import remove_any_newly_unused_inames
-
-from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
-        CallInstruction,  _DataObliviousInstruction)
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-from loopy.transform.data import allocate_temporaries_for_base_storage
-from loopy.kernel.array import ArrayDimImplementationTag
-from loopy.kernel.data import _ArraySeparationInfo, KernelArgument
-from loopy.translation_unit import for_each_kernel
-from loopy.typing import ExpressionT
+from immutables import Map
 
 from pytools import ProcessLogger
-from functools import partial
+
+from loopy.diagnostic import (
+    LoopyAdvisory,
+    LoopyError,
+    WriteRaceConditionWarning,
+    warn_with_kernel,
+)
+from loopy.kernel import LoopKernel
+from loopy.kernel.array import ArrayDimImplementationTag
+from loopy.kernel.data import (
+    ArrayArg,
+    KernelArgument,
+    ValueArg,
+    _ArraySeparationInfo,
+    auto,
+    filter_iname_tags_by_type,
+)
+from loopy.kernel.function_interface import (
+    ArgDescriptor,
+    CallableKernel,
+    ScalarCallable,
+)
+
+# from loopy.transform.iname import remove_any_newly_unused_inames
+from loopy.kernel.instruction import (
+    CallInstruction,
+    CInstruction,
+    MultiAssignmentBase,
+    _DataObliviousInstruction,
+)
+from loopy.symbolic import RuleAwareIdentityMapper
+from loopy.tools import memoize_on_disk
+from loopy.translation_unit import TranslationUnit, for_each_kernel
+
+# for the benefit of loopy.statistics, for now
+from loopy.type_inference import infer_unknown_types
+from loopy.typing import ExpressionT
 
 
 # {{{ check for writes to predicates
@@ -207,6 +225,7 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
     vng = kernel.get_var_name_generator()
 
     from pymbolic.primitives import Expression, Variable
+
     from loopy.kernel.array import FixedStrideArrayDimTag
 
     # {{{ process arguments
@@ -321,9 +340,8 @@ def find_temporary_address_space(kernel):
     logger.debug("%s: find temporary address space" % kernel.name)
 
     new_temp_vars = {}
-    from loopy.kernel.data import (LocalInameTagBase, GroupInameTag,
-            AddressSpace)
     import loopy as lp
+    from loopy.kernel.data import AddressSpace, GroupInameTag, LocalInameTagBase
 
     writers = kernel.writer_map()
 
@@ -431,8 +449,7 @@ def find_temporary_address_space(kernel):
 def realize_ilp(kernel):
     logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
 
-    from loopy.kernel.data import (IlpBaseTag, VectorizeTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag, filter_iname_tags_by_type
 
     privatizing_inames = frozenset(
         name for name, iname in kernel.inames.items()
@@ -456,9 +473,9 @@ def check_atomic_loads(kernel):
     """
 
     logger.debug("%s: check atomic loads" % kernel.name)
-    from loopy.types import AtomicType
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.instruction import Assignment, AtomicLoad
+    from loopy.types import AtomicType
 
     # find atomic variables
     atomicity_candidates = (
@@ -477,7 +494,7 @@ def check_atomic_loads(kernel):
             accessed_atomic_vars = (insn.dependency_names() & atomicity_candidates)\
                 - {insn.assignee_var_names()[0]}
             if not accessed_atomic_vars <= atomic_accesses:
-                #if we're missing some
+                # if we're missing some
                 missed = accessed_atomic_vars - atomic_accesses
                 for x in missed:
                     if {x} & atomicity_candidates:
@@ -505,14 +522,16 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         self.clbl_inf_ctx = clbl_inf_ctx
 
     def map_call(self, expr, expn_state, assignees=None):
+        from pymbolic.mapper.substitutor import make_subst_func
         from pymbolic.primitives import Call, Variable
-        from loopy.kernel.function_interface import ValueArgDescriptor
-        from loopy.symbolic import ResolvedFunction
+
         from loopy.kernel.array import ArrayBase
         from loopy.kernel.data import ValueArg
-        from pymbolic.mapper.substitutor import make_subst_func
-        from loopy.symbolic import SubstitutionMapper
-        from loopy.kernel.function_interface import get_arg_descriptor_for_expression
+        from loopy.kernel.function_interface import (
+            ValueArgDescriptor,
+            get_arg_descriptor_for_expression,
+        )
+        from loopy.symbolic import ResolvedFunction, SubstitutionMapper
 
         if not isinstance(expr.function, ResolvedFunction):
             # ignore if the call is not to a ResolvedFunction
@@ -580,9 +599,10 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         raise NotImplementedError
 
     def __call__(self, expr, kernel, insn, assignees=None):
-        from loopy.kernel.data import InstructionBase
-        from loopy.symbolic import UncachedIdentityMapper, ExpansionState
         import immutables
+
+        from loopy.kernel.data import InstructionBase
+        from loopy.symbolic import ExpansionState, UncachedIdentityMapper
         assert insn is None or isinstance(insn, InstructionBase)
 
         return UncachedIdentityMapper.__call__(self, expr,
@@ -639,25 +659,24 @@ def traverse_to_infer_arg_descr(kernel, callables_table):
     return descr_inferred_kernel, arg_descr_inf_mapper.clbl_inf_ctx
 
 
-def infer_arg_descr(program):
+def infer_arg_descr(t_unit: TranslationUnit) -> TranslationUnit:
     """
     Returns a copy of *program* with the
     :attr:`loopy.InKernelCallable.arg_id_to_descr` inferred for all the
     callables.
     """
-    from loopy.translation_unit import make_clbl_inf_ctx, resolve_callables
+    from loopy import ValueArg, auto
     from loopy.kernel.array import ArrayBase
-    from loopy.kernel.function_interface import (ArrayArgDescriptor,
-            ValueArgDescriptor)
-    from loopy import auto, ValueArg
+    from loopy.kernel.function_interface import ArrayArgDescriptor, ValueArgDescriptor
+    from loopy.translation_unit import make_clbl_inf_ctx, resolve_callables
 
-    program = resolve_callables(program)
+    t_unit = resolve_callables(t_unit)
 
-    clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
-                                     program.entrypoints)
+    clbl_inf_ctx = make_clbl_inf_ctx(t_unit.callables_table,
+                                     t_unit.entrypoints)
 
-    for e in program.entrypoints:
-        def _tuple_or_None(s):
+    for e in t_unit.entrypoints:
+        def _tuple_or_none(s):
             if isinstance(s, tuple):
                 return s
             elif s in [None, auto]:
@@ -665,23 +684,23 @@ def infer_arg_descr(program):
             else:
                 return s,
 
-        arg_id_to_descr = {}
-        for arg in program[e].args:
+        arg_id_to_descr: dict[str, ArgDescriptor] = {}
+        for arg in t_unit[e].args:
             if isinstance(arg, ArrayBase):
                 if arg.shape not in (None, auto):
                     arg_id_to_descr[arg.name] = ArrayArgDescriptor(
-                            _tuple_or_None(arg.shape), arg.address_space,
+                            _tuple_or_none(arg.shape), arg.address_space,
                             arg.dim_tags)
             elif isinstance(arg, ValueArg):
                 arg_id_to_descr[arg.name] = ValueArgDescriptor()
             else:
                 raise NotImplementedError()
-        new_callable, clbl_inf_ctx = program.callables_table[e].with_descrs(
+        new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_descrs(
                 arg_id_to_descr, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
 
-    return clbl_inf_ctx.finish_program(program)
+    return clbl_inf_ctx.finish_program(t_unit)
 
 # }}}
 
@@ -689,10 +708,11 @@ def infer_arg_descr(program):
 # {{{  inline_kernels_with_gbarriers
 
 def inline_kernels_with_gbarriers(program):
-    from loopy.kernel.instruction import BarrierInstruction
-    from loopy.transform.callable import inline_callable_kernel
-    from loopy.kernel.tools import get_call_graph
     from pytools.graph import compute_topological_order
+
+    from loopy.kernel.instruction import BarrierInstruction
+    from loopy.kernel.tools import get_call_graph
+    from loopy.transform.callable import inline_callable_kernel
 
     def has_gbarrier(knl):
         return any((isinstance(insn, BarrierInstruction)
@@ -724,7 +744,7 @@ def filter_reachable_callables(t_unit):
                                                                  t_unit.entrypoints)
     new_callables = {name: clbl for name, clbl in t_unit.callables_table.items()
                      if name in (reachable_function_ids | t_unit.entrypoints)}
-    return t_unit.copy(callables_table=new_callables)
+    return t_unit.copy(callables_table=Map(new_callables))
 
 
 def _preprocess_single_kernel(kernel: LoopKernel, is_entrypoint: bool) -> LoopKernel:
@@ -769,10 +789,6 @@ def _preprocess_single_kernel(kernel: LoopKernel, is_entrypoint: bool) -> LoopKe
 
     kernel = find_temporary_address_space(kernel)
 
-    # Ordering restriction: temporary address spaces need to be found before
-    # allocating base_storage
-    kernel = allocate_temporaries_for_base_storage(kernel, _implicitly_run=True)
-
     # check for atomic loads, much easier to do here now that the dependencies
     # have been established
     kernel = check_atomic_loads(kernel)
@@ -788,33 +804,33 @@ def _preprocess_single_kernel(kernel: LoopKernel, is_entrypoint: bool) -> LoopKe
 
 
 @memoize_on_disk
-def preprocess_program(program):
+def preprocess_program(t_unit: TranslationUnit) -> TranslationUnit:
 
     from loopy.kernel import KernelState
-    if program.state >= KernelState.PREPROCESSED:
-        return program
+    if t_unit.state >= KernelState.PREPROCESSED:
+        return t_unit
 
-    if len([clbl for clbl in program.callables_table.values() if
+    if len([clbl for clbl in t_unit.callables_table.values() if
             isinstance(clbl, CallableKernel)]) == 1:
-        program = program.with_entrypoints(",".join(clbl.name for clbl in
-            program.callables_table.values() if isinstance(clbl,
+        t_unit = t_unit.with_entrypoints(",".join(clbl.name for clbl in
+            t_unit.callables_table.values() if isinstance(clbl,
                 CallableKernel)))
 
-    if not program.entrypoints:
+    if not t_unit.entrypoints:
         raise LoopyError("Translation unit did not receive any entrypoints")
 
     from loopy.translation_unit import resolve_callables
-    program = resolve_callables(program)
+    t_unit = resolve_callables(t_unit)
 
-    program = filter_reachable_callables(program)
+    t_unit = filter_reachable_callables(t_unit)
 
-    program = infer_unknown_types(program, expect_completion=False)
+    t_unit = infer_unknown_types(t_unit, expect_completion=False)
 
     from loopy.transform.subst import expand_subst
-    program = expand_subst(program)
+    t_unit = expand_subst(t_unit)
 
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    program = apply_single_writer_depencency_heuristic(program)
+    from loopy.kernel.creation import apply_single_writer_dependency_heuristic
+    t_unit = apply_single_writer_dependency_heuristic(t_unit)
 
     # Ordering restrictions:
     #
@@ -826,7 +842,7 @@ def preprocess_program(program):
     #   defaults from being applied.
 
     from loopy.transform.realize_reduction import realize_reduction
-    program = realize_reduction(program, unknown_types_ok=False)
+    t_unit = realize_reduction(t_unit, unknown_types_ok=False)
 
     # {{{ preprocess callable kernels
 
@@ -838,11 +854,11 @@ def preprocess_program(program):
     # [1] https://docs.python.org/3/library/stdtypes.html#dictionary-view-objects
 
     new_callables = {}
-    for func_id, in_knl_callable in program.callables_table.items():
+    for func_id, in_knl_callable in t_unit.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = _preprocess_single_kernel(
                     in_knl_callable.subkernel,
-                    is_entrypoint=func_id in program.entrypoints)
+                    is_entrypoint=func_id in t_unit.entrypoints)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
         elif isinstance(in_knl_callable, ScalarCallable):
@@ -853,16 +869,16 @@ def preprocess_program(program):
 
         new_callables[func_id] = in_knl_callable
 
-    program = program.copy(callables_table=new_callables)
+    t_unit = t_unit.copy(callables_table=Map(new_callables))
 
     # }}}
 
     # infer arg descrs of the callables
-    program = infer_arg_descr(program)
+    t_unit = infer_arg_descr(t_unit)
 
     # Ordering restriction:
     # callees with gbarrier in them must be inlined after inferrring arg_descr.
-    program = inline_kernels_with_gbarriers(program)
+    t_unit = inline_kernels_with_gbarriers(t_unit)
 
     # {{{ prepare for caching
 
@@ -873,7 +889,7 @@ def preprocess_program(program):
 
     # }}}
 
-    return program
+    return t_unit
 
 
 # FIXME: Do we add a deprecation warning?

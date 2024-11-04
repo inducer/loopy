@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 
 import islpy as isl
+
 from loopy.translation_unit import for_each_kernel
 
 

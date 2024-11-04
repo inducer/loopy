@@ -1,7 +1,8 @@
 import sys
 
-import loopy as lp
 import numpy as np
+
+import loopy as lp
 
 
 def to_python_literal(value):
@@ -88,7 +89,7 @@ def main():
         from loopy.target.cuda import CudaTarget
         target = CudaTarget
     else:
-        raise ValueError("unknown target: %s" % target)
+        raise ValueError(f"unknown target: {args.target}")
 
     lp.set_default_target(target)
 
@@ -123,8 +124,8 @@ def main():
     if lang == "loopy":
         # {{{ path wrangling
 
-        from os.path import dirname, abspath
         from os import getcwd
+        from os.path import abspath, dirname
 
         infile_dirname = dirname(args.infile)
         if infile_dirname:
@@ -155,9 +156,9 @@ def main():
 
         try:
             kernel = data_dic["lp_knl"]
-        except KeyError:
+        except KeyError as err:
             raise RuntimeError("loopy-lang requires 'lp_knl' "
-                    "to be defined on exit")
+                    "to be defined on exit") from err
 
         t_unit = [kernel]
 

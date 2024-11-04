@@ -20,17 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
-from pytools.tag import Tag
+import pytest
 
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
-import pytest
+from pytools.tag import Tag
 
-import logging
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -40,13 +43,13 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # "cl.create_some_context"
-        ]
+    "cl",  # "cl.create_some_context"
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
@@ -270,6 +273,8 @@ def test_alias_temporaries(ctx_factory):
 
     knl = lp.alias_temporaries(knl, ["times2_0", "times3_0", "times4_0"])
 
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.allocate_temporaries_for_base_storage(knl)
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
             parameters=dict(n=30))
@@ -622,8 +627,7 @@ def _ensure_dim_names_match_and_align(obj_map, tgt_map):
     # sense to move this function to a location for more general-purpose
     # machinery. In the other branches, this function's name excludes the
     # leading underscore.)
-    from islpy import align_spaces
-    from islpy import dim_type as dt
+    from islpy import align_spaces, dim_type as dt
 
     # first make sure names match
     if not all(
@@ -1279,6 +1283,95 @@ def test_privatize_with_nonzero_lbound(ctx_factory):
     np.testing.assert_allclose(out.get()[10:14], np.arange(10, 14))
 
 
+def test_unprivatize():
+    knl = lp.make_kernel(
+        ["{[icoeff]: 0<=icoeff<10}",
+         "{[tgt_box]: 0<=tgt_box<20}",
+         "{[src_box]: 0<=src_box<30}"],
+        """
+        for tgt_box
+            <> temp[icoeff] = 0 {dup=icoeff}
+            for src_box
+               for icoeff
+                   temp[icoeff] = temp[icoeff] + \
+                        deriv[icoeff] * src_coeffs[src_box, icoeff]
+               end
+            end
+            tgt_coeffs[tgt_box, icoeff] = temp[icoeff] {dup=icoeff}
+        end
+        """,
+        name="unprivatize_m2l",
+        seq_dependencies=True)
+
+    knl = lp.rename_inames(knl, ["icoeff_0", "icoeff", "icoeff_1"], "icoeff0")
+    knl = lp.unprivatize_temporaries_with_inames(knl, {"icoeff0"}, {"temp"})
+    assert knl["unprivatize_m2l"].temporary_variables["temp"].shape == ()
+
+
+def test_unprivatize_error():
+    knl = lp.make_kernel(
+        ["{[i]: 0<=i<10}",
+         "{[j]: 0<=j<10}",
+         "{[tgt_box]: 0<=tgt_box<20}",
+         "{[src_box]: 0<=src_box<30}"],
+        """
+        for tgt_box
+            <> temp[i, j] = 0 {dup=i:j}
+            for src_box
+               for i, j
+                   temp[j, i] = temp[i, j] + deriv[i, j] * \
+                        src_coeffs[src_box, i, j]
+               end
+            end
+            tgt_coeffs[tgt_box, i, j] = temp[i, j] {dup=i:j}
+        end
+        """,
+        name="unprivatize_m2l",
+        seq_dependencies=True)
+
+    knl = lp.rename_inames(knl, ["i_0", "i_1", "i"], "i0")
+    knl = lp.rename_inames(knl, ["j_0", "j_1", "j"], "j0")
+    with pytest.raises(lp.LoopyError):
+        knl = lp.unprivatize_temporaries_with_inames(knl, {"i0"}, {"temp"})
+    with pytest.raises(lp.LoopyError):
+        knl = lp.unprivatize_temporaries_with_inames(knl, {"i0", "j0"}, {"temp"})
+
+
+def test_privatize_unprivatize_roundtrip():
+    knl1 = lp.make_kernel(
+        ["{[i]: 0<=i<10}",
+         "{[imatrix]: 0<=imatrix<20}",
+         "{[k]: 0<=k<30}"],
+        """
+        for imatrix, i
+            <> acc[imatrix] = 0
+            for k
+                acc[imatrix] = acc[imatrix] + a[imatrix, i, k] * vec[k]
+            end
+        end
+        """,
+        name="privatize_unprivatize_roundtrip",
+        seq_dependencies=True)
+
+    knl2 = lp.make_kernel(
+        ["{[i]: 0<=i<10}",
+         "{[imatrix]: 0<=imatrix<20}",
+         "{[k]: 0<=k<30}"],
+        """
+        for imatrix, i
+            <> acc = 0
+            for k
+                acc = acc + a[imatrix, i, k] * vec[k]
+            end
+        end
+        """,
+        name="privatize_unprivatize_roundtrip",
+        seq_dependencies=True)
+
+    assert knl2 == lp.unprivatize_temporaries_with_inames(knl1, {"imatrix"}, {"acc"})
+    assert knl1 == lp.privatize_temporaries_with_inames(knl2, {"imatrix"}, {"acc"})
+
+
 def test_simplify_indices_when_inlining(ctx_factory):
     ctx = ctx_factory()
     twice = lp.make_function(
@@ -1517,6 +1610,128 @@ def test_prefetch_to_same_temp_var(ctx_factory):
 
     t_unit = lp.add_dependency(t_unit, "id:first_fetch", "id:second_fetch")
     lp.auto_test_vs_ref(ref_tunit, ctx, t_unit)
+
+
+def test_concatenate_arrays(ctx_factory):
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        <> a[i] = x[i]    {id=init_a}
+        <> b[i] = y[i]    {id=init_b}
+        out[i] = a[i] + b[i] {id=insn,dep=init_a:init_b}
+        """)
+
+    t_unit = lp.add_dtypes(t_unit, {"x": "float64", "y": "float64"})
+    ref_t_unit = t_unit
+
+    t_unit = lp.concatenate_arrays(t_unit, ["a", "b"], "c")
+    assert t_unit.default_entrypoint.temporary_variables["c"].shape == (20,)
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+def test_remove_inames_from_insn():
+    t_unit = lp.make_kernel(
+        "{[i, j]: 0<=i<10 and 0<=j<20}",
+        """
+        for i
+          <> a[j] = 1       {id=a}
+          b[i] = a[2*i]  {dep=a}
+        end
+        """)
+
+    t_unit = lp.add_dtypes(t_unit, {"b": "int32"})
+    t_unit = lp.split_iname(t_unit, "i", 2, inner_tag="l.0")
+    t_unit = lp.split_iname(t_unit, "j", 2, inner_tag="l.0")
+    t_unit = lp.remove_inames_from_insn(t_unit, frozenset(["i_inner"]), "id:a")
+    # Check that the instruction a does not have multiple tagged inames
+    lp.generate_code_v2(t_unit).device_code()
+
+
+def test_remove_predicates_from_insn():
+    import pymbolic.primitives as prim
+
+    t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        <> cond = i > 5  {id=cond}
+        a[i] = 1         {if=cond,id=a,dep=cond}
+        """)
+
+    ref_t_unit = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        <> cond = i > 5  {id=cond}
+        a[i] = 1         {id=a,dep=cond}
+        """)
+
+    cond = prim.Variable("cond")
+    t_unit = lp.remove_predicates_from_insn(t_unit, frozenset([cond]), "id:a")
+
+    assert t_unit == ref_t_unit
+
+
+def test_precompute_lets_length1_inames_live_if_requested():
+    t_unit = lp.make_kernel(
+            "{[e,i]: 0<=e<1 and 0<=i<10}",
+            """
+            v(e, i) := e + i
+            out[e, i] = v(e, i)
+            """)
+
+    t_unit = lp.precompute(t_unit, "v", "i", _enable_mirgecom_workaround=True)
+
+    from pymbolic import parse
+    assert t_unit.default_entrypoint.id_to_insn["v"].expression == parse("e + i_0")
+
+
+def test_precompute_lets_inner_length1_inames_live():
+    t_unit = lp.make_kernel(
+            "{[e,i]: 0<=e<1 and 0<=i<10}",
+            """
+            v(e, i) := e / i
+            #v(eee, i) := eee + i
+            out[e, i] = v(e, i)
+            """)
+
+    t_unit = lp.split_iname(t_unit, "e", 16)
+    t_unit = lp.precompute(t_unit, "v", "i", _enable_mirgecom_workaround=True)
+
+    from pymbolic import parse
+    assert (
+            t_unit.default_entrypoint.id_to_insn["v"].expression
+            == parse("(e_inner + e_outer*16) / i_0"))
+
+
+def test_duplicate_iname_not_read_only_nested(ctx_factory):
+    # See <https://github.com/inducer/loopy/issues/859>
+    ctx = ctx_factory()
+    t_unit = lp.make_kernel(
+        "{[i, j]: 0<=i,j<10}",
+        """
+        for i
+            <> acc = 0 {id=init, tags=foo}
+            for j
+                acc = acc + A[i, j] * x[i, j] {id=update, tags=foo}
+            end
+            y[i] = acc {id=assign, tags=foo}
+        end
+        """,
+        [lp.GlobalArg("A,x,y", shape=lp.auto, dtype=np.float32),
+         ...],
+         seq_dependencies=True,
+    )
+    ref_t_unit = t_unit
+
+    t_unit = lp.duplicate_inames(
+        t_unit,
+        inames="i", within="tag:foo", new_inames="irow")
+    print(t_unit)
+    assert (t_unit.default_entrypoint.id_to_insn["init"].within_inames
+            == frozenset({"irow"}))
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
 if __name__ == "__main__":

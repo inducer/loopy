@@ -21,26 +21,35 @@ THE SOFTWARE.
 """
 
 
-import numpy as np
+from typing import Optional
 
-from pymbolic.mapper import RecursiveMapper, IdentityMapper
-from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
-        PREC_SHIFT,
-        PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND,
-        PREC_BITWISE_AND, PREC_BITWISE_OR, PREC_BITWISE_XOR)
+import numpy as np
 
 import islpy as isl
 import pymbolic.primitives as p
 from pymbolic import var
-
-
-from loopy.expression import dtype_to_type_context
-from loopy.type_inference import TypeReader
+from pymbolic.mapper import IdentityMapper, Mapper
+from pymbolic.mapper.stringifier import (
+    PREC_BITWISE_AND,
+    PREC_BITWISE_OR,
+    PREC_BITWISE_XOR,
+    PREC_CALL,
+    PREC_LOGICAL_AND,
+    PREC_LOGICAL_OR,
+    PREC_NONE,
+    PREC_PRODUCT,
+    PREC_SHIFT,
+    PREC_UNARY,
+)
 
 from loopy.diagnostic import LoopyError
-from loopy.tools import is_integer
-from loopy.types import LoopyType
+from loopy.expression import dtype_to_type_context
+from loopy.symbolic import TypeCast
 from loopy.target.c import CExpression
+from loopy.tools import is_integer
+from loopy.type_inference import TypeReader
+from loopy.types import LoopyType
+from loopy.typing import ExpressionT
 
 
 __doc__ = """
@@ -84,7 +93,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
         return type(self)(self.codegen_state, self.fortran_abi, type_inf_mapper)
 
-    def infer_type(self, expr):
+    def infer_type(self, expr: ExpressionT) -> LoopyType:
         result = self.type_inf_mapper(expr)
         assert isinstance(result, LoopyType)
 
@@ -107,24 +116,22 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return ary
 
-    def wrap_in_typecast(self, actual_type, needed_dtype, s):
+    def wrap_in_typecast(self, actual_type: LoopyType, needed_type: LoopyType, s):
+        if actual_type != needed_type:
+            registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+            cast = var("(%s) " % registry.dtype_to_ctype(needed_type))
+            return cast(s)
+
         return s
 
-    def wrap_in_typecast_lazy(self, actual_type_func, needed_dtype, s):
-        """This is similar to *wrap_in_typecast*, but takes a function for
-        the actual type argument instead of a type. This can be helpful
-        when actual type argument is expensive to calculate and is not
-        needed in some cases.
-        """
-        return s
-
-    def rec(self, expr, type_context=None, needed_dtype=None):
-        if needed_dtype is None:
-            return RecursiveMapper.rec(self, expr, type_context)
-
-        return self.wrap_in_typecast_lazy(
-                lambda: self.infer_type(expr), needed_dtype,
-                RecursiveMapper.rec(self, expr, type_context))
+    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):  # type: ignore[override]
+        result = Mapper.rec(self, expr, type_context)
+        if needed_type is None:
+            return result
+        else:
+            return self.wrap_in_typecast(
+                    self.infer_type(expr), needed_type,
+                    result)
 
     def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
         if prec is None:
@@ -138,7 +145,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     # }}}
 
     def map_variable(self, expr, type_context):
-        from loopy.kernel.data import ValueArg, AddressSpace
+        from loopy.kernel.data import AddressSpace, ValueArg
 
         def postproc(x):
             return x
@@ -216,9 +223,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         ary = self.find_array(expr)
 
-        from loopy.kernel.array import get_access_info
         from pymbolic import evaluate
 
+        from loopy.kernel.array import get_access_info
         from loopy.symbolic import simplify_using_aff
         index_tuple = tuple(
                 simplify_using_aff(self.kernel, idx) for idx in expr.index_tuple)
@@ -227,8 +234,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 
-        from loopy.kernel.data import (
-                ImageArg, ArrayArg, TemporaryVariable, ConstantArg)
+        from loopy.kernel.data import ArrayArg, ConstantArg, ImageArg, TemporaryVariable
 
         if isinstance(ary, ImageArg):
             extra_axes = 0
@@ -331,7 +337,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def make_subscript(self, array, base_expr, subscript):
         return base_expr[subscript]
 
-    def map_integer_div_operator(self, base_func_name, op_func, expr, type_context):
+    def _map_integer_div_operator(self, base_func_name, op_func, expr, type_context):
         from loopy.symbolic import get_dependencies
         iname_deps = get_dependencies(expr) & self.kernel.all_inames()
         domain = self.kernel.get_inames_domain(iname_deps)
@@ -342,6 +348,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         num_type = self.infer_type(expr.numerator)
         den_type = self.infer_type(expr.denominator)
+
+        if not num_type.is_integral() or not den_type.is_integral():
+            raise NotImplementedError("remainder and floordiv "
+                                      "for floating-point types")
+
         from loopy.isl_helpers import is_nonnegative
         num_nonneg = is_nonnegative(expr.numerator, domain) \
             or num_type.numpy_dtype.kind == "u"
@@ -362,10 +373,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if den_nonneg:
             if num_nonneg:
                 return op_func(
-                        self.rec(expr.numerator, type_context),
-                        self.rec(expr.denominator, type_context))
+                        self.rec(expr.numerator, "i"),
+                        self.rec(expr.denominator, "i"))
             else:
-                seen_func("%s_pos_b" % base_func_name)
+                seen_func(f"{base_func_name}_pos_b")
                 return var(f"{base_func_name}_pos_b_{suffix}")(
                         self.rec(expr.numerator, "i"),
                         self.rec(expr.denominator, "i"))
@@ -377,7 +388,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     def map_floor_div(self, expr, type_context):
         import operator
-        return self.map_integer_div_operator(
+        return self._map_integer_div_operator(
                 "loopy_floor_div", operator.floordiv, expr, type_context)
 
     def map_remainder(self, expr, type_context):
@@ -386,7 +397,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             raise RuntimeError("complex remainder not defined")
 
         import operator
-        return self.map_integer_div_operator(
+        return self._map_integer_div_operator(
                 "loopy_mod", operator.mod, expr, type_context)
 
     def map_if(self, expr, type_context):
@@ -394,7 +405,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         result_type = self.infer_type(expr)
         return type(expr)(
                 self.rec(expr.condition, type_context,
-                         to_loopy_type(np.bool8)),
+                         to_loopy_type(np.bool_)),
                 self.rec(expr.then, type_context, result_type),
                 self.rec(expr.else_, type_context, result_type),
                 )
@@ -409,10 +420,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     expr.operator,
                     self.rec(expr.right, inner_type_context))
 
-    def map_type_cast(self, expr, type_context):
-        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
-        cast = var("(%s)" % registry.dtype_to_ctype(expr.type))
-        return cast(self.rec(expr.child, type_context))
+    def map_type_cast(self, expr: TypeCast, type_context: str):
+        return self.rec(expr.child, type_context, expr.type)
 
     def map_constant(self, expr, type_context):
         from loopy.symbolic import Literal
@@ -429,12 +438,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                  " this leads to problems with cache retrieval."
                  " Consider using `pymbolic.primitives.NaN` instead of `math.nan`."
                  " The generated code will be equivalent with the added benefit"
-                 " of sound pickling/unpickling of kernel objects.")
+                 " of sound pickling/unpickling of kernel objects.", stacklevel=1)
             from pymbolic.primitives import NaN
-            if not isinstance(expr, np.generic):
-                return self.map_nan(NaN(), type_context)
-            else:
-                return self.map_nan(NaN(expr.dtype.type), type_context)
+            data_type = expr.dtype.type if isinstance(expr, np.generic) else None
+            return self.map_nan(NaN(data_type), type_context)
         elif np.isneginf(expr):
             return -p.Variable("INFINITY")
         elif np.isinf(expr):
@@ -444,10 +451,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             # FIXME: This assumes a 32-bit architecture.
             if isinstance(expr, np.float32):
-                return Literal(repr(expr)+"f")
+                return Literal(repr(float(expr))+"f")
 
             elif isinstance(expr, np.float64):
-                return Literal(repr(expr))
+                return Literal(repr(float(expr)))
 
             # Disabled for now, possibly should be a subtarget.
             # elif isinstance(expr, np.float128):
@@ -460,7 +467,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     suffix += "u"
                 if iinfo.max > (2**31-1):
                     suffix += "l"
-                return Literal(repr(expr)+suffix)
+                return Literal(repr(int(expr))+suffix)
             elif isinstance(expr, np.bool_):
                 return Literal("true") if expr else Literal("false")
             else:
@@ -469,7 +476,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif np.isfinite(expr):
             if type_context == "f":
-                return Literal(repr(np.float32(expr))+"f")
+                return Literal(repr(float((expr)))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context in ["i", "b"]:
@@ -596,7 +603,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
 # {{{ C expression to code mapper
 
-class CExpressionToCodeMapper(RecursiveMapper):
+class CExpressionToCodeMapper(Mapper):
 
     # {{{ helpers
 
@@ -629,11 +636,23 @@ class CExpressionToCodeMapper(RecursiveMapper):
     # }}}
 
     def map_constant(self, expr, prec):
-        return repr(expr)
+        if isinstance(expr, np.generic):
+            if isinstance(expr, np.integer):
+                # FIXME: Add type suffixes?
+                return repr(int(expr))
+            elif isinstance(expr, np.float32):
+                return f"{repr(float(expr))}f"
+            elif isinstance(expr, np.float64):
+                return repr(float(expr))
+            else:
+                raise NotImplementedError(
+                        f"unimplemented numpy-to-C conversion: {type(expr)}")
+        else:
+            return repr(expr)
 
     def map_call(self, expr, enclosing_prec):
+        from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
         from pymbolic.primitives import Variable
-        from pymbolic.mapper.stringifier import PREC_NONE, PREC_CALL
         if isinstance(expr.function, Variable):
             func = expr.function.name
         else:
@@ -683,7 +702,7 @@ class CExpressionToCodeMapper(RecursiveMapper):
     map_max = map_min
 
     def map_if(self, expr, enclosing_prec):
-        from pymbolic.mapper.stringifier import PREC_NONE, PREC_CALL
+        from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
         return "({} ? {} : {})".format(
                 # Force parentheses around the condition to prevent compiler
                 # warnings regarding precedence (e.g. with POCL 1.8/LLVM 12):
@@ -788,13 +807,10 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 force_parens_around=self.multiplicative_primitives)
 
         return self.parenthesize_if_needed(
-                "{} {} {}".format(
-                    # Space is necessary--otherwise '/*'
-                    # (i.e. divide-dererference) becomes
-                    # start-of-comment in C.
-                    num_s,
-                    operator,
-                    denom_s),
+                f"{num_s} {operator} {denom_s}",
+                # Space is necessary--otherwise '/*'
+                # (i.e. divide-dererference) becomes
+                # start-of-comment in C.
                 enclosing_prec, PREC_PRODUCT)
 
     def map_quotient(self, expr, enclosing_prec):

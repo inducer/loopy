@@ -1,8 +1,11 @@
 import numpy as np
-import loopy as lp
+
 import pyopencl as cl
 import pyopencl.array
+
+import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+
 
 # setup
 # -----
@@ -24,7 +27,11 @@ knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
 # execute
 # -------
+# easy, slower:
 evt, (out,) = knl(queue, a=a)
+# efficient, with caching:
+knl_ex = knl.executor(ctx)
+evt, (out,) = knl_ex(queue, a=a)
 # ENDEXAMPLE
 
 knl = lp.add_and_infer_dtypes(knl, {"a": np.dtype(np.float32)})

@@ -21,16 +21,24 @@ THE SOFTWARE.
 """
 
 
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, replace
+from typing import Any, Callable, Optional, Sequence, Tuple
+
+from typing_extensions import Self
+
 import islpy as isl
 from islpy import dim_type
-from loopy.symbolic import (get_dependencies, SubstitutionMapper)
-from pymbolic.mapper.substitutor import make_subst_func
-
-from pytools import ImmutableRecord, memoize_method
 from pymbolic import var
+from pymbolic.mapper.substitutor import make_subst_func
+from pytools import memoize_method
+
+from loopy.symbolic import SubstitutionMapper, get_dependencies
+from loopy.typing import ExpressionT
 
 
-class AccessDescriptor(ImmutableRecord):
+@dataclass(frozen=True)
+class AccessDescriptor:
     """
     .. attribute:: identifier
 
@@ -38,10 +46,11 @@ class AccessDescriptor(ImmutableRecord):
         to the access that generated it. Any Python value.
     """
 
-    __slots__ = [
-            "identifier",
-            "storage_axis_exprs",
-            ]
+    identifier: Any = None
+    storage_axis_exprs: Optional[Sequence[ExpressionT]] = None
+
+    def copy(self, **kwargs) -> Self:
+        return replace(self, **kwargs)
 
 
 def to_parameters_or_project_out(param_inames, set_inames, set):
@@ -62,9 +71,12 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 
 # {{{ construct storage->sweep map
 
-def build_per_access_storage_to_domain_map(storage_axis_exprs, domain,
-        storage_axis_names,
-        prime_sweep_inames):
+def build_per_access_storage_to_domain_map(
+        storage_axis_exprs: Sequence[ExpressionT],
+        domain: isl.BasicSet,
+        storage_axis_names: Sequence[str],
+        prime_sweep_inames: Callable[[ExpressionT], ExpressionT]
+        ) -> isl.BasicMap:
 
     map_space = domain.space
     stor_dim = len(storage_axis_names)
@@ -124,10 +136,8 @@ def move_to_par_from_out(s2smap, except_inames):
             return s2smap
 
 
-def build_global_storage_to_sweep_map(kernel, access_descriptors,
-        domain_dup_sweep, dup_sweep_index,
-        storage_axis_names,
-        sweep_inames, primed_sweep_inames, prime_sweep_inames):
+def build_global_storage_to_sweep_map(access_descriptors,
+        domain_dup_sweep, storage_axis_names, prime_sweep_inames):
     # The storage map goes from storage axes to the domain.
     # The first len(arg_names) storage dimensions are the rule's arguments.
 
@@ -192,7 +202,23 @@ def compute_bounds(kernel, domain, stor2sweep,
 
 # {{{ array-to-buffer map
 
-class ArrayToBufferMap:
+class ArrayToBufferMapBase(ABC):
+    non1_storage_axis_names: Tuple[str, ...]
+    storage_base_indices: Tuple[ExpressionT, ...]
+    non1_storage_shape: Tuple[ExpressionT, ...]
+    non1_storage_axis_flags: Tuple[ExpressionT, ...]
+
+    @abstractmethod
+    def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
+        ...
+
+    @abstractmethod
+    def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
+            boxify_sweep=False):
+        ...
+
+
+class ArrayToBufferMap(ArrayToBufferMapBase):
     def __init__(self, kernel, domain, sweep_inames, access_descriptors,
             storage_axis_count):
         self.kernel = kernel
@@ -221,10 +247,10 @@ class ArrayToBufferMap:
         # # }}}
 
         self.stor2sweep = build_global_storage_to_sweep_map(
-                kernel, access_descriptors,
-                domain_dup_sweep, dup_sweep_index,
+                access_descriptors,
+                domain_dup_sweep,
                 storage_axis_names,
-                sweep_inames, self.primed_sweep_inames, self.prime_sweep_inames)
+                self.prime_sweep_inames)
 
         storage_base_indices, storage_shape = compute_bounds(
                 kernel, domain, self.stor2sweep, self.primed_sweep_inames,
@@ -298,7 +324,7 @@ class ArrayToBufferMap:
         self.non1_storage_axis_flags = non1_storage_axis_flags
         self.aug_domain = aug_domain
         self.storage_base_indices = storage_base_indices
-        self.non1_storage_shape = non1_storage_shape
+        self.non1_storage_shape = tuple(non1_storage_shape)
 
     def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
             boxify_sweep=False):
@@ -329,14 +355,15 @@ class ArrayToBufferMap:
 
         domain = domain & renamed_aug_domain
 
-        from loopy.isl_helpers import convexify, boxify
+        from loopy.isl_helpers import boxify, convexify
         if boxify_sweep:
             return boxify(self.kernel.cache_manager, domain,
                     new_non1_storage_axis_names, self.kernel.assumptions)
         else:
             return convexify(domain)
 
-    def is_access_descriptor_in_footprint(self, accdesc):
+    def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
+        assert accdesc.storage_axis_exprs is not None
         return self._is_access_descriptor_in_footprint_inner(
                 tuple(accdesc.storage_axis_exprs))
 
@@ -386,30 +413,33 @@ class ArrayToBufferMap:
                 except_inames=frozenset(self.primed_sweep_inames))
 
         s2s_domain = stor2sweep.domain()
-        s2s_domain, aligned_g_s2s_parm_dom = isl.align_two(
+        s2s_domain, aligned_g_s2s_param_dom = isl.align_two(
                 s2s_domain, global_s2s_par_dom)
 
         arg_restrictions = (
-                aligned_g_s2s_parm_dom
+                aligned_g_s2s_param_dom
                 .eliminate(dim_type.set, 0,
-                    aligned_g_s2s_parm_dom.dim(dim_type.set))
+                    aligned_g_s2s_param_dom.dim(dim_type.set))
                 .remove_divs())
 
         return (arg_restrictions & s2s_domain).is_subset(
-                aligned_g_s2s_parm_dom)
+                aligned_g_s2s_param_dom)
 
 
-class NoOpArrayToBufferMap:
+class NoOpArrayToBufferMap(ArrayToBufferMapBase):
     non1_storage_axis_names = ()
     storage_base_indices = ()
     non1_storage_shape = ()
 
-    def is_access_descriptor_in_footprint(self, accdesc):
+    def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
         # no index dependencies--every reference to the subst rule
         # is necessarily in the footprint.
 
         return True
 
+    def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
+            boxify_sweep=False):
+        return domain
 # }}}
 
 # vim: foldmethod=marker

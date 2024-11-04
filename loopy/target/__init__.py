@@ -47,29 +47,50 @@ THE SOFTWARE.
 """
 
 
-from typing import (Any, Tuple, Generic, TypeVar, Sequence, ClassVar, Optional,
-        TYPE_CHECKING)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generic,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+)
+
 
 if TYPE_CHECKING:
-    from loopy.typing import ExpressionT
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.target.execution import ExecutorBase
+    from loopy.translation_unit import FunctionIdT, TranslationUnit
+    from loopy.typing import ExpressionT
 
 
 ASTType = TypeVar("ASTType")
 
 
-class TargetBase():
+class TargetBase:
     """Base class for all targets, i.e. different combinations of code that
     loopy can generate.
 
     Objects of this type must be picklable.
     """
 
-    # {{{ persistent hashing
+    # {{{ hashing/equality
 
     hash_fields: ClassVar[Tuple[str, ...]] = ()
     comparison_fields: ClassVar[Tuple[str, ...]] = ()
+
+    def __hash__(self):
+        # NOTE: _hash_value may vanish during pickling
+        if getattr(self, "_hash_value", None) is None:
+            from loopy.tools import LoopyKeyBuilder
+            key_hash = LoopyKeyBuilder.new_hash()
+            LoopyKeyBuilder()(self)
+            object.__setattr__(self, "_hash_value", hash(key_hash.digest()))
+
+        return self._hash_value  # pylint: disable=no-member
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_hash.update(type(self).__name__.encode())
@@ -77,7 +98,7 @@ class TargetBase():
             key_builder.rec(key_hash, getattr(self, field_name))
 
     def __eq__(self, other):
-        if type(self) != type(other):
+        if type(self) is not type(other):
             return False
 
         for field_name in self.comparison_fields:
@@ -152,7 +173,9 @@ class TargetBase():
         """
         raise NotImplementedError()
 
-    def get_kernel_executor(self, kernel, *args, **kwargs):
+    def get_kernel_executor(
+            self, t_unit: TranslationUnit, *args, entrypoint: FunctionIdT,
+            **kwargs) -> ExecutorBase:
         """
         :returns: an immutable type to be used as the cache key for
             kernel executor caching.
@@ -164,7 +187,7 @@ class ASTBuilderBase(Generic[ASTType]):
     """An interface for generating (host or device) ASTs.
     """
 
-    def __init__(self, target):
+    def __init__(self, target) -> None:
         self.target = target
 
     # {{{ library
@@ -203,7 +226,7 @@ class ASTBuilderBase(Generic[ASTType]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], ASTType]:
+            ) -> Tuple[Sequence[Tuple[str, str]], Optional[ASTType]]:
         """Returns preambles and the AST for the function declaration."""
         raise NotImplementedError
 
@@ -249,7 +272,10 @@ class ASTBuilderBase(Generic[ASTType]):
         raise NotImplementedError()
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
+            static_lbound, static_ubound, inner, hints):
+        raise NotImplementedError()
+
+    def emit_unroll_hint(self, value):
         raise NotImplementedError()
 
     @property
@@ -269,6 +295,9 @@ class ASTBuilderBase(Generic[ASTType]):
         raise NotImplementedError()
 
     def emit_comment(self, s):
+        raise NotImplementedError()
+
+    def emit_noop_with_comment(self, s):
         raise NotImplementedError()
 
     # }}}

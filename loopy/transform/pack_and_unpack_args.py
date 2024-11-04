@@ -20,12 +20,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from immutables import Map
+
 from loopy.diagnostic import LoopyError
-from loopy.kernel.instruction import CallInstruction
-from loopy.translation_unit import TranslationUnit
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.instruction import CallInstruction
 from loopy.symbolic import SubArrayRef
+from loopy.translation_unit import TranslationUnit
+
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -45,7 +48,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 
     :arg call_name: An instance of :class:`str` denoting the function call in
         the *kernel*.
-    :arg args_to_unpack: A list of the arguments as instances of :class:`str` which
+    :arg args_to_pack: A list of the arguments as instances of :class:`str` which
         must be packed. If set *None*, it is interpreted that all the array
         arguments would be packed.
     :arg args_to_unpack: A list of the arguments as instances of :class:`str`
@@ -114,9 +117,10 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 
         # {{{ handling ilp tags
 
-        from loopy.kernel.data import IlpBaseTag, VectorizeTag
         import islpy as isl
         from pymbolic import var
+
+        from loopy.kernel.data import IlpBaseTag, VectorizeTag
 
         dim_type = isl.dim_type.set
         ilp_inames = {iname for iname in insn.within_inames
@@ -140,6 +144,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
         # }}}
 
         from pymbolic.mapper.substitutor import make_subst_func
+
         from loopy.symbolic import SubstitutionMapper
 
         # dict to store the new assignees and parameters, the mapping pattern
@@ -176,8 +181,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                 arg = p.subscript.aggregate.name
                 pack_name = vng(arg + "_pack")
 
-                from loopy.kernel.data import (TemporaryVariable,
-                        AddressSpace)
+                from loopy.kernel.data import AddressSpace, TemporaryVariable
 
                 if arg in kernel.arg_dict:
                     arg_in_caller = kernel.arg_dict[arg]
@@ -202,8 +206,8 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 
                 # {{{ getting the lhs for packing and rhs for unpacking
 
-                from loopy.symbolic import simplify_via_aff
                 from loopy.isl_helpers import make_slab
+                from loopy.symbolic import simplify_via_aff
 
                 flatten_index = simplify_via_aff(
                         sum(dim_tag.stride*idx for dim_tag, idx in
@@ -335,6 +339,6 @@ def pack_and_unpack_args_for_call(program, *args, **kwargs):
 
         new_callables[func_id] = in_knl_callable
 
-    return program.copy(callables_table=new_callables)
+    return program.copy(callables_table=Map(new_callables))
 
 # vim: foldmethod=marker

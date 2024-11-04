@@ -21,14 +21,18 @@ THE SOFTWARE.
 """
 
 
-import numpy as np
-import loopy as lp
-import pyopencl as cl  # noqa
-
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
-
 import logging
+
+import numpy as np
+
+import pyopencl as cl  # noqa
+from pyopencl.tools import (  # noqa
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,8 +89,8 @@ def test_nbody(ctx_factory):
     n = 3000
 
     for variant in [
-            #variant_1,
-            #variant_cpu,
+            # variant_1,
+            # variant_cpu,
             variant_gpu
             ]:
         variant_knl = variant(knl)

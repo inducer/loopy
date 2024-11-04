@@ -53,3 +53,7 @@ Schedule
 --------
 
 .. automodule:: loopy.schedule
+.. automodule:: loopy.schedule.tools
+.. automodule:: loopy.schedule.tree
+
+

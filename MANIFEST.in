@@ -19,4 +19,5 @@ include configure.py
 include Makefile.in
 include README.rst
 include LICENSE
+include CITATION.cff
 include requirements*.txt

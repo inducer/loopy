@@ -23,31 +23,48 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import cast, Tuple, Optional, Sequence
 import re
+from typing import Any, Optional, Sequence, Tuple, cast
 
 import numpy as np  # noqa
 
-from cgen import Pointer, NestedDeclarator, Block, Generable, Declarator, Const
+import pymbolic.primitives as p
+from cgen import (
+    Block,
+    Collection,
+    Const,
+    Declarator,
+    Generable,
+    Initializer,
+    NestedDeclarator,
+    Pointer,
+)
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
-import pymbolic.primitives as p
 from pytools import memoize_method
 
-from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
-from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.symbolic import IdentityMapper
-from loopy.types import NumpyType, LoopyType
-from loopy.typing import ExpressionT
-from loopy.kernel import LoopKernel
-from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
-from loopy.kernel.data import (TemporaryVariable, AddressSpace, ArrayArg,
-        ConstantArg, ImageArg, ValueArg)
-from loopy.kernel.function_interface import ScalarCallable
-from loopy.schedule import CallKernel
-from loopy.tools import remove_common_indentation
 from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError, LoopyTypeError
+from loopy.kernel import LoopKernel
+from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
+from loopy.kernel.data import (
+    AddressSpace,
+    ArrayArg,
+    ConstantArg,
+    ImageArg,
+    TemporaryVariable,
+    ValueArg,
+)
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.schedule import CallKernel
+from loopy.symbolic import IdentityMapper
+from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
+from loopy.target.execution import ExecutorBase
+from loopy.tools import remove_common_indentation
+from loopy.translation_unit import FunctionIdT, TranslationUnit
+from loopy.types import LoopyType, NumpyType, to_loopy_type
+from loopy.typing import ExpressionT
 
 
 __doc__ = """
@@ -117,7 +134,10 @@ class InfOrNanInExpressionRecorder(IdentityMapper):
 
 def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
-        yield ("10_stdint", "#include <stdint.h>")
+        yield ("10_stdint", """
+            #include <stdint.h>
+            #include <stdbool.h>
+            """)
     if any(dtype.numpy_dtype == np.dtype("bool")
            for dtype in preamble_info.seen_dtypes
            if isinstance(dtype, NumpyType)):
@@ -244,12 +264,9 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
               {res_ctype} y = 1;
 
               while (n > 1) {{
-                if (n % 2) {{
+                if (n % 2)
                   y = x * y;
-                  x = x * x;
-                }}
-                else
-                  x = x * x;
+                x = x * x;
                 n = n / 2;
               }}
 
@@ -418,7 +435,9 @@ class CFamilyTarget(TargetBase):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c_types)
+            DTypeRegistry,
+            fill_registry_with_c_types,
+        )
         result = DTypeRegistry()
         fill_registry_with_c_types(result, respect_windows=False,
                 include_bool=True)
@@ -437,12 +456,6 @@ class CFamilyTarget(TargetBase):
     def dtype_to_typename(self, dtype):
         # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
-
-    def get_kernel_executor_cache_key(self, *args, **kwargs):
-        raise NotImplementedError
-
-    def get_kernel_executor(self, knl, *args, **kwargs):
-        raise NotImplementedError
 
     # }}}
 
@@ -488,8 +501,8 @@ class CMathCallable(ScalarCallable):
         # {{{ (abs|max|min) -> (fabs|fmax|fmin)
 
         if name in ["abs", "min", "max"]:
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for dtype in arg_id_to_dtype.values()])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for dtype in arg_id_to_dtype.values()])
             if dtype.kind == "f":
                 name = "f" + name
 
@@ -531,16 +544,19 @@ class CMathCallable(ScalarCallable):
                     dtype))
 
             if name in ["abs", "real", "imag"]:
-                dtype = real_dtype
+                result_dtype = real_dtype
+            else:
+                result_dtype = dtype
 
-            if dtype.kind == "c" or name in ["real", "imag", "abs"]:
-                if name != "conj":
+            if dtype.kind == "c" or name in ["real", "realf", "imag", "imagf"]:
+                if name not in ["conj", "conjf"]:
                     name = "c" + name
 
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype={0: NumpyType(dtype), -1:
-                            NumpyType(dtype)}),
+                        arg_id_to_dtype={
+                            0: NumpyType(dtype),
+                            -1: NumpyType(result_dtype)}),
                     callables_table)
 
         # binary functions
@@ -558,9 +574,9 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
             real_dtype = np.empty(0, dtype=dtype).real.dtype
 
             if name in ["fmax", "fmin", "copysign"] and dtype.kind == "c":
@@ -598,9 +614,9 @@ class CMathCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
             if dtype.kind not in "iu":
                 # only support integers for now to avoid having to deal with NaNs
                 raise LoopyError(f"{name} does not support '{dtype}' arguments.")
@@ -668,6 +684,9 @@ class CMathCallable(ScalarCallable):
             inline static int {self.name_in_target}({ctype} x) {{
               return 0;
             }}""")
+
+        if isinstance(target, CTarget):
+            yield ("50_cmath", "#include <math.h>")
 
 
 class GNULibcCallable(ScalarCallable):
@@ -782,13 +801,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         kernel = codegen_state.kernel
         assert kernel.linearization is not None
 
-        from cgen import (
-                FunctionBody,
-
-                # Post-mid-2016 cgens have 'Collection', too.
-                Module as Collection,
-                Initializer,
-                Line)
+        from cgen import FunctionBody, Line
 
         result = []
 
@@ -871,6 +884,42 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             lsize: Tuple[ExpressionT, ...]) -> Optional[Generable]:
         return None
 
+    def emit_temp_var_decl_for_tv_with_base_storage(self,
+                                                    codegen_state: CodeGenerationState,
+                                                    tv: TemporaryVariable) -> Generable:
+        """
+        Returns the statement for initializing a :class:`loopy.TemporaryVariable`
+        with a user-provided :attr:`loopy.TemporaryVariable.base_storage`.
+        """
+        assert tv.base_storage is not None
+        assert isinstance(tv.address_space, AddressSpace)
+        ecm = codegen_state.expression_to_code_mapper
+
+        cast_decl = POD(self, tv.dtype, "")
+        temp_var_decl = POD(self, tv.dtype, tv.name)
+
+        if tv._base_storage_access_may_be_aliasing:
+            ptrtype = _ConstPointer
+        else:
+            # The 'restrict' part of this is a complete lie--of course
+            # all these temporaries are aliased. But we're promising to
+            # not use them to shovel data from one representation to the
+            # other. That counts, right?
+            ptrtype = _ConstRestrictPointer
+
+        cast_decl = self.wrap_decl_for_address_space(
+                ptrtype(cast_decl), tv.address_space)
+        temp_var_decl = self.wrap_decl_for_address_space(
+                ptrtype(temp_var_decl), tv.address_space)
+
+        cast_tp, cast_d = cast_decl.get_decl_pair()
+        return Initializer(
+            temp_var_decl,
+            "({} {}) ({} + {})".format(
+                " ".join(cast_tp), cast_d, tv.base_storage, ecm(tv.offset)
+            ),
+        )
+
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import AddressSpace
 
@@ -883,12 +932,14 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         # {{{ declare temporaries
 
         from cgen import Initializer, Line
+
         # Getting the temporary variables that are needed for the current
         # sub-kernel.
         from loopy.schedule.tools import (
-                temporaries_read_in_subkernel,
-                temporaries_written_in_subkernel,
-                supporting_temporary_names)
+            supporting_temporary_names,
+            temporaries_read_in_subkernel,
+            temporaries_written_in_subkernel,
+        )
         subkernel_name = kernel.linearization[schedule_index].kernel_name
         sub_knl_temps = (
                 temporaries_read_in_subkernel(kernel, subkernel_name)
@@ -899,14 +950,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
-        for tv in sorted(
-                kernel.temporary_variables.values(),
-                key=lambda key_tv: key_tv.name):
+        for tv_name in sorted(sub_knl_temps):
+            tv = kernel.temporary_variables[tv_name]
             if not tv.base_storage:
                 # global temp vars are mapped to arguments or global
                 # declarations, no need to declare locally.
-                if tv.address_space != AddressSpace.GLOBAL and (
-                        tv.name in sub_knl_temps):
+                if tv.address_space != AddressSpace.GLOBAL:
                     decl = self.get_temporary_var_declarator(codegen_state, tv)
 
                     if tv.initializer is not None:
@@ -918,33 +967,9 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
             else:
                 assert tv.initializer is None
-
-                cast_decl = POD(self, tv.dtype, "")
-                temp_var_decl = POD(self, tv.dtype, tv.name)
-
-                if tv._base_storage_access_may_be_aliasing:
-                    ptrtype = _ConstPointer
-                else:
-                    # The 'restrict' part of this is a complete lie--of course
-                    # all these temporaries are aliased. But we're promising to
-                    # not use them to shovel data from one representation to the
-                    # other. That counts, right?
-                    ptrtype = _ConstRestrictPointer
-
-                cast_decl = self.wrap_decl_for_address_space(
-                        ptrtype(cast_decl), tv.address_space)
-                temp_var_decl = self.wrap_decl_for_address_space(
-                        ptrtype(temp_var_decl), tv.address_space)
-
-                cast_tp, cast_d = cast_decl.get_decl_pair()
-                temp_var_decl = Initializer(
-                        temp_var_decl,
-                        "({} {}) ({} + {})".format(
-                            " ".join(cast_tp), cast_d,
-                            tv.base_storage,
-                            ecm(tv.offset)
-                            ))
-
+                temp_var_decl = self.emit_temp_var_decl_for_tv_with_base_storage(
+                    codegen_state, tv
+                )
                 temp_decls_using_base_storage.append(temp_var_decl)
 
         # }}}
@@ -1094,6 +1119,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         if temp_var.storage_shape:
             shape = temp_var.storage_shape
         else:
+            assert isinstance(temp_var.shape, tuple)
             shape = temp_var.shape
 
         assert isinstance(shape, tuple)
@@ -1113,6 +1139,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             from cgen import AlignedAttribute
             temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
 
+        assert isinstance(temp_var.address_space, AddressSpace)
         return self.wrap_decl_for_address_space(temp_var_decl,
                 temp_var.address_space)
 
@@ -1138,11 +1165,15 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         else:
             lhs_atomicity = None
 
-        from loopy.kernel.data import AtomicInit, AtomicUpdate
         from loopy.expression import dtype_to_type_context
+        from loopy.kernel.data import AtomicInit, AtomicUpdate
 
         lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
         rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
+
+        if isinstance(insn.assignee, p.Lookup):
+            lhs_dtype = to_loopy_type(lhs_dtype.numpy_dtype[insn.assignee.name])
+
         if lhs_atomicity is None:
             from cgen import Assign
             return Assign(
@@ -1226,15 +1257,15 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                                 in_knl_callable_as_call))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
-        from pymbolic import var
-        from pymbolic.primitives import Comparison
-        from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For, InlineInitializer
+        from pymbolic import var
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.primitives import Comparison
 
-        return For(
+        loop = For(
                 InlineInitializer(
                     POD(self, iname_dtype, iname),
                     ecm(lbound, PREC_NONE, "i")),
@@ -1247,10 +1278,22 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 "++%s" % iname,
                 inner)
 
+        if hints:
+            return Collection(list(hints) + [loop])
+        else:
+            return loop
+
+    def emit_unroll_hint(self, value):
+        from cgen import Pragma
+        if value:
+            return Pragma(f"unroll {value}")
+        else:
+            return Pragma("unroll")
+
     def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
         decl = POD(self, dtype, name)
 
-        from cgen import Initializer, Const
+        from cgen import Const, Initializer
 
         if is_const:
             decl = Const(decl)
@@ -1264,6 +1307,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def emit_comment(self, s):
         from cgen import Comment
         return Comment(s)
+
+    def emit_noop_with_comment(self, s):
+        from cgen import Line
+        return Line(f"; /*{s}*/")
 
     @property
     def can_implement_conditionals(self):
@@ -1335,8 +1382,10 @@ class CTarget(CFamilyTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c99_stdint_types,
-                fill_registry_with_c99_complex_types)
+            DTypeRegistry,
+            fill_registry_with_c99_complex_types,
+            fill_registry_with_c99_stdint_types,
+        )
         result = DTypeRegistry()
         fill_registry_with_c99_stdint_types(result)
         fill_registry_with_c99_complex_types(result)
@@ -1376,10 +1425,11 @@ class ExecutableCTarget(CTarget):
         # and None isn't allowed in that setting.
         return _CExecutorCacheKey
 
-    def get_kernel_executor(self, t_unit, *args, **kwargs):
-        from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(t_unit, entrypoint=kwargs.pop("entrypoint"),
-                compiler=self.compiler)
+    def get_kernel_executor(
+            self, t_unit: TranslationUnit,
+            *args: Any, entrypoint: FunctionIdT, **kwargs: Any) -> ExecutorBase:
+        from loopy.target.c.c_execution import CExecutor
+        return CExecutor(t_unit, entrypoint=entrypoint, compiler=self.compiler)
 
     def get_host_ast_builder(self):
         # enable host code generation

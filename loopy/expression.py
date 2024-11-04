@@ -23,7 +23,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from pymbolic.mapper import RecursiveMapper
+from pymbolic.mapper import Mapper
 
 from loopy.codegen import UnvectorizableError
 from loopy.diagnostic import LoopyError
@@ -44,7 +44,7 @@ def dtype_to_type_context(target, dtype):
         return "d"
     if isinstance(dtype, NumpyType) and dtype.dtype in [np.float32, np.complex64]:
         return "f"
-    if isinstance(dtype, NumpyType) and dtype.dtype in [np.bool8, np.bool_]:
+    if isinstance(dtype, NumpyType) and dtype.dtype == np.bool_:
         return "b"
     if target.is_vector_dtype(dtype):
         return dtype_to_type_context(
@@ -55,7 +55,7 @@ def dtype_to_type_context(target, dtype):
 
 # {{{ vectorizability checker
 
-class VectorizabilityChecker(RecursiveMapper):
+class VectorizabilityChecker(Mapper):
     """The return value from this mapper is a :class:`bool` indicating whether
     the result of the expression is vectorized along :attr:`vec_iname`.
     If the expression is not vectorizable, the mapper raises
@@ -115,9 +115,10 @@ class VectorizabilityChecker(RecursiveMapper):
 
         index = expr.index_tuple
 
-        from loopy.symbolic import get_dependencies
-        from loopy.kernel.array import VectorArrayDimTag
         from pymbolic.primitives import Variable
+
+        from loopy.kernel.array import VectorArrayDimTag
+        from loopy.symbolic import get_dependencies
 
         possible = None
         for i in range(len(var.shape)):

@@ -21,22 +21,21 @@ THE SOFTWARE.
 """
 
 
+import logging  # noqa
+
 import numpy as np
 import pyopencl as cl
 import pyopencl.array  # noqa
-import loopy as lp
-
-import logging  # noqa
-
 from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
-
+import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_dg_volume(ctx_factory):
-    #logging.basicConfig(level=logging.DEBUG)
+    # logging.basicConfig(level=logging.DEBUG)
 
     dtype = np.float32
     dtype4 = cl.array.vec.float4
@@ -168,7 +167,7 @@ def test_dg_volume(ctx_factory):
     for variant in variants:
         lp.auto_test_vs_ref(
                 seq_knl, ctx, variant(knl), parameters=parameters_dict,
-                #codegen_kwargs=dict(with_annotation=True)
+                # codegen_kwargs=dict(with_annotation=True)
                 )
 
 

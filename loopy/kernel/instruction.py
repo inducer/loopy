@@ -20,17 +20,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from sys import intern
+from collections.abc import (
+    Mapping as MappingABC,
+    Set as abc_Set,
+)
+from dataclasses import dataclass
 from functools import cached_property
-from typing import FrozenSet
-
+from sys import intern
+from typing import Any, FrozenSet, Mapping, Optional, Sequence, Tuple, Type, Union
 from warnings import warn
+
 import islpy as isl
 from pytools import ImmutableRecord, memoize_method
-from pytools.tag import Tag, tag_dataclass, Taggable
+from pytools.tag import Tag, Taggable, tag_dataclass
 
 from loopy.diagnostic import LoopyError
-from loopy.tools import Optional
+from loopy.tools import Optional as LoopyOptional
+from loopy.types import LoopyType
+from loopy.typing import ExpressionT, InameStr
 
 
 # {{{ instruction tags
@@ -72,6 +79,44 @@ class UseStreamingStoreTag(Tag):
         program-dependent. No promise of safety is made.
     """
     pass
+
+# }}}
+
+
+# {{{ HappensAfter
+
+@dataclass(frozen=True)
+class HappensAfter:
+    """A class representing a "happens-after" relationship between two
+    statements found in a :class:`loopy.LoopKernel`. Used to validate that a
+    given kernel transformation respects the data dependencies in a given
+    program.
+
+    .. attribute:: variable_name
+
+       The name of the variable responsible for the dependency. For
+       backward compatibility purposes, this may be *None*. In this case, the
+       dependency semantics revert to the deprecated, statement-level
+       dependencies of prior versions of :mod:`loopy`.
+
+    .. attribute:: instances_rel
+
+        An :class:`islpy.Map` representing the precise happens-after
+        relationship. The domain and range are sets of statement instances. The
+        instances in the domain are required to execute before the instances in
+        the range.
+
+        Map dimensions are named according to the order of appearance of the
+        inames in a :mod:`loopy` program. The dimension names in the range are
+        appended with a prime to signify that the mapped instances are distinct.
+
+        As a (deprecated) matter of backward compatibility, this may be *None*,
+        in which case the semantics revert to the (underspecified)
+        statement-level dependencies of prior versions of :mod:`loopy`.
+    """
+
+    variable_name: Optional[str]
+    instances_rel: Optional[isl.Map]
 
 # }}}
 
@@ -186,7 +231,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
         provide metadata on this object. Legacy string tags are converted to
         :class:`LegacyStringInstructionTag` or, if they used to carry
-        a functional meaning, the tag carrying that same fucntional meaning
+        a functional meaning, the tag carrying that same functional meaning
         (e.g. :class:`UseStreamingStoreTag`).
 
     .. automethod:: __init__
@@ -199,10 +244,20 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     Inherits from :class:`pytools.tag.Taggable`.
     """
+    id: Optional[str]
+    happens_after: Mapping[str, HappensAfter]
+    depends_on_is_final: bool
+    groups: FrozenSet[str]
+    conflicts_with_groups: FrozenSet[str]
+    no_sync_with: FrozenSet[Tuple[str, str]]
+    predicates: FrozenSet[ExpressionT]
+    within_inames: FrozenSet[InameStr]
+    within_inames_is_final: bool
+    priority: int
 
     # within_inames_is_final is deprecated and will be removed in version 2017.x.
 
-    fields = set("id depends_on depends_on_is_final "
+    fields = set("id depends_on_is_final "
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
@@ -215,12 +270,23 @@ class InstructionBase(ImmutableRecord, Taggable):
     # Names of fields that are sets of pymbolic expressions. Needed for key building
     pymbolic_set_fields = {"predicates"}
 
-    def __init__(self, id, depends_on, depends_on_is_final,
-            groups, conflicts_with_groups,
-            no_sync_with,
-            within_inames_is_final, within_inames,
-            priority,
-            predicates, tags):
+    def __init__(self,
+                 id: Optional[str],
+                 happens_after: Union[
+                     Mapping[str, HappensAfter], FrozenSet[str], str, None],
+                 depends_on_is_final: Optional[bool],
+                 groups: Optional[FrozenSet[str]],
+                 conflicts_with_groups: Optional[FrozenSet[str]],
+                 no_sync_with: Optional[FrozenSet[Tuple[str, str]]],
+                 within_inames_is_final: Optional[bool],
+                 within_inames: Optional[FrozenSet[str]],
+                 priority: Optional[int],
+                 predicates: Optional[FrozenSet[str]],
+                 tags: Optional[FrozenSet[Tag]],
+                 *,
+                 depends_on: Union[FrozenSet[str], str, None] = None,
+                 ) -> None:
+        from immutabledict import immutabledict
 
         if predicates is None:
             predicates = frozenset()
@@ -228,22 +294,58 @@ class InstructionBase(ImmutableRecord, Taggable):
         new_predicates = set()
         for pred in predicates:
             if isinstance(pred, str):
-                from pymbolic.primitives import LogicalNot
                 from loopy.symbolic import parse
-                if pred.startswith("!"):
-                    warn("predicates starting with '!' are deprecated. "
-                            "Simply use 'not' instead")
-                    pred = LogicalNot(parse(pred[1:]))
-                else:
-                    pred = parse(pred)
+                pred = parse(pred)
 
             new_predicates.add(pred)
 
         predicates = frozenset(new_predicates)
         del new_predicates
 
-        if depends_on is None:
-            depends_on = frozenset()
+        # {{{ process happens_after/depends_on
+
+        if happens_after is not None and depends_on is not None:
+            raise TypeError("may not pass both happens_after and depends_on")
+        elif depends_on is not None:
+            # FIXME Enable once we realistically check detailed dependencies.
+            # warn("depends_on is deprecated and will stop working in 2026. "
+            #      "Pass happens_after instead.", DeprecationWarning, stacklevel=2)
+            happens_after = depends_on
+
+        del depends_on
+
+        if depends_on_is_final and happens_after is None:
+            raise LoopyError("Setting depends_on_is_final to True requires "
+                    "actually specifying happens_after/depends_on")
+
+        if isinstance(happens_after, immutabledict):
+            pass
+        elif happens_after is None:
+            happens_after = immutabledict()
+        elif isinstance(happens_after, str):
+            warn("Passing a string for happens_after/depends_on is deprecated and "
+                 "will stop working in 2025. Instead, pass a full-fledged "
+                 "happens_after data structure.", DeprecationWarning, stacklevel=2)
+
+            happens_after = immutabledict({
+                    after_id.strip(): HappensAfter(
+                        variable_name=None,
+                        instances_rel=None)
+                    for after_id in happens_after.split(",")
+                    if after_id.strip()})
+        elif isinstance(happens_after, frozenset):
+            happens_after = immutabledict({
+                    after_id: HappensAfter(
+                        variable_name=None,
+                        instances_rel=None)
+                    for after_id in happens_after})
+        elif isinstance(happens_after, dict):
+            happens_after = immutabledict(happens_after)
+        else:
+            raise TypeError("'happens_after' has unexpected type: "
+                            f"{type(happens_after)}")
+
+        # }}}
 
         if groups is None:
             groups = frozenset()
@@ -260,16 +362,12 @@ class InstructionBase(ImmutableRecord, Taggable):
         if within_inames_is_final is None:
             within_inames_is_final = False
 
-        if isinstance(depends_on, str):
-            depends_on = frozenset(
-                    s.strip() for s in depends_on.split(",") if s.strip())
-
         if depends_on_is_final is None:
             depends_on_is_final = False
 
-        if depends_on_is_final and not isinstance(depends_on, frozenset):
+        if depends_on_is_final and not isinstance(happens_after, MappingABC):
             raise LoopyError("Setting depends_on_is_final to True requires "
-                    "actually specifying depends_on")
+                    "actually specifying happens_after/depends_on")
 
         if tags is None:
             tags = frozenset()
@@ -277,7 +375,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         if priority is None:
             priority = 0
 
-        if not isinstance(tags, frozenset):
+        if not isinstance(tags, abc_Set):
             # was previously allowed to be tuple
             tags = frozenset(tags)
 
@@ -292,14 +390,17 @@ class InstructionBase(ImmutableRecord, Taggable):
         # assert all(is_interned(iname) for iname in within_inames)
         # assert all(is_interned(pred) for pred in predicates)
 
-        assert isinstance(within_inames, frozenset)
-        assert isinstance(depends_on, frozenset) or depends_on is None
-        assert isinstance(groups, frozenset)
-        assert isinstance(conflicts_with_groups, frozenset)
+        assert isinstance(within_inames, abc_Set)
+        assert isinstance(happens_after, MappingABC) or happens_after is None
+        assert isinstance(groups, abc_Set)
+        assert isinstance(conflicts_with_groups, abc_Set)
+
+        from loopy.tools import is_hashable
+        assert is_hashable(happens_after)
 
         ImmutableRecord.__init__(self,
                 id=id,
-                depends_on=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
@@ -312,7 +413,21 @@ class InstructionBase(ImmutableRecord, Taggable):
                 # The Taggable constructor call does extra validation.
                 tags=tags)
 
-        Taggable.__init__(self, tags)
+    def get_copy_kwargs(self, **kwargs):
+        passed_depends_on = "depends_on" in kwargs
+
+        if passed_depends_on:
+            assert "happens_after" not in kwargs
+
+        kwargs = super().get_copy_kwargs(**kwargs)
+
+        if passed_depends_on:
+            # FIXME Enable once we realistically check detailed dependencies.
+            # warn("depends_on is deprecated and will stop working in 2026. "
+            #      "Instead, use happens_after.", DeprecationWarning, stacklevel=2)
+            del kwargs["happens_after"]
+
+        return kwargs
 
     # {{{ abstract interface
 
@@ -354,6 +469,13 @@ class InstructionBase(ImmutableRecord, Taggable):
         raise NotImplementedError
 
     # }}}
+
+    @property
+    def depends_on(self):
+        # FIXME Enable once we realistically check detailed dependencies.
+        # warn("depends_on is deprecated and will stop working in 2026. "
+        #      "Use happens_after instead.", DeprecationWarning, stacklevel=2)
+        return frozenset(self.happens_after)
 
     @property
     def assignee_name(self):
@@ -459,22 +581,30 @@ class InstructionBase(ImmutableRecord, Taggable):
     def __setstate__(self, val):
         super().__setstate__(val)
 
+        from immutabledict import immutabledict
+
         from loopy.tools import intern_frozenset_of_ids
 
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
-        self.depends_on = intern_frozenset_of_ids(self.depends_on)
+        self.happens_after = immutabledict({
+                intern(after_id): ha
+                for after_id, ha in self.happens_after.items()})
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
         self.within_inames = (
                 intern_frozenset_of_ids(self.within_inames))
 
+    def _with_new_tags(self, tags: FrozenSet[Tag]):
+        return self.copy(tags=tags)
+
 # }}}
 
 
 def _get_assignee_var_name(expr):
-    from pymbolic.primitives import Variable, Subscript, Lookup
+    from pymbolic.primitives import Lookup, Subscript, Variable
+
     from loopy.symbolic import LinearSubscript, SubArrayRef
 
     if isinstance(expr, Lookup):
@@ -506,8 +636,9 @@ def _get_assignee_var_name(expr):
 
 
 def _get_assignee_subscript_deps(expr):
-    from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript, get_dependencies, SubArrayRef
+    from pymbolic.primitives import Lookup, Subscript, Variable
+
+    from loopy.symbolic import LinearSubscript, SubArrayRef, get_dependencies
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -605,7 +736,7 @@ class VarAtomicity:
         key_builder.rec(key_hash, self.var_name)
 
     def __eq__(self, other):
-        return (type(self) == type(other)
+        return (type(self) is type(other)
                 and self.var_name == other.var_name)
 
     def __ne__(self, other):
@@ -795,30 +926,44 @@ class Assignment(MultiAssignmentBase):
     .. automethod:: __init__
     """
 
+    assignee: ExpressionT
+    expression: ExpressionT
+    temp_var_type: LoopyOptional
+    atomicity: Tuple[VarAtomicity, ...]
+
     fields = MultiAssignmentBase.fields | \
             set("assignee temp_var_type atomicity".split())
     pymbolic_fields = MultiAssignmentBase.pymbolic_fields | {"assignee"}
 
     def __init__(self,
-            assignee, expression,
-            id=None,
-            depends_on=None,
-            depends_on_is_final=None,
-            groups=None,
-            conflicts_with_groups=None,
-            no_sync_with=None,
-            within_inames_is_final=None,
-            within_inames=None,
-            tags=None,
-            temp_var_type=_not_provided, atomicity=(),
-            priority=0, predicates=frozenset()):
+                 assignee: Union[str, ExpressionT],
+                 expression: Union[str, ExpressionT],
+                 id: Optional[str] = None,
+                 happens_after: Union[
+                     Mapping[str, HappensAfter], FrozenSet[str], str, None] = None,
+                 depends_on_is_final: Optional[bool] = None,
+                 groups: Optional[FrozenSet[str]] = None,
+                 conflicts_with_groups: Optional[FrozenSet[str]] = None,
+                 no_sync_with: Optional[FrozenSet[Tuple[str, str]]] = None,
+                 within_inames_is_final: Optional[bool] = None,
+                 within_inames: Optional[FrozenSet[str]] = None,
+                 priority: Optional[int] = None,
+                 predicates: Optional[FrozenSet[str]] = None,
+                 tags: Optional[FrozenSet[Tag]] = None,
+                 temp_var_type: Union[
+                     Type[_not_provided], None, LoopyOptional,
+                     LoopyType] = _not_provided,
+                 atomicity: Tuple[VarAtomicity, ...] = (),
+                 *,
+                 depends_on: Union[FrozenSet[str], str, None] = None,
+                 ) -> None:
 
         if temp_var_type is _not_provided:
-            temp_var_type = Optional()
+            temp_var_type = LoopyOptional()
 
         super().__init__(
                 id=id,
-                depends_on=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -827,7 +972,8 @@ class Assignment(MultiAssignmentBase):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags)
+                tags=tags,
+                depends_on=depends_on)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -835,7 +981,8 @@ class Assignment(MultiAssignmentBase):
         if isinstance(expression, str):
             expression = parse(expression)
 
-        from pymbolic.primitives import Variable, Subscript, Lookup
+        from pymbolic.primitives import Lookup, Subscript, Variable
+
         from loopy.symbolic import LinearSubscript
         if not isinstance(assignee, (Variable, Subscript, LinearSubscript, Lookup)):
             raise LoopyError("invalid lvalue '%s'" % assignee)
@@ -938,7 +1085,7 @@ class CallInstruction(MultiAssignmentBase):
 
         A tuple of `:class:loopy.Optional`. If an entry is not empty, it
         contains the type that will be assigned to the new temporary variable
-        created from the assigment.
+        created from the assignment.
 
     .. automethod:: __init__
     """
@@ -950,7 +1097,7 @@ class CallInstruction(MultiAssignmentBase):
     def __init__(self,
             assignees, expression,
             id=None,
-            depends_on=None,
+            happens_after=None,
             depends_on_is_final=None,
             groups=None,
             conflicts_with_groups=None,
@@ -959,11 +1106,12 @@ class CallInstruction(MultiAssignmentBase):
             within_inames=None,
             tags=None,
             temp_var_types=None,
-            priority=0, predicates=frozenset()):
+            priority=0, predicates=frozenset(),
+            depends_on=None):
 
         super().__init__(
                 id=id,
-                depends_on=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -972,9 +1120,11 @@ class CallInstruction(MultiAssignmentBase):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags)
+                tags=tags,
+                depends_on=depends_on)
 
         from pymbolic.primitives import Call
+
         from loopy.symbolic import Reduction
         if not isinstance(expression, (Call, Reduction)) and (
                 expression is not None):
@@ -992,7 +1142,8 @@ class CallInstruction(MultiAssignmentBase):
         if isinstance(expression, str):
             expression = parse(expression)
 
-        from pymbolic.primitives import Variable, Subscript
+        from pymbolic.primitives import Subscript, Variable
+
         from loopy.symbolic import LinearSubscript, SubArrayRef
         for assignee in assignees:
             if not isinstance(assignee, (Variable, Subscript, LinearSubscript,
@@ -1003,7 +1154,7 @@ class CallInstruction(MultiAssignmentBase):
         self.expression = expression
 
         if temp_var_types is None:
-            self.temp_var_types = (Optional(),) * len(self.assignees)
+            self.temp_var_types = (LoopyOptional(),) * len(self.assignees)
         else:
             self.temp_var_types = tuple(
                     _check_and_fix_temp_var_type(tvt, stacklevel=3)
@@ -1062,7 +1213,8 @@ class CallInstruction(MultiAssignmentBase):
             result += " {%s}" % (": ".join(options))
 
         if self.predicates:
-            result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
+            result += "\n" + 10*" " + "if (%s)" % " && ".join(
+                    str(pred) for pred in self.predicates)
         return result
 
     def arg_id_to_arg(self):
@@ -1090,7 +1242,7 @@ def subscript_contains_slice(subscript):
     """Return *True* if the *subscript* contains an instance of
     :class:`pymbolic.primitives.Slice` as of its indices.
     """
-    from pymbolic.primitives import Subscript, Slice
+    from pymbolic.primitives import Slice, Subscript
     assert isinstance(subscript, Subscript)
     return any(isinstance(index, Slice) for index in subscript.index_tuple)
 
@@ -1100,10 +1252,11 @@ def is_array_call(assignees, expression):
     Returns *True* is the instruction is an array call.
 
     An array call is a function call applied to array type objects. If any of
-    the arguemnts or assignees to the function is an array,
+    the arguments or assignees to the function is an array,
     :meth:`is_array_call` will return *True*.
     """
     from pymbolic.primitives import Call, Subscript
+
     from loopy.symbolic import SubArrayRef
 
     if not isinstance(expression, Call):
@@ -1125,6 +1278,7 @@ def modify_assignee_for_array_call(assignee):
     Converts the assignee subscript or variable as a SubArrayRef.
     """
     from pymbolic.primitives import Subscript, Variable
+
     from loopy.symbolic import SubArrayRef
     if isinstance(assignee, SubArrayRef):
         return assignee
@@ -1142,10 +1296,16 @@ def modify_assignee_for_array_call(assignee):
                 "SubArrayRef as its inputs")
 
 
-def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
+def make_assignment(assignees: tuple[ExpressionT, ...],
+                    expression: ExpressionT,
+                    temp_var_types: (
+                        Sequence[LoopyType | None] | None) = None,
+                    **kwargs: Any) -> Assignment | CallInstruction:
 
-    if temp_var_types is None:
-        temp_var_types = (Optional(),) * len(assignees)
+    if temp_var_types is not None:
+        tv_types: Sequence[LoopyType | LoopyOptional | None] = temp_var_types
+    else:
+        tv_types = (LoopyOptional(),) * len(assignees)
 
     if len(assignees) != 1 or is_array_call(assignees, expression):
         atomicity = kwargs.pop("atomicity", ())
@@ -1154,6 +1314,7 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
                     "left-hand side not supported")
 
         from pymbolic.primitives import Call
+
         from loopy.symbolic import Reduction
         if not isinstance(expression, (Call, Reduction)):
             raise LoopyError("right-hand side in multiple assignment must be "
@@ -1174,12 +1335,13 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
                     assignees=tuple(modify_assignee_for_array_call(
                         assignee) for assignee in assignees),
                     expression=expression,
-                    temp_var_types=temp_var_types,
+                    temp_var_types=tuple(tv_types),
                     **kwargs)
     else:
         def _is_array(expr):
+            from pymbolic.primitives import Slice, Subscript
+
             from loopy.symbolic import SubArrayRef
-            from pymbolic.primitives import (Subscript, Slice)
             if isinstance(expr, SubArrayRef):
                 return True
             if isinstance(expr, Subscript):
@@ -1193,10 +1355,13 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
             raise LoopyError("Array calls only supported as instructions"
                     " with function call as RHS for now.")
 
+        assignee, = assignees
+        tv_type, = tv_types
+
         return Assignment(
-                assignee=assignees[0],
+                assignee=assignee,
                 expression=expression,
-                temp_var_type=temp_var_types[0],
+                temp_var_type=tv_type,
                 **kwargs)
 
 
@@ -1244,13 +1409,14 @@ class CInstruction(InstructionBase):
 
     def __init__(self,
             iname_exprs, code,
-            read_variables=frozenset(), assignees=tuple(),
-            id=None, depends_on=None, depends_on_is_final=None,
+            read_variables=frozenset(), assignees=(),
+            id=None, happens_after=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=0,
-            predicates=frozenset(), tags=None):
+            predicates=frozenset(), tags=None,
+            depends_on=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -1263,13 +1429,14 @@ class CInstruction(InstructionBase):
 
         InstructionBase.__init__(self,
                 id=id,
-                depends_on=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                priority=priority, predicates=predicates, tags=tags)
+                priority=priority, predicates=predicates, tags=tags,
+                depends_on=depends_on)
 
         # {{{ normalize iname_exprs
 
@@ -1413,15 +1580,15 @@ class NoOpInstruction(_DataObliviousInstruction):
         ... nop
     """
 
-    def __init__(self, id=None, depends_on=None, depends_on_is_final=None,
+    def __init__(self, id=None, happens_after=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
-            predicates=None, tags=None):
+            predicates=None, tags=None, depends_on=None):
         super().__init__(
                 id=id,
-                depends_on=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -1430,7 +1597,8 @@ class NoOpInstruction(_DataObliviousInstruction):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags)
+                tags=tags,
+                depends_on=depends_on)
 
     def __str__(self):
         first_line = "%s: ... nop" % self.id
@@ -1457,7 +1625,7 @@ class BarrierInstruction(_DataObliviousInstruction):
     .. attribute:: mem_kind
 
         A string, ``"global"`` or ``"local"``. Chooses which memory type to
-        sychronize, for targets that require this (e.g. OpenCL)
+        synchronize, for targets that require this (e.g. OpenCL)
 
     The textual syntax in a :mod:`loopy` kernel is::
 
@@ -1472,20 +1640,21 @@ class BarrierInstruction(_DataObliviousInstruction):
     fields = _DataObliviousInstruction.fields | {"synchronization_kind",
                                                      "mem_kind"}
 
-    def __init__(self, id, depends_on=None, depends_on_is_final=None,
+    def __init__(self, id, happens_after=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
             predicates=None, tags=None, synchronization_kind="global",
-            mem_kind="local"):
+            mem_kind="local",
+            depends_on=None):
 
         if predicates:
             raise LoopyError("conditional barriers are not supported")
 
         super().__init__(
                 id=id,
-                depends_on=depends_on,
+                happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
@@ -1494,8 +1663,8 @@ class BarrierInstruction(_DataObliviousInstruction):
                 within_inames=within_inames,
                 priority=priority,
                 predicates=predicates,
-                tags=tags
-                )
+                tags=tags,
+                depends_on=depends_on)
 
         self.synchronization_kind = synchronization_kind
         self.mem_kind = mem_kind

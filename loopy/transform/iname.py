@@ -21,18 +21,21 @@ THE SOFTWARE.
 """
 
 
+from typing import Any, FrozenSet, Optional
+
 import islpy as isl
 from islpy import dim_type
 
-from loopy.symbolic import (
-        RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
-        SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
-
-from loopy.translation_unit import (TranslationUnit,
-                                    for_each_kernel)
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
+from loopy.kernel.instruction import InstructionBase
+from loopy.symbolic import (
+    RuleAwareIdentityMapper,
+    RuleAwareSubstitutionMapper,
+    SubstitutionRuleMappingContext,
+)
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 __doc__ = """
@@ -403,8 +406,9 @@ def chunk_iname(kernel, split_iname, num_chunks,
     chunk_diff = chunk_ceil - chunk_floor
     chunk_mod = size.mod_val(num_chunks)
 
-    from loopy.symbolic import pw_aff_to_expr
     from pymbolic.primitives import Min
+
+    from loopy.symbolic import pw_aff_to_expr
 
     def make_new_loop_index(inner, outer):
         # These two expressions are equivalent. Benchmarking between the
@@ -569,8 +573,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
         bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
-        from loopy.isl_helpers import (
-                static_max_of_pw_aff, static_value_of_pw_aff)
+        from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
 
         length = int(pw_aff_to_expr(
@@ -581,7 +584,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
                     bounds.lower_bound_pw_aff.coalesce(),
                     constants_only=False)
         except Exception as e:
-            raise type(e)("while finding lower bound of '%s': " % iname)
+            raise type(e)("while finding lower bound of '%s': " % iname) from e
 
         my_val = var(new_iname) // base_divisor
         if i+1 < len(inames):
@@ -917,9 +920,13 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
             old_to_new=dict(list(zip(inames, new_inames))),
             within=within)
 
-    def _does_access_old_inames(kernel, insn, *args):
-        return bool(frozenset(inames) & (insn.dependency_names()
-                                         | insn.reduction_inames()))
+    def _does_access_old_inames(kernel: LoopKernel,
+                                insn: InstructionBase,
+                                *args: Any) -> bool:
+        all_inames = (insn.within_inames
+                      | insn.reduction_inames()
+                      | insn.sub_array_ref_inames())
+        return bool(frozenset(inames) & all_inames)
 
     kernel = rule_mapping_context.finish_kernel(
             indup.map_kernel(kernel, within=_does_access_old_inames,
@@ -1141,7 +1148,7 @@ def remove_unused_inames(kernel, inames=None):
     # {{{ remove them
 
     domains = kernel.domains
-    for iname in unused_inames:
+    for iname in sorted(unused_inames):
         new_domains = []
 
         for dom in domains:
@@ -1381,6 +1388,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     var_name_gen = kernel.get_var_name_generator()
 
     from pymbolic.mapper.substitutor import make_subst_func
+
     from loopy.match import parse_stack_match
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -1537,7 +1545,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
                 break
 
         if not found:
-            raise LoopyError("invlaid tag kind: %s" % kind)
+            raise LoopyError("invalid tag kind: %s" % kind)
 
     from loopy.match import parse_match
     match = parse_match(insn_match)
@@ -1625,10 +1633,9 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
                 self.old_to_new.append((iname, new_iname))
                 new_inames.append(new_iname)
 
-            from loopy.symbolic import SubstitutionMapper
             from pymbolic.mapper.substitutor import make_subst_func
 
-            from loopy.symbolic import Reduction
+            from loopy.symbolic import Reduction, SubstitutionMapper
             return Reduction(expr.operation, tuple(new_inames),
                     self.rec(
                         SubstitutionMapper(make_subst_func(subst_dict))(
@@ -1707,8 +1714,7 @@ def add_inames_to_insn(kernel, inames, insn_match):
     :arg insn_match: An instruction match as understood by
         :func:`loopy.match.parse_match`.
 
-    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
-        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
+    :returns: a :class:`LoopKernel` with the *inames* added to
         the instructions matched by *insn_match*.
 
     .. versionadded:: 2016.3
@@ -1729,6 +1735,91 @@ def add_inames_to_insn(kernel, inames, insn_match):
         if match(kernel, insn):
             new_instructions.append(
                     insn.copy(within_inames=insn.within_inames | inames))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
+# }}}
+
+
+# {{{ remove_inames_from_insn
+
+@for_each_kernel
+def remove_inames_from_insn(kernel: LoopKernel, inames: FrozenSet[str],
+        insn_match) -> LoopKernel:
+    """
+    :arg inames: a frozenset of inames that will be added to the
+        instructions matched by *insn_match*.
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *inames* removed from
+        the instructions matched by *insn_match*.
+
+    This transformation is useful when an iname is added to an
+    instruction in a sub-kernel by an inlining call because the
+    kernel invocation itself has the iname. When the instruction
+    does not depend on the iname, this transformation can be used
+    for removing that iname.
+
+    .. versionadded:: 2023.0
+    """
+
+    if not isinstance(inames, frozenset):
+        raise TypeError("'inames' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if match(kernel, insn):
+            new_inames = insn.within_inames - inames
+            if new_inames == insn.within_inames:
+                raise LoopyError(f"Inames {inames} not found in instruction "
+                    f"{insn.id}")
+            new_instructions.append(
+                    insn.copy(within_inames=new_inames))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
+
+@for_each_kernel
+def remove_predicates_from_insn(kernel, predicates, insn_match):
+    """
+    :arg predicates: a frozenset of predicates that will be added to the
+        instructions matched by *insn_match*
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *predicates* removed from
+        the instructions matched by *insn_match*.
+
+    This transformation is useful when a predicate is added to an
+    instruction in a sub-kernel by an inlining call because the
+    kernel invocation itself has the iname. When the instruction
+    does not depend on the predicate, this transformation can be used
+    for removing that predicate.
+
+    .. versionadded:: 2023.0
+    """
+    if not isinstance(predicates, frozenset):
+        raise TypeError("'predicates' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if match(kernel, insn):
+            new_predicates = insn.predicates - predicates
+            new_instructions.append(
+                insn.copy(predicates=frozenset(new_predicates)))
         else:
             new_instructions.append(insn)
 
@@ -1876,8 +1967,7 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
     # dependency maps, which may contain variable names consisting of an iname
     # suffixed with a single apostrophe.)
 
-    from loopy.isl_helpers import (
-        add_and_name_dims, add_eq_constraint_from_names)
+    from loopy.isl_helpers import add_and_name_dims, add_eq_constraint_from_names
 
     # {{{ Find any missing vars and add them to the input and output space
 
@@ -1985,8 +2075,9 @@ def map_domain(kernel, transform_map):
     var_substitutions = {}
     applied_iname_rewrites = kernel.applied_iname_rewrites
 
-    from loopy.symbolic import aff_to_expr
     from pymbolic import var
+
+    from loopy.symbolic import aff_to_expr
     for iname in transform_map_in_dims:
         subst_from_map = aff_to_expr(
             _find_aff_subst_from_map(iname, transform_map))
@@ -2179,14 +2270,13 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     Current limitations:
 
     * Only one iname in the kernel may be tagged with each of the unused hw axes.
-    * Occurence of an ``l.auto`` tag when an instruction is missing one of the
+    * Occurrence of an ``l.auto`` tag when an instruction is missing one of the
       local hw axes.
 
     :arg within: An instruction match as understood by
         :func:`loopy.match.parse_match`.
     """
-    from loopy.kernel.data import (LocalInameTag, GroupInameTag,
-            AutoFitLocalInameTag)
+    from loopy.kernel.data import AutoFitLocalInameTag, GroupInameTag, LocalInameTag
 
     n_local_axes = max([tag.axis
         for iname in kernel.inames.values()
@@ -2200,9 +2290,9 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
         if isinstance(tag, GroupInameTag)],
         default=-1) + 1
 
-    contains_auto_local_tag = any([isinstance(tag, AutoFitLocalInameTag)
+    contains_auto_local_tag = any(isinstance(tag, AutoFitLocalInameTag)
         for iname in kernel.inames.values()
-        for tag in iname.tags])
+        for tag in iname.tags)
 
     if contains_auto_local_tag:
         raise LoopyError("Kernels containing l.auto tags are invalid"
@@ -2283,7 +2373,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 @for_each_kernel
 @remove_any_newly_unused_inames
 def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
-                  within=None, raise_on_domain_mismatch: bool = __debug__):
+                  within=None, raise_on_domain_mismatch: Optional[bool] = None):
     r"""
     :arg old_inames: A collection of inames that must be renamed to **new_iname**.
     :arg within: a stack match as understood by
@@ -2310,6 +2400,9 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
            for insn in kernel.instructions):
         raise LoopyError("old_inames contains nested inames"
                          " -- renaming is illegal.")
+
+    if raise_on_domain_mismatch is None:
+        raise_on_domain_mismatch = __debug__
 
     # sort to have deterministic implementation.
     old_inames = sorted(old_inames)
@@ -2417,8 +2510,29 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
     return kernel
 
 
-def rename_iname(kernel, old_iname, new_iname, existing_ok=False, within=None):
-    return rename_inames(kernel, [old_iname], new_iname, existing_ok, within)
+@for_each_kernel
+def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
+                 within=None, preserve_tags=True,
+                 raise_on_domain_mismatch: Optional[bool] = None):
+    r"""
+    Single iname version of :func:`loopy.rename_inames`.
+    :arg existing_ok: execute even if *new_iname* already exists.
+    :arg within: a stack match understood by :func:`loopy.match.parse_stack_match`.
+    :arg preserve_tags: copy the tags on the old iname to the new iname.
+    :arg raise_on_domain_mismatch: If *True*, raises an error if
+    :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
+    \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
+    """
+    from itertools import product
+
+    from loopy import tag_inames
+
+    tags = kernel.inames[old_iname].tags
+    kernel = rename_inames(kernel, [old_iname], new_iname, existing_ok,
+                           within, raise_on_domain_mismatch)
+    if preserve_tags:
+        kernel = tag_inames(kernel, product([new_iname], tags))
+    return kernel
 
 # }}}
 

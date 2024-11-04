@@ -20,13 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-import loopy as lp
+import logging
 import sys
+
+import numpy as np
 import pytest
+
+import loopy as lp
 from loopy import CACHING_ENABLED
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -92,17 +95,17 @@ def test_c_target_strides_nonsquare():
     from loopy.target.c import ExecutableCTarget
 
     def __get_kernel(order="C"):
-        indicies = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
+        indices = ["i", "j", "k"]
+        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indicies, sizes):
+        for idx, size in zip(indices, sizes):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
         statement = "out[{indexed}] = 2 * a[{indexed}]".format(
-            indexed=", ".join(indicies))
+            indexed=", ".join(indices))
         return lp.make_kernel(
                 domains,
                 statement,
@@ -117,7 +120,7 @@ def test_c_target_strides_nonsquare():
     # test with C-order
     knl = __get_kernel("C")
     a_lp = next(x for x in knl["nonsquare_strides"].args if x.name == "a")
-    a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
+    a_np = np.reshape(np.arange(np.prod(a_lp.shape), dtype=np.float32),
                       a_lp.shape,
                       order="C")
 
@@ -127,7 +130,7 @@ def test_c_target_strides_nonsquare():
     # test with F-order
     knl = __get_kernel("F")
     a_lp = next(x for x in knl["nonsquare_strides"].args if x.name == "a")
-    a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
+    a_np = np.reshape(np.arange(np.prod(a_lp.shape), dtype=np.float32),
                       a_lp.shape,
                       order="F")
 
@@ -139,17 +142,17 @@ def test_c_optimizations():
     from loopy.target.c import ExecutableCTarget
 
     def __get_kernel(order="C"):
-        indicies = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
+        indices = ["i", "j", "k"]
+        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indicies, sizes):
+        for idx, size in zip(indices, sizes):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
         statement = "out[{indexed}] = 2 * a[{indexed}]".format(
-            indexed=", ".join(indicies))
+            indexed=", ".join(indices))
         return lp.make_kernel(
                 domains,
                 statement,
@@ -163,7 +166,7 @@ def test_c_optimizations():
     # test with ILP
     knl, sizes = __get_kernel("C")
     knl = lp.split_iname(knl, "i", 4, inner_tag="ilp")
-    a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
+    a_np = np.reshape(np.arange(np.prod(sizes), dtype=np.float32),
                       sizes,
                       order="C")
 
@@ -172,7 +175,7 @@ def test_c_optimizations():
     # test with unrolling
     knl, sizes = __get_kernel("C")
     knl = lp.split_iname(knl, "i", 4, inner_tag="unr")
-    a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
+    a_np = np.reshape(np.arange(np.prod(sizes), dtype=np.float32),
                       sizes,
                       order="C")
 
@@ -295,9 +298,10 @@ def test_c_execution_with_global_temporaries():
 
 
 def test_missing_compilers():
-    from loopy.target.c import ExecutableCTarget, CTarget
-    from loopy.target.c.c_execution import CCompiler
     from codepy.toolchain import GCCToolchain
+
+    from loopy.target.c import CTarget, ExecutableCTarget
+    from loopy.target.c.c_execution import CCompiler
 
     def __test(evalfunc, target, **targetargs):
         n = 10
@@ -334,11 +338,6 @@ def test_missing_compilers():
         os.environ["PATH"] = path_store
         # and, with the path restored we should now be able to properly execute with
         # the default (non-guessed) toolchain!
-        __test(eval_tester, ExecutableCTarget, compiler=ccomp)
-
-    # and test that we will fail if we remove a required attribute
-    del ccomp.toolchain.undefines
-    with pytest.raises(AttributeError):
         __test(eval_tester, ExecutableCTarget, compiler=ccomp)
 
     # next test that some made up compiler can be specified

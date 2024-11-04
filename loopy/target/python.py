@@ -23,18 +23,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, Sequence
+from typing import Optional, Sequence, Tuple
 
+import numpy as np
+
+from genpy import Collection, Generable, Suite
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
-from genpy import Generable, Suite, Collection
 
-from loopy.type_inference import TypeReader
-from loopy.kernel.data import ValueArg
-from loopy.diagnostic import LoopyError  # noqa
-from loopy.target import ASTBuilderBase
 from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError  # noqa
+from loopy.kernel.data import ValueArg
+from loopy.target import ASTBuilderBase
+from loopy.type_inference import TypeReader
 
 
 # {{{ expression to code
@@ -58,7 +60,10 @@ class ExpressionToPythonMapper(StringifyMapper):
     __call__ = rec
 
     def map_constant(self, expr, enclosing_prec):
-        return repr(expr)
+        if isinstance(expr, np.generic):
+            return repr(expr).replace("np.", "_lpy_np.")
+        else:
+            return repr(expr)
 
     def map_variable(self, expr, enclosing_prec):
         if expr.name in self.codegen_state.var_subst_map:
@@ -169,7 +174,7 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], None]:
+            ) -> Tuple[Sequence[Tuple[str, str]], Optional[Generable]]:
         return [], None
 
     def get_function_definition(self, codegen_state, codegen_result,
@@ -190,8 +195,8 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
 
         result = []
 
-        from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
+        from pymbolic.mapper.stringifier import PREC_NONE
 
         for tv in sorted(
                 kernel.temporary_variables.values(),
@@ -206,7 +211,7 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
                                 "_lpy_np."+(
                                     tv.dtype.numpy_dtype.name
                                     if tv.dtype.numpy_dtype.name != "bool"
-                                    else "bool8")
+                                    else "bool_")
                                 )))
 
         return result
@@ -226,11 +231,14 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         return Collection
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner):
+            lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
-        from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
+        from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
+
+        if hints:
+            raise ValueError("hints for python loops not supported")
 
         return For(
                 (iname,),
@@ -253,6 +261,10 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         from genpy import Comment
         return Comment(s)
 
+    def emit_noop_with_comment(self, s):
+        from cgen import Line
+        return Line(f"pass #{s}")
+
     @property
     def can_implement_conditionals(self):
         return True
@@ -267,8 +279,8 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         if insn.atomicity:
             raise NotImplementedError("atomic ops in Python")
 
-        from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
+        from pymbolic.mapper.stringifier import PREC_NONE
 
         return Assign(
                 ecm(insn.assignee, prec=PREC_NONE, type_context=None),

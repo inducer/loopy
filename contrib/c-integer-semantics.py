@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-from os import system
 import ctypes
+from os import system
+
 
 C_SRC = """
 #include <stdlib.h>
@@ -139,7 +140,7 @@ def main():
             if cresult != presult:
                 print(a, b, cresult, presult)
 
-    #print(int_mod(552, -918), 552 % -918)
+    # print(int_mod(552, -918), 552 % -918)
     print(cmod(23, -11), 23 % -11)
 
 

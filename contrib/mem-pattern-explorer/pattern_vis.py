@@ -1,5 +1,6 @@
 import numpy as np
 
+
 # Inspired by a visualization used in the Halide tutorial
 # https://www.youtube.com/watch?v=3uiEyEKji0M
 
@@ -9,8 +10,8 @@ def div_ceil(nr, dr):
 
 
 def product(iterable):
-    from operator import mul
     from functools import reduce
+    from operator import mul
     return reduce(mul, iterable, 1)
 
 
@@ -42,8 +43,8 @@ class ArrayAccessPatternContext:
         return div_ceil(product(self.lsize), self.subgroup_size)
 
     def animate(self, f, interval=200):
-        import matplotlib.pyplot as plt
         import matplotlib.animation as animation
+        import matplotlib.pyplot as plt
 
         fig = plt.figure()
 
@@ -75,7 +76,7 @@ class ArrayAccessPatternContext:
 class Array:
     def __init__(self, ctx, name, shape, strides, elements_per_row=None):
         # Each array element stores a tuple:
-        # (timestamp, subgroup, g0, g1, g2, ) of last acccess
+        # (timestamp, subgroup, g0, g1, g2, ) of last access
 
         assert len(shape) == len(strides)
 

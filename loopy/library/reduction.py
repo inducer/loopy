@@ -23,15 +23,16 @@ THE SOFTWARE.
 
 from typing import ClassVar, Tuple
 
-from pymbolic import var
 import numpy as np
 
-from loopy.symbolic import ResolvedFunction
-from loopy.kernel.function_interface import ScalarCallable
-from loopy.symbolic import FunctionIdentifier
+from pymbolic import var
+
 from loopy.diagnostic import LoopyError
-from loopy.types import NumpyType
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.symbolic import FunctionIdentifier, ResolvedFunction
 from loopy.tools import update_persistent_hash
+from loopy.types import NumpyType
+
 
 __doc__ = """
 .. currentmodule:: loopy.library.reduction
@@ -86,6 +87,9 @@ class ReductionOperation:
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def __repr__(self) -> str:
+        return type(self).__name__
+
     @staticmethod
     def parse_result_type(target, op_type):
         try:
@@ -118,7 +122,7 @@ class ScalarReductionOperation(ReductionOperation):
         return hash((type(self),))
 
     def __eq__(self, other):
-        return type(self) == type(other)
+        return type(self) is type(other)
 
     def __str__(self):
         result = type(self).__name__.replace("ReductionOperation", "").lower()
@@ -176,10 +180,10 @@ def get_le_neutral(dtype):
     if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.2, section 6.12.2
         if dtype.numpy_dtype.itemsize == 4:
-            #float
+            # float
             return var("INFINITY")
         elif dtype.numpy_dtype.itemsize == 8:
-            #double
+            # double
             return var("HUGE_VAL")
 
     elif dtype.numpy_dtype.kind == "i":
@@ -207,10 +211,10 @@ def get_ge_neutral(dtype):
     if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.2, section 6.12.2
         if dtype.numpy_dtype.itemsize == 4:
-            #float
+            # float
             return -var("INFINITY")
         elif dtype.numpy_dtype.itemsize == 8:
-            #double
+            # double
             return -var("HUGE_VAL")
     elif dtype.numpy_dtype.kind == "i":
         # OpenCL 1.1, section 6.11.3
@@ -359,7 +363,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return hash(type(self))
 
     def __eq__(self, other):
-        return type(self) == type(other) and (self.inner_reduction ==
+        return type(self) is type(other) and (self.inner_reduction ==
                 other.inner_reduction)
 
     def __call__(self, dtypes, operand1, operand2, callables_table, target):
@@ -461,7 +465,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         return hash(type(self))
 
     def __eq__(self, other):
-        return type(self) == type(other)
+        return type(self) is type(other)
 
     @property
     def arg_count(self):
@@ -550,7 +554,7 @@ def parse_reduction_op(name):
             from warnings import warn
             warn("Reductions with forced result types are no longer supported. "
                     f"Encountered '{name}', which might be one.",
-                    DeprecationWarning)
+                    DeprecationWarning, stacklevel=1)
             return None
 
     if name in _REDUCTION_OPS:

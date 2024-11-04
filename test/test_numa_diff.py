@@ -23,22 +23,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
-import loopy as lp
-import pyopencl as cl
-import sys
-import os
-
 import logging
+import os
+import sys
+
+import pytest
+
+import pyopencl as cl
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
-        ]
+    "cl",  # 'cl.create_some_context'
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
@@ -69,12 +73,14 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
     hsv_s = lp.tag_instructions(hsv_s, "sknl")
     hsv = lp.fuse_kernels([hsv_r, hsv_s], ["_r", "_s"])
-    #hsv = hsv_s
+    # hsv = hsv_s
     hsv = lp.add_nosync(hsv, "any", "writes:rhsQ", "writes:rhsQ", force=True)
 
     from gnuma_loopy_transforms import (
-          fix_euler_parameters,
-          set_q_storage_format, set_D_storage_format)
+        fix_euler_parameters,
+        set_D_storage_format,
+        set_q_storage_format,
+    )
 
     hsv = lp.fix_parameters(hsv, Nq=Nq)
     hsv = lp.prioritize_loops(hsv, "e,k,j,i")
@@ -89,7 +95,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         hsv = set_q_storage_format(hsv, name)
 
     hsv = set_D_storage_format(hsv)
-    #hsv = lp.add_prefetch(hsv, "volumeGeometricFactors")
+    # hsv = lp.add_prefetch(hsv, "volumeGeometricFactors")
 
     ref_hsv = hsv
 
@@ -235,6 +241,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         tap_hsv = hsv
 
     hsv = tap_hsv
+
+    hsv = lp.preprocess_kernel(hsv)
+    hsv = lp.allocate_temporaries_for_base_storage(hsv)
 
     hsv = lp.set_options(hsv,
             build_options=[

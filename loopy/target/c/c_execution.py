@@ -20,37 +20,52 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Callable, Any, Union, Tuple, Sequence, Optional
-import tempfile
-import os
 import ctypes
+import logging
+import os
+import tempfile
 from dataclasses import dataclass
-
-from immutables import Map
-from pytools import memoize_method
-from pytools.codegen import Indentation, CodeGenerator
-from pytools.prefork import ExecError
-from codepy.toolchain import guess_toolchain, ToolchainGuessError, GCCToolchain
-from codepy.jit import compile_from_string
+from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 import numpy as np
+from codepy.jit import compile_from_string
+from codepy.toolchain import GCCToolchain, ToolchainGuessError, guess_toolchain
+from immutables import Map
 
-from loopy.typing import ExpressionT
-from loopy.types import LoopyType
+from pytools import memoize_method
+from pytools.codegen import CodeGenerator, Indentation
+from pytools.prefork import ExecError
+
+from loopy.codegen.result import GeneratedProgram
 from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase
 from loopy.kernel.data import ArrayArg
 from loopy.schedule.tools import KernelArgInfo
-from loopy.codegen.result import GeneratedProgram
+from loopy.target.execution import (
+    ExecutionWrapperGeneratorBase,
+    ExecutorBase,
+    get_highlighted_code,
+)
 from loopy.translation_unit import TranslationUnit
-from loopy.target.execution import (KernelExecutorBase,
-                             ExecutionWrapperGeneratorBase, get_highlighted_code)
+from loopy.types import LoopyType
+from loopy.typing import ExpressionT
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 DEF_EVEN_DIV_FUNCTION = """
 def _lpy_even_div(a, b):
+    result, remdr = divmod(a, b)
+    if remdr != 0:
+        # FIXME: This error message is kind of crummy.
+        raise ValueError("expected even division")
+    return result
+
+
+def _lpy_even_div_none(a, b):
+    if a is None:
+        return None
+
     result, remdr = divmod(a, b)
     if remdr != 0:
         # FIXME: This error message is kind of crummy.
@@ -75,25 +90,25 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         if np.dtype(str(dtype)).isbuiltin:
             name = dtype.name
             if dtype.name == "bool":
-                name = "bool8"
+                name = "bool_"
             return f"_lpy_np.dtype(_lpy_np.{name})"
         raise Exception(f"dtype: {dtype} not recognized")
 
-    # {{{ handle non numpy arguements
+    # {{{ handle non numpy arguments
 
     def handle_non_numpy_arg(self, gen, arg):
         pass
 
     # }}}
 
-    # {{{ handle allocation of unspecified arguements
+    # {{{ handle allocation of unspecified arguments
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
             strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
             skip_arg_checks: bool) -> None:
         """
-        Handle allocation of non-specified arguements for C-execution
+        Handle allocation of non-specified arguments for C-execution
         """
         from pymbolic import var
 
@@ -131,14 +146,9 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         strides = get_strides(arg)
         order = "'C'" if (arg.shape == () or strides[-1] == 1) else "'F'"
 
-        gen("%(name)s = _lpy_np.empty(%(shape)s, "
-                "%(dtype)s, order=%(order)s)"
-                % dict(
-                    name=arg.name,
-                    shape=strify(sym_shape),
-                    dtype=self.python_dtype_str(
-                        gen, arg.dtype.numpy_dtype),
-                    order=order))
+        gen(f"{arg.name} = _lpy_np.empty({strify(sym_shape)}, "
+                f"{self.python_dtype_str(gen, arg.dtype.numpy_dtype)}, "
+                f"order={order})")
 
         expected_strides = tuple(
                 var("_lpy_expected_strides_%s" % i)
@@ -146,18 +156,15 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         gen("{} = {}.strides".format(strify(expected_strides), arg.name))
 
-        #check strides
+        # check strides
         if not skip_arg_checks:
             strides_check_expr = self.get_strides_check_expr(
                     [strify(s) for s in sym_shape],
                     [strify(s) for s in sym_strides],
                     [strify(s) for s in expected_strides])
-            gen("assert %(strides_check)s, "
-                    "'Strides of loopy created array %(name)s, "
-                    "do not match expected.'" %
-                    dict(strides_check=strides_check_expr,
-                         name=arg.name,
-                         strides=strify(sym_strides)))
+            gen(f"assert {strides_check_expr}, "
+                    f"'Strides of loopy created array {arg.name}, "
+                    "do not match expected.'")
             for i in range(num_axes):
                 gen("del _lpy_shape_%d" % i)
                 gen("del _lpy_strides_%d" % i)
@@ -174,7 +181,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def initialize_system_args(self, gen):
         """
-        Initializes possibly empty system arguements
+        Initializes possibly empty system arguments
         """
         pass
 
@@ -231,7 +238,7 @@ class CCompiler:
     The general strategy here is as follows:
 
     1.  A :class:`codepy.Toolchain` is guessed from distutils.
-        The user may override any flags obtained therein by passing in arguements
+        The user may override any flags obtained therein by passing in arguments
         to cc, cflags, etc.
 
     2.  The kernel source is built into and object first, then made into a shared
@@ -277,16 +284,17 @@ class CCompiler:
                 # default args
                 self.toolchain = GCCToolchain(
                     cc="gcc",
+                    ld="ld",
                     cflags="-std=c99 -O3 -fPIC".split(),
                     ldflags="-shared".split(),
                     libraries=[],
                     library_dirs=[],
                     defines=[],
                     undefines=[],
-                    source_suffix="c",
                     so_ext=".so",
                     o_ext=".o",
-                    include_dirs=[])
+                    include_dirs=[],
+                    features=set())
 
         if toolchain is None:
             # copy in all differing values
@@ -310,16 +318,19 @@ class CCompiler:
         return os.path.join(self.tempdir, name)
 
     def build(self, name, code, debug=False, wait_on_error=None,
-                     debug_recompile=True):
+              debug_recompile=True, extra_build_options: Sequence[str] = ()):
         """Compile code, build and load shared library."""
         logger.debug(code)
         c_fname = self._tempname("code." + self.source_suffix)
 
         # build object
         _, mod_name, ext_file, recompiled = \
-            compile_from_string(self.toolchain, name, code, c_fname,
-                                self.tempdir, debug, wait_on_error,
-                                debug_recompile, False)
+            compile_from_string(
+                self.toolchain.copy(
+                    cflags=self.toolchain.cflags+list(extra_build_options)),
+                name, code, c_fname,
+                self.tempdir, debug, wait_on_error,
+                debug_recompile, False)
 
         if recompiled:
             logger.debug(f"Kernel {name} compiled from source")
@@ -418,7 +429,8 @@ class CompiledCKernel:
         # get code and build
         self.code = dev_code
         self.comp = comp if comp is not None else CCompiler()
-        self.dll = self.comp.build(devprog.name, self.code)
+        self.dll = self.comp.build(devprog.name, self.code,
+                                   extra_build_options=kernel.options.build_options)
 
         # get the function declaration for interface with ctypes
         self._fn = getattr(self.dll, devprog.name)
@@ -451,9 +463,9 @@ class _KernelInfo:
     invoker: Callable[..., Any]
 
 
-# {{{ CKernelExecutor
+# {{{ CExecutor
 
-class CKernelExecutor(KernelExecutorBase):
+class CExecutor(ExecutorBase):
     """An object connecting a kernel to a :class:`CompiledKernel`
     for execution.
 
@@ -480,14 +492,9 @@ class CKernelExecutor(KernelExecutorBase):
         return CExecutionWrapperGenerator()
 
     @memoize_method
-    def translation_unit_info(
-            self, entrypoint: str,
+    def translation_unit_info(self,
             arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
-        # FIXME: Remove entrypoint argument
-        assert entrypoint == self.entrypoint
-
-        t_unit = self.get_typed_and_scheduled_translation_unit(
-                entrypoint, arg_to_dtype)
+        t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
         codegen_result = generate_code_v2(t_unit)
@@ -496,18 +503,18 @@ class CKernelExecutor(KernelExecutorBase):
         host_code = codegen_result.host_code()
         all_code = "\n".join([dev_code, "", host_code])
 
-        if t_unit[entrypoint].options.write_code:
+        if t_unit[self.entrypoint].options.write_code:
             output = all_code
-            if t_unit[entrypoint].options.allow_terminal_colors:
+            if t_unit[self.entrypoint].options.allow_terminal_colors:
                 output = get_highlighted_code(output)
 
-            if t_unit[entrypoint].options.write_code is True:
+            if t_unit[self.entrypoint].options.write_code is True:
                 print(output)
             else:
-                with open(t_unit[entrypoint].options.write_code, "w") as outf:
+                with open(t_unit[self.entrypoint].options.write_code, "w") as outf:
                     outf.write(output)
 
-        if t_unit[entrypoint].options.edit_code:
+        if t_unit[self.entrypoint].options.edit_code:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
             # update code from editor
@@ -516,18 +523,18 @@ class CKernelExecutor(KernelExecutorBase):
         c_kernels = []
 
         from loopy.schedule.tools import get_kernel_arg_info
-        kai = get_kernel_arg_info(t_unit[entrypoint])
+        kai = get_kernel_arg_info(t_unit[self.entrypoint])
         for dp in codegen_result.device_programs:
             c_kernels.append(CompiledCKernel(
-                t_unit[entrypoint], dp, kai.passed_names, all_code,
+                t_unit[self.entrypoint], dp, kai.passed_names, all_code,
                 self.compiler))
 
         return _KernelInfo(
                 t_unit=t_unit,
                 c_kernels=c_kernels,
-                invoker=self.get_invoker(t_unit, entrypoint, codegen_result))
+                invoker=self.get_invoker(t_unit, self.entrypoint, codegen_result))
 
-    def __call__(self, *args, entrypoint=None, **kwargs):
+    def __call__(self, *args, **kwargs):
         """
         :returns: ``(None, output)`` the output is a tuple of output arguments
             (arguments that are written as part of the kernel). The order is given
@@ -537,16 +544,13 @@ class CKernelExecutor(KernelExecutorBase):
             :class:`dict` instead, with keys of argument names and values
             of the returned arrays.
         """
-        assert entrypoint is not None
-
         if __debug__:
             self.check_for_required_array_arguments(kwargs.keys())
 
         if self.packing_controller is not None:
             kwargs = self.packing_controller(kwargs)
 
-        program_info = self.translation_unit_info(entrypoint,
-                self.arg_to_dtype(kwargs))
+        program_info = self.translation_unit_info(self.arg_to_dtype(kwargs))
 
         return program_info.invoker(
                 program_info.c_kernels, *args, **kwargs)

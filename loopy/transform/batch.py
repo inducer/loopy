@@ -21,10 +21,10 @@ THE SOFTWARE.
 """
 
 
-from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
-from loopy.kernel.data import ValueArg, ArrayArg
 import islpy as isl
 
+from loopy.kernel.data import ArrayArg, ValueArg
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 from loopy.translation_unit import for_each_kernel
 
 

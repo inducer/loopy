@@ -20,15 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
+import pytest
+
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
-import pytest
 
-import logging
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -38,15 +42,15 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
 
 from loopy.diagnostic import LoopyError
 
+
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # "cl.create_some_context"
-        ]
+    "cl",  # "cl.create_some_context"
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
@@ -86,7 +90,7 @@ def test_convolution(ctx_factory):
     ref_knl = knl
 
     def variant_0(knl):
-        #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        # knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
         knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
         return knl
 
@@ -108,8 +112,8 @@ def test_convolution(ctx_factory):
         return knl
 
     for variant in [
-            #variant_0,
-            #variant_1,
+            # variant_0,
+            # variant_1,
             variant_2
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
@@ -157,7 +161,7 @@ def test_convolution_with_nonzero_base(ctx_factory):
     f_w = 3
 
     def variant_0(knl):
-        #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        # knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
         knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
         return knl
 
@@ -320,7 +324,7 @@ def test_rob_stroud_bernstein_full():
 def test_stencil(ctx_factory):
     ctx = ctx_factory()
 
-    # n=32 causes corner case behavior in size calculations for temprorary (a
+    # n=32 causes corner case behavior in size calculations for temporary (a
     # non-unifiable, two-constant-segments PwAff as the base index)
 
     n = 256
@@ -357,7 +361,7 @@ def test_stencil(ctx_factory):
         return knl
 
     for variant in [
-            #variant_1,
+            # variant_1,
             variant_2,
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
@@ -492,7 +496,7 @@ def test_lbm(ctx_factory):
                 f_new[i, j, 11] =  + 0.25*m[8] - 0.125*m[10] - 0.25*m[11]
            end
         end
-        """)
+        """)  # noqa: E501
 
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
 
@@ -513,7 +517,7 @@ def test_fd_demo():
         "result[i+1,j+1] = u[i + 1, j + 1]**2 + -1 + (-4)*u[i + 1, j + 1] \
                 + u[i + 1 + 1, j + 1] + u[i + 1 + -1, j + 1] \
                 + u[i + 1, j + 1 + 1] + u[i + 1, j + 1 + -1]")
-    #assumptions="n mod 16=0")
+    # assumptions="n mod 16=0")
     knl = lp.split_iname(knl,
             "i", 16, outer_tag="g.1", inner_tag="l.1")
     knl = lp.split_iname(knl,
@@ -523,8 +527,8 @@ def test_fd_demo():
             fetch_bounding_box=True,
             default_tag="l.auto")
 
-    #n = 1000
-    #u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
+    # n = 1000
+    # u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
 
     knl = lp.set_options(knl, write_code=True)
     knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
@@ -604,7 +608,7 @@ def test_poisson_fem(ctx_factory):
             ))
 
     for variant in [
-            #variant_1,
+            # variant_1,
             variant_2
             ]:
         knl = variant(knl)
@@ -715,6 +719,34 @@ def test_abs_as_index():
             ...
             ])
     print(lp.generate_code_v2(knl).device_code())
+
+
+def test_sumpy_p2p_reduced():
+    knl = lp.make_kernel(
+        [
+            "{[itgt_box]: 0<=itgt_box<5 }",
+            "{[isrc_box]: 0<=isrc_box<isrc_box_end }",
+            "{[inner]: 0 <=inner<=31 }",
+            "{[itgt_offset_outer]: itgt_offset_outer=0 }",
+            "{[isrc_prefetch_inner]: isrc_prefetch_inner=0 and 0<=inner<=25 }",
+        ],
+        """
+        <> isrc_box_end = source_box_starts[itgt_box + 1] {inames=inner:itgt_box}
+        <> itgt_offset = inner {inames=inner:itgt_box}
+        <> isrc_prefetch = isrc_prefetch_inner*32 + inner \
+            {inames=isrc_prefetch_inner:inner:isrc_box:itgt_box}
+        """,
+        [
+            lp.GlobalArg("box_target_starts", dtype=np.int32),
+            lp.GlobalArg("box_target_counts_nonchild", dtype=np.int32),
+            lp.GlobalArg("box_source_starts", dtype=np.int32),
+            lp.GlobalArg("box_source_counts_nonchild", dtype=np.int32),
+            lp.GlobalArg("source_box_starts", dtype=np.int32),
+            lp.GlobalArg("source_box_lists", dtype=np.int32),
+        ],
+        silenced_warnings="unused_inames",
+    )
+    lp.generate_code_v2(knl).device_code()
 
 
 if __name__ == "__main__":

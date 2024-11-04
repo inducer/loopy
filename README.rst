@@ -4,12 +4,15 @@ Loopy: Transformation-Based Generation of High-Performance CPU/GPU Code
 .. image:: https://gitlab.tiker.net/inducer/loopy/badges/main/pipeline.svg
     :alt: Gitlab Build Status
     :target: https://gitlab.tiker.net/inducer/loopy/commits/main
-.. image:: https://github.com/inducer/loopy/workflows/CI/badge.svg?branch=main&event=push
+.. image:: https://github.com/inducer/loopy/workflows/CI/badge.svg?branch=main
     :alt: Github Build Status
-    :target: https://github.com/inducer/loopy/actions?query=branch%3Amain+workflow%3ACI+event%3Apush
+    :target: https://github.com/inducer/loopy/actions?query=branch%3Amain+workflow%3ACI
 .. image:: https://badge.fury.io/py/loopy.png
     :alt: Python Package Index Release Page
     :target: https://pypi.org/project/loopy/
+.. image:: https://zenodo.org/badge/20281732.svg
+    :alt: Zenodo DOI for latest release
+    :target: https://zenodo.org/doi/10.5281/zenodo.10672274
 
 Loopy lets you easily generate the tedious, complicated code that is necessary
 to get good performance out of GPUs and multi-core CPUs.

@@ -20,19 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import sys
+
 import numpy as np
+import pytest
+
 import pyopencl as cl
 import pyopencl.clrandom  # noqa: F401
-import loopy as lp
-import pytest
-import sys
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 from pytools import ImmutableRecord
 
-
-from pyopencl.tools import (  # noqa: F401
-        pytest_generate_tests_for_pyopencl
-        as pytest_generate_tests)
-
+import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
@@ -657,9 +657,9 @@ def test_inlining_with_callee_domain_param(ctx_factory):
 
 
 def test_double_resolving():
-    from loopy.translation_unit import resolve_callables
     from loopy.kernel import KernelState
     from loopy.symbolic import ResolvedFunction
+    from loopy.translation_unit import resolve_callables
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<10}",
@@ -737,8 +737,7 @@ def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
 
 
 def test_symbol_mangler_in_call(ctx_factory):
-    from library_for_test import (symbol_x,
-                                  preamble_for_x)
+    from library_for_test import preamble_for_x, symbol_x
     ctx = cl.create_some_context()
     cq = cl.CommandQueue(ctx)
 
@@ -760,6 +759,7 @@ def test_symbol_mangler_in_call(ctx_factory):
 @pytest.mark.parametrize("which", ["max", "min"])
 def test_int_max_min_c_target(ctx_factory, which):
     from numpy.random import default_rng
+
     from pymbolic import parse
     rng = default_rng()
 
@@ -935,6 +935,7 @@ def test_non1_step_slices(ctx_factory, start, inline):
 
 def test_check_bounds_with_caller_assumptions(ctx_factory):
     import islpy as isl
+
     from loopy.diagnostic import LoopyIndexError
 
     arange = lp.make_function(
@@ -1396,12 +1397,122 @@ def test_inline_deps(ctx_factory):
     prg = lp.merge([parent_knl, child_knl])
     inlined = lp.inline_callable_kernel(prg, "func")
 
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    apply_single_writer_depencency_heuristic(inlined, error_if_used=True)
+    from loopy.kernel.creation import apply_single_writer_dependency_heuristic
+    apply_single_writer_dependency_heuristic(inlined, error_if_used=True)
 
     _evt, (a_dev,) = inlined(cq)
 
     assert np.array_equal(a_dev.get(), np.arange(4))
+
+
+def test_inline_stride():
+    # https://github.com/inducer/loopy/issues/728
+    child_knl = lp.make_function(
+            [],
+            """
+            g[0] = 2*e[0] + 3*f[0] {id=a}
+            g[1] = 2*e[1] + 3*f[1] {dep=a}
+            """, name="linear_combo")
+    parent_knl = lp.make_kernel(
+            ["{[j]:0<=j<n}", "{[i]:0<=i<n}"],
+            """
+            [i]: z[i, j] = linear_combo([i]: x[i, j], [i]: y[i,j])
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="x, y, z",
+                    dtype=np.float64,
+                    shape=("n", "n")),
+                ...],
+            assumptions="n>=2",
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "linear_combo")
+    lp.generate_code_v2(knl).device_code()
+
+
+def test_inline_predicate():
+    # https://github.com/inducer/loopy/issues/739
+    twice = lp.make_function(
+        "{[i]: 0<=i<10}",
+        """
+        y[i] = 2*x[i]
+        """,
+        name="twice")
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<10 and 0<=j<10}",
+        """
+        <> y[i] = 0  {id=y,dup=i}
+        <> x[i] = 1  {id=x,dup=i}
+        for j
+            <> a = (j%2 == 0)
+            y[i] = i                         {dep=y,if=a,id=y2}
+            [i]: z[i, j] = twice([i]: x[i])  {if=a,dep=y}
+        end
+        """)
+
+    knl = lp.add_dtypes(knl, {"z": np.float64})
+    knl = lp.merge([knl, twice])
+    knl = lp.inline_callable_kernel(knl, "twice")
+    code = lp.generate_code_v2(knl).device_code()
+    assert code.count("if (a)") == 1
+
+
+def test_subarray_ref_with_repeated_indices(ctx_factory):
+    # https://github.com/inducer/loopy/pull/735#discussion_r1071690388
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+    child_knl = lp.make_function(
+            ["{[i]: 0<=i<10}"],
+            """
+            g[i] = 1
+            """, name="ones")
+
+    parent_knl = lp.make_kernel(
+            ["{[i]:0<=i<10}", "{[j]: 0<=j<10}"],
+            """
+            z[i, j] = 0                {id = a}
+            [i]: z[i, i] = ones()  {dep=a,dup=i}
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="z",
+                    dtype=np.float64,
+                    is_input=False,
+                    shape=(10, 10)),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "ones")
+    evt, (z_dev,) = knl(cq)
+    assert np.allclose(z_dev.get(), np.eye(10))
+
+
+def test_inline_constant_access():
+    child_knl = lp.make_function(
+            [],
+            """
+            g[0] = 2*e[0] + 3*f[0] {id=a}
+            g[1] = 2*e[1] + 3*f[1] {dep=a}
+            """, name="linear_combo")
+    parent_knl = lp.make_kernel(
+            ["{[j]:0<=j<n}", "{[i]:0<=i<n}"],
+            """
+            [i]: z[i, j] = linear_combo([i]: x[i, j], [i]: y[i,j])
+            """,
+            kernel_data=[
+                lp.GlobalArg(
+                    name="x, y, z",
+                    dtype=np.float64,
+                    shape=(3, "n")),
+                ...],
+            )
+    knl = lp.merge([parent_knl, child_knl])
+    knl = lp.inline_callable_kernel(knl, "linear_combo")
+    knl = lp.tag_array_axes(knl, ["x", "y", "z"], "sep,C")
+    lp.generate_code_v2(knl).device_code()
 
 
 if __name__ == "__main__":

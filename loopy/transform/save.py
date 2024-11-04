@@ -20,24 +20,27 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 from functools import cached_property
 
 from immutables import Map
 
+from pytools import Record, memoize_method
+
 from loopy.diagnostic import LoopyError
-import loopy as lp
-
-from loopy.kernel.data import auto, AddressSpace
-from pytools import memoize_method, Record
-from loopy.kernel.data import Iname
+from loopy.kernel.data import AddressSpace, Iname
 from loopy.schedule import (
-            EnterLoop, LeaveLoop, RunInstruction,
-            CallKernel, ReturnFromKernel, Barrier)
-
+    Barrier,
+    CallKernel,
+    EnterLoop,
+    LeaveLoop,
+    ReturnFromKernel,
+    RunInstruction,
+)
 from loopy.schedule.tools import get_block_boundaries
+from loopy.types import auto
 
 
-import logging
 logger = logging.getLogger(__name__)
 
 
@@ -258,8 +261,9 @@ class TemporarySaver:
         # representative chosen for saves/reloads
         self.base_storage_to_representative = {}
 
-        from loopy.kernel.data import ValueArg
         import islpy as isl
+
+        from loopy.kernel.data import ValueArg
         self.new_subdomain = (
                 isl.BasicSet.universe(
                     isl.Space.create_from_names(
@@ -393,6 +397,7 @@ class TemporarySaver:
 
             my_group_tags = []
             my_local_tags = []
+            group_tags_originating_insn_id = None
 
             for iname in insn.within_inames:
                 tags = self.kernel.iname_tags(iname)
@@ -400,8 +405,12 @@ class TemporarySaver:
                 if not tags:
                     continue
 
-                from loopy.kernel.data import (GroupInameTag, LocalInameTag,
-                        ConcurrentTag, filter_iname_tags_by_type)
+                from loopy.kernel.data import (
+                    ConcurrentTag,
+                    GroupInameTag,
+                    LocalInameTag,
+                    filter_iname_tags_by_type,
+                )
 
                 if filter_iname_tags_by_type(tags, GroupInameTag):
                     tag, = filter_iname_tags_by_type(tags, GroupInameTag, 1)
@@ -440,7 +449,7 @@ class TemporarySaver:
             self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids,
                 self.callables_table))
 
-        if temporary.address_space == lp.AddressSpace.LOCAL:
+        if temporary.address_space == AddressSpace.LOCAL:
             # Elide local axes in the save slot for local temporaries.
             del local_tags[:]
             local_sizes = ()
@@ -493,7 +502,7 @@ class TemporarySaver:
         return backing_temporary
 
     def save_or_reload_impl(self, temporary, subkernel, mode,
-                             promoted_temporary=lp.auto):
+                             promoted_temporary=auto):
         assert mode in ("save", "reload")
 
         if promoted_temporary is auto:
@@ -543,6 +552,8 @@ class TemporarySaver:
         elif mode == "reload":
             depends_on = frozenset()
             update_deps = accessing_insns_in_subkernel
+        else:
+            raise AssertionError()
 
         pre_barrier, post_barrier = self.get_enclosing_global_barrier_pair(subkernel)
 
@@ -618,11 +629,13 @@ class TemporarySaver:
             relevant_insns = self.subkernel_to_newly_added_insn_ids[subkernel]
 
             from itertools import product
+
+            from loopy.transform.instruction import add_nosync
             for temporary in self.temporary_to_reload_ids:
                 for source, sink in product(
                         relevant_insns & self.temporary_to_reload_ids[temporary],
                         relevant_insns & self.temporary_to_save_ids[temporary]):
-                    kernel = lp.add_nosync(kernel, "global", source, sink)
+                    kernel = add_nosync(kernel, "global", source, sink)
 
         from loopy.kernel.tools import assign_automatic_axes
         return assign_automatic_axes(kernel, self.callables_table)
@@ -751,8 +764,10 @@ def save_and_reload_temporaries(program, entrypoint=None):
 
     knl = program[entrypoint]
 
+    from loopy.preprocess import preprocess_program
+
     if not knl.linearization:
-        program = lp.preprocess_program(program)
+        program = preprocess_program(program)
         from loopy.schedule import get_one_linearized_kernel
         knl = get_one_linearized_kernel(program[entrypoint],
                 program.callables_table)
@@ -763,7 +778,9 @@ def save_and_reload_temporaries(program, entrypoint=None):
     saver = TemporarySaver(knl, program.callables_table)
 
     from loopy.schedule.tools import (
-        temporaries_read_in_subkernel, temporaries_written_in_subkernel)
+        temporaries_read_in_subkernel,
+        temporaries_written_in_subkernel,
+    )
 
     for sched_idx, sched_item in enumerate(knl.linearization):
 

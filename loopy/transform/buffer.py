@@ -20,21 +20,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
-        AccessDescriptor)
-from loopy.symbolic import (get_dependencies,
-        RuleAwareIdentityMapper, SubstitutionRuleMappingContext,
-        SubstitutionMapper)
-from pymbolic.mapper.substitutor import make_subst_func
-from loopy.tools import memoize_on_disk
-from loopy.diagnostic import LoopyError
-from loopy.kernel import LoopKernel
-from loopy.translation_unit import TranslationUnit
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+import logging
+
+from immutables import Map
 
 from pymbolic import var
+from pymbolic.mapper.substitutor import make_subst_func
 
-import logging
+from loopy.diagnostic import LoopyError
+from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.symbolic import (
+    RuleAwareIdentityMapper,
+    SubstitutionMapper,
+    SubstitutionRuleMappingContext,
+    get_dependencies,
+)
+from loopy.tools import memoize_on_disk
+from loopy.transform.array_buffer_map import (
+    AccessDescriptor,
+    ArrayToBufferMap,
+    NoOpArrayToBufferMap,
+)
+from loopy.translation_unit import TranslationUnit
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -227,7 +237,8 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         if not within(kernel, insn, ()):
             continue
 
-        from pymbolic.primitives import Variable, Subscript
+        from pymbolic.primitives import Subscript, Variable
+
         from loopy.symbolic import LinearSubscript
 
         for assignee in insn.assignees:
@@ -240,7 +251,9 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
                 index = assignee.index_tuple
 
             elif isinstance(assignee, LinearSubscript):
-                if assignee.aggregate.name == var_name:
+                assignee_name = assignee.aggregate.name
+                index = ()
+                if assignee_name == var_name:
                     raise LoopyError("buffer_array may not be applied in the "
                             "presence of linear write indexing into '%s'" % var_name)
 
@@ -524,7 +537,7 @@ def buffer_array(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=new_callables)
+    return program.copy(callables_table=Map(new_callables))
 
 
 # vim: foldmethod=marker

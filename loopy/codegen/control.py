@@ -23,13 +23,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from functools import partial
+
 import islpy as isl
 
 from loopy.codegen.result import merge_codegen_results, wrap_in_if
-from loopy.schedule import (
-        EnterLoop, LeaveLoop, RunInstruction, Barrier, CallKernel,
-        gather_schedule_block, generate_sub_sched_items)
 from loopy.diagnostic import LoopyError
+from loopy.schedule import (
+    Barrier,
+    CallKernel,
+    EnterLoop,
+    LeaveLoop,
+    RunInstruction,
+    gather_schedule_block,
+    generate_sub_sched_items,
+)
 
 
 def generate_code_for_sched_index(codegen_state, sched_index):
@@ -39,7 +47,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
     if isinstance(sched_item, CallKernel):
         assert not codegen_state.is_generating_device_code
 
-        from loopy.schedule import (gather_schedule_block, get_insn_ids_for_block_at)
+        from loopy.schedule import gather_schedule_block, get_insn_ids_for_block_at
         _, past_end_i = gather_schedule_block(kernel.linearization, sched_index)
         assert past_end_i <= codegen_state.schedule_index_end
 
@@ -70,26 +78,39 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             return codegen_result
 
     elif isinstance(sched_item, EnterLoop):
-        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag,
-                ForceSequentialTag, LoopedIlpTag, VectorizeTag,
-                InameImplementationTag,
-                InOrderSequentialSequentialTag, filter_iname_tags_by_type)
+        from loopy.kernel.data import (
+            ForceSequentialTag,
+            InameImplementationTag,
+            InOrderSequentialSequentialTag,
+            LoopedIlpTag,
+            UnrolledIlpTag,
+            UnrollHintTag,
+            UnrollTag,
+            VectorizeTag,
+            filter_iname_tags_by_type,
+        )
 
         tags = kernel.iname_tags_of_type(sched_item.iname, InameImplementationTag)
         tags = tuple(tag for tag in tags if tag)
 
         from loopy.codegen.loop import (
-                generate_unroll_loop,
-                generate_vectorize_loop,
-                generate_sequential_loop_dim_code)
+            generate_sequential_loop_dim_code,
+            generate_unroll_loop,
+            generate_vectorize_loop,
+        )
 
         if filter_iname_tags_by_type(tags, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
         elif filter_iname_tags_by_type(tags, VectorizeTag):
             func = generate_vectorize_loop
+        elif filter_iname_tags_by_type(tags, UnrollHintTag):
+            unroll_tags = filter_iname_tags_by_type(tags, UnrollHintTag)
+            hints = [codegen_state.ast_builder.emit_unroll_hint(tag.value)
+                    for tag in unroll_tags]
+            func = partial(generate_sequential_loop_dim_code, hints=hints)
         elif not tags or filter_iname_tags_by_type(tags, (LoopedIlpTag,
                     ForceSequentialTag, InOrderSequentialSequentialTag)):
-            func = generate_sequential_loop_dim_code
+            func = partial(generate_sequential_loop_dim_code, hints=[])
         else:
             raise RuntimeError("encountered (invalid) EnterLoop "
                     "for '%s', tagged '%s'"
@@ -244,8 +265,8 @@ def build_loop_nest(codegen_state, schedule_index):
         .. attribute:: used_inames_within
         """
 
-    from loopy.schedule import find_used_inames_within
     from loopy.codegen.bounds import get_usable_inames_for_conditional
+    from loopy.schedule import find_used_inames_within
 
     sched_index_info_entries = [
             ScheduleIndexInfo(
@@ -452,8 +473,7 @@ def build_loop_nest(codegen_state, schedule_index):
                 def gen_code(inner_codegen_state):  # noqa pylint:disable=function-redefined
                     condition_exprs = [
                             constraint_to_cond_expr(cns)
-                            for cns in bounds_checks] + [
-                                pred_chk for pred_chk in pred_checks]
+                            for cns in bounds_checks] + list(pred_checks)
 
                     prev_result = prev_gen_code(inner_codegen_state)
 

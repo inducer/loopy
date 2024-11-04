@@ -20,17 +20,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
 from functools import cached_property
+from typing import Dict, FrozenSet, List
+
 from pytools import memoize_method
 
-from loopy.schedule import (EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel,
-                            Barrier, BeginBlockItem, gather_schedule_block,
-                            ScheduleItem)
-from dataclasses import dataclass
-from typing import List, Dict
-from loopy.kernel.instruction import InstructionBase
 from loopy.kernel import LoopKernel
 from loopy.kernel.data import Iname
+from loopy.kernel.instruction import InstructionBase
+from loopy.schedule import (
+    Barrier,
+    BeginBlockItem,
+    CallKernel,
+    EnterLoop,
+    LeaveLoop,
+    ReturnFromKernel,
+    ScheduleItem,
+    gather_schedule_block,
+)
 
 
 __doc__ = """
@@ -86,7 +94,7 @@ class CodegenOperationCacheManager:
         An instance of :class:`KernelProxyForCodegenOperationCacheManager`.
 
     .. automethod:: with_kernel
-    .. automethod:: get_parallel_inames_in_a_callkernel
+    .. automethod:: get_concurrent_inames_in_a_callkernel
     """
     def __init__(self, kernel_proxy):
         assert isinstance(kernel_proxy, KernelProxyForCodegenOperationCacheManager)
@@ -199,9 +207,10 @@ class CodegenOperationCacheManager:
                                          sched_index)
 
     @memoize_method
-    def get_parallel_inames_in_a_callkernel(self, callkernel_index):
+    def get_concurrent_inames_in_a_callkernel(
+            self, callkernel_index: int) -> FrozenSet[str]:
         """
-        Returns a :class:`frozenset` of parallel inames in a callkernel
+        Returns a :class:`frozenset` of concurrent inames in a callkernel
 
         :arg callkernel_index: Index of the :class:`loopy.schedule.CallKernel`
             in the :attr:`CodegenOperationCacheManager.kernel_proxy`'s

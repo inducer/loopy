@@ -23,23 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, Sequence
+from typing import Sequence, Tuple
 
 import numpy as np
+
+from cgen import Declarator, Generable
 from pymbolic import var
 from pytools import memoize_method
-from cgen import Declarator, Generable
 
-from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.types import NumpyType
-from loopy.target.c import DTypeRegistryWrapper
-from loopy.kernel.array import VectorArrayDimTag, FixedStrideArrayDimTag, ArrayBase
-from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg
-from loopy.kernel.function_interface import ScalarCallable
 from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
+from loopy.diagnostic import LoopyError, LoopyTypeError
+from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
+from loopy.kernel.data import AddressSpace, ConstantArg, ImageArg
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.target.c import CFamilyASTBuilder, CFamilyTarget, DTypeRegistryWrapper
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.types import NumpyType
 
 
 # {{{ dtype registry wrappers
@@ -47,7 +47,7 @@ from loopy.codegen.result import CodeGenerationResult
 
 class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     """
-    A DType registry that uses int8 for bool8 types.
+    A DType registry that uses int8 for bool_ types.
 
     .. note::
 
@@ -56,7 +56,7 @@ class DTypeRegistryWrapperWithInt8ForBool(DTypeRegistryWrapper):
     """
     def dtype_to_ctype(self, dtype):
         from loopy.types import NumpyType
-        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool8:
+        if isinstance(dtype, NumpyType) and dtype.dtype == np.bool_:
             return self.wrapped_registry.dtype_to_ctype(
                     NumpyType(np.int8))
         return self.wrapped_registry.dtype_to_ctype(dtype)
@@ -129,10 +129,10 @@ def _create_vector_types():
                 titles.extend((len(names)-len(titles))*[None])
 
             try:
-                dtype = np.dtype(dict(
-                    names=names,
-                    formats=[base_type]*padded_count,
-                    titles=titles))
+                dtype = np.dtype({
+                    "names": names,
+                    "formats": [base_type]*padded_count,
+                    "titles": titles})
             except NotImplementedError:
                 try:
                     dtype = np.dtype([((n, title), base_type)
@@ -257,7 +257,7 @@ class OpenCLCallable(ScalarCallable):
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
-                    #FIXME: Do we need to raise here?:
+                    # FIXME: Do we need to raise here?:
                     #   The pattern we generally follow is that if we don't find
                     #   a function, then we just return None
                     raise LoopyError("%s can take only two arguments." % name)
@@ -268,9 +268,9 @@ class OpenCLCallable(ScalarCallable):
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
 
-            dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                     if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
 
             if dtype.kind == "c":
                 raise LoopyTypeError(f"'{name}' does not support complex numbers")
@@ -289,9 +289,9 @@ class OpenCLCallable(ScalarCallable):
                 return (
                         self.copy(arg_id_to_dtype=arg_id_to_dtype),
                         callables_table)
-            common_dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                        if (id >= 0 and dtype is not None)])
+            common_dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if (id >= 0 and dtype is not None)])
 
             if common_dtype.kind in ["u", "i", "f"]:
                 if common_dtype.kind == "f":
@@ -332,9 +332,9 @@ class OpenCLCallable(ScalarCallable):
                 if not -1 <= id <= 1:
                     raise LoopyError(f"'{name}' can take only 2 arguments.")
 
-            common_dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
-                        if (id >= 0 and dtype is not None)])
+            common_dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if (id >= 0 and dtype is not None)])
 
             if common_dtype == np.float64:
                 name = "powf64"
@@ -366,9 +366,9 @@ class OpenCLCallable(ScalarCallable):
                             self.copy(arg_id_to_dtype=arg_id_to_dtype),
                             callables_table)
 
-            dtype = np.find_common_type(
-                    [], [dtype.numpy_dtype for id, dtype in
-                        arg_id_to_dtype.items() if id >= 0])
+            dtype = np.result_type(*[
+                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    if id >= 0])
 
             if dtype.kind == "c":
                 raise LoopyError("%s does not support complex numbers"
@@ -421,10 +421,12 @@ def get_opencl_callables():
     *identifier* is known in OpenCL.
     """
     opencl_function_ids = (
-            {"max", "min", "dot", "pow", "abs", "acos", "asin",
-            "atan", "cos", "cosh", "sin", "sinh", "pow", "atan2", "tanh", "exp",
-            "log", "log10", "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
-            "fabs", "tan", "erf", "erfc"}
+            {"dot", "abs",
+             "cos", "cosh", "sin", "sinh", "tan", "tanh",
+             "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
+             "pow", "exp", "log", "log10", "sqrt", "ceil", "floor",
+             "max", "min", "fmax", "fmin",
+             "fabs",  "erf", "erfc"}
             | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
             | set(VECTOR_LITERAL_FUNCS))
 
@@ -492,12 +494,12 @@ def opencl_preamble_generator(preamble_info):
     from loopy.tools import remove_common_indentation
     kernel = preamble_info.kernel
 
+    idx_ctype = kernel.target.dtype_to_typename(kernel.index_dtype)
     yield ("00_declare_gid_lid",
-            remove_common_indentation("""
-                #define lid(N) ((%(idx_ctype)s) get_local_id(N))
-                #define gid(N) ((%(idx_ctype)s) get_group_id(N))
-                """ % dict(idx_ctype=kernel.target.dtype_to_typename(
-                    kernel.index_dtype))))
+            remove_common_indentation(f"""
+                #define lid(N) (({idx_ctype}) get_local_id(N))
+                #define gid(N) (({idx_ctype}) get_group_id(N))
+                """))
 
     for func in preamble_info.seen_functions:
         if func.name == "pow" and func.c_name == "powf32":
@@ -519,13 +521,13 @@ def opencl_preamble_generator(preamble_info):
 
 class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
-    def wrap_in_typecast_lazy(self, actual_dtype, needed_dtype, s):
-        if needed_dtype.dtype.kind == "b" and actual_dtype().dtype.kind == "f":
+    def wrap_in_typecast(self, actual_type, needed_dtype, s):
+        if needed_dtype.dtype.kind == "b" and actual_type.dtype.kind == "f":
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
 
-        return super().wrap_in_typecast_lazy(actual_dtype, needed_dtype, s)
+        return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
     def map_group_hw_index(self, expr, type_context):
         return var("gid")(expr.axis)
@@ -549,7 +551,7 @@ class OpenCLTarget(CFamilyTarget):
             for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
             double-exchange for floating point--not yet supported).
         :arg use_int8_for_bool: Size of *bool* is undefined as per
-            OpenCL spec, if *True* all bool8 variables would be treated
+            OpenCL spec, if *True* all bool_ variables would be treated
             as int8's.
         """
         super().__init__()
@@ -571,8 +573,10 @@ class OpenCLTarget(CFamilyTarget):
 
     @memoize_method
     def get_dtype_registry(self):
-        from loopy.target.c.compyte.dtypes import (DTypeRegistry,
-                fill_registry_with_opencl_c_types)
+        from loopy.target.c.compyte.dtypes import (
+            DTypeRegistry,
+            fill_registry_with_opencl_c_types,
+        )
 
         result = DTypeRegistry()
         fill_registry_with_opencl_c_types(result)
@@ -638,7 +642,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
         if not codegen_state.is_entrypoint:
-            # auxiliary kernels need not mention opencl speicific qualifiers
+            # auxiliary kernels need not mention opencl specific qualifiers
             # for a functions signature
             return preambles, fdecl
 
@@ -652,6 +656,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         fdecl = CLKernel(fdecl)
 
         from loopy.schedule import get_insn_ids_for_block_at
+        assert codegen_state.kernel.linearization is not None
         _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(
                     codegen_state.kernel.linearization, schedule_index),
@@ -669,7 +674,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
     def generate_top_of_body(self, codegen_state):
         from loopy.kernel.data import ImageArg
         if any(isinstance(arg, ImageArg) for arg in codegen_state.kernel.args):
-            from cgen import Value, Const, Initializer
+            from cgen import Const, Initializer, Value
             return [
                     Initializer(Const(Value("sampler_t", "loopy_sampler")),
                         "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
@@ -721,7 +726,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                     % address_space)
 
     def wrap_global_constant(self, decl: Declarator) -> Declarator:
-        from cgen.opencl import CLGlobal, CLConstant
+        from cgen.opencl import CLConstant, CLGlobal
         assert isinstance(decl, CLGlobal)
         decl = decl.subdecl
 
@@ -779,6 +784,14 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         return self.emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
 
+    def emit_unroll_hint(self, value):
+        # See https://man.opencl.org/attributes-loopUnroll.html
+        from cgen import Line
+        if value:
+            return Line(f"__attribute__((opencl_unroll_hint({value})))")
+        else:
+            return Line("__attribute__((opencl_unroll_hint))")
+
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -788,12 +801,13 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
         if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
                 np.int32, np.int64, np.float32, np.float64]:
-            from cgen import Block, DoWhile, Assign
+            from cgen import Assign, Block, DoWhile
+
             from loopy.target.c import POD
             old_val_var = codegen_state.var_name_generator("loopy_old_val")
             new_val_var = codegen_state.var_name_generator("loopy_new_val")
 
-            from loopy.kernel.data import TemporaryVariable, AddressSpace
+            from loopy.kernel.data import AddressSpace, TemporaryVariable
             ecm = codegen_state.expression_to_code_mapper.with_assignments(
                     {
                         old_val_var: TemporaryVariable(old_val_var, lhs_dtype,
@@ -804,8 +818,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
             lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
 
-            from pymbolic.mapper.substitutor import make_subst_func
             from pymbolic import var
+            from pymbolic.mapper.substitutor import make_subst_func
+
             from loopy.symbolic import SubstitutionMapper
 
             subst = SubstitutionMapper(
@@ -833,7 +848,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 else:
                     raise AssertionError()
 
-                from loopy.kernel.data import (TemporaryVariable, ArrayArg)
+                from loopy.kernel.data import ArrayArg, TemporaryVariable
                 if (
                         isinstance(lhs_var, ArrayArg)
                         and
@@ -893,7 +908,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 # }}}
 
 
-# {{{ volatile mem acccess target
+# {{{ volatile mem access target
 
 class VolatileMemExpressionToOpenCLCExpressionMapper(
         ExpressionToOpenCLCExpressionMapper):

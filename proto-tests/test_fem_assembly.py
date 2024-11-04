@@ -1,9 +1,11 @@
 import numpy as np
-import pyopencl as cl  # noqa
-import loopy as lp
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests  # noqa
+import pyopencl as cl  # noqa
+from pyopencl.tools import (
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+)
+
+import loopy as lp
 
 
 def test_laplacian_stiffness(ctx_factory):
@@ -123,7 +125,7 @@ def test_laplacian_stiffness(ctx_factory):
                 loop_priority=loop_prio)
         kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
 
-        #print lp.preprocess_kernel(var_knl)
+        # print lp.preprocess_kernel(var_knl)
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=0, op_label="GFlops",

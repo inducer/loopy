@@ -20,25 +20,37 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.symbolic import CombineMapper
+import logging
+
 import numpy as np
 
-from loopy.tools import is_integer
-from loopy.types import NumpyType
+from pymbolic.primitives import Lookup, Subscript, Variable
 
 from loopy.diagnostic import (
-        LoopyError,
-        TypeInferenceFailure, DependencyTypeInferenceFailure)
+    DependencyTypeInferenceFailure,
+    LoopyError,
+    TypeInferenceFailure,
+)
 from loopy.kernel.instruction import _DataObliviousInstruction
-
 from loopy.symbolic import (
-        LinearSubscript, parse_tagged_name, RuleAwareIdentityMapper,
-        SubstitutionRuleExpander, ResolvedFunction,
-        SubstitutionRuleMappingContext, SubArrayRef)
-from pymbolic.primitives import Variable, Subscript, Lookup
-from loopy.translation_unit import CallablesInferenceContext, make_clbl_inf_ctx
+    CombineMapper,
+    LinearSubscript,
+    ResolvedFunction,
+    RuleAwareIdentityMapper,
+    SubArrayRef,
+    SubstitutionRuleExpander,
+    SubstitutionRuleMappingContext,
+    parse_tagged_name,
+)
+from loopy.tools import is_integer
+from loopy.translation_unit import (
+    CallablesInferenceContext,
+    TranslationUnit,
+    make_clbl_inf_ctx,
+)
+from loopy.types import NumpyType
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,23 +91,14 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
         name, tag = parse_tagged_name(expr.function)
 
         if name not in self.rule_mapping_context.old_subst_rules:
-            expanded_expr = self.subst_expander(expr)
-            if expr in self.calls_to_new_names:
-                return type(expr)(
-                        ResolvedFunction(self.calls_to_new_names[expr]),
-                        tuple(self.rec(child, expn_state)
-                            for child in expr.parameters))
-            elif expanded_expr in self.calls_to_new_names:
-                # FIXME: This is killing the substitution.
-                # Maybe using a RuleAwareIdentityMapper for TypeInferenceMapper
-                # would help.
+            expanded_expr = self.subst_expander(expn_state.apply_arg_context(expr))
+            if expanded_expr in self.calls_to_new_names:
                 return type(expr)(
                         ResolvedFunction(self.calls_to_new_names[expanded_expr]),
                         tuple(self.rec(child, expn_state)
-                            for child in expanded_expr.parameters))
+                              for child in expr.parameters))
             else:
-                return super().map_call(
-                        expr, expn_state)
+                return super().map_call(expr, expn_state)
         else:
             return self.map_substitution(name, tag, expr.parameters, expn_state)
 
@@ -397,7 +400,7 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_type_cast(self, expr):
         subtype, = self.rec(expr.child)
-        if not issubclass(subtype.dtype.type, np.number):
+        if not issubclass(subtype.dtype.type, (np.number, np.bool_)):
             raise LoopyError(f"Can't cast a '{subtype}' to '{expr.type}'")
         return [expr.type]
 
@@ -491,8 +494,8 @@ class TypeInferenceMapper(CombineMapper):
             raise TypeInferenceFailure("name not known in type inference: %s"
                     % expr.name)
 
-        from loopy.kernel.data import TemporaryVariable, KernelArgument
         import loopy as lp
+        from loopy.kernel.data import KernelArgument, TemporaryVariable
         if isinstance(obj, (KernelArgument, TemporaryVariable)):
             assert obj.dtype is not lp.auto
             result = [obj.dtype]
@@ -525,26 +528,26 @@ class TypeInferenceMapper(CombineMapper):
         except KeyError:
             raise LoopyError("cannot look up attribute '%s' in "
                     "aggregate expression '%s' of dtype '%s'"
-                    % (expr.aggregate, expr.name, numpy_dtype))
+                    % (expr.aggregate, expr.name, numpy_dtype)) from None
 
         dtype = field[0]
         return [NumpyType(dtype)]
 
     def map_comparison(self, expr):
-        # "bool" is unusable because OpenCL's bool has indeterminate memory
-        # format.
         self(expr.left, return_tuple=False, return_dtype_set=False)
         self(expr.right, return_tuple=False, return_dtype_set=False)
-        return [NumpyType(np.dtype(np.int32))]
+        return [NumpyType(np.dtype(np.bool_))]
 
     def map_logical_not(self, expr):
-        return [NumpyType(np.dtype(np.int32))]
+        self.rec(expr.child)
+
+        return [NumpyType(np.dtype(np.bool_))]
 
     def map_logical_and(self, expr):
         for child in expr.children:
             self.rec(child)
 
-        return [NumpyType(np.dtype(np.int32))]
+        return [NumpyType(np.dtype(np.bool_))]
 
     map_logical_or = map_logical_and
 
@@ -559,8 +562,9 @@ class TypeInferenceMapper(CombineMapper):
         :arg return_tuple: If *True*, treat the reduction as having tuple type.
         Otherwise, if *False*, the reduction must have scalar type.
         """
-        from loopy.symbolic import Reduction
         from pymbolic.primitives import Call
+
+        from loopy.symbolic import Reduction
 
         if not return_tuple and expr.is_tuple_typed:
             raise LoopyError("reductions with more or fewer than one "
@@ -674,8 +678,8 @@ class TypeReader(TypeInferenceMapper):
             raise TypeInferenceFailure("name not known in type inference: %s"
                     % expr.name)
 
-        from loopy.kernel.data import TemporaryVariable, KernelArgument
         import loopy as lp
+        from loopy.kernel.data import KernelArgument, TemporaryVariable
         if isinstance(obj, (KernelArgument, TemporaryVariable)):
             assert obj.dtype is not lp.auto
             result = [obj.dtype]
@@ -852,7 +856,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
 
     # {{{ work on type inference queue
 
-    from loopy.kernel.data import TemporaryVariable, KernelArgument
+    from loopy.kernel.data import KernelArgument, TemporaryVariable
 
     old_calls_to_new_calls = {}
     touched_variable_names = set()
@@ -1026,31 +1030,34 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     return type_specialized_kernel, clbl_inf_ctx
 
 
-def infer_unknown_types(program, expect_completion=False):
+def infer_unknown_types(
+            t_unit: TranslationUnit,
+            expect_completion: bool = False
+        ) -> TranslationUnit:
     """Infer types on temporaries and arguments."""
     from loopy.kernel.data import auto
     from loopy.translation_unit import resolve_callables
 
-    program = resolve_callables(program)
+    t_unit = resolve_callables(t_unit)
 
     # {{{ early-exit criterion
 
     if all(clbl.is_type_specialized()
-           for clbl in program.callables_table.values()):
+           for clbl in t_unit.callables_table.values()):
         # all the callables including the kernels have inferred their types
         # => no need for type inference
-        return program
+        return t_unit
 
     # }}}
 
-    clbl_inf_ctx = make_clbl_inf_ctx(program.callables_table,
-            program.entrypoints)
+    clbl_inf_ctx = make_clbl_inf_ctx(t_unit.callables_table,
+            t_unit.entrypoints)
 
-    for e in program.entrypoints:
+    for e in t_unit.entrypoints:
         logger.debug(f"Entering entrypoint: {e}")
         arg_id_to_dtype = {arg.name: arg.dtype for arg in
-                program[e].args if arg.dtype not in (None, auto)}
-        new_callable, clbl_inf_ctx = program.callables_table[e].with_types(
+                t_unit[e].args if arg.dtype not in (None, auto)}
+        new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_types(
                 arg_id_to_dtype, clbl_inf_ctx)
         clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
@@ -1073,7 +1080,7 @@ def infer_unknown_types(program, expect_completion=False):
                     raise LoopyError("could not determine type of"
                             f" '{vars_not_inferred.pop()}' of kernel '{e}'.")
 
-    return clbl_inf_ctx.finish_program(program)
+    return clbl_inf_ctx.finish_program(t_unit)
 
 # }}}
 
@@ -1104,7 +1111,7 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
                 arg_dtypes = [None]
             else:
                 raise LoopyError("failed to determine type of accumulator for "
-                        "reduction '%s'" % expr)
+                        "reduction '%s'" % expr) from None
 
     reduction_dtypes = expr.operation.result_dtypes(*arg_dtypes)
 

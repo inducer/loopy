@@ -21,24 +21,24 @@ THE SOFTWARE.
 """
 
 
-from typing import Sequence, Tuple, Union, Callable, Any, Optional, TYPE_CHECKING
+import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from immutables import Map
 
 from pytools import memoize_method
-from pytools.codegen import Indentation, CodeGenerator
+from pytools.codegen import CodeGenerator, Indentation
 
-from loopy.types import LoopyType
-from loopy.typing import ExpressionT
 from loopy.kernel import LoopKernel
 from loopy.kernel.data import ArrayArg
-from loopy.translation_unit import TranslationUnit
 from loopy.schedule.tools import KernelArgInfo
-from loopy.target.execution import (
-    KernelExecutorBase, ExecutionWrapperGeneratorBase)
-import logging
+from loopy.target.execution import ExecutionWrapperGeneratorBase, ExecutorBase
+from loopy.types import LoopyType
+from loopy.typing import ExpressionT
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,7 +74,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         if issubclass(dtype.type, (np.bool_, np.number)):
             name = dtype.name
             if dtype.type == np.bool_:
-                name = "bool8"
+                name = "bool_"
             return f"_lpy_np.dtype(_lpy_np.{name})"
         else:
             return ('_lpy_cl_tools.get_or_register_dtype("%s")'
@@ -270,7 +270,6 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 @dataclass(frozen=True)
 class _KernelInfo:
-    t_unit: TranslationUnit
     cl_kernels: "_Kernels"
     invoker: Callable[..., Any]
 
@@ -281,7 +280,7 @@ class _Kernels:
 
 # {{{ kernel executor
 
-class PyOpenCLKernelExecutor(KernelExecutorBase):
+class PyOpenCLExecutor(ExecutorBase):
     """An object connecting a kernel to a :class:`pyopencl.Context`
     for execution.
 
@@ -303,10 +302,9 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
     @memoize_method
     def translation_unit_info(
-            self, entrypoint: str,
+            self,
             arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
-        t_unit = self.get_typed_and_scheduled_translation_unit(
-                entrypoint, arg_to_dtype)
+        t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         # FIXME: now just need to add the types to the arguments
         from loopy.codegen import generate_code_v2
@@ -315,41 +313,42 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         dev_code = codegen_result.device_code()
 
-        if t_unit[entrypoint].options.write_code:
-            #FIXME: redirect to "translation unit" level option as well.
+        if t_unit[self.entrypoint].options.write_code:
+            # FIXME: redirect to "translation unit" level option as well.
             output = dev_code
-            if self.t_unit[entrypoint].options.allow_terminal_colors:
+            if self.t_unit[self.entrypoint].options.allow_terminal_colors:
                 output = get_highlighted_code(output)
 
-            if self.t_unit[entrypoint].options.write_code is True:
+            if self.t_unit[self.entrypoint].options.write_code is True:
                 print(output)
             else:
-                with open(self.t_unit[entrypoint].options.write_code, "w") as outf:
+                with open(
+                        self.t_unit[self.entrypoint].options.write_code, "w"
+                        ) as outf:
                     outf.write(output)
 
-        if t_unit[entrypoint].options.edit_code:
-            #FIXME: redirect to "translation unit" level option as well.
+        if t_unit[self.entrypoint].options.edit_code:
+            # FIXME: redirect to "translation unit" level option as well.
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
 
         import pyopencl as cl
 
-        #FIXME: redirect to "translation unit" level option as well.
+        # FIXME: redirect to "translation unit" level option as well.
         cl_program = (
                 cl.Program(self.context, dev_code)
-                .build(options=t_unit[entrypoint].options.build_options))
+                .build(options=t_unit[self.entrypoint].options.build_options))
 
         cl_kernels = _Kernels()
         for dp in cl_program.kernel_names.split(";"):
             setattr(cl_kernels, dp, getattr(cl_program, dp))
 
         return _KernelInfo(
-                t_unit=t_unit,
                 cl_kernels=cl_kernels,
-                invoker=self.get_invoker(t_unit, entrypoint, codegen_result))
+                invoker=self.get_invoker(t_unit, self.entrypoint, codegen_result))
 
     def __call__(self, queue, *,
-            allocator=None, wait_for=None, out_host=None, entrypoint=None,
+            allocator=None, wait_for=None, out_host=None,
             **kwargs):
         """
         :arg allocator: a callable passed a byte count and returning
@@ -377,19 +376,13 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             of the returned arrays.
         """
 
-        assert entrypoint is not None
-
-        # FIXME: Remove entrypoint argument
-        assert entrypoint == self.entrypoint
-
         if __debug__:
             self.check_for_required_array_arguments(kwargs.keys())
 
         if self.packing_controller is not None:
             kwargs = self.packing_controller(kwargs)
 
-        translation_unit_info = self.translation_unit_info(entrypoint,
-                self.arg_to_dtype(kwargs))
+        translation_unit_info = self.translation_unit_info(self.arg_to_dtype(kwargs))
 
         return translation_unit_info.invoker(
                 translation_unit_info.cl_kernels, queue, allocator, wait_for,

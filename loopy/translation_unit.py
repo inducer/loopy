@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
@@ -21,34 +24,78 @@ THE SOFTWARE.
 """
 
 import collections
-from typing import Callable, FrozenSet, Optional, Union
-
-from pytools import ImmutableRecord
-from pymbolic.primitives import Variable
+from collections.abc import Set as abc_Set
+from dataclasses import dataclass, field, replace
 from functools import wraps
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    FrozenSet,
+    Mapping,
+    Optional,
+    TypeVar,
+    Union,
+)
+from warnings import warn
 
-from loopy.symbolic import (RuleAwareIdentityMapper, ResolvedFunction,
-                            SubstitutionRuleMappingContext)
-from loopy.kernel.function_interface import (
-        CallableKernel, InKernelCallable, ScalarCallable)
-from loopy.diagnostic import LoopyError
-from loopy.library.reduction import ReductionOpFunction
+from immutables import Map
+from typing_extensions import Concatenate, ParamSpec, Self
 
+from pymbolic.primitives import Call, Variable
+
+from loopy.diagnostic import DirectCallUncachedWarning, LoopyError
 from loopy.kernel import LoopKernel
+from loopy.kernel.function_interface import (
+    CallableKernel,
+    InKernelCallable,
+    ScalarCallable,
+)
+from loopy.library.reduction import ReductionOpFunction
+from loopy.symbolic import (
+    ResolvedFunction,
+    RuleAwareIdentityMapper,
+    SubstitutionRuleMappingContext,
+)
 from loopy.target import TargetBase
-from loopy.tools import update_persistent_hash
-from pymbolic.primitives import Call
-from pyrsistent import pmap, PMap
+
+
+if TYPE_CHECKING:
+    from loopy.target.execution import ExecutorBase
+
 
 __doc__ = """
+
+.. class:: FunctionIdT
+
+    A type for a function identifier.
+    A :class:`~loopy.library.reduction.ReductionOpFunction` or a :class:`str`.
+
+.. class:: CallablesTable
+
+    A type alias for callables tables, mapping from :class:`FunctionIdT`
+    to :class:`~loopy.InKernelCallable`
+
+.. currentmodule:: loopy
+
+.. autoclass:: TranslationUnit
+
 .. currentmodule:: loopy.translation_unit
 
 .. autoclass:: CallablesInferenceContext
 
 .. autofunction:: make_program
 
+.. autofunction:: check_each_kernel
+
 .. autofunction:: for_each_kernel
 
+.. autoclass:: TUnitOrKernelT
+
+.. class:: P
+
+    A :class:`typing.ParamSpec` for use in annotating :func:`for_each_kernel` and
+    :func:`check_each_kernel`.
 """
 
 
@@ -129,7 +176,13 @@ class CallableResolver(RuleAwareIdentityMapper):
 
 # {{{ translation unit
 
-class TranslationUnit(ImmutableRecord):
+FunctionIdT = Union[str, ReductionOpFunction]
+ConcreteCallablesTable = Map[FunctionIdT, InKernelCallable]
+CallablesTable = Mapping[FunctionIdT, InKernelCallable]
+
+
+@dataclass(frozen=True)
+class TranslationUnit:
     """
     Records the information about all the callables in a :mod:`loopy` program.
 
@@ -147,6 +200,8 @@ class TranslationUnit(ImmutableRecord):
         The :class:`~loopy.LoopKernel` representing the main entrypoint
         of the program, if defined. Currently, this attribute may only be
         accessed if there is exactly one entrypoint in the translation unit.
+        Will raise an error if the default entrypoint is not a
+        :class:`~loopy.LoopKernel`.
 
     .. attribute:: callables_table
 
@@ -161,9 +216,10 @@ class TranslationUnit(ImmutableRecord):
     .. attribute:: func_id_to_in_knl_callables_mappers
 
         A :class:`frozenset` of functions of the signature ``(target:
-        TargetBase, function_indentifier: str)`` that returns an instance
+        TargetBase, function_identifier: str)`` that returns an instance
         of :class:`loopy.kernel.function_interface.InKernelCallable` or *None*.
 
+    .. automethod:: executor
     .. automethod:: __call__
     .. automethod:: copy
     .. automethod:: __getitem__
@@ -178,53 +234,21 @@ class TranslationUnit(ImmutableRecord):
           :meth:`~TranslationUnit.copy`.
 
     """
-    entrypoints: FrozenSet[str]
-    callables_table: PMap[str, InKernelCallable]
+
+    callables_table: ConcreteCallablesTable
     target: TargetBase
-    func_id_to_in_knl_callable_mappers: Optional[FrozenSet[
-            Callable[[TargetBase, str], InKernelCallable]]]
+    entrypoints: FrozenSet[str]
 
-    def __init__(self,
-            entrypoints=frozenset(),
-            callables_table=None,
-            target=None,
-            func_id_to_in_knl_callable_mappers=None):
+    def __post_init__(self):
 
-        # {{{ sanity checks
+        assert isinstance(self.entrypoints, abc_Set)
+        assert isinstance(self.callables_table, Map)
 
-        if callables_table is None:
-            callables_table = pmap()
-        if func_id_to_in_knl_callable_mappers is None:
-            func_id_to_in_knl_callable_mappers = []
+        object.__setattr__(self, "_program_executor_cache", {})
 
-        assert isinstance(callables_table, collections.abc.Mapping)
-        assert isinstance(entrypoints, frozenset)
-
-        if not isinstance(callables_table, PMap):
-            callables_table = pmap(callables_table)
-
-        # }}}
-
-        super().__init__(
-                entrypoints=entrypoints,
-                callables_table=pmap(callables_table),
-                target=target,
-                func_id_to_in_knl_callable_mappers=(
-                    func_id_to_in_knl_callable_mappers))
-
-        self._program_executor_cache = {}
-        self._hash_value = None
-
-    hash_fields = (
-            "entrypoints",
-            "callables_table",
-            "target",)
-
-    update_persistent_hash = update_persistent_hash
-
-    def copy(self, **kwargs):
+    def copy(self, **kwargs: Any) -> Self:
         target = kwargs.pop("target", None)
-        program = super().copy(**kwargs)
+        t_unit = replace(self, **kwargs)
         if target:
             from loopy.kernel import KernelState
             if max(callable_knl.subkernel.state
@@ -236,7 +260,7 @@ class TranslationUnit(ImmutableRecord):
                             "preprocessed, cannot modify target now.")
 
             new_callables = {}
-            for func_id, clbl in program.callables_table.items():
+            for func_id, clbl in t_unit.callables_table.items():
                 if isinstance(clbl, CallableKernel):
                     knl = clbl.subkernel
                     knl = knl.copy(target=target)
@@ -247,21 +271,17 @@ class TranslationUnit(ImmutableRecord):
                     raise NotImplementedError()
                 new_callables[func_id] = clbl
 
-            program = super().copy(
-                callables_table=new_callables, target=target)
+            t_unit = replace(
+                    self, callables_table=Map(new_callables), target=target)
 
-        return program
+        return t_unit
 
-    def with_entrypoints(self, entrypoints):
-        """
-        :param entrypoints: Either a comma-separated :class:`str` or
-        :class:`frozenset`.
-        """
+    def with_entrypoints(self, entrypoints: str | frozenset[str]) -> Self:
         if isinstance(entrypoints, str):
             entrypoints = frozenset([e.strip() for e in
                 entrypoints.split(",")])
 
-        assert isinstance(entrypoints, frozenset)
+        assert isinstance(entrypoints, abc_Set)
 
         return self.copy(entrypoints=entrypoints)
 
@@ -274,7 +294,7 @@ class TranslationUnit(ImmutableRecord):
                     if isinstance(callable_knl, CallableKernel)),
                    default=KernelState.INITIAL)
 
-    def with_kernel(self, kernel):
+    def with_kernel(self, kernel: LoopKernel) -> Self:
         """
         If *self* contains a callable kernel with *kernel*'s name, replaces its
         subkernel and returns a copy of *self*. Else records a new callable
@@ -287,7 +307,7 @@ class TranslationUnit(ImmutableRecord):
             # update the callable kernel
             new_in_knl_callable = self.callables_table[kernel.name].copy(
                     subkernel=kernel)
-            new_callables = self.callables_table.remove(kernel.name).set(
+            new_callables = self.callables_table.delete(kernel.name).set(
                     kernel.name, new_in_knl_callable)
             return self.copy(callables_table=new_callables)
         else:
@@ -296,9 +316,9 @@ class TranslationUnit(ImmutableRecord):
             new_callables = self.callables_table.set(kernel.name, clbl)
             return self.copy(callables_table=new_callables)
 
-    def __getitem__(self, name) -> Union[InKernelCallable, LoopKernel]:
+    def __getitem__(self, name) -> LoopKernel:
         """
-        For the callable named *name*, return a :class:`loopy.LoopKernel` if
+        For the callable named *name*, return a :class:`loopy.LoopKernel`. if
         it's a :class:`~loopy.kernel.function_interface.CallableKernel`
         otherwise return the callable itself.
         """
@@ -306,19 +326,65 @@ class TranslationUnit(ImmutableRecord):
         if isinstance(result, CallableKernel):
             return result.subkernel
         else:
-            return result
+            raise ValueError("TranslationUnit.__getitem__ "
+                             "can only be used for instances of LoopKernel. "
+                             "Access all other callables via callables_table.")
 
     @property
     def default_entrypoint(self) -> LoopKernel:
         if len(self.entrypoints) == 1:
-            entrypoint, = self.entrypoints
-            ep_kernel = self[entrypoint]
-            assert isinstance(ep_kernel, LoopKernel)
-            return ep_kernel
+            ep_name, = self.entrypoints
+            entrypoint = self[ep_name]
+
+            if not isinstance(entrypoint, LoopKernel):
+                raise ValueError("default entrypoint is not a kernel")
+
+            return entrypoint
         else:
             raise ValueError("TranslationUnit has multiple possible entrypoints."
                              " The default entrypoint kernel is not uniquely"
                              " determined.")
+
+    def executor(self,
+                 *args, entrypoint: Optional[str] = None, **kwargs) -> ExecutorBase:
+        """Return an object that hosts caches of compiled code for execution (i.e.
+        a subclass of :class:`ExecutorBase`, specific to an execution
+        environment (e.g. an OpenCL context) and a given entrypoint.
+
+        :arg entrypoint: The name of the entrypoint callable to be called.
+            Defaults to :attr:`default_entrypoint`.
+            An error will result if multiple entrypoints exist and no
+            entrypoint is specified.
+
+        The variable arguments to this are target-specific. The
+        :class:`PyOpenCLTarget` takes a :class:`~pyopencl.Context` or a
+        :class:`~pyopencl.CommandQueue`.
+        """
+        if entrypoint is None:
+            nentrypoints = len(self.entrypoints)
+            if nentrypoints == 1:
+                entrypoint, = self.entrypoints
+            elif nentrypoints > 1:
+                raise ValueError("TranslationUnit has multiple possible entrypoints."
+                                 " The default entrypoint kernel is not uniquely"
+                                 " determined. You may explicitly specify an "
+                                 " entrypoint using the 'entrypoint' kwarg.")
+            elif nentrypoints == 0:
+                raise ValueError("TranslationUnit has no entrypoints, but"
+                                 f" {len(self.callables_table)} callables."
+                                 " Use TranslationUnit.with_entrypoints to"
+                                 " set an entrypoint.")
+            else:
+                raise AssertionError
+        else:
+            if entrypoint not in self.entrypoints:
+                raise LoopyError(f"'{entrypoint}' not in list of possible "
+                        "entrypoints for the translation unit. "
+                        "Maybe you want to invoke 'with_entrypoints' before "
+                        "calling the translation unit?")
+
+        return self.target.get_kernel_executor(self, *args,
+                                               entrypoint=entrypoint, **kwargs)
 
     def __call__(self, *args, **kwargs):
         """
@@ -327,8 +393,33 @@ class TranslationUnit(ImmutableRecord):
 
         :arg entrypoint: The name of the entrypoint callable to be called.
             Defaults to :attr:`default_entrypoint`.
+
+        .. warning::
+
+            While this was the main execution interface for loopy for many
+            years (and reasonably efficient), the caches that made this so
+            kept lots of expensive 'stuff' (such as OpenCL contexts) alive
+            for no good reason, leading to major inefficiencies.
+            See :meth:`executor` for an efficient, cached way to
+            invoke kernels.
         """
+
+        # The rationale for this is that the executor cache held long-lived
+        # references to OpenCL contexts, and translation units were kept alive
+        # long-term by caches, leading to many stale contexts being kept alive.
+        # While attempts were made to turn those into weak references, this was
+        # ultimately cumbersome and ineffective.
+        #
+        # In addition, the executor interface speeds up kernel invocation
+        # by removing one unnecessary layer of function call.
+        warn("TranslationUnit.__call__ will become uncached in 2024, "
+             "meaning it will incur possibly substantial compilation cost "
+             "with every invocation. Use TranslationUnit.executor to obtain "
+             "an object that holds longer-lived caches.",
+             DirectCallUncachedWarning, stacklevel=2)
+
         entrypoint = kwargs.get("entrypoint", None)
+
         if entrypoint is None:
             nentrypoints = len(self.entrypoints)
             if nentrypoints == 1:
@@ -356,39 +447,38 @@ class TranslationUnit(ImmutableRecord):
 
         key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
         try:
-            pex = self._program_executor_cache[key]
+            pex = self._program_executor_cache[key]  # pylint: disable=no-member
         except KeyError:
             pex = self.target.get_kernel_executor(self, *args, **kwargs)
-            self._program_executor_cache[key] = pex
+            self._program_executor_cache[key] = pex  # pylint: disable=no-member
+
+        del kwargs["entrypoint"]
 
         return pex(*args, **kwargs)
 
     def __str__(self) -> str:
         # FIXME: do a topological sort by the call graph
 
-        def strify_callable(clbl):
-            return str(clbl.subkernel)
-
         return "\n".join(
-                strify_callable(clbl)
+                str(clbl.subkernel)
                 for name, clbl in self.callables_table.items()
                 if isinstance(clbl, CallableKernel))
 
+    # FIXME: Delete these when _program_executor_cache leaves the building
+    def __getstate__(self):
+        from dataclasses import asdict
+        return asdict(self)
+
     def __setstate__(self, state_obj):
-        super().__setstate__(state_obj)
+        for k, v in state_obj.items():
+            object.__setattr__(self, k, v)
 
-        self._program_executor_cache = {}
+        object.__setattr__(self, "_program_executor_cache", {})
 
-    def __hash__(self):
-        # NOTE: _hash_value may vanish during pickling
-        if getattr(self, "_hash_value", None) is None:
-            from loopy.tools import LoopyKeyBuilder
-            from pytools.persistent_dict import new_hash
-            key_hash = new_hash()
-            self.update_persistent_hash(key_hash, LoopyKeyBuilder())
-            self._hash_value = hash(key_hash.digest())
-
-        return self._hash_value
+    # FIXME: This is here because Firedrake expects it, for some legacy reason.
+    # Without that, it would be safe to delete.
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.update_for_dataclass(key_hash, self)
 
 # }}}
 
@@ -466,7 +556,8 @@ def make_clbl_inf_ctx(callables, entrypoints):
     return CallablesInferenceContext(callables, name_gen)
 
 
-class CallablesInferenceContext(ImmutableRecord):
+@dataclass(frozen=True)
+class CallablesInferenceContext:
     """
     Helper class for housekeeping a :attr:`loopy.TranslationUnit.callables_table`
     while traversing through callables of :class:`loopy.TranslationUnit`.
@@ -491,18 +582,14 @@ class CallablesInferenceContext(ImmutableRecord):
 
     .. automethod:: __getitem__
     """
-    def __init__(self, callables,
-                 clbl_name_gen,
-                 renames=None,
-                 new_entrypoints=frozenset()):
-        if renames is None:
-            renames = collections.defaultdict(frozenset)
-        assert isinstance(callables, collections.abc.Mapping)
+    callables: Mapping[str, InKernelCallable]
+    clbl_name_gen: Callable[[str], str]
+    renames: Mapping[str, FrozenSet[str]] = field(
+            default_factory=lambda: collections.defaultdict(frozenset))
+    new_entrypoints: FrozenSet[str] = frozenset()
 
-        super().__init__(callables=dict(callables),
-                         clbl_name_gen=clbl_name_gen,
-                         renames=renames,
-                         new_entrypoints=new_entrypoints)
+    def copy(self, **kwargs: Any) -> CallablesInferenceContext:
+        return replace(self, **kwargs)
 
     def with_callable(self, old_function_id, new_clbl,
                       is_entrypoint=False):
@@ -526,7 +613,7 @@ class CallablesInferenceContext(ImmutableRecord):
         if isinstance(old_function_id, Variable):
             old_function_id = old_function_id.name
 
-        renames = self.renames.copy()
+        renames = collections.defaultdict(frozenset, self.renames)
 
         # if the callable already exists => return the function
         # identifier corresponding to that callable.
@@ -567,7 +654,7 @@ class CallablesInferenceContext(ImmutableRecord):
         # must allocate a new clbl in the namespace => find a unique id for it
         unique_function_id = self.clbl_name_gen(old_function_id)
 
-        updated_callables = self.callables.copy()
+        updated_callables = dict(self.callables)
         updated_callables[unique_function_id] = new_clbl
         renames[old_function_id] |= frozenset([unique_function_id])
 
@@ -653,7 +740,7 @@ class CallablesInferenceContext(ImmutableRecord):
 
         # }}}
 
-        return program.copy(callables_table=new_callables)
+        return program.copy(callables_table=Map(new_callables))
 
     def __getitem__(self, name):
         result = self.callables[name]
@@ -662,37 +749,64 @@ class CallablesInferenceContext(ImmutableRecord):
 # }}}
 
 
+TUnitOrKernelT = TypeVar("TUnitOrKernelT", LoopKernel, TranslationUnit)
+
+
 # {{{ helper functions
 
-def make_program(kernel):
+def make_program(kernel: LoopKernel) -> TranslationUnit:
     """
     Returns an instance of :class:`loopy.TranslationUnit` with *kernel* as the only
     callable kernel.
     """
 
-    program = TranslationUnit(
-            callables_table={
-                kernel.name: CallableKernel(kernel)},
-            target=kernel.target)
+    return TranslationUnit(
+            callables_table=Map({
+                kernel.name: CallableKernel(kernel)}),
+            target=kernel.target,
+            entrypoints=frozenset())
 
-    return program
+
+P = ParamSpec("P")
 
 
-def for_each_kernel(transform):
+def check_each_kernel(
+            check: Callable[Concatenate[LoopKernel, P], None]
+        ) -> Callable[Concatenate[TranslationUnit, P], None]:
+    def _collective_check(
+                t_unit_or_kernel: TranslationUnit | LoopKernel, /,
+                *args: P.args,
+                **kwargs: P.kwargs
+            ) -> None:
+        if isinstance(t_unit_or_kernel, TranslationUnit):
+            for clbl in t_unit_or_kernel.callables_table.values():
+                if isinstance(clbl, CallableKernel):
+                    check(clbl.subkernel, *args, **kwargs)
+                elif isinstance(clbl, ScalarCallable):
+                    pass
+                else:
+                    raise NotImplementedError(f"{type(clbl)}")
+        elif isinstance(t_unit_or_kernel, LoopKernel):
+            check(t_unit_or_kernel, *args, **kwargs)
+        else:
+            raise TypeError("expected LoopKernel or TranslationUnit")
+
+    return wraps(check)(_collective_check)
+
+
+def for_each_kernel(
+            transform: Callable[Concatenate[LoopKernel, P], LoopKernel]
+        ) -> Callable[Concatenate[TUnitOrKernelT, P], TUnitOrKernelT]:
     """
     Function wrapper for transformations of the type ``transform(kernel:
     LoopKernel, *args, **kwargs) -> LoopKernel``. Returns a function that would
     apply *transform* to all callable kernels in a :class:`loopy.TranslationUnit`.
     """
-    def _collective_transform(*args, **kwargs):
-        if "translation_unit" in kwargs:
-            t_unit_or_kernel = kwargs.pop("translation_unit")
-        elif "kernel" in kwargs:
-            t_unit_or_kernel = kwargs.pop("kernel")
-        else:
-            t_unit_or_kernel = args[0]
-            args = args[1:]
-
+    def _collective_transform(
+                t_unit_or_kernel: TUnitOrKernelT, /,
+                *args: P.args,
+                **kwargs: P.kwargs
+            ) -> TUnitOrKernelT:
         if isinstance(t_unit_or_kernel, TranslationUnit):
             t_unit = t_unit_or_kernel
             new_callables = {}
@@ -707,11 +821,12 @@ def for_each_kernel(transform):
 
                 new_callables[func_id] = clbl
 
-            return t_unit.copy(callables_table=new_callables)
-        else:
-            assert isinstance(t_unit_or_kernel, LoopKernel)
+            return t_unit.copy(callables_table=Map(new_callables))
+        elif isinstance(t_unit_or_kernel, LoopKernel):
             kernel = t_unit_or_kernel
             return transform(kernel, *args, **kwargs)
+        else:
+            raise TypeError("expected LoopKernel or TranslationUnit")
 
     return wraps(transform)(_collective_transform)
 
@@ -751,30 +866,30 @@ def add_callable_to_table(callables_table, clbl_id, clbl):
 
 # {{{ resolve_callables
 
-def resolve_callables(program):
+def resolve_callables(t_unit: TranslationUnit) -> TranslationUnit:
     """
     Returns a :class:`TranslationUnit` with known :class:`pymbolic.primitives.Call`
     expression nodes converted to :class:`loopy.symbolic.ResolvedFunction`.
     """
-    from loopy.library.function import get_loopy_callables
     from loopy.check import validate_kernel_call_sites
     from loopy.kernel import KernelState
+    from loopy.library.function import get_loopy_callables
 
-    if program.state >= KernelState.CALLS_RESOLVED:
+    if t_unit.state >= KernelState.CALLS_RESOLVED:
         # program's callables have been resolved
-        return program
+        return t_unit
 
     # get registered callables
-    known_callables = dict(program.callables_table)
+    known_callables = dict(t_unit.callables_table)
     # get target specific callables
-    known_callables.update(program.target.get_device_ast_builder().known_callables)
+    known_callables.update(t_unit.target.get_device_ast_builder().known_callables)
     # get loopy specific callables
     known_callables.update(get_loopy_callables())
 
     callables_table = {}
 
     # callables: name of the calls seen in the program
-    callables = {name for name, clbl in program.callables_table.items()
+    callables = {name for name, clbl in t_unit.callables_table.items()
                  if isinstance(clbl, CallableKernel)}
 
     while callables:
@@ -802,11 +917,11 @@ def resolve_callables(program):
         else:
             raise NotImplementedError(f"{type(clbl)}")
 
-    program = program.copy(callables_table=callables_table)
+    t_unit = t_unit.copy(callables_table=Map(callables_table))
 
-    validate_kernel_call_sites(program)
+    validate_kernel_call_sites(t_unit)
 
-    return program
+    return t_unit
 
 # }}}
 

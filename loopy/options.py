@@ -21,10 +21,12 @@ THE SOFTWARE.
 """
 
 
-from pytools import ImmutableRecord
-import re
 import os
+import re
+from typing import Any
 from warnings import warn
+
+from pytools import ImmutableRecord
 
 
 ALLOW_TERMINAL_COLORS = True
@@ -47,7 +49,7 @@ def _apply_legacy_map(lmap, kwargs):
             if lmap_value is None:
                 # ignore this
                 warn("option '%s' is deprecated and was ignored" % name,
-                        DeprecationWarning)
+                        DeprecationWarning, stacklevel=1)
                 continue
 
             new_name, translator = lmap_value
@@ -57,7 +59,7 @@ def _apply_legacy_map(lmap, kwargs):
 
             warn(f"Loopy option '{name}' is deprecated. '{new_name}' should be "
                     "used instead. The old option will stop working in 2022.",
-                    DeprecationWarning)
+                    DeprecationWarning, stacklevel=1)
             if translator is not None:
                 val = translator(val)
 
@@ -117,7 +119,7 @@ class Options(ImmutableRecord):
 
     .. attribute:: cl_exec_manage_array_events
 
-        Within the PyOpenCL executor, respect and udpate
+        Within the PyOpenCL executor, respect and update
         :attr:`pyopencl.array.Array.events`.
 
         Defaults to *True*.
@@ -131,7 +133,7 @@ class Options(ImmutableRecord):
         output values. This is helpful if arguments are inferred
         and argument ordering is thus implementation-defined.
 
-        See :meth:`CompiledKernel.__call__`.
+        See :meth:`ExecutorBase.__call__`.
 
     .. attribute:: write_wrapper
 
@@ -150,6 +152,13 @@ class Options(ImmutableRecord):
         ``EDITOR``) on the generated kernel code,
         allowing for tweaks before the code is passed on to
         the target for compilation.
+
+    .. attribute:: allow_fp_reordering
+
+        Allow re-ordering of floating point arithmetic. Re-ordering may
+        give different results as floating point arithmetic is not
+        associative in addition and multiplication. Default is *True*.
+        Note that the implementation of this option is currently incomplete.
 
     .. attribute:: build_options
 
@@ -206,7 +215,7 @@ class Options(ImmutableRecord):
             # All defaults are further required to be False when cast to bool
             # for the update() functionality to work.
 
-            self, **kwargs):
+            self, **kwargs: Any) -> None:
 
         kwargs = _apply_legacy_map(self._legacy_options_map, kwargs)
 
@@ -246,6 +255,7 @@ class Options(ImmutableRecord):
                 write_wrapper=kwargs.get("write_wrapper", False),
                 write_code=kwargs.get("write_code", False),
                 edit_code=kwargs.get("edit_code", False),
+                allow_fp_reordering=kwargs.get("allow_fp_reordering", True),
                 build_options=kwargs.get("build_options", []),
                 allow_terminal_colors=kwargs.get("allow_terminal_colors",
                     allow_terminal_colors_def),

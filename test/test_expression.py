@@ -20,18 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
+import pytest
+
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
-import pytest
-
 from pymbolic.mapper.evaluator import EvaluationMapper
 
+import loopy as lp
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -41,13 +43,13 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # "cl.create_some_context"
-        ]
+    "cl",  # "cl.create_some_context"
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
@@ -97,6 +99,7 @@ def make_random_fp_value(use_complex):
 
 def make_random_fp_expression(prefix, var_values, size, use_complex):
     from random import randrange
+
     import pymbolic.primitives as p
     v = randrange(1500)
     size[0] += 1
@@ -146,6 +149,7 @@ def make_random_int_value(nonneg):
 
 def make_random_int_expression(prefix, var_values, size, nonneg):
     from random import randrange
+
     import pymbolic.primitives as p
     if size[0] < 10:
         v = randrange(800)
@@ -291,7 +295,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
         var_name = "expr%d" % i
 
         # print(expr)
-        #assert_parse_roundtrip(expr)
+        # assert_parse_roundtrip(expr)
 
         if expr_type in ["int", "int_nonneg"]:
             result_type_iinfo = np.iinfo(np.int32)
@@ -343,7 +347,8 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
             from warnings import warn
             warn("Using default C compiler because gcc-10 was not found. "
                  "These tests may take a long time, because of "
-                 "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107127.")
+                 "https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107127.",
+                 stacklevel=1)
             target = target_cls()
 
     else:
@@ -391,7 +396,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
             print("reference=%r" % ref_value)
             print("loopy=%r" % lp_value)
             print(80*"-")
-            1/0
+            1/0  # noqa: B018
 
     print(lp.generate_code_v2(knl).device_code())
 
@@ -450,13 +455,14 @@ def test_indexof_vec(ctx_factory):
     knl = lp.set_options(knl, write_code=True)
 
     (evt, (out,)) = knl(queue)
-    #out = out.get()
-    #assert np.array_equal(out.ravel(order="C"), np.arange(25))
+    # out = out.get()
+    # assert np.array_equal(out.ravel(order="C"), np.arange(25))
 
 
 def test_is_expression_equal():
-    from loopy.symbolic import is_expression_equal
     from pymbolic import var
+
+    from loopy.symbolic import is_expression_equal
 
     x = var("x")
     y = var("y")
@@ -486,9 +492,21 @@ def test_integer_associativity():
     print(lp.generate_code_v2(knl).device_code())
     assert (
             "u[ncomp * indices[i % elemsize + elemsize "
-            "* loopy_floor_div_int32(i, ncomp * elemsize)] "
+            "* (i / (ncomp * elemsize))] "
             "+ loopy_mod_pos_b_int32(i / elemsize, ncomp)]"
             in lp.generate_code_v2(knl).device_code())
+
+
+def test_floor_div():
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<10 }",
+        "out[i] = (i-1)*(i-2)//2")
+    assert "loopy_floor_div" in lp.generate_code_v2(knl).device_code()
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<10 }",
+        "out[i] = (i*(i+1))//2")
+    assert "loopy_floor_div" not in lp.generate_code_v2(knl).device_code()
 
 
 def test_divide_precedence(ctx_factory):
@@ -545,8 +563,9 @@ def test_complex_support(ctx_factory, target):
 
     kwargs = {"in1": in1, "in2": in2}
 
+    knl = lp.set_options(knl, write_code=True)
+
     if target == lp.PyOpenCLTarget:
-        knl = lp.set_options(knl, write_code=True)
         cl_ctx = ctx_factory()
         with cl.CommandQueue(cl_ctx) as queue:
             evt, out = knl(queue, **kwargs)
@@ -601,7 +620,7 @@ def test_bool_type_context(ctx_factory):
         k = 8.0 and 7.0
         """,
         [
-            lp.GlobalArg("k", dtype=np.bool8, shape=lp.auto),
+            lp.GlobalArg("k", dtype=np.bool_, shape=lp.auto),
         ])
 
     evt, (out,) = knl(queue)
@@ -610,6 +629,7 @@ def test_bool_type_context(ctx_factory):
 
 def test_np_bool_handling(ctx_factory):
     import pymbolic.primitives as p
+
     from loopy.symbolic import parse
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -620,6 +640,81 @@ def test_np_bool_handling(ctx_factory):
         [lp.GlobalArg("y", dtype=np.bool_, shape=lp.auto)])
     evt, (out,) = knl(queue)
     assert out.get().item() is True
+
+
+@pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
+def test_complex_functions_with_real_args(ctx_factory, target):
+    # Reported by David Ham. See <https://github.com/inducer/loopy/issues/851>
+    t_unit = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            y1[i] = abs(c64[i])
+            y2[i] = real(c64[i])
+            y3[i] = imag(c64[i])
+            y4[i] = conj(c64[i])
+
+            y5[i] = abs(c128[i])
+            y6[i] = real(c128[i])
+            y7[i] = imag(c128[i])
+            y8[i] = conj(c128[i])
+
+
+            y9[i] = abs(f32[i])
+            y10[i] = real(f32[i])
+            y11[i] = imag(f32[i])
+            y12[i] = conj(f32[i])
+
+            y13[i] = abs(f64[i])
+            y14[i] = real(f64[i])
+            y15[i] = imag(f64[i])
+            y16[i] = conj(f64[i])
+            """,
+            target=target())
+
+    t_unit = lp.add_dtypes(t_unit,
+                           {"y9,y10,y11,y12": np.complex64,
+                            "y13,y14,y15,y16": np.complex128,
+                            "c64": np.complex64,
+                            "c128": np.complex128,
+                            "f64": np.float64,
+                            "f32": np.float32})
+    t_unit = lp.set_options(t_unit, return_dict=True)
+
+    from numpy.random import default_rng
+    rng = default_rng(0)
+    c64 = (rng.random(10, dtype=np.float32)
+           + np.csingle(1j)*rng.random(10, dtype=np.float32))
+    c128 = (rng.random(10, dtype=np.float64)
+            + np.cdouble(1j)*rng.random(10, dtype=np.float64))
+    f32 = rng.random(10, dtype=np.float32)
+    f64 = rng.random(10, dtype=np.float64)
+
+    if target == lp.PyOpenCLTarget:
+        cl_ctx = ctx_factory()
+        with cl.CommandQueue(cl_ctx) as queue:
+            evt, out = t_unit(queue, c64=c64, c128=c128, f32=f32, f64=f64)
+    elif target == lp.ExecutableCTarget:
+        t_unit = lp.set_options(t_unit, build_options=["-Werror"])
+        evt, out = t_unit(c64=c64, c128=c128, f32=f32, f64=f64)
+    else:
+        raise NotImplementedError("unsupported target")
+
+    np.testing.assert_allclose(out["y1"], np.abs(c64), rtol=1e-6)
+    np.testing.assert_allclose(out["y2"], np.real(c64), rtol=1e-6)
+    np.testing.assert_allclose(out["y3"], np.imag(c64), rtol=1e-6)
+    np.testing.assert_allclose(out["y4"], np.conj(c64), rtol=1e-6)
+    np.testing.assert_allclose(out["y5"], np.abs(c128), rtol=1e-6)
+    np.testing.assert_allclose(out["y6"], np.real(c128), rtol=1e-6)
+    np.testing.assert_allclose(out["y7"], np.imag(c128), rtol=1e-6)
+    np.testing.assert_allclose(out["y8"], np.conj(c128), rtol=1e-6)
+    np.testing.assert_allclose(out["y9"], np.abs(f32), rtol=1e-6)
+    np.testing.assert_allclose(out["y10"], np.real(f32), rtol=1e-6)
+    np.testing.assert_allclose(out["y11"], np.imag(f32), rtol=1e-6)
+    np.testing.assert_allclose(out["y12"], np.conj(f32), rtol=1e-6)
+    np.testing.assert_allclose(out["y13"], np.abs(f64), rtol=1e-6)
+    np.testing.assert_allclose(out["y14"], np.real(f64), rtol=1e-6)
+    np.testing.assert_allclose(out["y15"], np.imag(f64), rtol=1e-6)
+    np.testing.assert_allclose(out["y16"], np.conj(f64), rtol=1e-6)
 
 
 if __name__ == "__main__":

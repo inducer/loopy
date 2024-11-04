@@ -21,12 +21,14 @@ THE SOFTWARE.
 """
 
 
-from loopy.diagnostic import warn, LoopyError
-from loopy.codegen.result import merge_codegen_results
 import islpy as isl
 from islpy import dim_type
-from loopy.codegen.control import build_loop_nest
 from pymbolic.mapper.stringifier import PREC_NONE
+
+from loopy.codegen.control import build_loop_nest
+from loopy.codegen.result import merge_codegen_results
+from loopy.diagnostic import LoopyError, warn
+from loopy.symbolic import flatten
 
 
 # {{{ conditional-reducing slab decomposition
@@ -125,8 +127,7 @@ def generate_unroll_loop(codegen_state, sched_index):
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
-    from loopy.isl_helpers import (
-            static_max_of_pw_aff, static_value_of_pw_aff)
+    from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
     length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
@@ -143,7 +144,7 @@ def generate_unroll_loop(codegen_state, sched_index):
                 bounds.lower_bound_pw_aff.coalesce(),
                 constants_only=False)
     except Exception as e:
-        raise type(e)("while finding lower bound of '%s': " % iname)
+        raise type(e)("while finding lower bound of '%s': " % iname) from None
 
     result = []
 
@@ -167,8 +168,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
-    from loopy.isl_helpers import (
-            static_max_of_pw_aff, static_value_of_pw_aff)
+    from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
     length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
@@ -186,7 +186,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
                 bounds.lower_bound_pw_aff.coalesce(),
                 constants_only=False)
     except Exception as e:
-        raise type(e)("while finding lower bound of '%s': " % iname)
+        raise type(e)("while finding lower bound of '%s': " % iname) from None
 
     if not lower_bound_aff.plain_is_zero():
         warn(kernel, "vec_lower_not_0",
@@ -232,9 +232,14 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         hw_inames_left=None):
     kernel = codegen_state.kernel
 
-    from loopy.kernel.data import (UniqueInameTag, HardwareConcurrentTag,
-                LocalInameTag, GroupInameTag, VectorizeTag, InameImplementationTag)
-
+    from loopy.kernel.data import (
+        GroupInameTag,
+        HardwareConcurrentTag,
+        InameImplementationTag,
+        LocalInameTag,
+        UniqueInameTag,
+        VectorizeTag,
+    )
     from loopy.schedule import get_insn_ids_for_block_at
     insn_ids_for_block = get_insn_ids_for_block_at(kernel.linearization,
                                                    schedule_index)
@@ -287,14 +292,12 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
 
     result = []
 
-    bounds = kernel.get_iname_bounds(iname)
     domain = kernel.get_inames_domain(iname)
 
     # It's ok to find a bound that's too "loose". The conditional
     # generators will mop up after us.
-    from loopy.isl_helpers import static_min_of_pw_aff
-    lower_bound = static_min_of_pw_aff(bounds.lower_bound_pw_aff,
-            constants_only=False)
+    from loopy.kernel.tools import get_hw_axis_base_for_codegen
+    lower_bound = get_hw_axis_base_for_codegen(kernel, iname)
 
     # These bounds are 'implemented' by the hardware. Make sure
     # that the downstream conditional generators realize that.
@@ -307,7 +310,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     codegen_state = codegen_state.intersect(slab)
 
     from loopy.symbolic import pw_aff_to_expr
-    hw_axis_expr = hw_axis_expr + pw_aff_to_expr(lower_bound)
+    hw_axis_expr = flatten(hw_axis_expr + pw_aff_to_expr(lower_bound))
 
     # }}}
 
@@ -345,7 +348,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
 
 # {{{ sequential loop
 
-def generate_sequential_loop_dim_code(codegen_state, sched_index):
+def generate_sequential_loop_dim_code(codegen_state, sched_index, hints):
     kernel = codegen_state.kernel
 
     ecm = codegen_state.expression_to_code_mapper
@@ -358,6 +361,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
     # Note: this does not include loop_iname itself!
     usable_inames = get_usable_inames_for_conditional(kernel, sched_index,
             codegen_state.codegen_cachemanager)
+
     domain = kernel.get_inames_domain(loop_iname)
 
     result = []
@@ -478,7 +482,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                         codegen_state, loop_iname, kernel.index_dtype,
                         pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions)),
                         pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
-                        inner_ast)))
+                        inner_ast, hints)))
 
     return merge_codegen_results(codegen_state, result)
 

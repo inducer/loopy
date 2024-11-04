@@ -200,6 +200,8 @@ Tag                             Meaning
 ``"l.N"``                       Local (intra-group) axis N ("local")
 ``"g.N"``                       Group-number axis N ("group")
 ``"unr"``                       Unroll
+``"unr_hint"``                  Unroll using compiler directives
+``"unr_hint.N"``                Unroll at most N times using compiler directives
 ``"ilp"`` | ``"ilp.unr"``       Unroll using instruction-level parallelism
 ``"ilp.seq"``                   Realize parallel iname as innermost loop
 ``"like.INAME"``                Can be used when tagging inames to tag like another
@@ -260,6 +262,7 @@ Instructions
 
 .. {{{
 
+.. autoclass:: HappensAfter
 .. autoclass:: InstructionBase
 
 .. _assignments:
@@ -535,8 +538,6 @@ have the lifetime of a kernel invocation.
 .. autoclass:: AddressSpace
 
 .. autoclass:: TemporaryVariable
-    :members:
-    :undoc-members:
 
 .. _types:
 

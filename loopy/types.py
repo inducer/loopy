@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,11 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any, Mapping
-from warnings import warn
+from typing import Any, Mapping, Type, Union
+
 import numpy as np
 
 from loopy.diagnostic import LoopyError
+from loopy.typing import auto
+
 
 __doc__ = """
 .. currentmodule:: loopy.types
@@ -46,24 +49,24 @@ class LoopyType:
     Abstract class for dtypes of variables encountered in a
     :class:`loopy.LoopKernel`.
     """
-    def is_integral(self):
+    def is_integral(self) -> bool:
         raise NotImplementedError()
 
-    def is_complex(self):
+    def is_complex(self) -> bool:
         raise NotImplementedError()
 
-    def uses_complex(self):
+    def uses_complex(self) -> bool:
         raise NotImplementedError()
 
-    def is_composite(self):
-        raise NotImplementedError()
-
-    @property
-    def itemsize(self):
+    def is_composite(self) -> bool:
         raise NotImplementedError()
 
     @property
-    def numpy_dtype(self):
+    def itemsize(self) -> int:
+        raise NotImplementedError()
+
+    @property
+    def numpy_dtype(self) -> np.dtype:
         raise ValueError("'%s' is not a numpy type"
                 % str(self))
 
@@ -78,42 +81,36 @@ class AtomicType(LoopyType):
 # {{{ numpy-based dtype
 
 class NumpyType(LoopyType):
-    def __init__(self, dtype, target=None):
-        assert not isinstance(dtype, NumpyType)
+    def __init__(self, dtype: np.dtype):
+        assert not isinstance(dtype, LoopyType)
 
         if dtype is None:
             raise TypeError("may not pass None to construct NumpyType")
 
-        if dtype == object:
+        if dtype == object:  # noqa: E721
             raise TypeError("loopy does not directly support object arrays")
-
-        if target is not None:
-            warn("Passing target is deprecated and will stop working in 2022.",
-                    DeprecationWarning, stacklevel=2)
 
         self.dtype = np.dtype(dtype)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.dtype)
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, self.dtype)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return (
-                type(self) == type(other)
-                and self.dtype == other.dtype)
+                type(self) is type(other)
+                # mypy doesn't understand 'type(self) is type(other)'
+                and self.dtype == other.dtype)  # type: ignore[attr-defined]
 
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def is_integral(self):
+    def is_integral(self) -> bool:
         return self.dtype.kind in "iu"
 
-    def is_complex(self):
+    def is_complex(self) -> bool:
         return self.dtype.kind == "c"
 
-    def involves_complex(self):
+    def involves_complex(self) -> bool:
         def dtype_involves_complex(dtype):
             if dtype.kind == "c":
                 return True
@@ -131,14 +128,14 @@ class NumpyType(LoopyType):
         return self.dtype.kind == "V"
 
     @property
-    def itemsize(self):
+    def itemsize(self) -> int:
         return self.dtype.itemsize
 
     @property
-    def numpy_dtype(self):
+    def numpy_dtype(self) -> np.dtype:
         return self.dtype
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "np:" + repr(self.dtype)
 
 # }}}
@@ -168,46 +165,45 @@ class AtomicNumpyType(NumpyType, AtomicType):
 class OpaqueType(LoopyType):
     """An opaque data type is truly opaque - it has no allocations, no
     temporaries of that type, etc. The only thing allowed is to be pass in
-    through one ValueArg and go out to another. It is introduced to accomodate
+    through one ValueArg and go out to another. It is introduced to accommodate
     functional calls to external libraries.
     """
-    def __init__(self, name):
+    def __init__(self, name: str) -> None:
         assert isinstance(name, str)
         self.name = name
 
-    def is_integral(self):
+    def is_integral(self) -> bool:
         return False
 
-    def is_complex(self):
+    def is_complex(self) -> bool:
         return False
 
-    def involves_complex(self):
+    def involves_complex(self) -> bool:
         return False
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, self.name)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.name)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return (
-                type(self) == type(other)
-                and self.name == other.name)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+                type(self) is type(other)
+                # mypy doesn't understand 'type(self) is type(other)'
+                and self.name == other.name  # type: ignore[attr-defined]
+                )
 
 # }}}
 
 
-def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
-        target=None):
-    if target is not None:
-        warn("Passing target is deprecated and will stop working in 2022.",
-                DeprecationWarning, stacklevel=2)
+ToLoopyTypeConvertible = Union[Type[auto], None, np.dtype, LoopyType]
 
-    from loopy.kernel.data import auto
+
+def to_loopy_type(dtype: ToLoopyTypeConvertible,
+                  allow_auto: bool = False, allow_none: bool = False,
+                  for_atomic: bool = False
+                  ) -> Union[Type[auto], None, LoopyType]:
     if dtype is None:
         if allow_none:
             return None
@@ -216,7 +212,8 @@ def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
 
     elif dtype is auto:
         if allow_auto:
-            return dtype
+            # mypy doesn't seem to catch that this narrows the type of dtype
+            return dtype  # type: ignore[return-value]
         else:
             raise LoopyError("dtype may not be auto")
 
@@ -224,7 +221,9 @@ def to_loopy_type(dtype, allow_auto=False, allow_none=False, for_atomic=False,
 
     if dtype is not None:
         try:
-            numpy_dtype = np.dtype(dtype)
+            # We're playing fast and loose here, and mypy is onto us. It has a
+            # point.
+            numpy_dtype = np.dtype(dtype)  # type: ignore
         except Exception:
             pass
 

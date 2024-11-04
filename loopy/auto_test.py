@@ -20,16 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, Tuple, Optional
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional, Tuple
 from warnings import warn
 
 import numpy as np
 
 import loopy as lp
+from loopy.diagnostic import AutomaticTestFailure, LoopyError
 from loopy.kernel.array import get_strides
 
-from loopy.diagnostic import LoopyError, AutomaticTestFailure
 
 if TYPE_CHECKING:
     import pyopencl.array as cla
@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 AUTO_TEST_SKIP_RUN = False
 
 import logging
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,11 +104,15 @@ class TestArgInfo:
 def make_ref_args(kernel, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
-
-    from loopy.kernel.data import ValueArg, ArrayArg, ImageArg, \
-            TemporaryVariable, ConstantArg
-
     from pymbolic import evaluate
+
+    from loopy.kernel.data import (
+        ArrayArg,
+        ConstantArg,
+        ImageArg,
+        TemporaryVariable,
+        ValueArg,
+    )
 
     ref_args = {}
     ref_arg_data = []
@@ -213,10 +219,9 @@ def make_ref_args(kernel, queue, parameters):
 def make_args(kernel, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
-
-    from loopy.kernel.data import ValueArg, ArrayArg, ImageArg, ConstantArg
-
     from pymbolic import evaluate
+
+    from loopy.kernel.data import ArrayArg, ConstantArg, ImageArg, ValueArg
 
     args = {}
     for arg, arg_desc in zip(kernel.args, ref_arg_data):
@@ -364,7 +369,7 @@ def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors, need_image_support
     if not cpu_devs:
         warn("No CPU device found for running reference kernel. The reference "
                 "computation will either fail because of a timeout "
-                "or take a *very* long time.")
+                "or take a *very* long time.", stacklevel=1)
 
     for dev in cpu_devs:
         yield dev

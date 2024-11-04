@@ -1,9 +1,12 @@
 import numpy as np
+
 import pyopencl as cl  # noqa
+from pyopencl.tools import (
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+)
+
 import loopy as lp
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests  # noqa
 
 1/0  # see sem_reagan?
 
@@ -187,7 +190,7 @@ def test_tim3d(ctx_factory):
     knl = lp.split_iname(knl, "k", n, inner_tag="l.2")  # , slabs=(0, 1))
     knl = lp.split_iname(knl, "i", n, inner_tag="l.0")  # , slabs=(0, 1))
 
-#    knl = lp.tag_inames(knl, dict(k_nner="unr"))
+#    knl = lp.tag_inames(knl, dict(k_inner="unr"))
 
     knl = lp.tag_inames(knl, dict(o="unr"))
     knl = lp.tag_inames(knl, dict(m="unr"))

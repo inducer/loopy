@@ -21,8 +21,6 @@ lextab.py
 yacctab.py
 .pytest_cache/*
 
-loopy/_git_rev.py
-
 .cache
 .env
 virtualenv-[0-9]*[0-9]

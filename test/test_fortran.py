@@ -21,23 +21,27 @@ THE SOFTWARE.
 """
 
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
-import pyopencl as cl
-import pyopencl.clrandom  # noqa
 import pytest
 
-import logging
+import pyopencl as cl
+import pyopencl.clrandom  # noqa
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # "cl.create_some_context"
-        ]
+    "cl",  # "cl.create_some_context"
+    "pytest_generate_tests"
+]
 
 
 pytest.importorskip("fparser")
@@ -130,7 +134,9 @@ def test_assign_single_precision_scalar(ctx_factory):
         """
 
     t_unit = lp.parse_fortran(fortran_src)
-    assert "1.1f" in lp.generate_code_v2(t_unit).device_code()
+
+    import re
+    assert re.search("1.1000000[0-9]*f", lp.generate_code_v2(t_unit).device_code())
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
     t_unit(queue, a=a_dev)

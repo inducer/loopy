@@ -1,3 +1,15 @@
+"""
+.. autoclass:: IntegralT
+.. autoclass:: FloatT
+.. autoclass:: ExpressionT
+.. autoclass:: ShapeType
+.. autoclass:: auto
+"""
+
+
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2022 University of Illinois Board of Trustees"
 
 __license__ = """
@@ -21,18 +33,37 @@ THE SOFTWARE.
 """
 
 
-from typing import Union, Tuple
+from typing import Optional, Tuple, TypeVar, Union
 
 import numpy as np
+from typing_extensions import TypeAlias
 
 from pymbolic.primitives import Expression
 
-IntegralT = Union[int, np.int8, np.int16, np.int32, np.int64, np.uint8,
+
+IntegralT: TypeAlias = Union[int, np.int8, np.int16, np.int32, np.int64, np.uint8,
                   np.uint16, np.uint32, np.uint64]
-FloatT = Union[float, complex, np.float32, np.float64, np.complex64,
+FloatT: TypeAlias = Union[float, complex, np.float32, np.float64, np.complex64,
         np.complex128]
 
 
-ExpressionT = Union[IntegralT, FloatT, Expression]
-ShapeType = Tuple[ExpressionT, ...]
-StridesType = ShapeType
+ExpressionT: TypeAlias = Union[IntegralT, FloatT, Expression]
+ShapeType: TypeAlias = Tuple[ExpressionT, ...]
+StridesType: TypeAlias = ShapeType
+
+InameStr: TypeAlias = str
+
+
+class auto:  # noqa
+    """A generic placeholder object for something that should be automatically
+    determined.  See, for example, the *shape* or *strides* argument of
+    :class:`~loopy.ArrayArg`.
+    """
+
+
+T = TypeVar("T")
+
+
+def not_none(obj: Optional[T]) -> T:
+    assert obj is not None
+    return obj

@@ -22,43 +22,65 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from functools import cached_property
+from collections import defaultdict
+from dataclasses import dataclass, field, fields, replace
 from enum import IntEnum
+from functools import cached_property
 from sys import intern
 from typing import (
-        Dict, Sequence, Tuple, Mapping, Optional, FrozenSet, Any, Union,
-        Callable, Iterator, List, Set, TYPE_CHECKING)
-from dataclasses import dataclass, replace, field, fields
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    FrozenSet,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 from warnings import warn
 
-from collections import defaultdict
-
 import numpy as np
-from pytools import (memoize_method,
-        UniqueNameGenerator, generate_unique_names, natsorted)
-from pytools.tag import Taggable, Tag
-import islpy as isl
-from islpy import dim_type
 from immutables import Map
 
-from loopy.diagnostic import CannotBranchDomainTree, LoopyError
-from loopy.tools import update_persistent_hash
-from loopy.diagnostic import StaticValueFindingError
+import islpy as isl
+from islpy import dim_type
+from pytools import (
+    UniqueNameGenerator,
+    generate_unique_names,
+    memoize_method,
+    natsorted,
+)
+from pytools.tag import Tag, Taggable
+
+from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
-        _ArraySeparationInfo,
-        KernelArgument,
-        filter_iname_tags_by_type, Iname,
-        TemporaryVariable, ValueArg, ArrayArg, SubstitutionRule)
+    ArrayArg,
+    Iname,
+    KernelArgument,
+    SubstitutionRule,
+    TemporaryVariable,
+    ValueArg,
+    _ArraySeparationInfo,
+    filter_iname_tags_by_type,
+)
 from loopy.kernel.instruction import InstructionBase
-from loopy.types import LoopyType, NumpyType
 from loopy.options import Options
 from loopy.schedule import ScheduleItem
-from loopy.typing import ExpressionT
 from loopy.target import TargetBase
+from loopy.tools import update_persistent_hash
+from loopy.types import LoopyType, NumpyType
+from loopy.typing import ExpressionT, InameStr
+
 
 if TYPE_CHECKING:
-    from loopy.kernel.function_interface import InKernelCallable
     from loopy.codegen import PreambleInfo
+    from loopy.kernel.function_interface import InKernelCallable
+
 
 # {{{ loop kernel object
 
@@ -95,82 +117,25 @@ class LoopKernel(Taggable):
         even if it contains mutable data types. See :meth:`copy` for an easy
         way of producing a modified copy.
 
-    .. attribute:: domains
-
-        a list of :class:`islpy.BasicSet` instances representing the
-        :ref:`domain-tree`.
-
-    .. attribute:: instructions
-
-        A list of :class:`InstructionBase` instances, e.g.
-        :class:`Assignment`. See :ref:`instructions`.
-
-    .. attribute:: args
-
-        A list of :class:`loopy.KernelArgument`
-
-    .. attribute:: schedule
-
-        *None* or a list of :class:`loopy.schedule.ScheduleItem`
-
-    .. attribute:: name
-    .. attribute:: preambles
-    .. attribute:: preamble_generators
-    .. attribute:: assumptions
-
-        A :class:`islpy.BasicSet` parameter domain.
-
-    .. attribute:: temporary_variables
-
-        A :class:`dict` of mapping variable names to
-        :class:`loopy.TemporaryVariable`
-        instances.
-
-    .. attribute:: symbol_manglers
-
-    .. attribute:: substitutions
-
-        a mapping from substitution names to
-        :class:`SubstitutionRule` objects
-
-    .. attribute:: iname_slab_increments
-
-        a dictionary mapping inames to (lower_incr,
-        upper_incr) tuples that will be separated out in the execution to generate
-        'bulk' slabs with fewer conditionals.
-
-    .. attribute:: loop_priority
-
-        A frozenset of priority constraints to the kernel. Each such constraint
-        is a tuple of inames. Inames occuring in such a tuple will be scheduled
-        earlier than any iname following in the tuple. This applies only to inames
-        with non-parallel implementation tags.
-
-    .. attribute:: silenced_warnings
-
-    .. attribute:: applied_iname_rewrites
-
-        A list of past substitution dictionaries that
-        were applied to the kernel. These are stored so that they may be repeated
-        on expressions the user specifies later.
-
-    .. attribute:: options
-
-        An instance of :class:`loopy.Options`
-
-    .. attribute:: state
-
-        A value from :class:`KernelState`.
-
-    .. attribute:: target
-
-        A subclass of :class:`loopy.TargetBase`.
-
-    .. attribute:: inames
-
-        An instance of :class:`dict`, a mapping from the names of kernel's
-        inames to their corresponding instances of :class:`loopy.kernel.data.Iname`.
-        An entry is guaranteed to be present for each iname.
+    .. autoattribute:: domains
+    .. autoattribute:: instructions
+    .. autoattribute:: args
+    .. autoattribute:: schedule
+    .. autoattribute:: name
+    .. autoattribute:: preambles
+    .. autoattribute:: preamble_generators
+    .. autoattribute:: assumptions
+    .. autoattribute:: temporary_variables
+    .. autoattribute:: symbol_manglers
+    .. autoattribute:: substitutions
+    .. autoattribute:: iname_slab_increments
+    .. autoattribute:: loop_priority
+    .. autoattribute:: silenced_warnings
+    .. autoattribute:: applied_iname_rewrites
+    .. autoattribute:: options
+    .. autoattribute:: state
+    .. autoattribute:: target
+    .. autoattribute:: inames
 
     .. automethod:: __call__
     .. automethod:: copy
@@ -179,11 +144,25 @@ class LoopKernel(Taggable):
     .. automethod:: without_tags
     """
     domains: Sequence[isl.BasicSet]
+    """Represents the :ref:`domain-tree`."""
+
     instructions: Sequence[InstructionBase]
+    """
+    See :ref:`instructions`.
+    """
+
     args: Sequence[KernelArgument]
     assumptions: isl.BasicSet
+    """
+    Must be a :class:`islpy.BasicSet` parameter domain.
+    """
+
     temporary_variables: Mapping[str, TemporaryVariable]
-    inames: Mapping[str, Iname]
+    inames: Mapping[InameStr, Iname]
+    """
+    An entry is guaranteed to be present for each iname.
+    """
+
     substitutions: Mapping[str, SubstitutionRule]
     options: Options
     target: TargetBase
@@ -196,11 +175,29 @@ class LoopKernel(Taggable):
     symbol_manglers: Sequence[
             Callable[["LoopKernel", str], Optional[Tuple[LoopyType, str]]]] = ()
     linearization: Optional[Sequence[ScheduleItem]] = None
-    iname_slab_increments: Mapping[str, Tuple[int, int]] = field(
+    iname_slab_increments: Mapping[InameStr, Tuple[int, int]] = field(
             default_factory=Map)
-    loop_priority: FrozenSet[Tuple[str]] = field(
+    """
+    A mapping from inames to (lower_incr,
+    upper_incr) tuples that will be separated out in the execution to generate
+    'bulk' slabs with fewer conditionals.
+    """
+
+    loop_priority: FrozenSet[Tuple[InameStr, ...]] = field(
             default_factory=frozenset)
-    applied_iname_rewrites: Tuple[Dict[str, ExpressionT], ...] = ()
+    """
+    A frozenset of priority constraints to the kernel. Each such constraint
+    is a tuple of inames. Inames occurring in such a tuple will be scheduled
+    earlier than any iname following in the tuple. This applies only to inames
+    with non-parallel implementation tags.
+    """
+
+    applied_iname_rewrites: Tuple[Dict[InameStr, ExpressionT], ...] = ()
+    """
+    A list of past substitution dictionaries that
+    were applied to the kernel. These are stored so that they may be repeated
+    on expressions the user specifies later.
+    """
     index_dtype: NumpyType = NumpyType(np.dtype(np.int32))
     silenced_warnings: FrozenSet[str] = frozenset()
 
@@ -252,11 +249,11 @@ class LoopKernel(Taggable):
                 | {arg.name for arg in self.args}
                 | set(self.all_inames()))
 
-    def get_var_name_generator(self):
+    def get_var_name_generator(self) -> UniqueNameGenerator:
         return UniqueNameGenerator(self.all_variable_names())
 
-    def get_instruction_id_generator(self, based_on="insn"):
-        used_ids = {insn.id for insn in self.instructions}
+    def get_instruction_id_generator(self, based_on="insn") -> UniqueNameGenerator:
+        used_ids = {insn.id for insn in self.instructions if insn.id is not None}
 
         return UniqueNameGenerator(used_ids)
 
@@ -445,6 +442,20 @@ class LoopKernel(Taggable):
                         dom, result)
                 result = aligned_result & aligned_dom
 
+        assert result is not None
+        # Subdomains may carry other domains' inames as parameters.
+        # Move them back into the 'set' part of the space.
+        param_names = {
+                result.get_dim_name(dim_type.param, i)
+                for i in range(result.dim(dim_type.param))}
+        for actual_iname in param_names - self.all_params():
+            result = result.move_dims(
+                    dim_type.set,
+                    result.dim(dim_type.set),
+                    dim_type.param,
+                    result.find_dim_by_name(dim_type.param, actual_iname),
+                    1)
+
         return result
 
     def get_inames_domain(self, inames: FrozenSet[str]) -> isl.BasicSet:
@@ -479,7 +490,7 @@ class LoopKernel(Taggable):
         for iname in inames:
             home_domain_index = hdm[iname]
             if home_domain_index in domain_indices:
-                # nothin' new
+                # nothing new
                 continue
 
             domain_path_to_root = [home_domain_index] + ppd[home_domain_index]
@@ -556,7 +567,7 @@ class LoopKernel(Taggable):
         return frozenset(self.inames.keys())
 
     @memoize_method
-    def all_params(self):
+    def all_params(self) -> FrozenSet[str]:
         all_inames = self.all_inames()
 
         result = set()
@@ -770,9 +781,7 @@ class LoopKernel(Taggable):
 
     @memoize_method
     def global_var_names(self):
-        from loopy.kernel.data import AddressSpace
-
-        from loopy.kernel.data import ArrayArg
+        from loopy.kernel.data import AddressSpace, ArrayArg
         return (
                 {
                     arg.name for arg in self.args
@@ -894,8 +903,10 @@ class LoopKernel(Taggable):
         # }}}
 
         from loopy.kernel.data import (
-                GroupInameTag, LocalInameTag,
-                AutoLocalInameTagBase)
+            AutoLocalInameTagBase,
+            GroupInameTag,
+            LocalInameTag,
+        )
 
         for iname in all_inames_by_insns:
             tags = self.iname_tags_of_type(
@@ -1255,7 +1266,8 @@ class LoopKernel(Taggable):
         # cache retrieval for execution.
         from loopy.kernel.instruction import _get_insn_eq_key, _get_insn_hash_key
         from loopy.tools import (
-                LazilyUnpicklingListWithEqAndPersistentHashing as LazyList)
+            LazilyUnpicklingListWithEqAndPersistentHashing as LazyList,
+        )
 
         result["instructions"] = LazyList(
                 self.instructions,
@@ -1345,8 +1357,9 @@ class LoopKernel(Taggable):
 
     @memoize_method
     def __hash__(self):
-        from loopy.tools import LoopyKeyBuilder
         import hashlib
+
+        from loopy.tools import LoopyKeyBuilder
         key_hash = hashlib.sha256()
         self.update_persistent_hash(key_hash, LoopyKeyBuilder())
         return hash(key_hash.digest())

@@ -20,10 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.kernel.function_interface import ScalarCallable
-from loopy.diagnostic import LoopyError
-from loopy.types import NumpyType
 import numpy as np
+
+from loopy.diagnostic import LoopyError
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.translation_unit import CallablesTable
+from loopy.types import NumpyType
 
 
 class MakeTupleCallable(ScalarCallable):
@@ -68,8 +70,9 @@ class IndexOfCallable(ScalarCallable):
 
         ary = expression_to_code_mapper.find_array(arg)
 
-        from loopy.kernel.array import get_access_info
         from pymbolic import evaluate
+
+        from loopy.kernel.array import get_access_info
         access_info = get_access_info(expression_to_code_mapper.kernel,
                 ary, arg.index, lambda expr: evaluate(expr,
                     expression_to_code_mapper.codegen_state.var_subst_map),
@@ -105,7 +108,7 @@ class IndexOfCallable(ScalarCallable):
                 target), True
 
 
-def get_loopy_callables():
+def get_loopy_callables() -> CallablesTable:
     """
     Returns a mapping from function ids to corresponding
     :class:`loopy.kernel.function_interface.InKernelCallable` for functions
@@ -116,13 +119,11 @@ def get_loopy_callables():
     - callables that have a predefined meaning in :mod:`loo.py` like
       ``make_tuple``, ``index_of``, ``indexof_vec``.
     """
-    known_callables = {
+    return {
             "make_tuple": MakeTupleCallable(name="make_tuple"),
             "indexof": IndexOfCallable(name="indexof"),
             "indexof_vec": IndexOfCallable(name="indexof_vec"),
             }
-
-    return known_callables
 
 
 # vim: foldmethod=marker

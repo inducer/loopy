@@ -7,27 +7,35 @@ on:
     schedule:
         - cron:  '17 3 * * 0'
 
+concurrency:
+    group: ${{ github.head_ref || github.ref_name }}
+    cancel-in-progress: true
+
 jobs:
-    flake8:
-        name: Flake8
+    ruff:
+        name: Ruff
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
-        -
-            uses: actions/setup-python@v4
+        -   uses: actions/checkout@v4
             with:
-                # matches compat target in setup.py
-                python-version: '3.8'
+                submodules: true
         -   name: "Main Script"
             run: |
-                curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-flake8.sh
-                . ./prepare-and-run-flake8.sh "$(basename $GITHUB_REPOSITORY)" ./test examples proto-tests contrib
+                pipx install ruff
+                ruff check
+
+    typos:
+        name: Typos
+        runs-on: ubuntu-latest
+        steps:
+        -   uses: actions/checkout@v4
+        -   uses: crate-ci/typos@master
 
     pylint:
         name: Pylint
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
                 sed 's/python=3/python=3.7/' .test-conda-env-py3.yml > .test-conda-env.yml
@@ -39,7 +47,7 @@ jobs:
         name: Mypy
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -55,7 +63,7 @@ jobs:
           matrix:
             os: [ubuntu-latest, macos-latest]
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
@@ -65,7 +73,7 @@ jobs:
         name: Conda Pytest with Intel CL
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
                 curl -L -O https://raw.githubusercontent.com/illinois-scicomp/machine-shop-maintenance/main/install-intel-icd.sh
@@ -84,7 +92,7 @@ jobs:
         name: Conda Pytest without arg check
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
@@ -95,7 +103,7 @@ jobs:
         name: Conda Pytest Twice (for cache behavior)
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -108,12 +116,13 @@ jobs:
         name: Conda Examples
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
                 . ./ci-support-v0
                 build_py_project_in_conda_env
+                rewrite_pyopencl_test
 
                 . ./.ci/examples-funcs.sh
                 install_example_prereqs
@@ -125,9 +134,9 @@ jobs:
         name: Documentation
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -
-            uses: actions/setup-python@v4
+            uses: actions/setup-python@v5
             with:
                 python-version: '3.x'
         -   name: "Main Script"
@@ -140,12 +149,12 @@ jobs:
     downstream_tests:
         strategy:
             matrix:
-                downstream_project: [meshmode, grudge, pytential, pytato]
+                downstream_project: [arraycontext, meshmode, grudge, pytential, pytato]
             fail-fast: false
         name: Tests for downstream project ${{ matrix.downstream_project }}
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v3
+        -   uses: actions/checkout@v4
         -   name: "Main Script"
             env:
                 DOWNSTREAM_PROJECT: ${{ matrix.downstream_project }}
@@ -188,5 +197,15 @@ jobs:
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/63edfaf2ec8bf06987896569a4f24264df490e9e/firedrake-debug-patch.diff | patch -p1
 
                 pytest --tb=native -rsxw --durations=10 -m 'not parallel' tests/multigrid/
+
+    validate_cff:
+            name: Validate CITATION.cff
+            runs-on: ubuntu-latest
+            steps:
+            -   uses: actions/checkout@v4
+            -   uses: actions/setup-python@v5
+            -   run: |
+                    pip install cffconvert
+                    cffconvert -i CITATION.cff --validate
 
 # vim: sw=4
