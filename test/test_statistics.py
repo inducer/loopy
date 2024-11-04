@@ -1547,8 +1547,9 @@ class MyCostTagSum(Tag):
 
 
 def test_op_taggedexpression():
+    from pymbolic.primitives import Subscript, Sum, Variable
+
     from loopy.symbolic import TaggedExpression
-    from pymbolic.primitives import Subscript, Variable, Sum
 
     n = 500
 
