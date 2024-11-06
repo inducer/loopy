@@ -47,14 +47,15 @@ import pymbolic.primitives  # FIXME: also import by full name to allow sphinx to
 import pymbolic.primitives as p
 import pytools.lex
 from islpy import dim_type
-from pymbolic import Variable
+from pymbolic import ArithmeticExpressionT, Variable
 from pymbolic.mapper import (
     CachedCombineMapper as CombineMapperBase,
     CachedIdentityMapper as IdentityMapperBase,
     CachedWalkMapper as WalkMapperBase,
     CallbackMapper as CallbackMapperBase,
-    CSECachingMapperMixin,
     IdentityMapper as UncachedIdentityMapperBase,
+    Mapper,
+    P,
     WalkMapper as UncachedWalkMapperBase,
 )
 from pymbolic.mapper.coefficient import CoefficientCollector as CoefficientCollectorBase
@@ -80,7 +81,7 @@ from loopy.diagnostic import (
     UnableToDetermineAccessRangeError,
 )
 from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible
-from loopy.typing import ExpressionT
+from loopy.typing import ExpressionT, auto
 
 
 if TYPE_CHECKING:
@@ -128,11 +129,11 @@ References
 
 # {{{ mappers with support for loopy-specific primitives
 
-class IdentityMapperMixin:
-    def map_literal(self, expr, *args, **kwargs):
+class IdentityMapperMixin(Mapper[ExpressionT, P]):
+    def map_literal(self, expr: Literal, *args, **kwargs):
         return expr
 
-    def map_array_literal(self, expr, *args, **kwargs):
+    def map_array_literal(self, expr: ArrayLiteral, *args, **kwargs):
         return type(expr)(tuple(self.rec(ch, *args, **kwargs)
                                 for ch in expr.children))
 
@@ -221,7 +222,7 @@ class UncachedIdentityMapper(UncachedIdentityMapperBase,
 
 
 class PartialEvaluationMapper(
-        EvaluationMapperBase, CSECachingMapperMixin, IdentityMapperMixin):
+        EvaluationMapperBase, IdentityMapperMixin[P]):
     def map_variable(self, expr):
         return expr
 
@@ -315,7 +316,7 @@ class CombineMapper(CombineMapperBase):
 
 
 class SubstitutionMapper(
-        CSECachingMapperMixin, SubstitutionMapperBase, IdentityMapperMixin):
+        SubstitutionMapperBase, IdentityMapperMixin[[]]):
     def map_common_subexpression_uncached(self, expr):
         return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
@@ -325,7 +326,7 @@ class ConstantFoldingMapper(ConstantFoldingMapperBase,
     pass
 
 
-class StringifyMapper(StringifyMapperBase):
+class StringifyMapper(StringifyMapperBase[[]]):
     def map_literal(self, expr, *args):
         return expr.s
 
@@ -963,7 +964,7 @@ def _get_dependencies_and_reduction_inames(expr):
     return deps, reduction_inames
 
 
-def get_dependencies(expr: ExpressionT) -> AbstractSet[str]:
+def get_dependencies(expr: ExpressionT | type[auto]) -> AbstractSet[str]:
     return _get_dependencies_and_reduction_inames(expr)[0]
 
 
@@ -1706,7 +1707,7 @@ class ArrayAccessFinder(CombineMapper):
 
 # {{{ (pw)aff to expr conversion
 
-def aff_to_expr(aff: isl.Aff) -> ExpressionT:
+def aff_to_expr(aff: isl.Aff) -> ArithmeticExpressionT:
     from pymbolic import var
 
     denom = aff.get_denominator_val().to_python()
