@@ -564,7 +564,8 @@ def rename_callable(
         raise LoopyError(f"callables named '{new_name}' already exists")
 
     if new_name is None:
-        namegen = UniqueNameGenerator(t_unit.callables_table.keys())
+        namegen = UniqueNameGenerator(
+                    {n for n in t_unit.callables_table if isinstance(n, str)})
         new_name = namegen(old_name)
 
     assert isinstance(new_name, str)

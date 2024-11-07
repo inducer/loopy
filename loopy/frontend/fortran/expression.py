@@ -76,7 +76,8 @@ class FortranExpressionParser(ExpressionParserBase):
         (_not, pytools.lex.RE(r"\.not\.", re.I)),
         (_and, pytools.lex.RE(r"\.and\.", re.I)),
         (_or, pytools.lex.RE(r"\.or\.", re.I)),
-        ] + ExpressionParserBase.lex_table
+        *ExpressionParserBase.lex_table,
+        ]
 
     def __init__(self, tree_walker):
         self.tree_walker = tree_walker

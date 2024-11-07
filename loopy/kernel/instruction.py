@@ -264,12 +264,6 @@ class InstructionBase(ImmutableRecord, Taggable):
             "within_inames_is_final within_inames "
             "priority".split())
 
-    # Names of fields that are pymbolic expressions. Needed for key building
-    pymbolic_fields = set("")
-
-    # Names of fields that are sets of pymbolic expressions. Needed for key building
-    pymbolic_set_fields = {"predicates"}
-
     def __init__(self,
                  id: Optional[str],
                  happens_after: Union[
@@ -545,25 +539,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         key_builder.update_for_class(self.__class__)
 
         for field_name in self.fields:
-            field_value = getattr(self, field_name)
-            if field_name in self.pymbolic_fields:
-                key_builder.update_for_pymbolic_field(field_name, field_value)
-            elif field_name in self.pymbolic_set_fields:
-                # First sort the fields, as a canonical form
-                items = tuple(sorted(field_value, key=str))
-                key_builder.update_for_pymbolic_field(field_name, items)
-
-            # from CExpression
-            elif field_name == "iname_exprs":
-                from loopy.symbolic import EqualityPreservingStringifyMapper
-                key_builder.field_dict[field_name] = [
-                        (iname, EqualityPreservingStringifyMapper()(expr)
-                            .encode("utf-8"))
-                        for iname, expr in self.iname_exprs
-                        ]
-
-            else:
-                key_builder.update_for_field(field_name, field_value)
+            key_builder.update_for_field(field_name, getattr(self, field_name))
 
         return key_builder
 
@@ -841,7 +817,6 @@ class MultiAssignmentBase(InstructionBase):
     """An assignment instruction with an expression as a right-hand side."""
 
     fields = InstructionBase.fields | {"expression"}
-    pymbolic_fields = InstructionBase.pymbolic_fields | {"expression"}
 
     @memoize_method
     def read_dependency_names(self):
@@ -933,7 +908,6 @@ class Assignment(MultiAssignmentBase):
 
     fields = MultiAssignmentBase.fields | \
             set("assignee temp_var_type atomicity".split())
-    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | {"assignee"}
 
     def __init__(self,
                  assignee: Union[str, ExpressionT],
@@ -979,7 +953,9 @@ class Assignment(MultiAssignmentBase):
         if isinstance(assignee, str):
             assignee = parse(assignee)
         if isinstance(expression, str):
-            expression = parse(expression)
+            parsed_expression = parse(expression)
+        else:
+            parsed_expression = expression
 
         from pymbolic.primitives import Lookup, Subscript, Variable
 
@@ -988,7 +964,7 @@ class Assignment(MultiAssignmentBase):
             raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignee = assignee
-        self.expression = expression
+        self.expression = parsed_expression
 
         self.temp_var_type = _check_and_fix_temp_var_type(temp_var_type)
         self.atomicity = atomicity
@@ -1092,7 +1068,6 @@ class CallInstruction(MultiAssignmentBase):
 
     fields = MultiAssignmentBase.fields | \
             set("assignees temp_var_types".split())
-    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | {"assignees"}
 
     def __init__(self,
             assignees, expression,
@@ -1404,8 +1379,6 @@ class CInstruction(InstructionBase):
 
     fields = InstructionBase.fields | \
             set("iname_exprs code read_variables assignees".split())
-    pymbolic_fields = InstructionBase.pymbolic_fields | \
-            set("assignees".split())
 
     def __init__(self,
             iname_exprs, code,

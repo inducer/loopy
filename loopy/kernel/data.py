@@ -45,6 +45,7 @@ import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
 from immutables import Map
 
+from pymbolic import ArithmeticExpressionT
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
 
@@ -87,6 +88,13 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
+
+References
+^^^^^^^^^^
+
+.. class:: ToLoopyTypeConvertible
+
+    See :class:`loopy.ToLoopyTypeConvertible`.
 """
 
 # This docstring is included in ref_internals. Do not include parts of the public
@@ -809,7 +817,7 @@ class TemporaryVariable(ArrayBase):
                 raise ValueError("shape is None")
             if self.shape is auto:
                 raise ValueError("shape is auto")
-            shape = cast(Tuple[ExpressionT], self.shape)
+            shape = cast(Tuple[ArithmeticExpressionT], self.shape)
 
         if self.dtype is None:
             raise ValueError("data type is indeterminate")
@@ -853,8 +861,7 @@ class TemporaryVariable(ArrayBase):
         """
 
         super().update_persistent_hash(key_hash, key_builder)
-        self.update_persistent_hash_for_shape(key_hash, key_builder,
-                self.storage_shape)
+        key_builder.rec(key_hash, self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.base_storage)
@@ -899,7 +906,7 @@ class SubstitutionRule:
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.arguments)
-        key_builder.update_for_pymbolic_expression(key_hash, self.expression)
+        key_builder.rec(key_hash, self.expression)
 
 
 # }}}

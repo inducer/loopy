@@ -29,7 +29,7 @@ from typing_extensions import Self
 
 import islpy as isl
 from islpy import dim_type
-from pymbolic import var
+from pymbolic import ArithmeticExpressionT, var
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_method
 
@@ -47,7 +47,7 @@ class AccessDescriptor:
     """
 
     identifier: Any = None
-    storage_axis_exprs: Optional[Sequence[ExpressionT]] = None
+    storage_axis_exprs: Optional[Sequence[ArithmeticExpressionT]] = None
 
     def copy(self, **kwargs) -> Self:
         return replace(self, **kwargs)
@@ -204,9 +204,9 @@ def compute_bounds(kernel, domain, stor2sweep,
 
 class ArrayToBufferMapBase(ABC):
     non1_storage_axis_names: Tuple[str, ...]
-    storage_base_indices: Tuple[ExpressionT, ...]
-    non1_storage_shape: Tuple[ExpressionT, ...]
-    non1_storage_axis_flags: Tuple[ExpressionT, ...]
+    storage_base_indices: Tuple[ArithmeticExpressionT, ...]
+    non1_storage_shape: Tuple[ArithmeticExpressionT, ...]
+    non1_storage_axis_flags: Tuple[ArithmeticExpressionT, ...]
 
     @abstractmethod
     def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:

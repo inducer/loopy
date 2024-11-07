@@ -30,26 +30,19 @@ import numpy as np
 from immutables import Map
 
 import islpy as isl
-from pymbolic.mapper.persistent_hash import (
-    PersistentHashWalkMapper as PersistentHashWalkMapperBase,
-)
 from pytools import ProcessLogger, memoize_method
 from pytools.persistent_dict import (
     KeyBuilder as KeyBuilderBase,
     WriteOncePersistentDict,
 )
 
-from loopy.symbolic import (
+from .symbolic import (
     RuleAwareIdentityMapper,
-    UncachedWalkMapper as LoopyWalkMapper,
 )
+from .typing import is_integer  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-
-def is_integer(obj):
-    return isinstance(obj, (int, np.integer))
 
 
 def update_persistent_hash(obj, key_hash, key_builder):
@@ -64,33 +57,6 @@ def update_persistent_hash(obj, key_hash, key_builder):
 
 
 # {{{ custom KeyBuilder subclass
-
-class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
-    """A subclass of :class:`loopy.symbolic.WalkMapper` for constructing
-    persistent hash keys for use with
-    :class:`pytools.persistent_dict.PersistentDict`.
-
-    See also :meth:`LoopyKeyBuilder.update_for_pymbolic_expression`.
-    """
-
-    def __init__(self, key_hash):
-        LoopyWalkMapper.__init__(self)
-        PersistentHashWalkMapperBase.__init__(self, key_hash)
-
-    def map_reduction(self, expr, *args):
-        if not self.visit(expr):
-            return
-
-        self.key_hash.update(type(expr.operation).__name__.encode("utf-8"))
-        self.rec(expr.expr, *args)
-
-    def map_foreign(self, expr, *args, **kwargs):
-        """Mapper method dispatch for non-:mod:`pymbolic` objects."""
-        if expr is None:
-            self.key_hash.update(b"<None>")
-        else:
-            PersistentHashWalkMapperBase.map_foreign(self, expr, *args, **kwargs)
-
 
 class LoopyKeyBuilder(KeyBuilderBase):
     """A custom :class:`pytools.persistent_dict.KeyBuilder` subclass
@@ -119,28 +85,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
         else:
             raise AssertionError()
 
-    def update_for_pymbolic_expression(self, key_hash, key):
-        if key is None:
-            self.update_for_NoneType(key_hash, key)
-        else:
-            PersistentHashWalkMapper(key_hash)(key)
-
     update_for_PMap = update_for_dict  # noqa: N815
-
-
-class PymbolicExpressionHashWrapper:
-    def __init__(self, expression):
-        self.expression = expression
-
-    def __eq__(self, other):
-        return (type(self) is type(other)
-                and self.expression == other.expression)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        key_builder.update_for_pymbolic_expression(key_hash, self.expression)
 
 # }}}
 
@@ -176,11 +121,6 @@ class LoopyEqKeyBuilder:
 
     def update_for_field(self, field_name, value):
         self.field_dict[field_name] = value
-
-    def update_for_pymbolic_field(self, field_name, value):
-        from loopy.symbolic import EqualityPreservingStringifyMapper
-        self.field_dict[field_name] = \
-                EqualityPreservingStringifyMapper()(value).encode("utf-8")
 
     def key(self):
         """A key suitable for equality comparison."""
@@ -909,7 +849,6 @@ def clear_in_mem_caches() -> None:
 def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     from functools import wraps
 
-    import pymbolic.primitives as prim
     from pytools.persistent_dict import WriteOncePersistentDict
 
     from loopy.kernel import LoopKernel
@@ -934,17 +873,7 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
                 or kwargs.pop("_no_memoize_on_disk", False)):
             return func(*args, **kwargs)
 
-        def _get_persistent_hashable_arg(arg):
-            if isinstance(arg, prim.Expression):
-                return PymbolicExpressionHashWrapper(arg)
-            else:
-                return arg
-
-        cache_key = (func.__qualname__, func.__name__,
-                     tuple(_get_persistent_hashable_arg(arg)
-                           for arg in args),
-                     {kw: _get_persistent_hashable_arg(arg)
-                      for kw, arg in kwargs.items()})
+        cache_key = (func.__qualname__, func.__name__, args, kwargs)
 
         try:
             result = transform_cache[cache_key]

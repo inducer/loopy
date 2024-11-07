@@ -57,7 +57,8 @@ class ExpressionToPythonMapper(StringifyMapper):
     def rec(self, expr, prec, type_context=None, needed_dtype=None):
         return super().rec(expr, prec)
 
-    __call__ = rec
+    # FIXME: Fix once mappers are precisely typed
+    __call__ = rec  # type: ignore[assignment]
 
     def map_constant(self, expr, enclosing_prec):
         if isinstance(expr, np.generic):
