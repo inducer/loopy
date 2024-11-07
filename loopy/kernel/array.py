@@ -645,6 +645,11 @@ def _parse_shape_or_strides(
         else:
             res = x
 
+        # The Fortran parser may do this, but this is (deliberately) outside
+        # the behavior allowed by types, because the hope is to phase it out.
+        if x is None:
+            return x
+
         assert is_arithmetic_expression(res)
         return res
 
