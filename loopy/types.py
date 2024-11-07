@@ -90,9 +90,11 @@ class NumpyType(LoopyType):
         if dtype == object:  # noqa: E721
             raise TypeError("loopy does not directly support object arrays")
 
+        # Normalize due to https://stackoverflow.com/questions/35293672/why-do-these-dtypes-compare-equal-but-hash-different
         self.dtype = np.dtype(dtype)
 
     def __hash__(self) -> int:
+        # print("hash", repr(self.dtype), hash(self.dtype)== hash(np.float32))
         return hash(self.dtype)
 
     def update_persistent_hash(self, key_hash, key_builder):
