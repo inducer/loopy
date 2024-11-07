@@ -40,6 +40,8 @@ from pymbolic.primitives import Expression
 from pymbolic.typing import ArithmeticExpressionT, ExpressionT, IntegerT
 
 
+# The Fortran parser may insert dimensions of 'None', but I'd like to phase
+# that out, so we're not encoding that in the type.
 ShapeType: TypeAlias = Tuple[ArithmeticExpressionT, ...]
 StridesType: TypeAlias = ShapeType
 
