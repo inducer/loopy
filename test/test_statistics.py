@@ -36,6 +36,7 @@ from loopy.statistics import (
     AddressSpace,
     CountGranularity as CG,
     OpType,
+    SynchronizationKind,
 )
 from loopy.types import to_loopy_type
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
@@ -1017,7 +1018,8 @@ def test_barrier_counter_nobarriers():
     ell = 128
     params = {"n": n, "m": m, "ell": ell}
     assert len(sync_map) == 1
-    assert sync_map.filter_by(kind="kernel_launch").eval_and_sum(params) == 1
+    assert sync_map.filter_by(
+        sync_kind=[SynchronizationKind.KERNEL_LAUNCH]).eval_and_sum(params) == 1
 
 
 def test_barrier_counter_barriers():
@@ -1037,12 +1039,13 @@ def test_barrier_counter_barriers():
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
     knl = lp.split_iname(knl, "k", 128, inner_tag="l.0")
     sync_map = lp.get_synchronization_map(knl)
-    print(sync_map)
+    print(f"{sync_map=}")
     n = 512
     m = 256
     ell = 128
     params = {"n": n, "m": m, "ell": ell}
-    barrier_count = sync_map.filter_by(kind="barrier_local").eval_and_sum(params)
+    barrier_count = sync_map.filter_by(
+        sync_kind=[SynchronizationKind.BARRIER_LOCAL]).eval_and_sum(params)
     assert barrier_count == 50*10*2
 
 
@@ -1057,7 +1060,8 @@ def test_barrier_count_single():
     knl = lp.tag_inames(knl, {"i": "l.0"})
     sync_map = lp.get_synchronization_map(knl)
     print(sync_map)
-    barrier_count = sync_map.filter_by(kind="barrier_local").eval_and_sum()
+    barrier_count = sync_map.filter_by(
+        sync_kind=[SynchronizationKind.BARRIER_LOCAL]).eval_and_sum()
     assert barrier_count == 1
 
 
@@ -1087,21 +1091,23 @@ def test_all_counters_parallel_matmul():
 
     sync_map = lp.get_synchronization_map(knl)
     assert len(sync_map) == 2
-    assert sync_map.filter_by(kind="kernel_launch").eval_and_sum(params) == 1
-    assert sync_map.filter_by(kind="barrier_local").eval_and_sum(params) == 2*m/bsize
+    assert sync_map.filter_by(
+        sync_kind=[SynchronizationKind.KERNEL_LAUNCH]).eval_and_sum(params) == 1
+    assert sync_map.filter_by(
+        sync_kind=[SynchronizationKind.BARRIER_LOCAL]).eval_and_sum(params) == 2*m/bsize
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
     f32mul = op_map[
-                        lp.Op(np.float32, "mul", CG.SUBGROUP, "matmul")
+                        lp.Op(np.float32, OpType.MUL, CG.SUBGROUP, "matmul")
                         ].eval_with_dict(params)
     f32add = op_map[
-                        lp.Op(np.float32, "add", CG.SUBGROUP, "matmul")
+                        lp.Op(np.float32, OpType.ADD, CG.SUBGROUP, "matmul")
                         ].eval_with_dict(params)
     i32ops = op_map[
-                        lp.Op(np.int32, "add", CG.SUBGROUP, "matmul")
+                        lp.Op(np.int32, OpType.ADD, CG.SUBGROUP, "matmul")
                         ].eval_with_dict(params)
     i32ops += op_map[
-                        lp.Op(np.dtype(np.int32), "mul", CG.SUBGROUP, "matmul")
+                        lp.Op(np.dtype(np.int32), OpType.MUL, CG.SUBGROUP, "matmul")
                         ].eval_with_dict(params)
 
     # (count-per-sub-group)*n_subgroups
@@ -1110,14 +1116,14 @@ def test_all_counters_parallel_matmul():
     mem_access_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                            subgroup_size=SGS)
 
-    f32s1lb = mem_access_map[lp.MemAccess("global", np.float32,
+    f32s1lb = mem_access_map[lp.MemAccess(AddressSpace.GLOBAL, np.float32,
                              lid_strides={0: 1, 1: Variable("ell")},
                              gid_strides={1: bsize},
                              read_write=AccessDirection.READ, variable="b",
                              count_granularity=CG.WORKITEM,
                              kernel_name="matmul")
                              ].eval_with_dict(params)
-    f32s1la = mem_access_map[lp.MemAccess("global", np.float32,
+    f32s1la = mem_access_map[lp.MemAccess(AddressSpace.GLOBAL, np.float32,
                              lid_strides={0: 1, 1: Variable("m")},
                              gid_strides={0: Variable("m")*bsize},
                              read_write=AccessDirection.READ,
@@ -1128,7 +1134,7 @@ def test_all_counters_parallel_matmul():
     assert f32s1lb == n*m*ell/bsize
     assert f32s1la == n*m*ell/bsize
 
-    f32coal = mem_access_map[lp.MemAccess("global", np.float32,
+    f32coal = mem_access_map[lp.MemAccess(AddressSpace.GLOBAL, np.float32,
                              lid_strides={0: 1, 1: Variable("ell")},
                              gid_strides={0: Variable("ell")*bsize, 1: bsize},
                              read_write=AccessDirection.WRITE, variable="c",
@@ -1140,14 +1146,14 @@ def test_all_counters_parallel_matmul():
 
     local_mem_map = lp.get_mem_access_map(knl,
                         count_redundant_work=True,
-                        subgroup_size=SGS).filter_by(mtype=["local"])
+                        subgroup_size=SGS).filter_by(address_space=[AddressSpace.LOCAL])
 
-    local_mem_l = local_mem_map.filter_by(direction=["load"]
+    local_mem_l = local_mem_map.filter_by(read_write=[AccessDirection.READ]
                                           ).eval_and_sum(params)
     # (count-per-sub-group)*n_subgroups
     assert local_mem_l == m*2*n_subgroups
 
-    local_mem_l_a = local_mem_map[lp.MemAccess("local", np.dtype(np.float32),
+    local_mem_l_a = local_mem_map[lp.MemAccess(AddressSpace.LOCAL, np.dtype(np.float32),
                                                read_write=AccessDirection.READ,
                                                lid_strides={1: 16},
                                                gid_strides={},
@@ -1155,7 +1161,7 @@ def test_all_counters_parallel_matmul():
                                                count_granularity=CG.SUBGROUP,
                                                kernel_name="matmul")
                                   ].eval_with_dict(params)
-    local_mem_l_b = local_mem_map[lp.MemAccess("local", np.dtype(np.float32),
+    local_mem_l_b = local_mem_map[lp.MemAccess(AddressSpace.LOCAL, np.dtype(np.float32),
                                                read_write=AccessDirection.READ,
                                                lid_strides={0: 1},
                                                gid_strides={},
@@ -1167,7 +1173,7 @@ def test_all_counters_parallel_matmul():
     # (count-per-sub-group)*n_subgroups
     assert local_mem_l_a == local_mem_l_b == m*n_subgroups
 
-    local_mem_s = local_mem_map.filter_by(direction=["store"]
+    local_mem_s = local_mem_map.filter_by(read_write=[AccessDirection.WRITE]
                                           ).eval_and_sum(params)
 
     # (count-per-sub-group)*n_subgroups
@@ -1245,7 +1251,7 @@ def test_mem_access_tagged_variables():
                                            subgroup_size=SGS)
 
     f32s1lb = mem_access_map[
-            lp.MemAccess("global", np.float32,
+            lp.MemAccess(AddressSpace.GLOBAL, np.float32,
                 lid_strides={0: 1},
                 gid_strides={1: bsize},
                 read_write=AccessDirection.READ, variable="b",
@@ -1254,7 +1260,7 @@ def test_mem_access_tagged_variables():
                 kernel_name="matmul")
             ].eval_with_dict(params)
     f32s1la = mem_access_map[
-            lp.MemAccess("global", np.float32,
+            lp.MemAccess(AddressSpace.GLOBAL, np.float32,
                 lid_strides={1: Variable("m")},
                 gid_strides={0: Variable("m")*bsize},
                 read_write=AccessDirection.READ,
@@ -1270,7 +1276,7 @@ def test_mem_access_tagged_variables():
     assert f32s1la == m*n_subgroups
 
     f32coal = mem_access_map[
-            lp.MemAccess("global", np.float32,
+            lp.MemAccess(AddressSpace.GLOBAL, np.float32,
                 lid_strides={0: 1, 1: Variable("ell")},
                 gid_strides={0: Variable("ell")*bsize, 1: bsize},
                 read_write=AccessDirection.WRITE, variable="c",
@@ -1342,24 +1348,27 @@ def test_summations_and_filters():
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                     subgroup_size=SGS)
 
-    loads_a = mem_map.filter_by(direction=["load"], variable=["a"],
+    loads_a = mem_map.filter_by(read_write=[AccessDirection.READ], variable=["a"],
                                 count_granularity=[CG.SUBGROUP]
                                 ).eval_and_sum(params)
 
     # uniform: (count-per-sub-group)*n_subgroups
     assert loads_a == (2*n*m*ell)*n_subgroups
 
-    global_stores = mem_map.filter_by(mtype=["global"], direction=["store"],
+    global_stores = mem_map.filter_by(address_space=[AddressSpace.GLOBAL],
+                                      read_write=[AccessDirection.WRITE],
                                       count_granularity=[CG.SUBGROUP]
                                       ).eval_and_sum(params)
 
     # uniform: (count-per-sub-group)*n_subgroups
     assert global_stores == (n*m*ell + n*m)*n_subgroups
 
-    ld_bytes = mem_map.filter_by(mtype=["global"], direction=["load"],
+    ld_bytes = mem_map.filter_by(address_space=[AddressSpace.GLOBAL],
+                                 read_write=[AccessDirection.READ],
                                  count_granularity=[CG.SUBGROUP]
                                  ).to_bytes().eval_and_sum(params)
-    st_bytes = mem_map.filter_by(mtype=["global"], direction=["store"],
+    st_bytes = mem_map.filter_by(address_space=[AddressSpace.GLOBAL],
+                                 read_write=[AccessDirection.WRITE],
                                  count_granularity=[CG.SUBGROUP]
                                  ).to_bytes().eval_and_sum(params)
 
@@ -1368,11 +1377,13 @@ def test_summations_and_filters():
     assert st_bytes == (4*n*m*ell + 8*n*m)*n_subgroups
 
     # ignore stride and variable names in this map
-    reduced_map = mem_map.group_by("mtype", "dtype", "direction")
-    f32lall = reduced_map[lp.MemAccess("global", np.float32,
+    reduced_map = mem_map.group_by("address_space", "dtype", "read_write")
+    f32lall = reduced_map[lp.MemAccess(address_space=AddressSpace.GLOBAL,
+                                       dtype=np.float32,
                                        read_write=AccessDirection.READ)
                           ].eval_with_dict(params)
-    f64lall = reduced_map[lp.MemAccess("global", np.float64,
+    f64lall = reduced_map[lp.MemAccess(address_space=AddressSpace.GLOBAL,
+                                       dtype=np.float64,
                                        read_write=AccessDirection.READ)
                           ].eval_with_dict(params)
 
@@ -1393,7 +1404,7 @@ def test_summations_and_filters():
     assert f64 == n*m
     assert i32 == n*m*2
 
-    addsub_all = op_map.filter_by(name=["add", "sub"]).eval_and_sum(params)
+    addsub_all = op_map.filter_by(op_type=[OpType.ADD]).eval_and_sum(params)
     f32ops_all = op_map.filter_by(dtype=[np.float32]).eval_and_sum(params)
     assert addsub_all == n*m*ell + n*m*2
     assert f32ops_all == n*m*ell*3
@@ -1401,16 +1412,16 @@ def test_summations_and_filters():
     non_field = op_map.filter_by(xxx=[np.float32]).eval_and_sum(params)
     assert non_field == 0
 
-    ops_nodtype = op_map.group_by("name")
+    ops_nodtype = op_map.group_by("op_type")
     ops_noname = op_map.group_by("dtype")
-    mul_all = ops_nodtype[lp.Op(name="mul")].eval_with_dict(params)
+    mul_all = ops_nodtype[lp.Op(op_type=OpType.MUL)].eval_with_dict(params)
     f64ops_all = ops_noname[lp.Op(dtype=np.float64)].eval_with_dict(params)
     assert mul_all == n*m*ell + n*m
     assert f64ops_all == n*m
 
     def func_filter(key):
         return key.lid_strides == {} and key.dtype == to_loopy_type(np.float64) and \
-               key.direction == "load"
+               key.read_write == AccessDirection.READ
     f64l = mem_map.filter_by_func(func_filter).eval_and_sum(params)
 
     # uniform: (count-per-sub-group)*n_subgroups
@@ -1434,7 +1445,7 @@ def test_strided_footprint():
     knl = lp.split_iname(knl, "i_inner", bx, outer_tag="unr", inner_tag="l.0")
 
     footprints = lp.gather_access_footprints(knl)
-    x_l_foot = footprints[("x", "read")]
+    x_l_foot = footprints[lp.MemAccess(variable="x", read_write=AccessDirection.READ)]
 
     from loopy.statistics import count
     num = count(knl, x_l_foot).eval_with_dict(param_dict)
@@ -1464,7 +1475,7 @@ def test_stats_on_callable_kernel():
 
     op_map = lp.get_op_map(caller, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
-    f64_add = op_map.filter_by(name="add").eval_and_sum({})
+    f64_add = op_map.filter_by(op_type=[OpType.ADD]).eval_and_sum({})
     assert f64_add == 400
 
 
@@ -1490,7 +1501,7 @@ def test_stats_on_callable_kernel_within_loop():
     op_map = lp.get_op_map(caller, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
 
-    f64_add = op_map.filter_by(name="add").eval_and_sum({})
+    f64_add = op_map.filter_by(op_type=[OpType.ADD]).eval_and_sum({})
     assert f64_add == 8000
 
 
@@ -1518,7 +1529,7 @@ def test_callable_kernel_with_substitution():
     op_map = lp.get_op_map(caller, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
 
-    f64_add = op_map.filter_by(name="add").eval_and_sum({})
+    f64_add = op_map.filter_by(op_type=[OpType.ADD]).eval_and_sum({})
     assert f64_add == 8000
 
 
@@ -1536,8 +1547,8 @@ def test_no_loop_ops():
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
-    f64_add = op_map.filter_by(name="add").eval_and_sum({})
-    f64_mul = op_map.filter_by(name="mul").eval_and_sum({})
+    f64_add = op_map.filter_by(op_type=[OpType.ADD]).eval_and_sum({})
+    f64_mul = op_map.filter_by(op_type=[OpType.MUL]).eval_and_sum({})
     assert f64_add == 3
     assert f64_mul == 1
 

@@ -716,8 +716,7 @@ class Op:
 
         assert isinstance(self.op_type, OpType) or self.op_type is None, self.op_type
 
-        if not (self.count_granularity is None
-                or isinstance(self.count_granularity, CountGranularity)):
+        if not isinstance(self.count_granularity, (CountGranularity, type(None))):
             raise ValueError(
                 f"unexpected count_granularity: '{self.count_granularity}'")
 
@@ -838,8 +837,7 @@ class MemAccess:
         assert (self.address_space is None
                 or isinstance(self.address_space, AddressSpace))
 
-        if not (self.count_granularity is None
-                or isinstance(self.count_granularity, CountGranularity)):
+        if not isinstance(self.count_granularity, (CountGranularity, type(None))):
             raise ValueError(
                 f"unexpected count_granularity: '{self.count_granularity}'")
 
@@ -918,6 +916,10 @@ class Sync:
     sync_kind: Optional[SynchronizationKind] = None
     kernel_name: Optional[str] = None
     tags: frozenset[Tag] = frozenset()
+
+    def __post_init__(self):
+        if not isinstance(self.sync_kind, (SynchronizationKind, type(None))):
+            raise ValueError(f"unexpected sync_kind: '{self.sync_kind}'")
 
 # }}}
 
@@ -1359,7 +1361,8 @@ class MemAccessCounter(CounterBase):
                          dtype: LoopyType,
                          name: str,
                          index: Optional[tuple[Expression, ...]],
-                         tags: frozenset[Tag]
+                         tags: frozenset[Tag],
+                         var_tags: frozenset[Tag] = frozenset()
                          ) -> ToCountPolynomialMap:
         from loopy.kernel.data import TemporaryVariable
         array = self.knl.get_var_descriptor(name)
@@ -1392,7 +1395,7 @@ class MemAccessCounter(CounterBase):
                 lid_strides=immutabledict(lid_strides),
                 gid_strides=immutabledict(gid_strides),
                 variable=name,
-                count_granularity=self.local_mem_count_granularity,
+                count_granularity=local_mem_count_granularity,
                 kernel_name=self.knl.name): self.one})
 
         elif (isinstance(array, TemporaryVariable) and (
@@ -1425,12 +1428,6 @@ class MemAccessCounter(CounterBase):
                 lid_strides[0] != 0
                 ) else CountGranularity.SUBGROUP
 
-            try:
-                # var_tags = expr.aggregate.tags # FIXME
-                var_tags = frozenset()
-            except AttributeError:
-                var_tags = frozenset()
-
             return self.new_poly_map({MemAccess(
                             address_space=AddressSpace.GLOBAL,
                             dtype=dtype,
@@ -1456,9 +1453,14 @@ class MemAccessCounter(CounterBase):
 
     def map_subscript(
             self, expr: p.Subscript, tags: frozenset[Tag]) -> ToCountPolynomialMap:
+        try:
+            var_tags = expr.aggregate.tags
+        except AttributeError:
+            var_tags = frozenset()
+
         return (self.count_var_access(self.type_inf(expr),
                                       expr.aggregate.name,
-                                      expr.index, tags)
+                                      expr.index, tags, var_tags)
                 + self.rec(expr.index, tags))
 
 # }}}
@@ -2211,9 +2213,14 @@ def _get_synchronization_map_for_single_kernel(
                 iname_list.pop()
 
         elif isinstance(sched_item, Barrier):
+            if sched_item.synchronization_kind == "local":
+                sync_kind = SynchronizationKind.BARRIER_LOCAL
+            else:
+                sync_kind = SynchronizationKind.BARRIER_GLOBAL
+
             sync_map = sync_map + ToCountMap(
                     {Sync(
-                        "barrier_%s" % sched_item.synchronization_kind,
+                        sync_kind,
                         knl.name): count_inames_domain(knl, frozenset(iname_list))})
 
         elif isinstance(sched_item, RunInstruction):
