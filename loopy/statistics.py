@@ -791,7 +791,7 @@ class MemAccess:
 
     .. attribute:: count_granularity
 
-       A :class:`str` that specifies whether this operation should be counted
+       A :class:`CountGranularity` that specifies whether this operation should be counted
        once per *work-item*, *sub-group*, or *work-group*. The granularities
        allowed can be found in :class:`CountGranularity`, and may be accessed,
        e.g., as ``CountGranularity.WORKITEM``. A work-item is a single instance
