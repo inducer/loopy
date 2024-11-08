@@ -31,7 +31,12 @@ from pyopencl.tools import (  # noqa
 from pytools import div_ceil
 
 import loopy as lp
-from loopy.statistics import CountGranularity as CG, OpType, AccessDirection, AddressSpace
+from loopy.statistics import (
+    AccessDirection,
+    AddressSpace,
+    CountGranularity as CG,
+    OpType,
+)
 from loopy.types import to_loopy_type
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
@@ -417,9 +422,11 @@ def test_mem_access_counter_reduction():
     # uniform: (count-per-sub-group)*n_subgroups
     assert f32s == (n*ell)*n_subgroups
 
-    ld_bytes = mem_map.filter_by(mtype=["global"], read_write=[AccessDirection.READ]
+    ld_bytes = mem_map.filter_by(address_space=[AddressSpace.GLOBAL],
+                                 read_write=[AccessDirection.READ]
                                  ).to_bytes().eval_and_sum(params)
-    st_bytes = mem_map.filter_by(mtype=["global"], read_write=[AccessDirection.WRITE]
+    st_bytes = mem_map.filter_by(address_space=[AddressSpace.GLOBAL],
+                                 read_write=[AccessDirection.WRITE]
                                  ).to_bytes().eval_and_sum(params)
     assert ld_bytes == 4*f32l
     assert st_bytes == 4*f32s
@@ -543,8 +550,9 @@ def test_mem_access_counter_special_ops():
     assert f32 == (n*m*ell)*n_subgroups
     assert f64 == (n*m)*n_subgroups
 
-    filtered_map = mem_map.filter_by(read_write=[AccessDirection.READ], variable=["a", "g"],
-                         count_granularity=[CG.SUBGROUP])
+    filtered_map = mem_map.filter_by(read_write=[AccessDirection.READ],
+                                     variable=["a", "g"],
+                                     count_granularity=[CG.SUBGROUP])
     tot = filtered_map.eval_and_sum(params)
 
     # uniform: (count-per-sub-group)*n_subgroups
@@ -959,7 +967,7 @@ def test_mem_access_counter_global_temps():
 
     # Count global accesses
     global_accesses = mem_map.filter_by(
-        mtype=["global"]).sum().eval_with_dict(params)
+        address_space=[AddressSpace.GLOBAL]).sum().eval_with_dict(params)
 
     assert global_accesses == n*m
 
@@ -1361,9 +1369,11 @@ def test_summations_and_filters():
 
     # ignore stride and variable names in this map
     reduced_map = mem_map.group_by("mtype", "dtype", "direction")
-    f32lall = reduced_map[lp.MemAccess("global", np.float32, read_write=AccessDirection.READ)
+    f32lall = reduced_map[lp.MemAccess("global", np.float32,
+                                       read_write=AccessDirection.READ)
                           ].eval_with_dict(params)
-    f64lall = reduced_map[lp.MemAccess("global", np.float64, read_write=AccessDirection.READ)
+    f64lall = reduced_map[lp.MemAccess("global", np.float64,
+                                       read_write=AccessDirection.READ)
                           ].eval_with_dict(params)
 
     # uniform: (count-per-sub-group)*n_subgroups

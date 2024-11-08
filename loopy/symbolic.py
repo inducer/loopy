@@ -703,7 +703,7 @@ class TaggedVariable(LoopyExpressionBase, Variable, Taggable):
         return TaggedVariable(name, tags)
 
 
-@p.expr_dataclass(init=False)
+@p.expr_dataclass()
 class TaggedExpression(LoopyExpressionBase):
     """
     Represents a frozenset of tags attached to an :attr:`expr`.
@@ -720,22 +720,10 @@ class TaggedExpression(LoopyExpressionBase):
 
     init_arg_names = ("tags", "expr")
 
-    def __init__(self, tags, expr):
-        self.tags = tags
-        self.expr = expr
+    tags: frozenset[Tag]
+    expr: ExpressionT
 
-    def __getinitargs__(self):
-        return (self.tags, self.expr)
-
-    def get_hash(self):
-        return hash((self.__class__, self.tags, self.expr))
-
-    def is_equal(self, other):
-        return (other.__class__ == self.__class__
-                and other.tags == self.tags
-                and other.expr == self.expr)
-
-    mapper_method = intern("map_tagged_expression")
+    mapper_method = "map_tagged_expression"
 
 
 @p.expr_dataclass(init=False)
