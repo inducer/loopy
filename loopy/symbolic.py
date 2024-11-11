@@ -723,8 +723,6 @@ class TaggedExpression(LoopyExpressionBase):
     tags: frozenset[Tag]
     expr: ExpressionT
 
-    mapper_method = "map_tagged_expression"
-
 
 @p.expr_dataclass(init=False)
 class Reduction(LoopyExpressionBase):

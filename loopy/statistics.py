@@ -86,6 +86,10 @@ __doc__ = """
 
 .. autoclass:: GuardedPwQPolynomial
 
+.. class:: CountT
+
+    An arithmetic type that can be used in :class:`ToCountMap`.
+
 .. currentmodule:: loopy
 """
 
@@ -623,18 +627,15 @@ class CountGranularity(Enum):
 
     .. attribute:: WORKITEM
 
-       A :class:`str` that specifies that an operation should be counted
-       once per *work-item*.
+       Specifies that an operation should be counted once per *work-item*.
 
     .. attribute:: SUBGROUP
 
-       A :class:`str` that specifies that an operation should be counted
-       once per *sub-group*.
+       Specifies that an operation should be counted once per *sub-group*.
 
     .. attribute:: WORKGROUP
 
-       A :class:`str` that specifies that an operation should be counted
-       once per *work-group*.
+       Specifies that an operation should be counted once per *work-group*.
 
     """
 
@@ -649,6 +650,8 @@ class CountGranularity(Enum):
 
 class OpType(Enum):
     """
+    Specify the type of an (arithmetic) operation.
+
     .. attribute:: ADD
     .. attribute:: MUL
     .. attribute:: DIV
@@ -735,6 +738,8 @@ class Op:
 
 class AccessDirection(Enum):
     """
+    Specify the direction of a memory access.
+
     .. attribute:: READ
     .. attribute:: WRITE
     """
@@ -749,7 +754,7 @@ class MemAccess:
     .. attribute:: address_space
 
        A :class:`AddressSpace` that specifies the memory type accessed as **global**
-       or **local**
+       or **local**.
 
     .. attribute:: dtype
 
@@ -776,7 +781,7 @@ class MemAccess:
 
     .. attribute:: read_write
 
-       A :class:`AccessDirection` or *None*.
+       An :class:`AccessDirection` or *None*.
 
     .. attribute:: variable
 
@@ -894,6 +899,13 @@ class MemAccess:
 # {{{ Sync descriptor
 
 class SynchronizationKind(Enum):
+    """Specify the kind of synchronization.
+
+    .. attribute:: BARRIER_GLOBAL
+    .. attribute:: BARRIER_LOCAL
+    .. attribute:: KERNEL_LAUNCH
+     """
+
     BARRIER_GLOBAL = 0
     BARRIER_LOCAL = 1
     KERNEL_LAUNCH = 2
@@ -903,7 +915,7 @@ class SynchronizationKind(Enum):
 class Sync:
     """A descriptor for a type of synchronization.
 
-    .. attribute:: kind
+    .. attribute:: sync_kind
 
        A :class:`SynchronizationKind` or *None*.
 
