@@ -99,7 +99,6 @@ class NumpyType(LoopyType):
         self.dtype = np.dtype(dtype)
 
     def __hash__(self) -> int:
-        # print("hash", repr(self.dtype), hash(self.dtype)== hash(np.float32))
         return hash(self.dtype)
 
     def update_persistent_hash(self, key_hash, key_builder):
