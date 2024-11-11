@@ -40,7 +40,7 @@ jobs:
             run: |
                 sed 's/python=3/python=3.7/' .test-conda-env-py3.yml > .test-conda-env.yml
                 USE_CONDA_BUILD=1
-                curl -L -O https://raw.githubusercontent.com/inducer/ci-support/refs/heads/main/prepare-and-run-pylint.sh
+                curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
                 . ./prepare-and-run-pylint.sh "$(basename $GITHUB_REPOSITORY)" test/test_*.py
 
     mypy:
