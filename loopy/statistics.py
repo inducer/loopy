@@ -791,8 +791,8 @@ class MemAccess:
 
     .. attribute:: count_granularity
 
-       A :class:`CountGranularity` that specifies whether this operation should be counted
-       once per *work-item*, *sub-group*, or *work-group*. The granularities
+       A :class:`CountGranularity` that specifies whether this operation should be
+       counted once per *work-item*, *sub-group*, or *work-group*. The granularities
        allowed can be found in :class:`CountGranularity`, and may be accessed,
        e.g., as ``CountGranularity.WORKITEM``. A work-item is a single instance
        of computation executing on a single processor (think "thread"), a
@@ -824,6 +824,8 @@ class MemAccess:
     tags: frozenset[Tag] = frozenset()
 
     def __post_init__(self):
+        assert isinstance(self.address_space, (AddressSpace, type(None)))
+
         if self.dtype is not None:
             from loopy.types import to_loopy_type
             object.__setattr__(self, "dtype", to_loopy_type(self.dtype))
@@ -834,8 +836,8 @@ class MemAccess:
         if isinstance(self.gid_strides, dict):
             object.__setattr__(self, "gid_strides", immutabledict(self.gid_strides))
 
-        assert (self.address_space is None
-                or isinstance(self.address_space, AddressSpace))
+        if self.variable_tags is None:
+            object.__setattr__(self, "variable_tags", frozenset())
 
         if not isinstance(self.count_granularity, (CountGranularity, type(None))):
             raise ValueError(
@@ -870,21 +872,21 @@ class MemAccess:
         else:
             raise ValueError(f"unexpected read_write: '{self.read_write}'")
 
-    # def __repr__(self):
-    #     # Record.__repr__ overridden for consistent ordering and conciseness
-    #     return "MemAccess({}, {}, {}, {}, {}, {}, {}, {}, {}, {})".format(
-    #         self.address_space,
-    #         self.dtype,
-    #         None if self.lid_strides is None else dict(
-    #             sorted(self.lid_strides.items())),
-    #         None if self.gid_strides is None else dict(
-    #             sorted(self.gid_strides.items())),
-    #         self.read_write,
-    #         self.variable,
-    #         "None" if not self.variable_tags else str(self.variable_tags),
-    #         self.count_granularity,
-    #         repr(self.kernel_name),
-    #         self.tags)
+    def __repr__(self):
+        # dataclasses.__repr__ overridden for consistent ordering and conciseness
+        return "MemAccess({}, {}, {}, {}, {}, {}, {}, {}, {}, {})".format(
+            self.address_space,
+            self.dtype,
+            None if self.lid_strides is None else dict(
+                sorted(self.lid_strides.items())),
+            None if self.gid_strides is None else dict(
+                sorted(self.gid_strides.items())),
+            self.read_write,
+            self.variable,
+            str(self.variable_tags),
+            self.count_granularity,
+            repr(self.kernel_name),
+            self.tags)
 
 # }}}
 
@@ -920,6 +922,11 @@ class Sync:
     def __post_init__(self):
         if not isinstance(self.sync_kind, (SynchronizationKind, type(None))):
             raise ValueError(f"unexpected sync_kind: '{self.sync_kind}'")
+
+    def __repr__(self):
+        # Overridden for conciseness
+        return "Sync({}, {}, {})".format(
+            self.sync_kind, repr(self.kernel_name), self.tags)
 
 # }}}
 
