@@ -2,10 +2,10 @@
 
 set -o errexit -o nounset
 
-ci_support="https://gitlab.tiker.net/inducer/ci-support/raw/main"
+ci_support="https://raw.githubusercontent.com/inducer/ci-support/refs/heads/main/"
 
 if [[ ! -f .pylintrc.yml ]]; then
-    curl -o .pylintrc.yml "${ci_support}/.pylintrc-default.yml"
+    curl -L -o .pylintrc.yml "${ci_support}/.pylintrc-default.yml"
 fi
 
 
