@@ -196,7 +196,7 @@ class GuardedPwQPolynomial:
 # {{{ ToCountMap
 
 Countable = Union["Op", "MemAccess", "Sync"]
-CountT = TypeVar("CountT")
+CountT = TypeVar("CountT", int, GuardedPwQPolynomial)
 
 
 class ToCountMap(Generic[CountT]):
@@ -966,7 +966,7 @@ class CounterBase(CombineMapper):
     def _new_zero_map(self) -> ToCountPolynomialMap:
         return self.new_poly_map({})
 
-    def combine(self, values: Iterable[ToCountMap]) -> ToCountPolynomialMap:
+    def combine(self, values: Iterable[ToCountPolynomialMap]) -> ToCountPolynomialMap:
         return sum(values, self._new_zero_map())
 
     def map_tagged_expression(
@@ -975,7 +975,7 @@ class CounterBase(CombineMapper):
         return self.rec(expr.expr, expr.tags)
 
     def map_constant(
-            self, expr: Expression, tags: frozenset[Tag]
+            self, expr: object, tags: frozenset[Tag]
             ) -> ToCountPolynomialMap:
         return self._new_zero_map()
 
@@ -1025,14 +1025,6 @@ class CounterBase(CombineMapper):
                          "%s counting sum of if-expression branches."
                          % type(self).__name__)
         return self.rec(expr.condition, tags) + self.rec(expr.then, tags) \
-               + self.rec(expr.else_, tags)
-
-    def map_if_positive(
-            self, expr: p.IfPositive, tags: frozenset[Tag]) -> ToCountMap:
-        warn_with_kernel(self.knl, "summing_if_branches",
-                         "%s counting sum of if-expression branches."
-                         % type(self).__name__)
-        return self.rec(expr.criterion, tags) + self.rec(expr.then, tags) \
                + self.rec(expr.else_, tags)
 
     def map_common_subexpression(
@@ -1202,14 +1194,6 @@ class ExpressionOpCounter(CounterBase):
                          "ExpressionOpCounter counting ops as sum of "
                          "if-statement branches.")
         return self.rec(expr.condition, tags) + self.rec(expr.then, tags) \
-               + self.rec(expr.else_, tags)
-
-    def map_if_positive(
-            self, expr: p.IfPositive, tags: frozenset[Tag]) -> ToCountPolynomialMap:
-        warn_with_kernel(self.knl, "summing_ifpos_branches_ops",
-                         "ExpressionOpCounter counting ops as sum of "
-                         "if_pos-statement branches.")
-        return self.rec(expr.criterion, tags) + self.rec(expr.then, tags) \
                + self.rec(expr.else_, tags)
 
     def map_min(
@@ -2418,7 +2402,7 @@ def gather_access_footprint_bytes(
     """
 
     from loopy.preprocess import infer_unknown_types
-    kernel = infer_unknown_types(t_unit, expect_completion=True)
+    t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
     fp = gather_access_footprints(t_unit, ignore_uncountable=ignore_uncountable)
 
