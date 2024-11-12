@@ -729,7 +729,7 @@ class Op:
             from loopy.types import to_loopy_type
             object.__setattr__(self, "dtype", to_loopy_type(self.dtype))
 
-        assert isinstance(self.op_type, OpType) or self.op_type is None, self.op_type
+        assert isinstance(self.op_type, (OpType, type(None)))
 
         if not isinstance(self.count_granularity, (CountGranularity, type(None))):
             raise ValueError(
