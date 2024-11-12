@@ -377,6 +377,35 @@ def test_set_arg_order():
     knl = lp.set_argument_order(knl, "out,a,n,b")
 
 
+def test_tag_inames_keeps_all_tags_if_able():
+    t_unit = lp.make_kernel(
+            "{ [i,j]: 0<=i,j<n }",
+            "out[i,j] = a[i]*b[j]")
+
+    t_unit = lp.set_argument_order(t_unit, "out,a,n,b")
+    from pytools.tag import Tag, UniqueTag
+
+    class FooTag(Tag):
+        pass
+
+    class BarTag(UniqueTag):
+        pass
+
+    knl = t_unit.default_entrypoint
+
+    tags = knl.iname_tags("i")
+    assert not knl.iname_tags_of_type("i", FooTag)
+    assert not knl.iname_tags_of_type("i", BarTag)
+
+    knl2 = lp.tag_inames(knl, {"i": [FooTag(), BarTag()]})
+    assert knl2.iname_tags_of_type("i", FooTag)
+    assert knl2.iname_tags_of_type("i", BarTag)
+
+    knl3 = lp.tag_inames(knl, {"i": [BarTag(), FooTag()]})
+    assert knl3.iname_tags_of_type("i", FooTag)
+    assert knl3.iname_tags_of_type("i", BarTag)
+
+
 def test_affine_map_inames():
     knl = lp.make_kernel(
         "{[e, i,j,n]: 0<=e<E and 0<=i,j,n<N}",
