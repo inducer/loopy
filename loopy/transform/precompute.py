@@ -155,7 +155,8 @@ def storage_axis_exprs(storage_axis_sources, args) -> Sequence[ExpressionT]:
 # {{{ gather rule invocations
 
 class RuleInvocationGatherer(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, kernel, subst_name, subst_tag, within):
+    def __init__(self, rule_mapping_context, kernel, subst_name, subst_tag, within) \
+            -> None:
         super().__init__(rule_mapping_context)
 
         from loopy.symbolic import SubstitutionRuleExpander
@@ -167,7 +168,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
         self.subst_tag = subst_tag
         self.within = within
 
-        self.access_descriptors: List[RuleAccessDescriptor] = []
+        self.access_descriptors: list[RuleAccessDescriptor] = []
 
     def map_substitution(self, name, tag, arguments, expn_state):
         process_me = name == self.subst_name

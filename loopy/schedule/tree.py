@@ -34,9 +34,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Hashable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Generic, Hashable, Iterator, List, Optional, Sequence, Tuple, TypeVar
+from typing import Generic, TypeVar
 
 from immutables import Map
 
@@ -70,11 +71,11 @@ class Tree(Generic[NodeT]):
        this allocates a new stack frame for each iteration of the operation.
     """
 
-    _parent_to_children: Map[NodeT, Tuple[NodeT, ...]]
-    _child_to_parent: Map[NodeT, Optional[NodeT]]
+    _parent_to_children: Map[NodeT, tuple[NodeT, ...]]
+    _child_to_parent: Map[NodeT, NodeT | None]
 
     @staticmethod
-    def from_root(root: NodeT) -> "Tree[NodeT]":
+    def from_root(root: NodeT) -> Tree[NodeT]:
         return Tree(Map({root: ()}),
                     Map({root: None}))
 
@@ -89,7 +90,7 @@ class Tree(Generic[NodeT]):
         return guess
 
     @memoize_method
-    def ancestors(self, node: NodeT) -> Tuple[NodeT, ...]:
+    def ancestors(self, node: NodeT) -> tuple[NodeT, ...]:
         """
         Returns a :class:`tuple` of nodes that are ancestors of *node*.
         """
@@ -104,7 +105,7 @@ class Tree(Generic[NodeT]):
 
         return (parent,) + self.ancestors(parent)
 
-    def parent(self, node: NodeT) -> Optional[NodeT]:
+    def parent(self, node: NodeT) -> NodeT | None:
         """
         Returns the parent of *node*.
         """
@@ -112,7 +113,7 @@ class Tree(Generic[NodeT]):
 
         return self._child_to_parent[node]
 
-    def children(self, node: NodeT) -> Tuple[NodeT, ...]:
+    def children(self, node: NodeT) -> tuple[NodeT, ...]:
         """
         Returns the children of *node*.
         """
@@ -150,7 +151,7 @@ class Tree(Generic[NodeT]):
         """Return *True* if *node* is a node in the tree."""
         return node in self._child_to_parent
 
-    def add_node(self, node: NodeT, parent: NodeT) -> "Tree[NodeT]":
+    def add_node(self, node: NodeT, parent: NodeT) -> Tree[NodeT]:
         """
         Returns a :class:`Tree` with added node *node* having a parent
         *parent*.
@@ -165,7 +166,7 @@ class Tree(Generic[NodeT]):
                      .set(node, ())),
                     self._child_to_parent.set(node, parent))
 
-    def replace_node(self, node: NodeT, new_node: NodeT) -> "Tree[NodeT]":
+    def replace_node(self, node: NodeT, new_node: NodeT) -> Tree[NodeT]:
         """
         Returns a copy of *self* with *node* replaced with *new_node*.
         """
@@ -207,7 +208,7 @@ class Tree(Generic[NodeT]):
         return Tree(parent_to_children_mut.finish(),
                     child_to_parent_mut.finish())
 
-    def move_node(self, node: NodeT, new_parent: Optional[NodeT]) -> "Tree[NodeT]":
+    def move_node(self, node: NodeT, new_parent: NodeT | None) -> Tree[NodeT]:
         """
         Returns a copy of *self* with node *node* as a child of *new_parent*.
         """
@@ -262,7 +263,7 @@ class Tree(Generic[NodeT]):
                 ├── D
                 └── E
         """
-        def rec(node: NodeT) -> List[str]:
+        def rec(node: NodeT) -> list[str]:
             children_result = [rec(c) for c in self.children(node)]
 
             def post_process_non_last_child(children: Sequence[str]) -> list[str]:
