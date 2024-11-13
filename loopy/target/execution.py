@@ -36,11 +36,12 @@ from typing import (
     Set,
     Tuple,
     Union,
+    cast,
 )
 
 from immutables import Map
 
-from pymbolic import var
+from pymbolic import Variable, var
 from pytools.codegen import CodeGenerator, Indentation
 from pytools.py_codegen import PythonFunctionGenerator
 
@@ -260,7 +261,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                 unknown_var, = deps
                 order_to_unknown_to_equations \
                         .setdefault(eqn.order, {}) \
-                        .setdefault(unknown_var.name, []) \
+                        .setdefault(cast(Variable, unknown_var).name, []) \
                         .append((eqn))
             else:
                 # Zero deps: nothing to determine, forget about it.
@@ -274,7 +275,6 @@ class ExecutionWrapperGeneratorBase(ABC):
         # {{{ generate arg finding code
 
         from pymbolic.algorithm import solve_affine_equations_for
-        from pymbolic.primitives import Variable
         from pytools.codegen import CodeGenerator
 
         gen("# {{{ find integer arguments from array data")
