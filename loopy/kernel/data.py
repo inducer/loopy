@@ -45,7 +45,7 @@ import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
 from immutables import Map
 
-from pymbolic import ArithmeticExpressionT
+from pymbolic import ArithmeticExpressionT, Variable
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
 
@@ -113,7 +113,7 @@ def _names_from_expr(expr: Union[None, ExpressionT, str]) -> FrozenSet[str]:
     if isinstance(expr, str):
         return frozenset({expr})
     elif isinstance(expr, Expression):
-        return frozenset(v.name for v in dep_mapper(expr))
+        return frozenset(cast(Variable, v).name for v in dep_mapper(expr))
     elif expr is None:
         return frozenset()
     elif isinstance(expr, Number):

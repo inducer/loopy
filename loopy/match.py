@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from sys import intern
@@ -66,8 +67,7 @@ Match expressions
 """
 
 
-def re_from_glob(s):
-    import re
+def re_from_glob(s: str) -> re.Pattern:
     from fnmatch import translate
     return re.compile("^"+translate(s.strip())+"$")
 

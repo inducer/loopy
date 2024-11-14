@@ -168,7 +168,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
         self.subst_tag = subst_tag
         self.within = within
 
-        self.access_descriptors: List[RuleAccessDescriptor] = []
+        self.access_descriptors: list[RuleAccessDescriptor] = []
 
     def map_substitution(self, name, tag, arguments, expn_state):
         process_me = name == self.subst_name

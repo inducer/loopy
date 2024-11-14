@@ -21,15 +21,20 @@ THE SOFTWARE.
 """
 
 
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import Any, FrozenSet, Optional
+
+from typing_extensions import TypeAlias
 
 import islpy as isl
 from islpy import dim_type
+from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import InstructionBase
+from loopy.match import ToStackMatchCovertible
 from loopy.symbolic import (
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
@@ -675,9 +680,18 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
+_Tags_ish: TypeAlias = Tag | Sequence[Tag] | str  | Sequence[str]
+
+
 @for_each_kernel
-def tag_inames(kernel, iname_to_tag, force=False,
-        ignore_nonexistent=False):
+def tag_inames(
+            kernel: LoopKernel,
+            iname_to_tag: (Mapping[str, _Tags_ish]
+                | Sequence[tuple[str, _Tags_ish]]
+                | str),
+            force: bool = False,
+            ignore_nonexistent: bool = False
+        ) -> LoopKernel:
     """Tag an iname
 
     :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
@@ -697,74 +711,67 @@ def tag_inames(kernel, iname_to_tag, force=False,
     """
 
     if isinstance(iname_to_tag, str):
-        def parse_kv(s):
+        def parse_kv(s: str) -> tuple[str, str]:
             colon_index = s.find(":")
             if colon_index == -1:
                 raise ValueError("tag decl '%s' has no colon" % s)
 
             return (s[:colon_index].strip(), s[colon_index+1:].strip())
 
-        iname_to_tag = [
+        iname_to_tags_seq: Sequence[tuple[str, _Tags_ish]] = [
                 parse_kv(s) for s in iname_to_tag.split(",")
                 if s.strip()]
+    elif isinstance(iname_to_tag, Mapping):
+        iname_to_tags_seq = list(iname_to_tag.items())
+    else:
+        iname_to_tags_seq = iname_to_tag
 
     if not iname_to_tag:
         return kernel
 
-    # convert dict to list of tuples
-    if isinstance(iname_to_tag, dict):
-        iname_to_tag = list(iname_to_tag.items())
-
     # flatten iterables of tags for each iname
 
-    try:
-        from collections.abc import Iterable
-    except ImportError:
-        from collections import Iterable  # pylint:disable=no-name-in-module
-
-    unpack_iname_to_tag = []
-    for iname, tags in iname_to_tag:
+    unpack_iname_to_tag: list[tuple[str, Tag | str]] = []
+    for iname, tags in iname_to_tags_seq:
         if isinstance(tags, Iterable) and not isinstance(tags, str):
             for tag in tags:
                 unpack_iname_to_tag.append((iname, tag))
         else:
             unpack_iname_to_tag.append((iname, tags))
-    iname_to_tag = unpack_iname_to_tag
 
     from loopy.kernel.data import parse_tag as inner_parse_tag
 
-    def parse_tag(tag):
+    def parse_tag(tag: Tag | str) -> Iterable[Tag]:
         if isinstance(tag, str):
             if tag.startswith("like."):
-                tags = kernel.iname_tags(tag[5:])
-                if len(tags) == 0:
-                    return None
-                if len(tags) == 1:
-                    return tags[0]
-                else:
-                    raise LoopyError("cannot use like for multiple tags (for now)")
+                return kernel.iname_tags(tag[5:])
             elif tag == "unused.g":
                 return find_unused_axis_tag(kernel, "g")
             elif tag == "unused.l":
                 return find_unused_axis_tag(kernel, "l")
 
-        return inner_parse_tag(tag)
+        result = inner_parse_tag(tag)
+        if result is None:
+            return []
+        else:
+            return [result]
 
-    iname_to_tag = [(iname, parse_tag(tag)) for iname, tag in iname_to_tag]
+    iname_to_parsed_tag = [
+        (iname, subtag)
+        for iname, tag in unpack_iname_to_tag
+        for subtag in parse_tag(tag)
+    ]
 
-    # {{{ globbing
-
+    knl_inames = dict(kernel.inames)
     all_inames = kernel.all_inames()
 
     from loopy.match import re_from_glob
-    new_iname_to_tag = {}
-    for iname, new_tag in iname_to_tag:
+
+    for iname, new_tag in iname_to_parsed_tag:
         if "*" in iname or "?" in iname:
             match_re = re_from_glob(iname)
-            for sub_iname in all_inames:
-                if match_re.match(sub_iname):
-                    new_iname_to_tag[sub_iname] = new_tag
-
+            inames = [sub_iname for sub_iname in all_inames
+                if match_re.match(sub_iname)]
         else:
             if iname not in all_inames:
                 if ignore_nonexistent:
@@ -772,22 +779,13 @@ def tag_inames(kernel, iname_to_tag, force=False,
                 else:
                     raise LoopyError("iname '%s' does not exist" % iname)
 
-            new_iname_to_tag[iname] = new_tag
+            inames = [iname]
 
-    iname_to_tag = new_iname_to_tag
-    del new_iname_to_tag
-
-    # }}}
-
-    knl_inames = kernel.inames.copy()
-    for name, new_tag in iname_to_tag.items():
-        if not new_tag:
+        if new_tag is None:
             continue
 
-        if name not in kernel.all_inames():
-            raise ValueError("cannot tag '%s'--not known" % name)
-
-        knl_inames[name] = knl_inames[name].tagged(new_tag)
+        for sub_iname in inames:
+            knl_inames[sub_iname] = knl_inames[sub_iname].tagged(new_tag)
 
     return kernel.copy(inames=knl_inames)
 
@@ -2372,8 +2370,14 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
 @for_each_kernel
 @remove_any_newly_unused_inames
-def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
-                  within=None, raise_on_domain_mismatch: Optional[bool] = None):
+def rename_inames(
+            kernel: LoopKernel,
+            old_inames: Collection[str],
+            new_iname: str,
+            existing_ok: bool = False,
+            within: ToStackMatchCovertible = None,
+            raise_on_domain_mismatch: Optional[bool] = None
+        ) -> LoopKernel:
     r"""
     :arg old_inames: A collection of inames that must be renamed to **new_iname**.
     :arg within: a stack match as understood by
@@ -2383,7 +2387,6 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
         :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
         \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
     """
-    from collections.abc import Collection
     if (isinstance(old_inames, str)
             or not isinstance(old_inames, Collection)):
         raise LoopyError("'old_inames' must be a collection of strings, "
@@ -2511,9 +2514,15 @@ def rename_inames(kernel, old_inames, new_iname, existing_ok=False,
 
 
 @for_each_kernel
-def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
-                 within=None, preserve_tags=True,
-                 raise_on_domain_mismatch: Optional[bool] = None):
+def rename_iname(
+            kernel: LoopKernel,
+            old_iname: str,
+            new_iname: str,
+            existing_ok: bool = False,
+            within: ToStackMatchCovertible = None,
+            preserve_tags: bool = True,
+            raise_on_domain_mismatch: Optional[bool] = None
+        ) -> LoopKernel:
     r"""
     Single iname version of :func:`loopy.rename_inames`.
     :arg existing_ok: execute even if *new_iname* already exists.
@@ -2531,7 +2540,7 @@ def rename_iname(kernel, old_iname, new_iname, existing_ok=False,
     kernel = rename_inames(kernel, [old_iname], new_iname, existing_ok,
                            within, raise_on_domain_mismatch)
     if preserve_tags:
-        kernel = tag_inames(kernel, product([new_iname], tags))
+        kernel = tag_inames(kernel, list(product([new_iname], tags)))
     return kernel
 
 # }}}
