@@ -530,14 +530,6 @@ class LoopKernel(Taggable):
 
     # }}}
 
-    @property
-    def schedule(self):
-        warn(
-                "'LoopKernel.schedule' is deprecated and will be removed in 2022. "
-                "Call 'LoopKernel.linearization' instead.",
-                DeprecationWarning, stacklevel=2)
-        return self.linearization
-
     # {{{ iname wrangling
 
     def iname_tags(self, iname):
