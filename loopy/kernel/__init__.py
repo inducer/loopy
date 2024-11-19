@@ -121,7 +121,7 @@ class LoopKernel(Taggable):
     .. autoattribute:: domains
     .. autoattribute:: instructions
     .. autoattribute:: args
-    .. autoattribute:: schedule
+    .. autoattribute:: linearization
     .. autoattribute:: name
     .. autoattribute:: preambles
     .. autoattribute:: preamble_generators
