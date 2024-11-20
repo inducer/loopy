@@ -923,7 +923,7 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
         raise V2SchedulerNotImplementedError("v2 scheduler cannot schedule"
                 " kernels with instruction priorities set.")
 
-    if kernel.schedule is not None:
+    if kernel.linearization is not None:
         # cannot handle preschedule yet
         raise V2SchedulerNotImplementedError("v2 scheduler cannot schedule"
                 " prescheduled kernels.")

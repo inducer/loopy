@@ -121,7 +121,7 @@ class LoopKernel(Taggable):
     .. autoattribute:: domains
     .. autoattribute:: instructions
     .. autoattribute:: args
-    .. autoattribute:: schedule
+    .. autoattribute:: linearization
     .. autoattribute:: name
     .. autoattribute:: preambles
     .. autoattribute:: preamble_generators
@@ -529,14 +529,6 @@ class LoopKernel(Taggable):
         return self.combine_domains(tuple(sorted(domain_indices)))
 
     # }}}
-
-    @property
-    def schedule(self):
-        warn(
-                "'LoopKernel.schedule' is deprecated and will be removed in 2022. "
-                "Call 'LoopKernel.linearization' instead.",
-                DeprecationWarning, stacklevel=2)
-        return self.linearization
 
     # {{{ iname wrangling
 
