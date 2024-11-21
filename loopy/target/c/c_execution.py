@@ -48,7 +48,7 @@ from loopy.target.execution import (
 )
 from loopy.translation_unit import TranslationUnit
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+from loopy.typing import Expression
 
 
 logger = logging.getLogger(__name__)
@@ -105,7 +105,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[Union[Expression, Tuple[Expression]]], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for C-execution

@@ -43,7 +43,7 @@ from loopy.symbolic import Literal
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+from loopy.typing import Expression
 
 
 # {{{ expression mapper
@@ -252,8 +252,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[ExpressionT, ...],
-            lsize: Tuple[ExpressionT, ...]) -> Generable:
+            gsize: Tuple[Expression, ...],
+            lsize: Tuple[Expression, ...]) -> Generable:
         kernel = codegen_state.kernel
         ecm = self.get_expression_to_code_mapper(codegen_state)
 

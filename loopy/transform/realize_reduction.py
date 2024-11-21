@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 from immutables import Map
 
 import islpy as isl
-from pymbolic.primitives import Expression
+from pymbolic.primitives import ExpressionNode
 from pytools import memoize_on_first_arg
 from pytools.tag import Tag
 
@@ -103,7 +103,7 @@ class _ReductionRealizationContext:
     surrounding_within_inames: FrozenSet[str]
     surrounding_depends_on: FrozenSet[str]
     surrounding_no_sync_with: FrozenSet[Tuple[str, str]]
-    surrounding_predicates: FrozenSet[Expression]
+    surrounding_predicates: FrozenSet[ExpressionNode]
 
     # }}}
 

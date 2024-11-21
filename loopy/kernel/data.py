@@ -45,7 +45,7 @@ import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
 from immutables import Map
 
-from pymbolic import ArithmeticExpressionT, Variable
+from pymbolic import ArithmeticExpression, Variable
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
 
@@ -65,7 +65,7 @@ from loopy.kernel.instruction import (  # noqa
     make_assignment,
 )
 from loopy.types import LoopyType, ToLoopyTypeConvertible
-from loopy.typing import ExpressionT, ShapeType, auto
+from loopy.typing import Expression, ShapeType, auto
 
 
 __doc__ = """
@@ -103,7 +103,7 @@ References
 
 # {{{ utilities
 
-def _names_from_expr(expr: Union[None, ExpressionT, str]) -> FrozenSet[str]:
+def _names_from_expr(expr: Union[None, Expression, str]) -> FrozenSet[str]:
     from numbers import Number
 
     from loopy.symbolic import DependencyMapper
@@ -651,7 +651,7 @@ class TemporaryVariable(ArrayBase):
     """
 
     storage_shape: Optional[ShapeType]
-    base_indices: Optional[Tuple[ExpressionT, ...]]
+    base_indices: Optional[Tuple[Expression, ...]]
     address_space: Union[AddressSpace, Type[auto]]
     base_storage: Optional[str]
     """The name of a storage array that is to be used to actually
@@ -698,12 +698,12 @@ class TemporaryVariable(ArrayBase):
                 shape: Union[ShapeType, Type["auto"], None] = auto,
                 address_space: Union[AddressSpace, Type[auto], None] = None,
                 dim_tags: Optional[Sequence[ArrayDimImplementationTag]] = None,
-                offset: Union[ExpressionT, str, None] = 0,
+                offset: Union[Expression, str, None] = 0,
                 dim_names: Optional[Tuple[str, ...]] = None,
-                strides: Optional[Tuple[ExpressionT, ...]] = None,
+                strides: Optional[Tuple[Expression, ...]] = None,
                 order: str | None = None,
 
-                base_indices: Optional[Tuple[ExpressionT, ...]] = None,
+                base_indices: Optional[Tuple[Expression, ...]] = None,
                 storage_shape: ShapeType | None = None,
 
                 base_storage: Optional[str] = None,
@@ -809,7 +809,7 @@ class TemporaryVariable(ArrayBase):
         return super().copy(**kwargs)
 
     @property
-    def nbytes(self) -> ExpressionT:
+    def nbytes(self) -> Expression:
         if self.storage_shape is not None:
             shape = self.storage_shape
         else:
@@ -817,7 +817,7 @@ class TemporaryVariable(ArrayBase):
                 raise ValueError("shape is None")
             if self.shape is auto:
                 raise ValueError("shape is auto")
-            shape = cast(Tuple[ArithmeticExpressionT], self.shape)
+            shape = cast(Tuple[ArithmeticExpression], self.shape)
 
         if self.dtype is None:
             raise ValueError("data type is indeterminate")
@@ -898,7 +898,7 @@ class SubstitutionRule:
 
     name: str
     arguments: Sequence[str]
-    expression: ExpressionT
+    expression: Expression
 
     def copy(self, **kwargs: Any) -> SubstitutionRule:
         return replace(self, **kwargs)

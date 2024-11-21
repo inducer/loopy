@@ -62,7 +62,7 @@ nitpick_ignore_regex = [
         ["py:class", r"immutables\.(.+)"],
 
         # Reference not found from "<unknown>"? I'm not even sure where to look.
-        ["py:class", r"Expression"],
+        ["py:class", r"ExpressionNode"],
         ]
 
 autodoc_type_aliases = {

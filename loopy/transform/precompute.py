@@ -28,7 +28,7 @@ import numpy as np
 from immutables import Map
 
 import islpy as isl
-from pymbolic import ArithmeticExpressionT, var
+from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_on_first_arg
 from pytools.tag import Tag
@@ -60,7 +60,7 @@ from loopy.transform.array_buffer_map import (
 from loopy.translation_unit import CallablesTable, TranslationUnit
 from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
 from loopy.typing import (
-    ExpressionT,
+    Expression,
     auto,
     integer_expr_or_err,
     integer_or_err,
@@ -133,14 +133,14 @@ def contains_a_subst_rule_invocation(kernel, insn):
 
 @dataclass(frozen=True)
 class RuleAccessDescriptor(AccessDescriptor):
-    args: Optional[Sequence[ArithmeticExpressionT]] = None
+    args: Optional[Sequence[ArithmeticExpression]] = None
 
 
 def access_descriptor_id(args, expansion_stack):
     return (args, expansion_stack)
 
 
-def storage_axis_exprs(storage_axis_sources, args) -> Sequence[ExpressionT]:
+def storage_axis_exprs(storage_axis_sources, args) -> Sequence[Expression]:
     result = []
 
     for saxis_source in storage_axis_sources:
@@ -577,9 +577,9 @@ def precompute_for_single_kernel(
 
         for fpg in footprint_generators:
             if isinstance(fpg, Variable):
-                args: tuple[ArithmeticExpressionT, ...] = ()
+                args: tuple[ArithmeticExpression, ...] = ()
             elif isinstance(fpg, Call):
-                args = cast(tuple[ArithmeticExpressionT, ...], fpg.parameters)
+                args = cast(tuple[ArithmeticExpression, ...], fpg.parameters)
             else:
                 raise ValueError("footprint generator must "
                         "be substitution rule invocation")
