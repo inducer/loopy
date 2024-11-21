@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import FrozenSet, List, Optional, Sequence, Type, Union, cast
 
 import numpy as np
-from immutables import Map
+from immutabledict import immutabledict
 
 import islpy as isl
 from pymbolic import ArithmeticExpressionT, var
@@ -1181,6 +1181,6 @@ def precompute(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=immutabledict(new_callables))
 
 # vim: foldmethod=marker

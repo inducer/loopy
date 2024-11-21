@@ -25,7 +25,7 @@ from sys import intern
 from warnings import warn
 
 import numpy as np
-from immutables import Map
+from immutabledict import immutabledict
 
 import islpy as isl
 from islpy import dim_type
@@ -330,7 +330,7 @@ def specialize_fortran_division(t_unit):
 
         new_callables[name] = clbl
 
-    return t_unit.copy(callables_table=Map(new_callables))
+    return t_unit.copy(callables_table=immutabledict(new_callables))
 
 # }}}
 

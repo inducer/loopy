@@ -22,7 +22,7 @@ THE SOFTWARE.
 
 import logging
 
-from immutables import Map
+from immutabledict import immutabledict
 
 from pymbolic import var
 from pymbolic.mapper.substitutor import make_subst_func
@@ -537,7 +537,7 @@ def buffer_array(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=immutabledict(new_callables))
 
 
 # vim: foldmethod=marker

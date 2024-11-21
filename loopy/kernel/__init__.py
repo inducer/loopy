@@ -45,7 +45,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np
-from immutables import Map
+from immutabledict import immutabledict
 
 import islpy as isl
 from islpy import dim_type
@@ -177,7 +177,7 @@ class LoopKernel(Taggable):
             Callable[["LoopKernel", str], Optional[Tuple[LoopyType, str]]]] = ()
     linearization: Optional[Sequence[ScheduleItem]] = None
     iname_slab_increments: Mapping[InameStr, Tuple[int, int]] = field(
-            default_factory=Map)
+            default_factory=immutabledict)
     """
     A mapping from inames to (lower_incr,
     upper_incr) tuples that will be separated out in the execution to generate

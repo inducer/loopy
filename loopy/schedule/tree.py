@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Generic, TypeVar
 
-from immutables import Map
+from immutabledict import immutabledict
 
 from pytools import memoize_method
 
@@ -71,13 +71,13 @@ class Tree(Generic[NodeT]):
        this allocates a new stack frame for each iteration of the operation.
     """
 
-    _parent_to_children: Map[NodeT, tuple[NodeT, ...]]
-    _child_to_parent: Map[NodeT, NodeT | None]
+    _parent_to_children: immutabledict[NodeT, tuple[NodeT, ...]]
+    _child_to_parent: immutabledict[NodeT, NodeT | None]
 
     @staticmethod
     def from_root(root: NodeT) -> Tree[NodeT]:
-        return Tree(Map({root: ()}),
-                    Map({root: None}))
+        return Tree(immutabledict({root: ()}),
+                    immutabledict({root: None}))
 
     @cached_property
     def root(self) -> NodeT:
@@ -182,7 +182,7 @@ class Tree(Generic[NodeT]):
 
         # {{{ update child to parent
 
-        child_to_parent_mut = self._child_to_parent.mutate()
+        child_to_parent_mut = dict(self._child_to_parent)
         del child_to_parent_mut[node]
         child_to_parent_mut[new_node] = parent
 
@@ -193,7 +193,7 @@ class Tree(Generic[NodeT]):
 
         # {{{ update parent_to_children
 
-        parent_to_children_mut = self._parent_to_children.mutate()
+        parent_to_children_mut = dict(self._parent_to_children)
         del parent_to_children_mut[node]
         parent_to_children_mut[new_node] = children
 
@@ -205,8 +205,8 @@ class Tree(Generic[NodeT]):
 
         # }}}
 
-        return Tree(parent_to_children_mut.finish(),
-                    child_to_parent_mut.finish())
+        return Tree(immutabledict(parent_to_children_mut),
+                    immutabledict(child_to_parent_mut))
 
     def move_node(self, node: NodeT, new_parent: NodeT | None) -> Tree[NodeT]:
         """

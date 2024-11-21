@@ -32,7 +32,7 @@ intersphinx_mapping = {
         "pyopencl": ("https://documen.tician.de/pyopencl", None),
         "cgen": ("https://documen.tician.de/cgen", None),
         "pymbolic": ("https://documen.tician.de/pymbolic", None),
-        "pyrsistent": ("https://pyrsistent.readthedocs.io/en/latest/", None),
+        "immutabledict": ("https://immutabledict.corenting.fr/", None),
         }
 
 # Some modules need to import things just so that sphinx can resolve symbols in
@@ -56,10 +56,6 @@ nitpick_ignore_regex = [
         ["py:class", r"numpy\.u?int[0-9]+"],
         ["py:class", r"numpy\.float[0-9]+"],
         ["py:class", r"numpy\.complex[0-9]+"],
-
-        # As of 2022-06-22, it doesn't look like there's sphinx documentation
-        # available.
-        ["py:class", r"immutables\.(.+)"],
 
         # Reference not found from "<unknown>"? I'm not even sure where to look.
         ["py:class", r"Expression"],

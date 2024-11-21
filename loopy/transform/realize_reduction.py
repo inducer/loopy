@@ -31,7 +31,7 @@ from typing import Callable, Dict, FrozenSet, List, Optional, Sequence, Set, Tup
 
 logger = logging.getLogger(__name__)
 
-from immutables import Map
+from immutabledict import immutabledict
 
 import islpy as isl
 from pymbolic.primitives import Expression
@@ -2176,6 +2176,6 @@ def realize_reduction(t_unit, *args, **kwargs):
                 subkernel=new_knl)
         callables_table[knl.name] = in_knl_callable
 
-    return t_unit.copy(callables_table=Map(callables_table))
+    return t_unit.copy(callables_table=immutabledict(callables_table))
 
 # vim: foldmethod=marker

@@ -25,7 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import IntEnum
 from sys import intern
@@ -43,7 +43,6 @@ from typing import (
 
 import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
-from immutables import Map
 
 from pymbolic import ArithmeticExpressionT, Variable
 from pytools import ImmutableRecord
@@ -434,7 +433,7 @@ class _ArraySeparationInfo:
     should be used to realize this array.
     """
     sep_axis_indices_set: FrozenSet[int]
-    subarray_names: Map[Tuple[int, ...], str]
+    subarray_names: Mapping[Tuple[int, ...], str]
 
 
 class ArrayArg(ArrayBase, KernelArgument):

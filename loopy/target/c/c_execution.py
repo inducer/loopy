@@ -24,13 +24,13 @@ import ctypes
 import logging
 import os
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from codepy.jit import compile_from_string
 from codepy.toolchain import GCCToolchain, ToolchainGuessError, guess_toolchain
-from immutables import Map
 
 from pytools import memoize_method
 from pytools.codegen import CodeGenerator, Indentation
@@ -493,7 +493,7 @@ class CExecutor(ExecutorBase):
 
     @memoize_method
     def translation_unit_info(self,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: Optional[Mapping[str, LoopyType]] = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
