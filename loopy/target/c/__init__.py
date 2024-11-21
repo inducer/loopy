@@ -64,7 +64,7 @@ from loopy.target.execution import ExecutorBase
 from loopy.tools import remove_common_indentation
 from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import LoopyType, NumpyType, to_loopy_type
-from loopy.typing import ExpressionT, auto
+from loopy.typing import Expression, auto
 
 
 __doc__ = """
@@ -880,8 +880,8 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[ExpressionT, ...],
-            lsize: Tuple[ExpressionT, ...]) -> Optional[Generable]:
+            gsize: Tuple[Expression, ...],
+            lsize: Tuple[Expression, ...]) -> Optional[Generable]:
         return None
 
     def emit_temp_var_decl_for_tv_with_base_storage(self,

@@ -37,7 +37,7 @@ from loopy.kernel.data import ArrayArg
 from loopy.schedule.tools import KernelArgInfo
 from loopy.target.execution import ExecutionWrapperGeneratorBase, ExecutorBase
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT, integer_expr_or_err
+from loopy.typing import Expression, integer_expr_or_err
 
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[ExpressionT], str],
+            strify: Callable[[Expression], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for pyopencl execution

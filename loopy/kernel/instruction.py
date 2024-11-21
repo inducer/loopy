@@ -37,7 +37,7 @@ from pytools.tag import Tag, Taggable, tag_dataclass
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional as LoopyOptional
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT, InameStr
+from loopy.typing import Expression, InameStr
 
 
 # {{{ instruction tags
@@ -250,7 +250,7 @@ class InstructionBase(ImmutableRecord, Taggable):
     groups: FrozenSet[str]
     conflicts_with_groups: FrozenSet[str]
     no_sync_with: FrozenSet[Tuple[str, str]]
-    predicates: FrozenSet[ExpressionT]
+    predicates: FrozenSet[Expression]
     within_inames: FrozenSet[InameStr]
     within_inames_is_final: bool
     priority: int
@@ -901,8 +901,8 @@ class Assignment(MultiAssignmentBase):
     .. automethod:: __init__
     """
 
-    assignee: ExpressionT
-    expression: ExpressionT
+    assignee: Expression
+    expression: Expression
     temp_var_type: LoopyOptional
     atomicity: Tuple[VarAtomicity, ...]
 
@@ -910,8 +910,8 @@ class Assignment(MultiAssignmentBase):
             set("assignee temp_var_type atomicity".split())
 
     def __init__(self,
-                 assignee: Union[str, ExpressionT],
-                 expression: Union[str, ExpressionT],
+                 assignee: Union[str, Expression],
+                 expression: Union[str, Expression],
                  id: Optional[str] = None,
                  happens_after: Union[
                      Mapping[str, HappensAfter], FrozenSet[str], str, None] = None,
@@ -1271,8 +1271,8 @@ def modify_assignee_for_array_call(assignee):
                 "SubArrayRef as its inputs")
 
 
-def make_assignment(assignees: tuple[ExpressionT, ...],
-                    expression: ExpressionT,
+def make_assignment(assignees: tuple[Expression, ...],
+                    expression: Expression,
                     temp_var_types: (
                         Sequence[LoopyType | None] | None) = None,
                     **kwargs: Any) -> Assignment | CallInstruction:
@@ -1372,7 +1372,7 @@ class CInstruction(InstructionBase):
     .. attribute:: assignees
 
         A sequence (typically a :class:`tuple`) of variable references (with or
-        without subscript) as :class:`pymbolic.primitives.Expression` instances
+        without subscript) as :attr:`pymbolic.typing.Expression` instances
         that :attr:`code` writes to. This is optional and only used for
         figuring out dependencies.
     """

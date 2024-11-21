@@ -45,7 +45,7 @@ from warnings import warn
 import numpy as np  # noqa
 from typing_extensions import TypeAlias
 
-from pymbolic import ArithmeticExpressionT
+from pymbolic import ArithmeticExpression
 from pymbolic.primitives import is_arithmetic_expression
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable
@@ -53,7 +53,7 @@ from pytools.tag import Tag, Taggable
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import flatten
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT, ShapeType, auto, is_integer
+from loopy.typing import Expression, ShapeType, auto, is_integer
 
 
 if TYPE_CHECKING:
@@ -92,10 +92,6 @@ Cross-references
 .. class:: ShapeType
 
     See :class:`loopy.typing.ShapeType`
-
-.. class:: ExpressionT
-
-    See :class:`loopy.typing.ExpressionT`
 
 .. class:: Tag
 
@@ -150,7 +146,7 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
 
         May be one of the following:
 
-        - A :class:`pymbolic.primitives.Expression`, including an
+        - A :attr:`~pymbolic.typing.Expression`, including an
           integer, indicating the stride in units of the underlying
           array's :attr:`ArrayBase.dtype`.
 
@@ -609,8 +605,8 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
 # {{{ array base class (for arguments and temporary arrays)
 
-ToShapeLikeConvertible: TypeAlias = (Tuple[ExpressionT | str, ...]
-                | ExpressionT | type[auto] | str | tuple[str, ...])
+ToShapeLikeConvertible: TypeAlias = (Tuple[Expression | str, ...]
+                | Expression | type[auto] | str | tuple[str, ...])
 
 
 def _parse_shape_or_strides(
@@ -634,12 +630,12 @@ def _parse_shape_or_strides(
         raise ValueError("shape can't be a list")
 
     if isinstance(x_parsed, tuple):
-        x_tup: tuple[ExpressionT | str, ...] = x_parsed
+        x_tup: tuple[Expression | str, ...] = x_parsed
     else:
         assert x_parsed is not auto
-        x_tup = (cast(ExpressionT, x_parsed),)
+        x_tup = (cast(Expression, x_parsed),)
 
-    def parse_arith(x: ExpressionT | str) -> ArithmeticExpressionT:
+    def parse_arith(x: Expression | str) -> ArithmeticExpression:
         if isinstance(x, str):
             res = parse(x)
         else:
@@ -714,7 +710,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     """See :ref:`data-dim-tags`.
     """
 
-    offset: Union[ExpressionT, str, None]
+    offset: Union[Expression, str, None]
     """Offset from the beginning of the buffer to the point from
     which the strides are counted, in units of the :attr:`dtype`.
     May be one of
@@ -1158,9 +1154,9 @@ def drop_vec_dims(
             if not isinstance(dim_tag, VectorArrayDimTag))
 
 
-def get_strides(array: ArrayBase) -> Tuple[ExpressionT, ...]:
+def get_strides(array: ArrayBase) -> Tuple[Expression, ...]:
     from pymbolic import var
-    result: List[ExpressionT] = []
+    result: List[Expression] = []
 
     if array.dim_tags is None:
         return ()
@@ -1188,10 +1184,10 @@ def get_strides(array: ArrayBase) -> Tuple[ExpressionT, ...]:
 class AccessInfo(ImmutableRecord):
     array_name: str
     vector_index: Optional[int]
-    subscripts: Tuple[ExpressionT, ...]
+    subscripts: Tuple[Expression, ...]
 
 
-def _apply_offset(sub: ExpressionT, ary: ArrayBase) -> ExpressionT:
+def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
     """
     Helper for :func:`get_access_info`.
     Augments *ary*'s subscript index expression (*sub*) with its offset info.
@@ -1228,8 +1224,8 @@ def _apply_offset(sub: ExpressionT, ary: ArrayBase) -> ExpressionT:
 
 def get_access_info(kernel: "LoopKernel",
         ary: Union["ArrayArg", "TemporaryVariable"],
-        index: Union[ExpressionT, Tuple[ExpressionT, ...]],
-        eval_expr: Callable[[ExpressionT], int],
+        index: Union[Expression, Tuple[Expression, ...]],
+        eval_expr: Callable[[Expression], int],
         vectorization_info: "VectorizationInfo") -> AccessInfo:
     """
     :arg ary: an object of type :class:`ArrayBase`
@@ -1283,7 +1279,7 @@ def get_access_info(kernel: "LoopKernel",
     num_target_axes = ary.num_target_axes()
 
     vector_index = None
-    subscripts: List[ExpressionT] = [0] * num_target_axes
+    subscripts: List[Expression] = [0] * num_target_axes
 
     vector_size = ary.vector_size(kernel.target)
 

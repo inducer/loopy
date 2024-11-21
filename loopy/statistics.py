@@ -681,7 +681,7 @@ class MemAccess(ImmutableRecord):
     .. attribute:: lid_strides
 
        A :class:`dict` of **{** :class:`int` **:**
-       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
+       :attr:`~pymbolic.typing.Expression` or :class:`int` **}** that
        specifies local strides for each local id in the memory access index.
        Local ids not found will not be present in ``lid_strides.keys()``.
        Uniform access (i.e. work-items within a sub-group access the same
@@ -692,7 +692,7 @@ class MemAccess(ImmutableRecord):
     .. attribute:: gid_strides
 
        A :class:`dict` of **{** :class:`int` **:**
-       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
+       :attr:`~pymbolic.typing.Expression` or :class:`int` **}** that
        specifies global strides for each global id in the memory access index.
        global ids not found will not be present in ``gid_strides.keys()``.
 

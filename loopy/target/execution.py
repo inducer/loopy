@@ -58,7 +58,7 @@ from loopy.schedule.tools import KernelArgInfo
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.translation_unit import TranslationUnit
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import ExpressionT, integer_expr_or_err
+from loopy.typing import Expression, integer_expr_or_err
 from loopy.version import DATA_MODEL_VERSION
 
 
@@ -109,7 +109,7 @@ class SeparateArrayPackingController:
 
 # {{{ ExecutionWrapperGeneratorBase
 
-def _str_to_expr(name_or_expr: Union[str, ExpressionT]) -> ExpressionT:
+def _str_to_expr(name_or_expr: Union[str, Expression]) -> Expression:
     if isinstance(name_or_expr, str):
         return var(name_or_expr)
     else:
@@ -118,8 +118,8 @@ def _str_to_expr(name_or_expr: Union[str, ExpressionT]) -> ExpressionT:
 
 @dataclass(frozen=True)
 class _ArgFindingEquation:
-    lhs: ExpressionT
-    rhs: ExpressionT
+    lhs: Expression
+    rhs: Expression
 
     # Arg finding code is sorted by priority, all equations (across all unknowns)
     # of lowest priority first.
@@ -389,7 +389,7 @@ class ExecutionWrapperGeneratorBase(ABC):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[Union[Expression, Tuple[Expression]]], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for C-execution
@@ -534,7 +534,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         else:
                             return strify(shape_axis)
 
-                    def strify_tuple(t: Optional[Tuple[ExpressionT, ...]]) -> str:
+                    def strify_tuple(t: Optional[Tuple[Expression, ...]]) -> str:
                         if t is None:
                             return "None"
                         if len(t) == 0:

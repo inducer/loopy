@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from loopy.codegen.result import CodeGenerationResult
     from loopy.target.execution import ExecutorBase
     from loopy.translation_unit import FunctionIdT, TranslationUnit
-    from loopy.typing import ExpressionT
+    from loopy.typing import Expression
 
 
 ASTType = TypeVar("ASTType")
@@ -240,8 +240,8 @@ class ASTBuilderBase(Generic[ASTType]):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[ExpressionT, ...],
-            lsize: Tuple[ExpressionT, ...]) -> Optional[ASTType]:
+            gsize: Tuple[Expression, ...],
+            lsize: Tuple[Expression, ...]) -> Optional[ASTType]:
         raise NotImplementedError()
 
     @property

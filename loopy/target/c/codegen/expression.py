@@ -48,7 +48,7 @@ from loopy.symbolic import TypeCast
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeReader
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT, is_integer
+from loopy.typing import Expression, is_integer
 
 
 __doc__ = """
@@ -92,7 +92,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
         return type(self)(self.codegen_state, self.fortran_abi, type_inf_mapper)
 
-    def infer_type(self, expr: ExpressionT) -> LoopyType:
+    def infer_type(self, expr: Expression) -> LoopyType:
         result = self.type_inf_mapper(expr)
         assert isinstance(result, LoopyType)
 

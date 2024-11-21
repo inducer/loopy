@@ -42,8 +42,6 @@ from loopy.schedule import (
 
 
 __doc__ = """
-.. currentmodule:: loopy.codegen.tools
-
 .. autoclass:: KernelProxyForCodegenOperationCacheManager
 
 .. autoclass:: CodegenOperationCacheManager

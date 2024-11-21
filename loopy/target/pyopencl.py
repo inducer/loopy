@@ -67,7 +67,7 @@ from loopy.target.pyopencl_execution import PyOpenCLExecutor
 from loopy.target.python import PythonASTBuilderBase
 from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import NumpyType
-from loopy.typing import ExpressionT
+from loopy.typing import Expression
 
 
 logger = logging.getLogger(__name__)
@@ -855,7 +855,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_kernel_call(
             self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[ExpressionT, ...], lsize: Tuple[ExpressionT, ...]
+            gsize: Tuple[Expression, ...], lsize: Tuple[Expression, ...]
             ) -> genpy.Suite:
         from genpy import Assert, Assign, Comment, Line, Suite
 
