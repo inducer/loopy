@@ -34,9 +34,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import operator
 from collections.abc import Hashable, Iterator, Sequence
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, reduce
 from typing import Generic, TypeVar
 
 from immutables import Map
@@ -103,7 +104,7 @@ class Tree(Generic[NodeT]):
         parent = self._child_to_parent[node]
         assert parent is not None
 
-        return (parent,) + self.ancestors(parent)
+        return (parent, *self.ancestors(parent))
 
     def parent(self, node: NodeT) -> NodeT | None:
         """
@@ -162,7 +163,7 @@ class Tree(Generic[NodeT]):
         siblings = self._parent_to_children[parent]
 
         return Tree((self._parent_to_children
-                     .set(parent, siblings + (node,))
+                     .set(parent, (*siblings, node))
                      .set(node, ())),
                     self._child_to_parent.set(node, parent))
 
@@ -231,7 +232,7 @@ class Tree(Generic[NodeT]):
         assert parent is not None  # parent=root handled as a special case
         siblings = self.children(parent)
         parents_new_children = tuple(frozenset(siblings) - frozenset([node]))
-        new_parents_children = self.children(new_parent) + (node,)
+        new_parents_children = (*self.children(new_parent), node)
 
         new_child_to_parent = self._child_to_parent.set(node, new_parent)
         new_parent_to_children = (self._parent_to_children
@@ -276,7 +277,7 @@ class Tree(Generic[NodeT]):
                                 for c in children_result[:-1]]
                             + [post_process_last_child(c)
                                 for c in children_result[-1:]])
-            return [str(node)] + sum(children_result, start=[])
+            return [str(node), *reduce(operator.iadd, children_result, [])]
 
         return "\n".join(rec(self.root))
 

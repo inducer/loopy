@@ -410,12 +410,12 @@ def auto_test_vs_ref(
     if ref_entrypoint is None:
         if len(ref_prog.entrypoints) != 1:
             raise LoopyError("Unable to guess entrypoint for ref_prog.")
-        ref_entrypoint = list(ref_prog.entrypoints)[0]
+        ref_entrypoint = next(iter(ref_prog.entrypoints))
 
     if test_entrypoint is None:
         if len(test_prog.entrypoints) != 1:
             raise LoopyError("Unable to guess entrypoint for ref_prog.")
-        test_entrypoint = list(test_prog.entrypoints)[0]
+        test_entrypoint = next(iter(test_prog.entrypoints))
 
     ref_prog = lp.preprocess_kernel(ref_prog)
     test_prog = lp.preprocess_kernel(test_prog)

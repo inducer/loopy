@@ -201,9 +201,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
             gen("")
 
-        arg_list = (["_lpy_cl_kernels", "queue"]
-                + list(args)
-                + ["wait_for=wait_for", "allocator=allocator"])
+        arg_list = (["_lpy_cl_kernels", "queue", *args,
+            "wait_for=wait_for", "allocator=allocator"])
         gen(f"_lpy_evt = {host_program_name}({', '.join(arg_list)})")
 
         if kernel.options.cl_exec_manage_array_events:

@@ -28,7 +28,7 @@ def test_laplacian_stiffness(ctx_factory):
             % dict(Nb=Nb, Nq=Nq, dim=dim),
             [
                 "dPsi(ij, dxi) := sum_float32(@ax_b,"
-                    "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])",  # noqa
+                    "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])",
                 "A[K, i, j] = sum_float32(q, w[q] * jacDet[K,q] * ("
                     "sum_float32(dx_axis, dPsi$one(i,dx_axis)*dPsi$two(j,dx_axis))))"
                 ],
@@ -77,7 +77,7 @@ def test_laplacian_stiffness(ctx_factory):
         Ncloc = 16  # noqa
         knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
-        knl = lp.precompute(knl, "dPsi$one", np.float32, ["dx_axis"], default_tag=None)  # noqa
+        knl = lp.precompute(knl, "dPsi$one", np.float32, ["dx_axis"], default_tag=None)
         knl = lp.tag_inames(knl, {"j": "ilp.seq"})
 
         return knl, ["Ko", "Kloc"]

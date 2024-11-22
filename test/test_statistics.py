@@ -757,7 +757,7 @@ def test_mem_access_counter_nonconsec():
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
-                                    subgroup_size=SGS)  # noqa
+                                    subgroup_size=SGS)
     n = 512
     m = 256
     ell = 128
@@ -1423,7 +1423,7 @@ def test_strided_footprint():
     knl = lp.split_iname(knl, "i_inner", bx, outer_tag="unr", inner_tag="l.0")
 
     footprints = lp.gather_access_footprints(knl)
-    x_l_foot = footprints[("x", "read")]
+    x_l_foot = footprints["x", "read"]
 
     from loopy.statistics import count
     num = count(knl, x_l_foot).eval_with_dict(param_dict)

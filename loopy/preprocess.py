@@ -266,7 +266,7 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
                         else:
                             raise LoopyError(f"invalid value of {what}")
 
-                    new_dim_tags = new_dim_tags + (dim_tag,)
+                    new_dim_tags = (*new_dim_tags, dim_tag)
 
             arg = arg.copy(dim_tags=new_dim_tags)
 
@@ -499,7 +499,7 @@ def check_atomic_loads(kernel):
                 for x in missed:
                     if {x} & atomicity_candidates:
                         insn = insn.copy(
-                            atomicity=insn.atomicity + (AtomicLoad(x),))
+                            atomicity=(*insn.atomicity, AtomicLoad(x)))
 
         new_insns.append(insn)
 

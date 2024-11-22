@@ -124,7 +124,7 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 
                 kernel = _add_kernel_axis(kernel, axis_name, 0, arg.shape[axis_nr],
                         frozenset(sweep_inames) | fsub_dependencies)
-                sweep_inames = sweep_inames + [axis_name]
+                sweep_inames = [*sweep_inames, axis_name]
 
                 inames_to_be_removed.append(axis_name)
                 new_fsub.append(Variable(axis_name))

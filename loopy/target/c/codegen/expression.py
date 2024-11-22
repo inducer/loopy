@@ -641,7 +641,7 @@ class CExpressionToCodeMapper(Mapper):
                 # FIXME: Add type suffixes?
                 return repr(int(expr))
             elif isinstance(expr, np.float32):
-                return f"{repr(float(expr))}f"
+                return f"{float(expr)!r}f"
             elif isinstance(expr, np.float64):
                 return repr(float(expr))
             else:

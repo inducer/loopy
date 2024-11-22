@@ -388,11 +388,11 @@ def precompute_for_single_kernel(
         precompute_outer_inames: Optional[FrozenSet[str]] = None,
         storage_axis_to_tag=None,
 
-        default_tag: Union[None, Tag, str] = None,
+        default_tag: Union[Tag, str, None] = None,
 
         dtype: Optional[ToLoopyTypeConvertible] = None,
         fetch_bounding_box: bool = False,
-        temporary_address_space: Union[AddressSpace, None, Type[auto]] = None,
+        temporary_address_space: Union[AddressSpace, Type[auto], None] = None,
         compute_insn_id: Optional[str] = None,
         _enable_mirgecom_workaround: bool = False,
         ) -> LoopKernel:
@@ -1028,7 +1028,7 @@ def precompute_for_single_kernel(
                 and insn.within_inames & prior_storage_axis_names):
             insn = (insn
                     .with_transformed_expressions(
-                        lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023,E501
+                        lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023
                     .copy(within_inames=frozenset(
                         new_iname
                         for iname in insn.within_inames

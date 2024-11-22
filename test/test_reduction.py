@@ -27,8 +27,8 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
 import pyopencl.version
 
 import loopy as lp

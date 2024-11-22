@@ -25,7 +25,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, ClassVar, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from codepy.jit import compile_from_string
@@ -365,15 +365,15 @@ class CPlusPlusCompiler(CCompiler):
 # {{{ placeholder till ctypes fixes: https://github.com/python/cpython/issues/61103
 
 class Complex64(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
+    _fields_: ClassVar = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
 
 
 class Complex128(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_double), ("imag", ctypes.c_double)]
+    _fields_: ClassVar = [("real", ctypes.c_double), ("imag", ctypes.c_double)]
 
 
 class Complex256(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
+    _fields_: ClassVar = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
 
 
 _NUMPY_COMPLEX_TYPE_TO_CTYPE = {

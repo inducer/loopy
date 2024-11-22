@@ -62,7 +62,7 @@ class FTreeWalkerBase:
             r"^(?P<name>[_0-9a-zA-Z]+)\s*"
             r"(\((?P<shape>[-+*/0-9:a-zA-Z, \t]+)\))?"
             r"(\s*=\s*(?P<initializer>.+))?"
-            "$")
+            r"$")
 
     def parse_dimension_specs(self, node, dim_decls):
         def parse_bounds(bounds_str):

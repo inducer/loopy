@@ -27,9 +27,9 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.array  # noqa
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.array
+import pyopencl.clmath
+import pyopencl.clrandom
 
 import loopy as lp
 
@@ -3271,7 +3271,7 @@ def test_sep_array_ordering(ctx_factory):
         """
         x[k, i] = k
         """,
-        [lp.GlobalArg("x", shape=("noutputs", "m"), dim_tags="sep,C")] + [...],
+        [lp.GlobalArg("x", shape=("noutputs", "m"), dim_tags="sep,C"), ...],
         fixed_parameters=dict(noutputs=n),
         )
     knl = lp.tag_inames(knl, "k:unr")

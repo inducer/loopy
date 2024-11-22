@@ -25,7 +25,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Sequence
 from functools import cached_property, partial
+from typing import ClassVar
 
 import islpy as isl
 from islpy import dim_type
@@ -391,7 +393,7 @@ class ToCountMap:
 
         # make sure all item keys have same type
         if self.count_map:
-            key_type = type(list(self.keys())[0])
+            key_type = type(next(iter(self.keys())))
             if not all(isinstance(x, key_type) for x in self.keys()):
                 raise ValueError("ToCountMap: group_by() function may only "
                                  "be used on ToCountMaps with uniform keys")
@@ -598,7 +600,7 @@ class CountGranularity:
     WORKITEM = "workitem"
     SUBGROUP = "subgroup"
     WORKGROUP = "workgroup"
-    ALL = [WORKITEM, SUBGROUP, WORKGROUP]
+    ALL: ClassVar[Sequence[str]] = [WORKITEM, SUBGROUP, WORKGROUP]
 
 # }}}
 
@@ -639,10 +641,10 @@ class Op(ImmutableRecord):
 
     def __init__(self, dtype=None, name=None, count_granularity=None,
             kernel_name=None):
-        if count_granularity not in CountGranularity.ALL+[None]:
+        if count_granularity not in [*CountGranularity.ALL, None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
                     "not allowed. count_granularity options: %s"
-                    % (count_granularity, CountGranularity.ALL+[None]))
+                    % (count_granularity, [*CountGranularity.ALL, None]))
 
         if dtype is not None:
             from loopy.types import to_loopy_type
@@ -735,10 +737,10 @@ class MemAccess(ImmutableRecord):
                  *, variable_tags=None,
                  count_granularity=None, kernel_name=None):
 
-        if count_granularity not in CountGranularity.ALL+[None]:
+        if count_granularity not in [*CountGranularity.ALL, None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
                     "not allowed. count_granularity options: %s"
-                    % (count_granularity, CountGranularity.ALL+[None]))
+                    % (count_granularity, [*CountGranularity.ALL, None]))
 
         if variable_tags is None:
             variable_tags = frozenset()
@@ -1652,7 +1654,7 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
         # this should not happen since this is enforced in Op/MemAccess
         raise ValueError("get_insn_count: count_granularity '%s' is"
                 "not allowed. count_granularity options: %s"
-                % (count_granularity, CountGranularity.ALL+[None]))
+                % (count_granularity, [*CountGranularity.ALL, None]))
 
 # }}}
 
@@ -1768,7 +1770,7 @@ def get_op_map(program, count_redundant_work=False,
         if len(program.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in program.entrypoints
 
@@ -1995,7 +1997,7 @@ def get_mem_access_map(program, count_redundant_work=False,
         if len(program.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in program.entrypoints
 
@@ -2116,7 +2118,7 @@ def get_synchronization_map(program, subgroup_size=None, entrypoint=None):
         if len(program.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in program.entrypoints
     from loopy.preprocess import infer_unknown_types, preprocess_program
@@ -2175,7 +2177,7 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
         if len(program.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in program.entrypoints
 
@@ -2205,10 +2207,10 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
     result = {}
 
     for vname, footprint in write_footprints.items():
-        result[(vname, "write")] = footprint
+        result[vname, "write"] = footprint
 
     for vname, footprint in read_footprints.items():
-        result[(vname, "read")] = footprint
+        result[vname, "read"] = footprint
 
     return result
 

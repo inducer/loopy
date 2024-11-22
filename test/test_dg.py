@@ -25,7 +25,7 @@ import logging  # noqa
 
 import numpy as np
 import pyopencl as cl
-import pyopencl.array  # noqa
+import pyopencl.array
 from pyopencl.tools import (  # noqa
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )

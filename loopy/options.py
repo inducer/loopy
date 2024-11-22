@@ -23,7 +23,8 @@ THE SOFTWARE.
 
 import os
 import re
-from typing import Any
+from collections.abc import Mapping
+from typing import Any, ClassVar
 from warnings import warn
 
 from pytools import ImmutableRecord
@@ -198,7 +199,7 @@ class Options(ImmutableRecord):
         RAW, WAR and WAW races.
     """
 
-    _legacy_options_map = {
+    _legacy_options_map: ClassVar[Mapping[str, tuple[str, None] | None]] = {
             "cl_build_options": ("build_options", None),
             "write_cl": ("write_code", None),
             "highlight_cl": None,
@@ -332,7 +333,7 @@ class Options(ImmutableRecord):
             return _ColoramaStub()
 
 
-KEY_VAL_RE = re.compile("^([a-zA-Z0-9]+)=(.*)$")
+KEY_VAL_RE = re.compile(r"^([a-zA-Z0-9]+)=(.*)$")
 
 
 def make_options(options_arg):

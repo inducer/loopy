@@ -63,7 +63,7 @@ def test_tim2d(ctx_factory):
             [
                 lp.GlobalArg("u", dtype, shape=field_shape, order=order),
                 lp.GlobalArg("lap", dtype, shape=field_shape, order=order),
-                lp.GlobalArg("G", dtype, shape=(3,)+field_shape, order=order),
+                lp.GlobalArg("G", dtype, shape=(3, *field_shape), order=order),
                 # lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
                 lp.GlobalArg("D", dtype, shape=(n, n), order=order),
                 # lp.ImageArg("D", dtype, shape=(n, n)),

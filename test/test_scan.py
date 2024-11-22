@@ -30,8 +30,8 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
 
 import loopy as lp
 
@@ -402,7 +402,7 @@ def test_segmented_scan(ctx_factory, n, segment_boundaries_indices, iname_tag):
 
     arr = np.ones(n, dtype=np.float32)
     segment_boundaries = np.zeros(n, dtype=np.int32)
-    segment_boundaries[(segment_boundaries_indices,)] = 1
+    segment_boundaries[segment_boundaries_indices,] = 1
 
     knl = lp.make_kernel(
         "{[i,j]: 0<=i<n and 0<=j<=i}",

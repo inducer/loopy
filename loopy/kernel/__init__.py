@@ -31,6 +31,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    ClassVar,
     Dict,
     FrozenSet,
     Iterator,
@@ -85,7 +86,7 @@ if TYPE_CHECKING:
 
 # {{{ loop kernel object
 
-class KernelState(IntEnum):  # noqa
+class KernelState(IntEnum):
     INITIAL = 0
     CALLS_RESOLVED = 1
     PREPROCESSED = 2
@@ -199,7 +200,7 @@ class LoopKernel(Taggable):
     were applied to the kernel. These are stored so that they may be repeated
     on expressions the user specifies later.
     """
-    index_dtype: NumpyType = NumpyType(np.dtype(np.int32))
+    index_dtype: NumpyType = NumpyType(np.dtype(np.int32))  # noqa: RUF009
     silenced_warnings: FrozenSet[str] = frozenset()
 
     # FIXME Yuck, this should go.
@@ -1310,7 +1311,7 @@ class LoopKernel(Taggable):
 
     # {{{ persistent hash key generation / comparison
 
-    hash_fields = [
+    hash_fields: ClassVar[Sequence[str]] = [
             "domains",
             "instructions",
             "args",

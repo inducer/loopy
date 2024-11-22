@@ -63,7 +63,7 @@ if TYPE_CHECKING:
     from loopy.target import TargetBase
 
 if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
-    from loopy.target import TargetBase  # noqa: F811
+    from loopy.target import TargetBase
 
 
 T = TypeVar("T")
@@ -1217,7 +1217,7 @@ def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
         else:
             # assume it's an expression
             # FIXME: mypy can't figure out that ExpressionT + ExpressionT works
-            return ary.offset + sub  # type: ignore[call-overload, arg-type, operator]  # noqa: E501
+            return ary.offset + sub  # type: ignore[call-overload, arg-type, operator]
     else:
         return sub
 
