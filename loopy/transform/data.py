@@ -36,7 +36,7 @@ from loopy.kernel.data import AddressSpace, ImageArg, TemporaryVariable, auto
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+from loopy.typing import Expression
 
 
 # {{{ convenience: add_prefetch
@@ -984,11 +984,11 @@ def add_padding_to_avoid_bank_conflicts(kernel, device):
 @dataclass(frozen=True)
 class _BaseStorageInfo:
     name: str
-    next_offset: ExpressionT
+    next_offset: Expression
     approx_nbytes: Optional[int] = None
 
 
-def _sym_max(a: ExpressionT, b: ExpressionT) -> ExpressionT:
+def _sym_max(a: Expression, b: Expression) -> Expression:
     from numbers import Number
     if isinstance(a, Number) and isinstance(b, Number):
         return max(a, b)

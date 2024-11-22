@@ -57,7 +57,7 @@ from loopy.symbolic import CombineMapper
 from loopy.target import TargetBase
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+from loopy.typing import Expression
 from loopy.version import DATA_MODEL_VERSION
 
 
@@ -90,9 +90,9 @@ __doc__ = """
 
 References
 ^^^^^^^^^^
-.. class:: Expression
+.. class:: ExpressionNode
 
-    See :class:`pymbolic.Expression`.
+    See :class:`pymbolic.primitives.ExpressionNode`.
 """
 
 
@@ -200,14 +200,14 @@ class CodeGenerationState:
     kernel: LoopKernel
     target: TargetBase
     implemented_domain: isl.Set
-    implemented_predicates: FrozenSet[Union[str, ExpressionT]]
+    implemented_predicates: FrozenSet[Union[str, Expression]]
 
     # /!\ mutable
     seen_dtypes: Set[LoopyType]
     seen_functions: Set[SeenFunction]
     seen_atomic_dtypes: Set[LoopyType]
 
-    var_subst_map: immutabledict[str, ExpressionT]
+    var_subst_map: immutabledict[str, Expression]
     allow_complex: bool
     callables_table: CallablesTable
     is_entrypoint: bool
@@ -231,7 +231,7 @@ class CodeGenerationState:
         return replace(self, **kwargs)
 
     def copy_and_assign(
-            self, name: str, value: ExpressionT) -> "CodeGenerationState":
+            self, name: str, value: Expression) -> "CodeGenerationState":
         """Make a copy of self with variable *name* fixed to *value*."""
         return self.copy(var_subst_map=self.var_subst_map.set(name, value))
 

@@ -68,7 +68,7 @@ from loopy.translation_unit import (
     check_each_kernel,
 )
 from loopy.type_inference import TypeReader
-from loopy.typing import ExpressionT, not_none
+from loopy.typing import not_none
 
 
 logger = logging.getLogger(__name__)
@@ -221,7 +221,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
     dep_mapper = DependencyMapper()
 
     def ensure_depends_only_on_arguments(
-            what: str, expr: Union[str, ExpressionT]) -> None:
+            what: str, expr: Union[str, Expression]) -> None:
         if isinstance(expr, str):
             expr = Variable(expr)
 

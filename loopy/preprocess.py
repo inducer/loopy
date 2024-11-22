@@ -68,7 +68,7 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.typing import ExpressionT
+from loopy.typing import Expression
 
 
 # {{{ check for writes to predicates
@@ -174,14 +174,14 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
         sep_axis_indices_set = frozenset(sep_axis_indices)
 
         assert isinstance(arg.shape, tuple)
-        new_shape: Optional[Tuple[ExpressionT, ...]] = \
+        new_shape: Optional[Tuple[Expression, ...]] = \
                 _remove_at_indices(sep_axis_indices_set, arg.shape)
         new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]] = \
                 _remove_at_indices(sep_axis_indices_set, arg.dim_tags)
         new_dim_names: Optional[Tuple[Optional[str], ...]] = \
                 _remove_at_indices(sep_axis_indices_set, arg.dim_names)
 
-        sep_shape: List[ExpressionT] = [arg.shape[i] for i in sep_axis_indices]
+        sep_shape: List[Expression] = [arg.shape[i] for i in sep_axis_indices]
         for i, sep_shape_i in enumerate(sep_shape):
             if not isinstance(sep_shape_i, (int, np.integer)):
                 raise LoopyError(

@@ -47,7 +47,7 @@ import pymbolic.primitives  # FIXME: also import by full name to allow sphinx to
 import pymbolic.primitives as p
 import pytools.lex
 from islpy import dim_type
-from pymbolic import ArithmeticExpressionT, Variable
+from pymbolic import ArithmeticExpression, Variable
 from pymbolic.mapper import (
     CachedCombineMapper as CombineMapperBase,
     CachedIdentityMapper as IdentityMapperBase,
@@ -81,7 +81,7 @@ from loopy.diagnostic import (
     UnableToDetermineAccessRangeError,
 )
 from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible
-from loopy.typing import ExpressionT, auto
+from loopy.typing import Expression, auto
 
 
 if TYPE_CHECKING:
@@ -124,12 +124,20 @@ References
 .. class:: Variable
 
     See :class:`pymbolic.Variable`.
+
+.. class:: Expression
+
+    See :attr:`pymbolic.typing.Expression`.
+
+.. class:: _Expression
+
+    See :class:`pymbolic.primitives.ExpressionNode`.
 """
 
 
 # {{{ mappers with support for loopy-specific primitives
 
-class IdentityMapperMixin(Mapper[ExpressionT, P]):
+class IdentityMapperMixin(Mapper[Expression, P]):
     def map_literal(self, expr: Literal, *args, **kwargs):
         return expr
 
@@ -206,7 +214,7 @@ class IdentityMapperMixin(Mapper[ExpressionT, P]):
 
 class FlattenMapper(FlattenMapperBase, IdentityMapperMixin):
     # FIXME: Lies! This needs to be made precise.
-    def is_expr_integer_valued(self, expr: ExpressionT) -> bool:
+    def is_expr_integer_valued(self, expr: Expression) -> bool:
         return True
 
 
@@ -505,7 +513,7 @@ class SubstitutionRuleExpander(IdentityMapper):
 
 # {{{ loopy-specific primitives
 
-class LoopyExpressionBase(p.Expression):
+class LoopyExpressionBase(p.ExpressionNode):
     def stringifier(self):
         from loopy.diagnostic import LoopyError
         raise LoopyError("pymbolic < 2019.1 is in use. Please upgrade.")
@@ -539,7 +547,7 @@ class ArrayLiteral(LoopyExpressionBase):
         similar mappers). Not for use in Loopy source representation.
     """
 
-    children: tuple[ExpressionT, ...]
+    children: tuple[Expression, ...]
 
 
 @p.expr_dataclass()
@@ -602,7 +610,7 @@ class TypeAnnotation(LoopyExpressionBase):
     """
 
     type: LoopyType
-    child: ExpressionT
+    child: Expression
 
 
 @p.expr_dataclass(init=False)
@@ -618,10 +626,10 @@ class TypeCast(LoopyExpressionBase):
     # numpy pickling bug madness. (see loopy.types)
     _type_name: str
 
-    child: ExpressionT
+    child: Expression
     """The expression to be cast."""
 
-    def __init__(self, type: ToLoopyTypeConvertible, child: ExpressionT):
+    def __init__(self, type: ToLoopyTypeConvertible, child: Expression):
         super().__init__()
 
         from loopy.types import NumpyType, to_loopy_type
@@ -700,11 +708,11 @@ class Reduction(LoopyExpressionBase):
     carried out.
     """
 
-    expr: ExpressionT
+    expr: Expression
     """An expression which may have tuple type. If the expression has tuple
     type, it must be one of the following:
 
-    * a :class:`tuple` of :class:`pymbolic.primitives.Expression`, or
+    * a :class:`tuple` of :attr:`pymbolic.typing.Expression`, or
     * a :class:`loopy.symbolic.Reduction`, or
     * a function call or substitution rule invocation.
     """
@@ -718,7 +726,7 @@ class Reduction(LoopyExpressionBase):
                  operation: ReductionOperation | str,
                  inames: (tuple[str | pymbolic.primitives.Variable, ...]
                      | pymbolic.primitives.Variable | str),
-                 expr: ExpressionT,
+                 expr: Expression,
                  allow_simultaneous: bool = False
              ) -> None:
         if isinstance(inames, str):
@@ -780,8 +788,8 @@ class LinearSubscript(LoopyExpressionBase):
     """Represents a linear index into a multi-dimensional array, completely
     ignoring any multi-dimensional layout.
     """
-    aggregate: ExpressionT
-    index: ExpressionT
+    aggregate: Expression
+    index: Expression
 
 
 @p.expr_dataclass()
@@ -966,11 +974,11 @@ def _get_dependencies_and_reduction_inames(expr):
     return deps, reduction_inames
 
 
-def get_dependencies(expr: ExpressionT | type[auto]) -> AbstractSet[str]:
+def get_dependencies(expr: Expression | type[auto]) -> AbstractSet[str]:
     return _get_dependencies_and_reduction_inames(expr)[0]
 
 
-def get_reduction_inames(expr: ExpressionT) -> AbstractSet[str]:
+def get_reduction_inames(expr: Expression) -> AbstractSet[str]:
     return _get_dependencies_and_reduction_inames(expr)[1]
 
 
@@ -1255,9 +1263,9 @@ class RuleAwareIdentityMapper(IdentityMapper):
     def make_new_arg_context(
             rule_name: str,
             arg_names: Sequence[str],
-            arguments: Sequence[ExpressionT],
-            arg_context: Mapping[str, ExpressionT]
-            ) -> Mapping[str, ExpressionT]:
+            arguments: Sequence[Expression],
+            arg_context: Mapping[str, Expression]
+            ) -> Mapping[str, Expression]:
         if len(arg_names) != len(arguments):
             raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
                     % (rule_name, len(arguments), len(arg_names), ))
@@ -1709,7 +1717,7 @@ class ArrayAccessFinder(CombineMapper):
 
 # {{{ (pw)aff to expr conversion
 
-def aff_to_expr(aff: isl.Aff) -> ArithmeticExpressionT:
+def aff_to_expr(aff: isl.Aff) -> ArithmeticExpression:
     from pymbolic import var
 
     denom = aff.get_denominator_val().to_python()
@@ -1730,7 +1738,7 @@ def aff_to_expr(aff: isl.Aff) -> ArithmeticExpressionT:
     return flatten(result // denom)
 
 
-def pw_aff_to_expr(pw_aff: isl.PwAff, int_ok: bool = False) -> ExpressionT:
+def pw_aff_to_expr(pw_aff: isl.PwAff, int_ok: bool = False) -> Expression:
     if isinstance(pw_aff, int):
         if not int_ok:
             warn("expected PwAff, got int", stacklevel=2)
@@ -1844,7 +1852,7 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
                 "for as-pwaff evaluation")
 
 
-def aff_from_expr(space: isl.Space, expr: ExpressionT, vars_to_zero=None) -> isl.Aff:
+def aff_from_expr(space: isl.Space, expr: Expression, vars_to_zero=None) -> isl.Aff:
     if vars_to_zero is None:
         vars_to_zero = frozenset()
 
@@ -1985,7 +1993,7 @@ def simplify_using_aff(kernel, expr):
     """
     Simplifies *expr* on *kernel*'s domain.
 
-    :arg expr: An instance of :class:`pymbolic.primitives.Expression`.
+    :arg expr: An instance of :attr:`pymbolic.typing.Expression`.
     """
     deps = get_dependencies(expr)
 
