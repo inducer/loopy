@@ -103,7 +103,7 @@ References
 
 # {{{ utilities
 
-def _names_from_expr(expr: Union[None, Expression, str]) -> FrozenSet[str]:
+def _names_from_expr(expr: Union[Expression, str, None]) -> FrozenSet[str]:
     from numbers import Number
 
     from loopy.symbolic import DependencyMapper
@@ -303,7 +303,7 @@ class InOrderSequentialSequentialTag(InameImplementationTag):
         return "ord"
 
 
-ToInameTagConvertible = Union[str, None, Tag]
+ToInameTagConvertible = Union[str, Tag, None]
 
 
 def parse_tag(tag: ToInameTagConvertible) -> Optional[Tag]:

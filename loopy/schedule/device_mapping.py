@@ -45,9 +45,9 @@ def map_schedule_onto_host_or_device(kernel):
 
     if not kernel.target.split_kernel_at_global_barriers():
         new_schedule = (
-            [CallKernel(kernel_name=device_prog_name_gen())] +
-            list(kernel.linearization) +
-            [ReturnFromKernel(kernel_name=kernel.name)])
+            [CallKernel(kernel_name=device_prog_name_gen()),
+                *kernel.linearization,
+                ReturnFromKernel(kernel_name=kernel.name)])
         kernel = kernel.copy(linearization=new_schedule)
     else:
         kernel = map_schedule_onto_host_or_device_impl(
@@ -92,19 +92,13 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
                     schedule_required_splitting = True
                     if current_chunk:
                         new_schedule.extend(
-                            [dummy_call.copy()] +
-                            current_chunk +
-                            [dummy_return.copy()])
+                            [dummy_call.copy(), *current_chunk, dummy_return.copy()])
                     new_schedule.extend(
-                        [start_item] +
-                        inner_schedule +
-                        [end_item])
+                        [start_item, *inner_schedule, end_item])
                     current_chunk = []
                 else:
                     current_chunk.extend(
-                        [start_item] +
-                        inner_schedule +
-                        [end_item])
+                        [start_item, *inner_schedule, end_item])
 
             elif isinstance(sched_item, Barrier):
                 if sched_item.synchronization_kind == "global":
@@ -112,9 +106,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
                     schedule_required_splitting = True
                     if current_chunk:
                         new_schedule.extend(
-                            [dummy_call.copy()] +
-                            current_chunk +
-                            [dummy_return.copy()])
+                            [dummy_call.copy(), *current_chunk, dummy_return.copy()])
                     new_schedule.append(sched_item)
                     current_chunk = []
                 else:
@@ -127,9 +119,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
         if current_chunk and schedule_required_splitting:
             # Wrap remainder of schedule into a kernel call.
             new_schedule.extend(
-                [dummy_call.copy()] +
-                current_chunk +
-                [dummy_return.copy()])
+                [dummy_call.copy(), *current_chunk, dummy_return.copy()])
         else:
             new_schedule.extend(current_chunk)
 
@@ -142,9 +132,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
     if not split_kernel:
         # Wrap everything into a kernel call.
         new_schedule = (
-            [dummy_call.copy()] +
-            new_schedule +
-            [dummy_return.copy()])
+            [dummy_call.copy(), *new_schedule, dummy_return.copy()])
 
     # Assign names to CallKernel / ReturnFromKernel instructions
 

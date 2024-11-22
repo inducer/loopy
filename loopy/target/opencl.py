@@ -618,15 +618,12 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     def symbol_manglers(self):
         return (
-                super().symbol_manglers() + [
-                    opencl_symbol_mangler
-                    ])
+                [*super().symbol_manglers(), opencl_symbol_mangler])
 
     def preamble_generators(self):
 
         return (
-                super().preamble_generators() + [
-                    opencl_preamble_generator])
+                [*super().preamble_generators(), opencl_preamble_generator])
 
     # }}}
 

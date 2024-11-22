@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExprDescriptor(ImmutableRecord):
-    __slots__ = ["insn", "expr", "unif_var_dict"]
+    __slots__ = ["expr", "insn", "unif_var_dict"]
 
 
 # {{{ extract_subst

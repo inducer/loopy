@@ -316,7 +316,7 @@ def test_ispc_streaming_stores():
 
     knl = lp.add_and_infer_dtypes(knl, dict.fromkeys(vars, stream_dtype))
 
-    knl = lp.set_argument_order(knl, vars + ["n"])
+    knl = lp.set_argument_order(knl, [*vars, "n"])
 
     lp.generate_code_v2(knl).all_code()
     assert "streaming_store(" in lp.generate_code_v2(knl).all_code()
@@ -630,7 +630,7 @@ def test_glibc_bessel_functions(dtype):
         second_kind_bessel[i] = bessel_yn(n, x[i])
         """, target=lp.ExecutableCWithGNULibcTarget(compiler))
 
-    if knl.target.compiler.toolchain.cc not in ["gcc", "g++"]:  # pylint: disable=no-member  # noqa: E501
+    if knl.target.compiler.toolchain.cc not in ["gcc", "g++"]:  # pylint: disable=no-member
         pytest.skip("GNU-libc not found.")
 
     knl = lp.fix_parameters(knl, n=2)

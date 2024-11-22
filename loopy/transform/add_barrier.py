@@ -89,7 +89,7 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
                                         synchronization_kind=synchronization_kind,
                                         mem_kind=mem_kind)
 
-    new_kernel = kernel.copy(instructions=kernel.instructions + [barrier_to_add])
+    new_kernel = kernel.copy(instructions=[*kernel.instructions, barrier_to_add])
     if insn_after is not None:
         new_kernel = add_dependency(new_kernel,
                                  insn_match=insn_after,

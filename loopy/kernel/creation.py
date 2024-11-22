@@ -155,13 +155,13 @@ def expand_defines(insn, defines, single_valued=True):
                             "in this context (when expanding '%s')" % define_name)
 
                 replacements = [
-                        rep+((replace_pattern % define_name, subval),)
+                        (*rep, (replace_pattern % define_name, subval))
                         for rep in replacements
                         for subval in value
                         ]
             else:
                 replacements = [
-                        rep+((replace_pattern % define_name, value),)
+                        (*rep, (replace_pattern % define_name, value))
                         for rep in replacements]
 
     for rep in replacements:
@@ -285,14 +285,12 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 arrow_idx = value.find("->")
                 if arrow_idx >= 0:
                     result["inames_to_dup"] = (
-                            result.get("inames_to_dup", [])
-                            +
-                            [(value[:arrow_idx], value[arrow_idx+2:])])
+                            [*result.get("inames_to_dup", []),
+                                (value[:arrow_idx], value[arrow_idx + 2:])
+                            ])
                 else:
                     result["inames_to_dup"] = (
-                            result.get("inames_to_dup", [])
-                            +
-                            [(value, None)])
+                            [*result.get("inames_to_dup", []), (value, None)])
 
         elif opt_key == "dep" and opt_value is not None:
             if opt_value.startswith("*"):
@@ -2403,7 +2401,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
             kernel_args.append(dat)
             continue
 
-        if isinstance(dat, ArrayBase) and isinstance(dat.shape, tuple):  # noqa pylint:disable=no-member
+        if isinstance(dat, ArrayBase) and isinstance(dat.shape, tuple):  # pylint: disable=no-member
             new_shape = []
             for shape_axis in dat.shape:  # pylint:disable=no-member
                 if shape_axis is not None:

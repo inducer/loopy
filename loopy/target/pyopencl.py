@@ -506,7 +506,7 @@ class PyOpenCLTarget(OpenCLTarget):
     """
 
     # FIXME make prefixes conform to naming rules
-    # (see Reference: Loopy’s Model of a Kernel)
+    # (see Reference: Loopy's Model of a Kernel)
 
     host_program_name_prefix = "_lpy_host_"
     host_program_name_suffix = ""
@@ -522,7 +522,7 @@ class PyOpenCLTarget(OpenCLTarget):
             pointer_size_nbytes: Optional[int] = None
             ) -> None:
         # This ensures the dtype registry is populated.
-        import pyopencl.tools  # noqa
+        import pyopencl.tools
 
         super().__init__(
             atomics_flavor=atomics_flavor,
@@ -553,10 +553,8 @@ class PyOpenCLTarget(OpenCLTarget):
         return None
 
     # NB: Not including 'device', as that is handled specially here.
-    hash_fields = OpenCLTarget.hash_fields + (
-            "pyopencl_module_name",)
-    comparison_fields = OpenCLTarget.comparison_fields + (
-            "pyopencl_module_name",)
+    hash_fields = (*OpenCLTarget.hash_fields, "pyopencl_module_name")
+    comparison_fields = (*OpenCLTarget.comparison_fields, "pyopencl_module_name")
 
     def get_host_ast_builder(self):
         return PyOpenCLPythonASTBuilder(self)
@@ -774,9 +772,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         kai = get_kernel_arg_info(codegen_state.kernel)
 
         args = (
-                ["_lpy_cl_kernels", "queue"]
-                + list(kai.passed_arg_names)
-                + ["wait_for=None", "allocator=None"])
+                ["_lpy_cl_kernels", "queue", *kai.passed_arg_names,
+                    "wait_for=None", "allocator=None"])
 
         from genpy import For, Function, Line, Return, Statement as S, Suite
         return Function(
@@ -920,7 +917,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     "_lpy_cl.mem_flags.READ_ONLY "
                     "| _lpy_cl.mem_flags.COPY_HOST_PTR, "
                     "hostbuf="
-                    f"_lpy_pack({repr(''.join(struct_pack_types))}, "
+                    f"_lpy_pack({''.join(struct_pack_types)!r}, "
                     f"{', '.join(struct_pack_args)}))"),
                 Line(f"_lpy_knl.set_arg({cl_arg_count}, _lpy_overflow_args_buf)")
                 ])
@@ -1096,7 +1093,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
         if not result:
             return fbody
         else:
-            return Collection(result+[Line(), fbody])
+            return Collection([*result, Line(), fbody])
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
@@ -1195,9 +1192,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
         return callables
 
     def preamble_generators(self):
-        return ([
-            pyopencl_preamble_generator,
-            ] + super().preamble_generators())
+        return ([pyopencl_preamble_generator, *super().preamble_generators()])
 
     # }}}
 

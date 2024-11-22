@@ -21,7 +21,9 @@ THE SOFTWARE.
 """
 
 import re
+from collections.abc import Mapping
 from sys import intern
+from typing import ClassVar
 
 import numpy as np
 
@@ -29,6 +31,7 @@ import pytools.lex
 from pymbolic.parser import Parser as ExpressionParserBase
 
 from loopy.frontend.fortran.diagnostic import TranslationError
+from loopy.symbolic import LexTable
 
 
 _less_than = intern("less_than")
@@ -65,7 +68,7 @@ def tuple_to_complex_literal(expr):
 # {{{ expression parser
 
 class FortranExpressionParser(ExpressionParserBase):
-    lex_table = [
+    lex_table: ClassVar[LexTable] = [
         (_less_than, pytools.lex.RE(r"\.lt\.", re.I)),
         (_greater_than, pytools.lex.RE(r"\.gt\.", re.I)),
         (_less_equal, pytools.lex.RE(r"\.le\.", re.I)),
@@ -142,7 +145,7 @@ class FortranExpressionParser(ExpressionParserBase):
             return ExpressionParserBase.parse_terminal(
                     self, pstate)
 
-    COMP_MAP = {
+    COMP_MAP: ClassVar[Mapping[str, str]] = {
             _less_than: "<",
             _less_equal: "<=",
             _greater_than: ">",

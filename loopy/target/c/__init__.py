@@ -26,7 +26,7 @@ THE SOFTWARE.
 import re
 from typing import Any, Optional, Sequence, Tuple, cast
 
-import numpy as np  # noqa
+import numpy as np
 
 import pymbolic.primitives as p
 from cgen import (
@@ -259,7 +259,7 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
             inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
-              {re.sub("^", 14*" ", signed_exponent_preamble, flags=re.M)}
+              {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.M)}
 
               {res_ctype} y = 1;
 
@@ -414,8 +414,8 @@ class CFamilyTarget(TargetBase):
     usable as a common base for C99, C++, OpenCL, CUDA, and the like.
     """
 
-    hash_fields = TargetBase.hash_fields + ("fortran_abi",)
-    comparison_fields = TargetBase.comparison_fields + ("fortran_abi",)
+    hash_fields = (*TargetBase.hash_fields, "fortran_abi")
+    comparison_fields = (*TargetBase.comparison_fields, "fortran_abi")
 
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
@@ -772,16 +772,13 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     def symbol_manglers(self):
         return (
-                super().symbol_manglers() + [
-                    c_symbol_mangler
-                    ])
+                [*super().symbol_manglers(), c_symbol_mangler])
 
     def preamble_generators(self):
         return (
-                super().preamble_generators() + [
-                    lambda preamble_info: _preamble_generator(preamble_info,
-                        self.preamble_function_qualifier),
-                    ])
+                [*super().preamble_generators(),
+                    lambda preamble_info: _preamble_generator(
+                          preamble_info, self.preamble_function_qualifier)])
 
     @property
     def known_callables(self):
@@ -837,7 +834,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         if not result:
             return fbody
         else:
-            return Collection(result+[Line(), fbody])
+            return Collection([*result, Line(), fbody])
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
@@ -1281,7 +1278,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 inner)
 
         if hints:
-            return Collection(list(hints) + [loop])
+            return Collection([*list(hints), loop])
         else:
             return loop
 
@@ -1397,9 +1394,7 @@ class CTarget(CFamilyTarget):
 class CASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
         return (
-                super().preamble_generators() + [
-                    c99_preamble_generator,
-                    ])
+                [*super().preamble_generators(), c99_preamble_generator])
 
 # }}}
 

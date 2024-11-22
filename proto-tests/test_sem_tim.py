@@ -53,7 +53,7 @@ def test_laplacian(ctx_factory):
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
-            lp.ArrayArg("G", dtype, shape=(6,)+field_shape, order=order),
+            lp.ArrayArg("G", dtype, shape=(6, *field_shape), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
@@ -140,7 +140,7 @@ def test_laplacian_lmem(ctx_factory):
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
-            lp.ArrayArg("G", dtype, shape=(6,)+field_shape, order=order),
+            lp.ArrayArg("G", dtype, shape=(6, *field_shape), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
@@ -230,7 +230,7 @@ def test_laplacian_lmem_ilp(ctx_factory):
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
-            lp.ArrayArg("G", dtype, shape=(6,)+field_shape, order=order),
+            lp.ArrayArg("G", dtype, shape=(6, *field_shape), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
@@ -328,7 +328,7 @@ def test_advect(ctx_factory):
             lp.ArrayArg("Nu",  dtype, shape=field_shape, order=order),
             lp.ArrayArg("Nv",  dtype, shape=field_shape, order=order),
             lp.ArrayArg("Nw",  dtype, shape=field_shape, order=order),
-            lp.ArrayArg("G",   dtype, shape=(9,)+field_shape, order=order),
+            lp.ArrayArg("G",   dtype, shape=(9, *field_shape), order=order),
             lp.ArrayArg("D",   dtype, shape=(N, N),  order=order),
             lp.ValueArg("K",  np.int32, approximately=1000),
             ],
@@ -367,7 +367,7 @@ def test_advect_dealias(ctx_factory):
     K_sym = var("K")  # noqa
 
     field_shape = (N, N, N, K_sym)
-    interim_field_shape = (M, M, M, K_sym)  # noqa
+    interim_field_shape = (M, M, M, K_sym)
 
     # 1. direction-by-direction similarity transform on u
     # 2. invert diagonal

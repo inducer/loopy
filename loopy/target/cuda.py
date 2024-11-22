@@ -369,8 +369,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
 
         return (
-                super().preamble_generators() + [
-                    cuda_preamble_generator])
+                [*super().preamble_generators(), cuda_preamble_generator])
 
     # }}}
 

@@ -26,7 +26,7 @@ def transform(knl, vars, stream_dtype):
 
     knl = lp.add_and_infer_dtypes(knl, dict.fromkeys(vars, stream_dtype))
 
-    knl = lp.set_argument_order(knl, vars + ["n"])
+    knl = lp.set_argument_order(knl, [*vars, "n"])
 
     return knl
 

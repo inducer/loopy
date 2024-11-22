@@ -22,7 +22,7 @@ THE SOFTWARE.
 import numpy as np
 import pytest
 
-import pyopencl as cl  # noqa
+import pyopencl as cl
 import pyopencl.array as clarray
 from pyopencl.tools import (
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa

@@ -33,7 +33,7 @@ from pymbolic.mapper.stringifier import StringifyMapper
 
 from loopy.codegen import CodeGenerationState
 from loopy.codegen.result import CodeGenerationResult
-from loopy.diagnostic import LoopyError  # noqa
+from loopy.diagnostic import LoopyError
 from loopy.kernel.data import ValueArg
 from loopy.target import ASTBuilderBase
 from loopy.type_inference import TypeReader
@@ -161,9 +161,7 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
 
     def preamble_generators(self):
         return (
-                super().preamble_generators() + [
-                    _base_python_preamble_generator
-                    ])
+                [*super().preamble_generators(), _base_python_preamble_generator])
 
     # {{{ code generation guts
 

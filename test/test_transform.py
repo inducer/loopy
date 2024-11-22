@@ -27,8 +27,8 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
 from pytools.tag import Tag
 
 import loopy as lp
@@ -798,13 +798,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     # Prioritize loops
     desired_prio = "x, t_outer, t_inner, z, y_new"
 
-    # Use constrain_loop_nesting if it's available
-    cln_attr = getattr(lp, "constrain_loop_nesting", None)
-    if cln_attr is not None:
-        knl_map_dom = lp.constrain_loop_nesting(  # noqa pylint:disable=no-member
-            knl_map_dom, desired_prio)
-    else:
-        knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
+    knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
 
     # Get a linearization
     proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
@@ -818,11 +812,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     knl_split_iname = ref_knl
     knl_split_iname = lp.split_iname(knl_split_iname, "t", 16)
     knl_split_iname = lp.rename_iname(knl_split_iname, "y", "y_new")
-    try:
-        # Use constrain_loop_nesting if it's available
-        knl_split_iname = lp.constrain_loop_nesting(knl_split_iname, desired_prio)
-    except AttributeError:
-        knl_split_iname = lp.prioritize_loops(knl_split_iname, desired_prio)
+    knl_split_iname = lp.prioritize_loops(knl_split_iname, desired_prio)
     proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
     lin_knl_split_iname = lp.get_one_linearized_kernel(
         proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)

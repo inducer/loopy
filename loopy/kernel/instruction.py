@@ -27,7 +27,17 @@ from collections.abc import (
 from dataclasses import dataclass
 from functools import cached_property
 from sys import intern
-from typing import Any, FrozenSet, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import (
+    Any,
+    ClassVar,
+    FrozenSet,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+)
 from warnings import warn
 
 import islpy as isl
@@ -257,7 +267,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # within_inames_is_final is deprecated and will be removed in version 2017.x.
 
-    fields = set("id depends_on_is_final "
+    fields: ClassVar[set[str]] = set("id depends_on_is_final "
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
@@ -634,7 +644,7 @@ def _get_assignee_subscript_deps(expr):
 
 # {{{ atomic ops
 
-class MemoryOrdering:  # noqa
+class MemoryOrdering:
     """Ordering of atomic operations, defined as in C11 and OpenCL.
 
     .. attribute:: RELAXED
@@ -662,7 +672,7 @@ class MemoryOrdering:  # noqa
         raise ValueError("Unknown value of MemoryOrdering")
 
 
-class MemoryScope:  # noqa
+class MemoryScope:
     """Scope of atomicity, defined as in OpenCL.
 
     .. attribute:: auto
@@ -925,8 +935,8 @@ class Assignment(MultiAssignmentBase):
                  predicates: Optional[FrozenSet[str]] = None,
                  tags: Optional[FrozenSet[Tag]] = None,
                  temp_var_type: Union[
-                     Type[_not_provided], None, LoopyOptional,
-                     LoopyType] = _not_provided,
+                     Type[_not_provided], LoopyOptional,
+                     LoopyType, None] = _not_provided,
                  atomicity: Tuple[VarAtomicity, ...] = (),
                  *,
                  depends_on: Union[FrozenSet[str], str, None] = None,
