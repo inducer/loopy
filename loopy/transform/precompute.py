@@ -101,9 +101,9 @@ def _get_called_names(insn):
     assert isinstance(insn, MultiAssignmentBase)
     from functools import reduce
 
-    from pymbolic.primitives import Expression
+    from pymbolic.primitives import ExpressionNode
     return ((_get_calls_in_expr(insn.expression)
-             if isinstance(insn.expression, Expression)
+             if isinstance(insn.expression, ExpressionNode)
              else frozenset())
             # indices of assignees might call the subst rules
             | reduce(frozenset.union,
@@ -113,7 +113,7 @@ def _get_called_names(insn):
             | reduce(frozenset.union,
                      (_get_calls_in_expr(pred)
                       for pred in insn.predicates
-                      if isinstance(pred, Expression)),
+                      if isinstance(pred, ExpressionNode)),
                      frozenset())
             )
 
@@ -922,8 +922,8 @@ def precompute_for_single_kernel(
         # should.
 
         if _enable_mirgecom_workaround:
-            from pymbolic.primitives import Expression
-            if is_length_1 and not isinstance(base_index, Expression):
+            from pymbolic.primitives import ExpressionNode
+            if is_length_1 and not isinstance(base_index, ExpressionNode):
                 # I.e. base_index is an integer.
                 from pytools import is_single_valued
                 if is_single_valued(
