@@ -222,9 +222,9 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
                 new_indices = tuple(simplify_via_aff(i) for i in new_indices)
 
                 pack_lhs_assignee = pack_subst_mapper(
-                        var(pack_name).index(new_indices))
+                        var(pack_name)[new_indices])
                 unpack_rhs = unpack_subst_mapper(
-                        var(pack_name).index(new_indices))
+                        var(pack_name)[new_indices])
 
                 # }}}
 
@@ -272,7 +272,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel,
 
                 new_id_to_parameters[arg_id] = SubArrayRef(
                         tuple(updated_swept_inames),
-                        (var(pack_name).index(tuple(updated_swept_inames))))
+                        (var(pack_name)[tuple(updated_swept_inames)]))
             else:
                 new_id_to_parameters[arg_id] = p
 

@@ -146,7 +146,7 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
 
         May be one of the following:
 
-        - A :attr:`~pymbolic.typing.Expression`, including an
+        - A :data:`~pymbolic.typing.Expression`, including an
           integer, indicating the stride in units of the underlying
           array's :attr:`ArrayBase.dtype`.
 

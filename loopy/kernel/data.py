@@ -109,10 +109,10 @@ def _names_from_expr(expr: Union[None, Expression, str]) -> FrozenSet[str]:
     from loopy.symbolic import DependencyMapper
     dep_mapper = DependencyMapper()
 
-    from pymbolic.primitives import Expression
+    from pymbolic.primitives import ExpressionNode
     if isinstance(expr, str):
         return frozenset({expr})
-    elif isinstance(expr, Expression):
+    elif isinstance(expr, ExpressionNode):
         return frozenset(cast(Variable, v).name for v in dep_mapper(expr))
     elif expr is None:
         return frozenset()

@@ -1372,7 +1372,7 @@ class CInstruction(InstructionBase):
     .. attribute:: assignees
 
         A sequence (typically a :class:`tuple`) of variable references (with or
-        without subscript) as :attr:`pymbolic.typing.Expression` instances
+        without subscript) as :data:`pymbolic.typing.Expression` instances
         that :attr:`code` writes to. This is optional and only used for
         figuring out dependencies.
     """

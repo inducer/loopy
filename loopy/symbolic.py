@@ -127,7 +127,7 @@ References
 
 .. class:: Expression
 
-    See :attr:`pymbolic.typing.Expression`.
+    See :data:`pymbolic.typing.Expression`.
 
 .. class:: _Expression
 
@@ -712,7 +712,7 @@ class Reduction(LoopyExpressionBase):
     """An expression which may have tuple type. If the expression has tuple
     type, it must be one of the following:
 
-    * a :class:`tuple` of :attr:`pymbolic.typing.Expression`, or
+    * a :class:`tuple` of :data:`pymbolic.typing.Expression`, or
     * a :class:`loopy.symbolic.Reduction`, or
     * a function call or substitution rule invocation.
     """
@@ -1993,7 +1993,7 @@ def simplify_using_aff(kernel, expr):
     """
     Simplifies *expr* on *kernel*'s domain.
 
-    :arg expr: An instance of :attr:`pymbolic.typing.Expression`.
+    :arg expr: An instance of :data:`pymbolic.typing.Expression`.
     """
     deps = get_dependencies(expr)
 
@@ -2707,7 +2707,7 @@ def is_expression_equal(a, b):
     if a == b:
         return True
 
-    if isinstance(a, p.Expression) or isinstance(b, p.Expression):
+    if isinstance(a, p.ExpressionNode) or isinstance(b, p.ExpressionNode):
         if a is None or b is None:
             return False
 
