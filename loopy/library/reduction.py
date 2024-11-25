@@ -347,8 +347,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
                 segment_flag_dtype.numpy_dtype.type(0)), callables_table
 
     def result_dtypes(self, scalar_dtype, segment_flag_dtype):
-        return (self.inner_reduction.result_dtypes(scalar_dtype)
-                + (segment_flag_dtype,))
+        return ((*self.inner_reduction.result_dtypes(scalar_dtype), segment_flag_dtype))
 
     def __str__(self):
         return "segmented(%s)" % self.which
@@ -571,12 +570,12 @@ class ReductionCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, callables_table):
         scalar_dtype = arg_id_to_dtype[0]
         index_dtype = arg_id_to_dtype[1]
-        result_dtypes = self.name.reduction_op.result_dtypes(scalar_dtype,
+        result_dtypes = self.name.reduction_op.result_dtypes(scalar_dtype,  # pylint: disable=no-member
                 index_dtype)
         new_arg_id_to_dtype = arg_id_to_dtype.copy()
         new_arg_id_to_dtype[-1] = result_dtypes[0]
         new_arg_id_to_dtype[-2] = result_dtypes[1]
-        name_in_target = self.name.reduction_op.prefix(scalar_dtype,
+        name_in_target = self.name.reduction_op.prefix(scalar_dtype,  # pylint: disable=no-member
                 index_dtype) + "_op"
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
@@ -594,7 +593,7 @@ class ReductionCallable(ScalarCallable):
 class ArgExtOpCallable(ReductionCallable):
 
     def generate_preambles(self, target):
-        op = self.name.reduction_op
+        op = self.name.reduction_op  # pylint: disable=no-member
         scalar_dtype = self.arg_id_to_dtype[-1]
         index_dtype = self.arg_id_to_dtype[-2]
 
@@ -630,7 +629,7 @@ class ArgExtOpCallable(ReductionCallable):
 class SegmentOpCallable(ReductionCallable):
 
     def generate_preambles(self, target):
-        op = self.name.reduction_op
+        op = self.name.reduction_op  # pylint: disable=no-member
         scalar_dtype = self.arg_id_to_dtype[-1]
         segment_flag_dtype = self.arg_id_to_dtype[-2]
         prefix = op.prefix(scalar_dtype, segment_flag_dtype)

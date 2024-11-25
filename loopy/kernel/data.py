@@ -102,16 +102,16 @@ References
 
 # {{{ utilities
 
-def _names_from_expr(expr: Union[None, Expression, str]) -> FrozenSet[str]:
+def _names_from_expr(expr: Union[Expression, str, None]) -> FrozenSet[str]:
     from numbers import Number
 
     from loopy.symbolic import DependencyMapper
     dep_mapper = DependencyMapper()
 
-    from pymbolic.primitives import Expression
+    from pymbolic.primitives import ExpressionNode
     if isinstance(expr, str):
         return frozenset({expr})
-    elif isinstance(expr, Expression):
+    elif isinstance(expr, ExpressionNode):
         return frozenset(cast(Variable, v).name for v in dep_mapper(expr))
     elif expr is None:
         return frozenset()
@@ -302,7 +302,7 @@ class InOrderSequentialSequentialTag(InameImplementationTag):
         return "ord"
 
 
-ToInameTagConvertible = Union[str, None, Tag]
+ToInameTagConvertible = Union[str, Tag, None]
 
 
 def parse_tag(tag: ToInameTagConvertible) -> Optional[Tag]:

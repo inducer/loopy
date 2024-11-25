@@ -38,7 +38,7 @@ def test_tim2d(ctx_factory):
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
-            lp.ArrayArg("G", dtype, shape=(3,)+field_shape, order=order),
+            lp.ArrayArg("G", dtype, shape=(3, *field_shape), order=order),
             # lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
             # lp.ImageArg("D", dtype, shape=(n, n)),
@@ -46,7 +46,7 @@ def test_tim2d(ctx_factory):
             ],
             name="semlap2D", assumptions="K>=1")
 
-    unroll = 32  # noqa
+    unroll = 32
 
     seq_knl = knl
     knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "o"], default_tag="l.auto")
@@ -101,13 +101,13 @@ def test_red2d(ctx_factory):
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
-            lp.ArrayArg("G", dtype, shape=(3,)+field_shape, order=order),
+            lp.ArrayArg("G", dtype, shape=(3, *field_shape), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="semlap2D", assumptions="K>=1")
 
-    unroll = 32  # noqa
+    unroll = 32
 
     seq_knl = knl
     knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "o"], default_tag="l.auto")
@@ -168,7 +168,7 @@ def test_tim3d(ctx_factory):
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
 
-            lp.ArrayArg("G", dtype, shape=(6,)+field_shape, order=order),
+            lp.ArrayArg("G", dtype, shape=(6, *field_shape), order=order),
             # lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
             # lp.ImageArg("D", dtype, shape=(n, n)),

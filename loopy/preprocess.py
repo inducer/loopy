@@ -224,7 +224,7 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
 
     vng = kernel.get_var_name_generator()
 
-    from pymbolic.primitives import Expression, Variable
+    from pymbolic.primitives import ExpressionNode, Variable
 
     from loopy.kernel.array import FixedStrideArrayDimTag
 
@@ -241,7 +241,7 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
                 additional_args.append(ValueArg(
                         offset_name, kernel.index_dtype))
                 arg = arg.copy(offset=offset_name)
-            elif isinstance(arg.offset, (int, np.integer, Expression, str)):
+            elif isinstance(arg.offset, (int, np.integer, ExpressionNode, str)):
                 pass
             else:
                 raise LoopyError(f"invalid value of {what}")
@@ -261,12 +261,12 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
                             additional_args.append(ValueArg(
                                     stride_name, kernel.index_dtype))
                         elif isinstance(
-                                dim_tag.stride, (int, np.integer, Expression)):
+                                dim_tag.stride, (int, np.integer, ExpressionNode)):
                             pass
                         else:
                             raise LoopyError(f"invalid value of {what}")
 
-                    new_dim_tags = new_dim_tags + (dim_tag,)
+                    new_dim_tags = (*new_dim_tags, dim_tag)
 
             arg = arg.copy(dim_tags=new_dim_tags)
 
@@ -286,7 +286,7 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
 
 def zero_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
     made_changes = False
-    from pymbolic.primitives import Expression
+    from pymbolic.primitives import ExpressionNode
 
     # {{{ process arguments
 
@@ -298,7 +298,7 @@ def zero_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
             if arg.offset is auto:
                 made_changes = True
                 arg = arg.copy(offset=0)
-            elif isinstance(arg.offset, (int, np.integer, Expression, str)):
+            elif isinstance(arg.offset, (int, np.integer, ExpressionNode, str)):
                 from pymbolic.primitives import is_zero
                 if not is_zero(arg.offset):
                     raise LoopyError(
@@ -499,7 +499,7 @@ def check_atomic_loads(kernel):
                 for x in missed:
                     if {x} & atomicity_candidates:
                         insn = insn.copy(
-                            atomicity=insn.atomicity + (AtomicLoad(x),))
+                            atomicity=(*insn.atomicity, AtomicLoad(x)))
 
         new_insns.append(insn)
 

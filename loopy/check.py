@@ -206,14 +206,15 @@ def check_separated_array_consistency(kernel: LoopKernel) -> None:
                 for attr_name in ["address_space", "is_input", "is_output"]:
                     if getattr(arg, attr_name) != getattr(sub_arg, attr_name):
                         raise LoopyError(
-                                "Attribute '{attr_name}' of "
+                                f"Attribute '{attr_name}' of "
                                 f"'{arg.name}' and associated sep array "
                                 f"'{sub_arg.name}' is not consistent.")
 
 
 @check_each_kernel
 def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
-    from pymbolic.primitives import Expression, Variable
+    from pymbolic.primitives import ExpressionNode, Variable
+    from pymbolic.typing import Expression
 
     from loopy.symbolic import DependencyMapper
 
@@ -241,7 +242,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                 continue
             if arg.offset is auto:
                 pass
-            elif isinstance(arg.offset, (int, np.integer, Expression, str)):
+            elif isinstance(arg.offset, (int, np.integer, ExpressionNode, str)):
                 ensure_depends_only_on_arguments(what, arg.offset)
 
             else:
@@ -259,13 +260,13 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                         if dim_tag.stride is auto:
                             pass
                         elif isinstance(
-                                dim_tag.stride, (int, np.integer, Expression)):
+                                dim_tag.stride, (int, np.integer, ExpressionNode)):
                             ensure_depends_only_on_arguments(what, dim_tag.stride)
                         else:
                             raise LoopyError(f"invalid value of {what}")
 
                     assert new_dim_tags is not None
-                    new_dim_tags = new_dim_tags + (dim_tag,)
+                    new_dim_tags = (*new_dim_tags, dim_tag)
 
             arg = arg.copy(dim_tags=new_dim_tags)
 
@@ -281,7 +282,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
             pass
         if tv.offset is auto:
             pass
-        elif isinstance(tv.offset, (int, np.integer, Expression, str)):
+        elif isinstance(tv.offset, (int, np.integer, ExpressionNode, str)):
             ensure_depends_only_on_arguments(what, tv.offset)
         else:
             raise LoopyError(f"invalid value of offset for '{tv.name}'")
@@ -294,7 +295,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                     if dim_tag.stride is auto:
                         raise LoopyError(f"The {what}" f" is 'auto', "
                                 "which is not allowed.")
-                    elif isinstance(dim_tag.stride, (int, np.integer, Expression)):
+                    elif isinstance(dim_tag.stride, (int, np.integer, ExpressionNode)):
                         ensure_depends_only_on_arguments(what, dim_tag.stride)
                     else:
                         raise LoopyError(f"invalid value of {what}")

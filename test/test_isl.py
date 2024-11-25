@@ -26,7 +26,7 @@ import islpy as isl
 def test_aff_to_expr():
     s = isl.Space.create_from_names(isl.Context(), ["a", "b"])
     zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(s))
-    one = zero.set_constant_val(1)  # noqa
+    one = zero.set_constant_val(1)
     a = zero.set_coefficient_val(isl.dim_type.in_, 0, 1)
     b = zero.set_coefficient_val(isl.dim_type.in_, 1, 1)
 

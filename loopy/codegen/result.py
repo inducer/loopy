@@ -210,9 +210,7 @@ class CodeGenerationResult:
             assert program.is_device_program
             return self.copy(
                     device_programs=(
-                        list(self.device_programs[:-1])
-                        +
-                        [program]))
+                        [*list(self.device_programs[:-1]), program]))
         else:
             assert program.name == codegen_state.gen_program_name
             assert not program.is_device_program

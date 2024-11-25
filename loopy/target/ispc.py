@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 from typing import Sequence, Tuple, cast
 
-import numpy as np  # noqa
+import numpy as np
 
 import pymbolic.primitives as p
 from cgen import Collection, Const, Declarator, Generable
@@ -499,7 +499,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 inner)
 
         if hints:
-            return Collection(list(hints) + [loop])
+            return Collection([*list(hints), loop])
         else:
             return loop
 

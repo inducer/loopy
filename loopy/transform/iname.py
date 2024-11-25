@@ -296,16 +296,16 @@ def _split_iname_backend(kernel, iname_to_split,
         new_prio = ()
         for prio_iname in prio:
             if prio_iname == iname_to_split:
-                new_prio = new_prio + (outer_iname, inner_iname)
+                new_prio = (*new_prio, outer_iname, inner_iname)
             else:
-                new_prio = new_prio + (prio_iname,)
+                new_prio = (*new_prio, prio_iname)
         new_priorities.append(new_prio)
 
     kernel = kernel.copy(
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
             instructions=new_insns,
-            applied_iname_rewrites=kernel.applied_iname_rewrites+(subst_map,),
+            applied_iname_rewrites=(*kernel.applied_iname_rewrites, subst_map),
             loop_priority=frozenset(new_priorities))
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -630,7 +630,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
             .copy(
                 instructions=new_insns,
                 domains=domch.get_domains_with(new_domain),
-                applied_iname_rewrites=kernel.applied_iname_rewrites + (subst_dict,)
+                applied_iname_rewrites=(*kernel.applied_iname_rewrites, subst_dict)
                 ))
 
     from loopy.match import parse_stack_match
@@ -1051,7 +1051,7 @@ def get_iname_duplication_options(kernel):
     if isinstance(kernel, TranslationUnit):
         if len([clbl for clbl in kernel.callables_table.values() if
                 isinstance(clbl, CallableKernel)]) == 1:
-            kernel = kernel[list(kernel.entrypoints)[0]]
+            kernel = kernel[next(iter(kernel.entrypoints))]
 
     assert isinstance(kernel, LoopKernel)
 
@@ -1096,7 +1096,7 @@ def has_schedulable_iname_nesting(kernel):
     if isinstance(kernel, TranslationUnit):
         if len([clbl for clbl in kernel.callables_table.values() if
                 isinstance(clbl, CallableKernel)]) == 1:
-            kernel = kernel[list(kernel.entrypoints)[0]]
+            kernel = kernel[next(iter(kernel.entrypoints))]
     return not bool(next(get_iname_duplication_options(kernel), False))
 
 # }}}
@@ -1398,7 +1398,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
             rule_mapping_context.finish_kernel(
                 old_to_new.map_kernel(kernel))
             .copy(
-                applied_iname_rewrites=kernel.applied_iname_rewrites + (subst_dict,)
+                applied_iname_rewrites=(*kernel.applied_iname_rewrites, subst_dict)
                 ))
 
     # }}}
@@ -2082,7 +2082,7 @@ def map_domain(kernel, transform_map):
         substitutions[iname] = subst_from_map
         var_substitutions[var(iname)] = subst_from_map
 
-    applied_iname_rewrites = applied_iname_rewrites + (var_substitutions,)
+    applied_iname_rewrites = (*applied_iname_rewrites, var_substitutions)
     del var_substitutions
 
     # }}}

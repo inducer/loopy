@@ -33,8 +33,10 @@ from typing import (
     TYPE_CHECKING,
     AbstractSet,
     Any,
+    ClassVar,
     Mapping,
     Sequence,
+    TypeAlias,
     cast,
 )
 from warnings import warn
@@ -127,7 +129,7 @@ References
 
 .. class:: Expression
 
-    See :attr:`pymbolic.typing.Expression`.
+    See :data:`pymbolic.typing.Expression`.
 
 .. class:: _Expression
 
@@ -712,7 +714,7 @@ class Reduction(LoopyExpressionBase):
     """An expression which may have tuple type. If the expression has tuple
     type, it must be one of the following:
 
-    * a :class:`tuple` of :attr:`pymbolic.typing.Expression`, or
+    * a :class:`tuple` of :data:`pymbolic.typing.Expression`, or
     * a :class:`loopy.symbolic.Reduction`, or
     * a function call or substitution rule invocation.
     """
@@ -1283,7 +1285,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
         rec_arguments = self.rec(arguments, expn_state, *args, **kwargs)
 
         new_expn_state = expn_state.copy(
-                stack=expn_state.stack + ((name, tags),),
+                stack=(*expn_state.stack, (name, tags)),
                 arg_context=self.make_new_arg_context(
                     name, rule.arguments, rec_arguments, expn_state.arg_context))
 
@@ -1428,7 +1430,7 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper):
         self.within = within
 
     def map_substitution(self, name, tags, arguments, expn_state):
-        new_stack = expn_state.stack + ((name, tags),)
+        new_stack = (*expn_state.stack, (name, tags))
 
         if self.within(expn_state.kernel, expn_state.instruction, new_stack):
             # expand
@@ -1573,11 +1575,15 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper):
 
 _open_dbl_bracket = intern("open_dbl_bracket")
 
-TRAILING_FLOAT_TAG_RE = re.compile("^(.*?)([a-zA-Z]*)$")
+TRAILING_FLOAT_TAG_RE = re.compile(r"^(.*?)([a-zA-Z]*)$")
+
+
+LexTable: TypeAlias = Sequence[
+        tuple[str, pytools.lex.RE | tuple[str | pytools.lex.RE, ...]]]
 
 
 class LoopyParser(ParserBase):
-    lex_table = [
+    lex_table: ClassVar[LexTable] = [
             (_open_dbl_bracket, pytools.lex.RE(r"\[\[")),
             *ParserBase.lex_table
             ]
@@ -1993,7 +1999,7 @@ def simplify_using_aff(kernel, expr):
     """
     Simplifies *expr* on *kernel*'s domain.
 
-    :arg expr: An instance of :attr:`pymbolic.typing.Expression`.
+    :arg expr: An instance of :data:`pymbolic.typing.Expression`.
     """
     deps = get_dependencies(expr)
 
@@ -2707,7 +2713,7 @@ def is_expression_equal(a, b):
     if a == b:
         return True
 
-    if isinstance(a, p.Expression) or isinstance(b, p.Expression):
+    if isinstance(a, p.ExpressionNode) or isinstance(b, p.ExpressionNode):
         if a is None or b is None:
             return False
 

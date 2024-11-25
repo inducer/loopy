@@ -27,8 +27,8 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
 from pymbolic.mapper.evaluator import EvaluationMapper
 
 import loopy as lp

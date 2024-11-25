@@ -101,9 +101,9 @@ def _get_called_names(insn):
     assert isinstance(insn, MultiAssignmentBase)
     from functools import reduce
 
-    from pymbolic.primitives import Expression
+    from pymbolic.primitives import ExpressionNode
     return ((_get_calls_in_expr(insn.expression)
-             if isinstance(insn.expression, Expression)
+             if isinstance(insn.expression, ExpressionNode)
              else frozenset())
             # indices of assignees might call the subst rules
             | reduce(frozenset.union,
@@ -113,7 +113,7 @@ def _get_called_names(insn):
             | reduce(frozenset.union,
                      (_get_calls_in_expr(pred)
                       for pred in insn.predicates
-                      if isinstance(pred, Expression)),
+                      if isinstance(pred, ExpressionNode)),
                      frozenset())
             )
 
@@ -388,11 +388,11 @@ def precompute_for_single_kernel(
         precompute_outer_inames: Optional[FrozenSet[str]] = None,
         storage_axis_to_tag=None,
 
-        default_tag: Union[None, Tag, str] = None,
+        default_tag: Union[Tag, str, None] = None,
 
         dtype: Optional[ToLoopyTypeConvertible] = None,
         fetch_bounding_box: bool = False,
-        temporary_address_space: Union[AddressSpace, None, Type[auto]] = None,
+        temporary_address_space: Union[AddressSpace, Type[auto], None] = None,
         compute_insn_id: Optional[str] = None,
         _enable_mirgecom_workaround: bool = False,
         ) -> LoopKernel:
@@ -922,8 +922,8 @@ def precompute_for_single_kernel(
         # should.
 
         if _enable_mirgecom_workaround:
-            from pymbolic.primitives import Expression
-            if is_length_1 and not isinstance(base_index, Expression):
+            from pymbolic.primitives import ExpressionNode
+            if is_length_1 and not isinstance(base_index, ExpressionNode):
                 # I.e. base_index is an integer.
                 from pytools import is_single_valued
                 if is_single_valued(
@@ -1028,7 +1028,7 @@ def precompute_for_single_kernel(
                 and insn.within_inames & prior_storage_axis_names):
             insn = (insn
                     .with_transformed_expressions(
-                        lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023,E501
+                        lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023
                     .copy(within_inames=frozenset(
                         new_iname
                         for iname in insn.within_inames

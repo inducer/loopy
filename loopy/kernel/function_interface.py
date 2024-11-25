@@ -22,38 +22,40 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Callable, ClassVar, FrozenSet, Tuple, TypeVar
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, fields, replace
+from typing import TYPE_CHECKING, Any, Callable, FrozenSet, TypeVar
+from warnings import warn
 
-from pytools import ImmutableRecord
+from immutabledict import immutabledict
+from typing_extensions import Self
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel import LoopKernel
-from loopy.kernel.array import ArrayBase
-from loopy.kernel.data import ArrayArg, ValueArg
+from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
+from loopy.kernel.data import AddressSpace, ArrayArg, ValueArg
 from loopy.symbolic import DependencyMapper, WalkMapper
-from loopy.tools import update_persistent_hash
+from loopy.types import LoopyType
+from loopy.typing import ShapeType
 
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
+    from loopy.kernel import LoopKernel
     from loopy.translation_unit import CallablesTable, FunctionIdT
 
 __doc__ = """
 .. currentmodule:: loopy.kernel.function_interface
 
+.. autoclass:: ArgDescriptor
 .. autoclass:: ValueArgDescriptor
-
 .. autoclass:: ArrayArgDescriptor
 
 .. currentmodule:: loopy
 
 .. autoclass:: InKernelCallable
-
 .. autoclass:: CallableKernel
-
 .. autoclass:: ScalarCallable
 """
 
@@ -63,7 +65,7 @@ __doc__ = """
 ArgDescriptorT = TypeVar("ArgDescriptorT", bound="ArgDescriptor")
 
 
-class ArgDescriptor(ABC, ImmutableRecord):
+class ArgDescriptor(ABC):
     @abstractmethod
     def map_expr(
                 self,
@@ -75,19 +77,25 @@ class ArgDescriptor(ABC, ImmutableRecord):
     def depends_on(self) -> frozenset[str]:
         ...
 
+    @abstractmethod
+    def copy(self, **kwargs: Any) -> Self:
+        ...
 
+
+@dataclass(frozen=True)
 class ValueArgDescriptor(ArgDescriptor):
-    hash_fields = ()
 
     def map_expr(self, subst_mapper):
-        return self.copy()
+        return self
 
     def depends_on(self):
         return frozenset()
 
-    update_persistent_hash = update_persistent_hash
+    def copy(self, **kwargs: Any) -> Self:
+        return replace(self, **kwargs)
 
 
+@dataclass(frozen=True)
 class ArrayArgDescriptor(ArgDescriptor):
     """
     Records information about an array argument to an in-kernel callable. To be
@@ -95,46 +103,39 @@ class ArrayArgDescriptor(ArgDescriptor):
     :meth:`~loopy.InKernelCallable.with_descrs`, used for
     matching shape and address space of caller and callee kernels.
 
-    .. attribute:: shape
-
-        Shape of the array.
-
-    .. attribute:: address_space
-
-        An attribute of :class:`loopy.AddressSpace`.
-
-    .. attribute:: dim_tags
-
-        A tuple of instances of
-        :class:`loopy.kernel.array.ArrayDimImplementationTag`
+    .. autoattribute:: shape
+    .. autoattribute:: address_space
+    .. autoattribute:: dim_tags
 
     .. automethod:: map_expr
     .. automethod:: depends_on
     """
 
-    fields = {"shape", "address_space", "dim_tags"}
+    shape: ShapeType | None
+    address_space: AddressSpace
+    dim_tags: Sequence[ArrayDimImplementationTag] | None
+    """See :ref:`data-dim-tags`.
+    """
 
-    def __init__(self, shape, address_space, dim_tags):
+    if __debug__:
+        def __post_init__(self):
+            # {{{ sanity checks
 
-        # {{{ sanity checks
+            from loopy.kernel.array import ArrayDimImplementationTag
+            from loopy.kernel.data import auto
 
-        from loopy.kernel.array import ArrayDimImplementationTag
-        from loopy.kernel.data import auto
+            assert isinstance(self.shape, tuple) or self.shape in [None, auto]
+            assert isinstance(self.dim_tags, tuple) or self.dim_tags is None
 
-        assert isinstance(shape, tuple) or shape in [None, auto]
-        assert isinstance(dim_tags, tuple) or dim_tags is None
+            if self.dim_tags:
+                # FIXME at least vector dim tags should be supported
+                assert all(isinstance(dim_tag, ArrayDimImplementationTag) for dim_tag in
+                        self.dim_tags)
 
-        if dim_tags:
-            # FIXME at least vector dim tags should be supported
-            assert all(isinstance(dim_tag, ArrayDimImplementationTag) for dim_tag in
-                    dim_tags)
+            # }}}
 
-        # }}}
-
-        super().__init__(
-                shape=shape,
-                address_space=address_space,
-                dim_tags=dim_tags)
+    def copy(self, **kwargs: Any) -> Self:
+        return replace(self, **kwargs)
 
     def map_expr(self, f):
         """
@@ -172,11 +173,6 @@ class ArrayArgDescriptor(ArgDescriptor):
                 result |= dim_tag.depends_on()
 
         return frozenset(var.name for var in result)
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        key_builder.rec(key_hash, self.shape)
-        key_builder.rec(key_hash, self.address_space)
-        key_builder.rec(key_hash, self.dim_tags)
 
 
 class ExpressionIsScalarChecker(WalkMapper):
@@ -308,25 +304,16 @@ def get_kw_pos_association(kernel):
 
 # {{{ template class
 
-class InKernelCallable(ImmutableRecord):
+# not frozen for Firedrake compatibility
+# not eq to avoid having __hash__ set to None in subclasses
+@dataclass(init=False, eq=False)
+class InKernelCallable(ABC):
     """
     An abstract interface to define a callable encountered in a kernel.
 
-    .. attribute:: name
-
-        The name of the callable which can be encountered within expressions in
-        a kernel.
-
-    .. attribute:: arg_id_to_dtype
-
-        A mapping which indicates the arguments types and result types of the
-        callable.
-
-    .. attribute:: arg_id_to_descr
-
-        A mapping which gives indicates the argument shape and ``dim_tags`` it
-        would be responsible for generating code.
-
+    .. autoattribute:: name
+    .. autoattribute:: arg_id_to_dtype
+    .. autoattribute:: arg_id_to_descr
 
     .. automethod:: __init__
     .. automethod:: with_types
@@ -352,17 +339,81 @@ class InKernelCallable(ImmutableRecord):
           return value with (0-based) index *i*.
 
     """
+    arg_id_to_dtype: Mapping[int | str, LoopyType] | None
+    arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None
 
-    hash_fields: ClassVar[Tuple[str, ...]] = (
-            "name", "arg_id_to_dtype", "arg_id_to_descr")
+    def __init__(self,
+                 arg_id_to_dtype: Mapping[int | str, LoopyType] | None = None,
+                 arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None = None,
+             ) -> None:
+        try:
+            hash(arg_id_to_dtype)
+        except TypeError:
+            arg_id_to_dtype = immutabledict(arg_id_to_dtype)
+            warn("arg_id_to_dtype passed to InKernelCallable was not hashable. "
+                 "This usage is deprecated and will stop working in 2026.",
+                 DeprecationWarning, stacklevel=3)
 
-    def __init__(self, name, arg_id_to_dtype=None, arg_id_to_descr=None):
+        try:
+            hash(arg_id_to_descr)
+        except TypeError:
+            arg_id_to_descr = immutabledict(arg_id_to_descr)
+            warn("arg_id_to_descr passed to InKernelCallable was not hashable. "
+                 "This usage is deprecated and will stop working in 2026.",
+                 DeprecationWarning, stacklevel=3)
 
-        super().__init__(name=name,
-                         arg_id_to_dtype=arg_id_to_dtype,
-                         arg_id_to_descr=arg_id_to_descr)
+        object.__setattr__(self, "arg_id_to_dtype", arg_id_to_dtype)
+        object.__setattr__(self, "arg_id_to_descr", arg_id_to_descr)
 
-    update_persistent_hash = update_persistent_hash
+    if TYPE_CHECKING:
+        @property
+        def name(self) -> str:
+            raise NotImplementedError()
+
+    # {{{ hackery to avoid breaking Firedrake
+
+    def _all_attrs(self) -> Collection[str]:
+        dc_attrs = {
+            fld.name for fld in fields(self)
+        }
+        legacy_fields: Collection[str] = getattr(self, "fields", [])
+        return dc_attrs | set(legacy_fields)
+
+    def copy(self, **kwargs: Any) -> Self:
+        present_kwargs = {
+            name: getattr(self, name)
+            for name in self._all_attrs()
+        }
+        kwargs = {
+            **present_kwargs,
+            **kwargs,
+        }
+
+        return replace(self, **kwargs)
+
+    def update_persistent_hash(self, key_hash, key_builder) -> None:
+        for field_name in self._all_attrs():
+            key_builder.rec(key_hash, getattr(self, field_name))
+
+    def __eq__(self, other: object):
+        if type(self) is not type(other):
+            return False
+
+        for f in self._all_attrs():
+            if getattr(self, f) != getattr(other, f):
+                return False
+
+        return True
+
+    def __hash__(self):
+        import hashlib
+
+        from loopy.tools import LoopyKeyBuilder
+        key_hash = hashlib.sha256()
+        self.update_persistent_hash(key_hash, LoopyKeyBuilder())
+        return hash(key_hash.digest())
+
+    # }}}
 
     def with_types(self, arg_id_to_dtype, clbl_inf_ctx):
         """
@@ -391,6 +442,7 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
+    @abstractmethod
     def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers (integers for
@@ -418,12 +470,11 @@ class InKernelCallable(ImmutableRecord):
             other callables within it, then *clbl_inf_ctx* is returned as is.
         """
 
-        raise NotImplementedError()
-
-    def is_ready_for_codegen(self):
+    def is_ready_for_codegen(self) -> bool:
         return (self.arg_id_to_dtype is not None and
                 self.arg_id_to_descr is not None)
 
+    @abstractmethod
     def get_hw_axes_sizes(self, arg_id_to_arg, space, callables_table):
         """
         Returns ``gsizes, lsizes``, where *gsizes* and *lsizes* are mappings
@@ -435,26 +486,28 @@ class InKernelCallable(ImmutableRecord):
             arguments at a call-site.
         :arg space: An instance of :class:`islpy.Space`.
         """
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def get_used_hw_axes(self, callables_table):
         """
         Returns a tuple ``group_axes_used, local_axes_used``, where
         ``(group|local)_axes_used`` are :class:`frozenset` of hardware axes
         indices used by the callable.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def generate_preambles(self, target):
         """
         Yields the target specific preamble.
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def emit_call(self, expression_to_code_mapper, expression, target):
+        ...
 
-        raise NotImplementedError()
-
+    @abstractmethod
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
         """
         Returns a tuple of ``(call, assignee_is_returned)`` which is the target
@@ -469,18 +522,14 @@ class InKernelCallable(ImmutableRecord):
             in the target as the statement ``f(c, d, &a, &b)``.
         """
 
-        raise NotImplementedError()
-
-    def __hash__(self):
-        return hash(self.hash_fields)
-
+    @abstractmethod
     def with_added_arg(self, arg_dtype, arg_descr):
         """
         Registers a new argument to the callable and returns the name of the
         argument in the callable's namespace.
         """
-        raise NotImplementedError()
 
+    @abstractmethod
     def get_called_callables(
                              self,
                              callables_table: CallablesTable,
@@ -496,27 +545,28 @@ class InKernelCallable(ImmutableRecord):
             callables, else only returns the callables directly called by
             *self*.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def with_name(self, name):
         """
         Returns a copy of *self* so that it could be referred by *name*
         in a :attr:`loopy.TranslationUnit.callables_table`'s namespace.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def is_type_specialized(self):
         """
         Returns *True* iff *self*'s type signature is known, else returns
         *False*.
         """
-        raise NotImplementedError
 
 # }}}
 
 
 # {{{ scalar callable
 
+# not frozen, not eq for Firedrake compatibility
+@dataclass(init=False, eq=False)
 class ScalarCallable(InKernelCallable):
     """
     An abstract interface to a scalar callable encountered in a kernel.
@@ -537,15 +587,20 @@ class ScalarCallable(InKernelCallable):
         The :meth:`ScalarCallable.with_types` is intended to assist with type
         specialization of the function and sub-classes must define it.
     """
-    fields = {"name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"}
-    hash_fields = InKernelCallable.hash_fields + ("name_in_target",)
+    name: str
+    name_in_target: str | None
 
-    def __init__(self, name, arg_id_to_dtype=None,
-                 arg_id_to_descr=None, name_in_target=None):
-        super().__init__(name=name,
-                         arg_id_to_dtype=arg_id_to_dtype,
-                         arg_id_to_descr=arg_id_to_descr)
-        self.name_in_target = name_in_target
+    def __init__(self,
+                 name: str,
+                 arg_id_to_dtype: Mapping[int | str, LoopyType] | None = None,
+                 arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None = None,
+                 name_in_target: str | None = None) -> None:
+        super().__init__(
+            arg_id_to_dtype=arg_id_to_dtype,
+            arg_id_to_descr=arg_id_to_descr,
+        )
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "name_in_target", name_in_target)
 
     def with_types(self, arg_id_to_dtype, callables_table):
         raise LoopyError("No type inference information present for "
@@ -689,6 +744,8 @@ class ScalarCallable(InKernelCallable):
 
 # {{{ callable kernel
 
+# not frozen, not eq for Firedrake compatibility
+@dataclass(init=False, eq=False)
 class CallableKernel(InKernelCallable):
     """
     Records information about a callee kernel. Also provides interface through
@@ -702,35 +759,27 @@ class CallableKernel(InKernelCallable):
     :meth:`CallableKernel.with_descrs` should be called in order to match
     the arguments' shapes/strides across the caller and the callee kernel.
 
-    .. attribute:: subkernel
-
-        :class:`~loopy.LoopKernel` which is being called.
-
+    .. autoattribute:: subkernel
     .. automethod:: with_descrs
     .. automethod:: with_types
     """
 
-    fields = {"subkernel", "arg_id_to_dtype", "arg_id_to_descr"}
-    hash_fields = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr")
+    subkernel: LoopKernel
 
-    def __init__(self, subkernel, arg_id_to_dtype=None,
-                 arg_id_to_descr=None):
-        assert isinstance(subkernel, LoopKernel)
-        super().__init__(name=subkernel.name,
+    def __init__(self,
+                 subkernel: LoopKernel,
+                 arg_id_to_dtype: Mapping[int | str, LoopyType] | None = None,
+                 arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None = None,
+             ) -> None:
+
+        super().__init__(
                          arg_id_to_dtype=arg_id_to_dtype,
                          arg_id_to_descr=arg_id_to_descr)
-        self.subkernel = subkernel
+        object.__setattr__(self, "subkernel", subkernel)
 
-    def copy(self, subkernel=None, arg_id_to_dtype=None,
-             arg_id_to_descr=None):
-        if subkernel is None:
-            subkernel = self.subkernel
-        if arg_id_to_descr is None:
-            arg_id_to_descr = self.arg_id_to_descr
-        if arg_id_to_dtype is None:
-            arg_id_to_dtype = self.arg_id_to_dtype
-
-        return CallableKernel(subkernel, arg_id_to_dtype, arg_id_to_descr)
+    @property
+    def name(self) -> str:
+        return self.subkernel.name
 
     def with_types(self, arg_id_to_dtype, callables_table):
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
@@ -769,7 +818,7 @@ class CallableKernel(InKernelCallable):
         # Return the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
         return self.copy(subkernel=specialized_kernel,
-                arg_id_to_dtype=new_arg_id_to_dtype), callables_table
+                arg_id_to_dtype=immutabledict(new_arg_id_to_dtype)), callables_table
 
     def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
 
@@ -844,7 +893,7 @@ class CallableKernel(InKernelCallable):
         # }}}
 
         return (self.copy(subkernel=subkernel,
-                          arg_id_to_descr=arg_id_to_descr),
+                          arg_id_to_descr=immutabledict(arg_id_to_descr)),
                 clbl_inf_ctx)
 
     def with_added_arg(self, arg_dtype, arg_descr):
@@ -852,7 +901,8 @@ class CallableKernel(InKernelCallable):
 
         if isinstance(arg_descr, ValueArgDescriptor):
             subknl = self.subkernel.copy(
-                    args=self.subkernel.args+[
+                    args=[
+                        *self.subkernel.args,
                         ValueArg(var_name, arg_dtype, self.subkernel.target)])
 
             kw_to_pos, pos_to_kw = get_kw_pos_association(subknl)
@@ -860,11 +910,11 @@ class CallableKernel(InKernelCallable):
             if self.arg_id_to_dtype is None:
                 arg_id_to_dtype = {}
             else:
-                arg_id_to_dtype = self.arg_id_to_dtype.copy()
+                arg_id_to_dtype = dict(self.arg_id_to_dtype)
             if self.arg_id_to_descr is None:
                 arg_id_to_descr = {}
             else:
-                arg_id_to_descr = self.arg_id_to_descr.copy()
+                arg_id_to_descr = dict(self.arg_id_to_descr)
 
             arg_id_to_dtype[var_name] = arg_dtype
             arg_id_to_descr[var_name] = arg_descr
@@ -930,6 +980,10 @@ class CallableKernel(InKernelCallable):
         """
         return
         yield
+
+    def emit_call(self, expression_to_code_mapper, expression, target):
+        raise LoopyError("Kernel '{self.name}' cannot be called "
+                         "from within an expression, use a call statement")
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
         from loopy.target.c import CFamilyTarget

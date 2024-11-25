@@ -45,7 +45,6 @@ from typing_extensions import Concatenate, ParamSpec, Self
 from pymbolic.primitives import Call, Variable
 
 from loopy.diagnostic import DirectCallUncachedWarning, LoopyError
-from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (
     CallableKernel,
     InKernelCallable,
@@ -61,6 +60,7 @@ from loopy.target import TargetBase
 
 
 if TYPE_CHECKING:
+    from loopy.kernel import LoopKernel
     from loopy.target.execution import ExecutorBase
 
 
@@ -336,6 +336,7 @@ class TranslationUnit:
             ep_name, = self.entrypoints
             entrypoint = self[ep_name]
 
+            from loopy import LoopKernel
             if not isinstance(entrypoint, LoopKernel):
                 raise ValueError("default entrypoint is not a kernel")
 
@@ -749,7 +750,7 @@ class CallablesInferenceContext:
 # }}}
 
 
-TUnitOrKernelT = TypeVar("TUnitOrKernelT", LoopKernel, TranslationUnit)
+TUnitOrKernelT = TypeVar("TUnitOrKernelT", "LoopKernel", TranslationUnit)
 
 
 # {{{ helper functions
@@ -778,6 +779,7 @@ def check_each_kernel(
                 *args: P.args,
                 **kwargs: P.kwargs
             ) -> None:
+        from loopy import LoopKernel
         if isinstance(t_unit_or_kernel, TranslationUnit):
             for clbl in t_unit_or_kernel.callables_table.values():
                 if isinstance(clbl, CallableKernel):
@@ -807,6 +809,7 @@ def for_each_kernel(
                 *args: P.args,
                 **kwargs: P.kwargs
             ) -> TUnitOrKernelT:
+        from loopy import LoopKernel
         if isinstance(t_unit_or_kernel, TranslationUnit):
             t_unit = t_unit_or_kernel
             new_callables = {}
@@ -886,7 +889,7 @@ def resolve_callables(t_unit: TranslationUnit) -> TranslationUnit:
     # get loopy specific callables
     known_callables.update(get_loopy_callables())
 
-    callables_table = {}
+    callables_table: dict[FunctionIdT, InKernelCallable] = {}
 
     # callables: name of the calls seen in the program
     callables = {name for name, clbl in t_unit.callables_table.items()

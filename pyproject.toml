@@ -1,8 +1,6 @@
 [build-system]
-build-backend = "setuptools.build_meta"
-requires = [
-    "setuptools>=63",
-]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "loopy"
@@ -60,21 +58,21 @@ fortran = [
     "ply>=3.6",
 ]
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.git*",
+  "/doc/_build",
+  "/run-*.sh",
+]
+
 [project.scripts]
 
 [project.urls]
 Documentation = "https://documen.tician.de/loopy"
 Homepage = "https://github.com/inducer/loopy"
-
-[tool.setuptools.packages.find]
-include = [
-    "loopy*",
-]
-
-[tool.setuptools.package-data]
-loopy = [
-    "py.typed",
-]
 
 [tool.setuptools.package-dir]
 # https://github.com/Infleqtion/client-superstaq/pull/715
@@ -99,9 +97,7 @@ extend-select = [
 
     # TODO
     # "UP",  # pyupgrade
-    # "RUF",  # ruff
-
-    "RUF022", # __all__ isn't sorted
+    "RUF",  # ruff
 ]
 extend-ignore = [
     "C90",  # McCabe complexity

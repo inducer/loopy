@@ -225,7 +225,7 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     prev_sys_path = sys.path
     try:
         if infile_dirname:
-            sys.path = prev_sys_path + [infile_dirname]
+            sys.path = [*prev_sys_path, infile_dirname]
 
         if pre_transform_code is not None:
             proc_dict["_MODULE_SOURCE_CODE"] = pre_transform_code
