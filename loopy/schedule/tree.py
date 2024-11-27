@@ -50,9 +50,9 @@ from pytools import memoize_method
 NodeT = TypeVar("NodeT", bound=Hashable)
 
 
-# Not frozen because it is slower. Tree objects are immutable, and offer no
-# way to mutate the tree.
-@dataclass(frozen=False)
+# Not frozen when optimizations are enabled because it is slower.
+# Tree objects are immutable, and offer no way to mutate the tree.
+@dataclass(frozen=__debug__)  # type: ignore[literal-required]
 class Tree(Generic[NodeT]):
     """
     An immutable tree containing nodes of type :class:`NodeT`.
@@ -128,11 +128,9 @@ class Tree(Generic[NodeT]):
             return 0
 
         parent_of_node = self.parent(node)
+        assert parent_of_node is not None
 
-        from typing import cast
-
-        # cast-reason: parent_of_node can not be None (as per is_root check)
-        return 1 + self.depth(cast(NodeT, parent_of_node))
+        return 1 + self.depth(parent_of_node)
 
     def is_root(self, node: NodeT) -> bool:
         """Return *True* if *node* is the root of the tree."""
