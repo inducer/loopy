@@ -97,12 +97,10 @@ class Tree(Generic[NodeT]):
         """
         Returns a :class:`tuple` of nodes that are ancestors of *node*.
         """
-        if self.is_root(node):
+        parent = self.parent(node)
+        if parent is None:
             # => root
             return ()
-
-        parent = self._child_to_parent[node]
-        assert parent is not None
 
         return (parent, *self.ancestors(parent))
 
