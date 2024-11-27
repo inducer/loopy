@@ -50,7 +50,9 @@ from pytools import memoize_method
 NodeT = TypeVar("NodeT", bound=Hashable)
 
 
-@dataclass(frozen=True)
+# Not frozen because it is slower. Tree objects are immutable, and offer no
+# way to mutate the tree.
+@dataclass(frozen=False)
 class Tree(Generic[NodeT]):
     """
     An immutable tree containing nodes of type :class:`NodeT`.
@@ -95,8 +97,6 @@ class Tree(Generic[NodeT]):
         """
         Returns a :class:`tuple` of nodes that are ancestors of *node*.
         """
-        assert node in self
-
         if self.is_root(node):
             # => root
             return ()
@@ -110,16 +110,12 @@ class Tree(Generic[NodeT]):
         """
         Returns the parent of *node*.
         """
-        assert node in self
-
         return self._child_to_parent[node]
 
     def children(self, node: NodeT) -> tuple[NodeT, ...]:
         """
         Returns the children of *node*.
         """
-        assert node in self
-
         return self._parent_to_children[node]
 
     @memoize_method
@@ -127,25 +123,23 @@ class Tree(Generic[NodeT]):
         """
         Returns the depth of *node*, with the root having depth 0.
         """
-        assert node in self
-
         if self.is_root(node):
             # => None
             return 0
 
         parent_of_node = self.parent(node)
-        assert parent_of_node is not None
 
-        return 1 + self.depth(parent_of_node)
+        from typing import cast
+
+        # cast-reason: parent_of_node can not be None (as per is_root check)
+        return 1 + self.depth(cast(NodeT, parent_of_node))
 
     def is_root(self, node: NodeT) -> bool:
-        assert node in self
-
+        """Return *True* if *node* is the root of the tree."""
         return self.parent(node) is None
 
     def is_leaf(self, node: NodeT) -> bool:
-        assert node in self
-
+        """Return *True* if *node* has no children."""
         return len(self.children(node)) == 0
 
     def __contains__(self, node: NodeT) -> bool:
@@ -162,9 +156,11 @@ class Tree(Generic[NodeT]):
 
         siblings = self._parent_to_children[parent]
 
-        return Tree((self._parent_to_children
-                     .set(parent, (*siblings, node))
-                     .set(node, ())),
+        _parent_to_children_mut = self._parent_to_children.mutate()
+        _parent_to_children_mut[parent] = (*siblings, node)
+        _parent_to_children_mut[node] = ()
+
+        return Tree(_parent_to_children_mut.finish(),
                     self._child_to_parent.set(node, parent))
 
     def replace_node(self, node: NodeT, new_node: NodeT) -> Tree[NodeT]:
@@ -234,13 +230,12 @@ class Tree(Generic[NodeT]):
         parents_new_children = tuple(frozenset(siblings) - frozenset([node]))
         new_parents_children = (*self.children(new_parent), node)
 
-        new_child_to_parent = self._child_to_parent.set(node, new_parent)
-        new_parent_to_children = (self._parent_to_children
-                                  .set(parent, parents_new_children)
-                                  .set(new_parent, new_parents_children))
+        _parent_to_children_mut = self._parent_to_children.mutate()
+        _parent_to_children_mut[parent] = parents_new_children
+        _parent_to_children_mut[new_parent] = new_parents_children
 
-        return Tree(new_parent_to_children,
-                    new_child_to_parent)
+        return Tree(_parent_to_children_mut.finish(),
+                    self._child_to_parent.set(node, new_parent))
 
     def __str__(self) -> str:
         """
