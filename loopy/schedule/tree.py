@@ -123,12 +123,9 @@ class Tree(Generic[NodeT]):
         """
         Returns the depth of *node*, with the root having depth 0.
         """
-        if self.is_root(node):
-            # => None
-            return 0
-
         parent_of_node = self.parent(node)
-        assert parent_of_node is not None
+        if parent_of_node is None:
+            return 0
 
         return 1 + self.depth(parent_of_node)
 
