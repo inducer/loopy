@@ -157,7 +157,6 @@ exclude = [
 module = [
     "islpy.*",
     "pymbolic.*",
-    "cgen.*",
     "genpy.*",
     "pyopencl.*",
     "colorama.*",
