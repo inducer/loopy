@@ -57,7 +57,7 @@ def test_einsum_array_manipulation(ctx_factory, spec):
     arg_names = ("a",)
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, a=a)
+    _evt, (out,) = knl(queue, a=a)
     ans = np.einsum(spec, a)
 
     assert np.linalg.norm(out - ans) <= 1e-15
@@ -76,7 +76,7 @@ def test_einsum_array_matvec(ctx_factory, spec):
     arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, a=a, b=b)
+    _evt, (out,) = knl(queue, a=a, b=b)
     ans = np.einsum(spec, a, b)
 
     assert np.linalg.norm(out - ans) <= 1e-15
@@ -97,7 +97,7 @@ def test_einsum_array_ops_same_dims(ctx_factory, spec):
     arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, a=a, b=b)
+    _evt, (out,) = knl(queue, a=a, b=b)
     ans = np.einsum(spec, a, b)
 
     assert np.linalg.norm(out - ans) <= 1e-15
@@ -118,7 +118,7 @@ def test_einsum_array_ops_diff_dims(ctx_factory, spec):
     arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, a=a, b=b)
+    _evt, (out,) = knl(queue, a=a, b=b)
     ans = np.einsum(spec, a, b)
 
     assert np.linalg.norm(out - ans) <= 1e-15
@@ -138,7 +138,7 @@ def test_einsum_array_ops_triple_prod(ctx_factory, spec):
     arg_names = ("a", "b", "c")
 
     knl = lp.make_einsum(spec, arg_names)
-    evt, (out,) = knl(queue, a=a, b=b, c=c)
+    _evt, (out,) = knl(queue, a=a, b=b, c=c)
     ans = np.einsum(spec, a, b, c)
 
     assert np.linalg.norm(out - ans) <= 1e-15

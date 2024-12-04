@@ -2238,7 +2238,7 @@ def gather_access_footprint_bytes(program, ignore_uncountable=False):
                                   ignore_uncountable=ignore_uncountable)
 
     for key, var_fp in fp.items():
-        vname, direction = key
+        vname, _direction = key
 
         var_descr = kernel.get_var_descriptor(vname)
         bytes_transferred = (

@@ -1060,7 +1060,7 @@ def infer_unknown_types(
                 t_unit[e].args if arg.dtype not in (None, auto)}
         new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_types(
                 arg_id_to_dtype, clbl_inf_ctx)
-        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
+        clbl_inf_ctx, _new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
         if expect_completion:
             from loopy.types import LoopyType

@@ -186,7 +186,7 @@ class CudaCallable(ScalarCallable):
 
             input_dtype = arg_id_to_dtype[0]
 
-            scalar_dtype, offset, field_name = input_dtype.fields["x"]
+            scalar_dtype, _offset, _field_name = input_dtype.fields["x"]
             return_dtype = scalar_dtype
             return self.copy(arg_id_to_dtype={0: input_dtype, 1: input_dtype,
                                               -1: return_dtype})

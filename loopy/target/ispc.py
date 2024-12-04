@@ -114,7 +114,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 and ary.address_space == AddressSpace.PRIVATE):
             # generate access code for access to private-index temporaries
 
-            gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
+            _gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:
                 lsize, = lsize
                 from pymbolic import evaluate
@@ -174,7 +174,7 @@ class ISPCTarget(CFamilyTarget):
     device_program_name_suffix = "_inner"
 
     def pre_codegen_entrypoint_check(self, kernel, callables_table):
-        gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs(
+        _gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs(
                 callables_table)
         if len(lsize) > 1:
             for ls_i in lsize[1:]:

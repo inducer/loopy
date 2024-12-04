@@ -52,7 +52,7 @@ def test_two_kernel_fusion(ctx_factory):
         """
     )
     knl = lp.fuse_kernels([knla, knlb], data_flow=[("out", 0, 1)])
-    evt, (out,) = knl(queue)
+    _evt, (out,) = knl(queue)
     np.testing.assert_allclose(out.get(), np.arange(100, 110))
 
 
@@ -163,7 +163,7 @@ def test_write_block_matrix_fusion(ctx_factory):
         bidirectional=True,
         force=True
     )
-    evt, result = fused_knl(queue, **kwargs)
+    _evt, result = fused_knl(queue, **kwargs)
     result = result["result"]
     np.testing.assert_allclose(result, answer)
 
