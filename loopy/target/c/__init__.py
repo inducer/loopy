@@ -945,8 +945,6 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 sub_knl_temps
                 | supporting_temporary_names(kernel, sub_knl_temps))
 
-        ecm = self.get_expression_to_code_mapper(codegen_state)
-
         for tv_name in sorted(sub_knl_temps):
             tv = kernel.temporary_variables[tv_name]
             if not tv.base_storage:

@@ -859,7 +859,7 @@ class CallableKernel(InKernelCallable):
                         *self.subkernel.args,
                         ValueArg(var_name, arg_dtype, self.subkernel.target)])
 
-            kw_to_pos, pos_to_kw = get_kw_pos_association(subknl)
+            kw_to_pos, _pos_to_kw = get_kw_pos_association(subknl)
 
             if self.arg_id_to_dtype is None:
                 arg_id_to_dtype = {}
@@ -887,7 +887,7 @@ class CallableKernel(InKernelCallable):
 
     def with_packing_for_args(self):
         from loopy.kernel.data import AddressSpace
-        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+        _kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         arg_id_to_descr = {}
 
@@ -955,7 +955,7 @@ class CallableKernel(InKernelCallable):
 
         parameters = list(parameters)
         par_dtypes = [self.arg_id_to_dtype[i] for i, _ in enumerate(parameters)]
-        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+        _kw_to_pos, _pos_to_kw = get_kw_pos_association(self.subkernel)
 
         # insert the assignees at the required positions
         assignee_write_count = -1

@@ -359,7 +359,6 @@ def test_advect_dealias(ctx_factory):
     K_sym = var("K")  # noqa
 
     field_shape = (N, N, N, K_sym)
-    interim_field_shape = (M, M, M, K_sym)
 
     # 1. direction-by-direction similarity transform on u
     # 2. invert diagonal

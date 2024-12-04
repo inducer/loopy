@@ -697,7 +697,7 @@ def infer_arg_descr(t_unit: TranslationUnit) -> TranslationUnit:
                 raise NotImplementedError()
         new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_descrs(
                 arg_id_to_descr, clbl_inf_ctx)
-        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
+        clbl_inf_ctx, _new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
 
     return clbl_inf_ctx.finish_program(t_unit)

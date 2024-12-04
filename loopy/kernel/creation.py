@@ -679,7 +679,7 @@ def _count_open_paren_symbols(s):
     for c in s:
         val = _PAREN_PAIRS.get(c)
         if val is not None:
-            increment, cls = val
+            increment, _cls = val
             result += increment
 
     return result

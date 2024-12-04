@@ -268,7 +268,7 @@ def address_from_numpy(obj):
     if ary_intf is None:
         raise RuntimeError("no array interface")
 
-    buf_base, is_read_only = ary_intf["data"]
+    buf_base, _is_read_only = ary_intf["data"]
     return buf_base + ary_intf.get("offset", 0)
 
 

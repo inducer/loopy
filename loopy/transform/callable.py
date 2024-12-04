@@ -314,7 +314,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     parameters = call_insn.expression.parameters  # reads
 
     from loopy.kernel.function_interface import get_kw_pos_association
-    kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
+    _kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
 
     for i, par in enumerate(parameters):
         arg_map[pos_to_kw[i]] = par

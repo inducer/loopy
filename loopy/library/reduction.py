@@ -329,7 +329,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         from loopy.library.function import MakeTupleCallable
         from loopy.translation_unit import add_callable_to_table
 
-        scalar_neutral_element, calables_table = (
+        scalar_neutral_element, _calables_table = (
                 self.inner_reduction.neutral_element(
                     scalar_dtype, callables_table, target))
 

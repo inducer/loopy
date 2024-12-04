@@ -78,7 +78,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
-    evt, (out,) = knl(queue, a=a)
+    _evt, (out,) = knl(queue, a=a)
     assert np.linalg.norm(out-(2*(a+cnst)+cnst)) <= 1e-15
 
 
@@ -243,7 +243,7 @@ def test_bare_data_dependency(ctx_factory):
                 ])
 
     n = 20000
-    evt, (a,) = knl(queue, n=n, out_host=True)
+    _evt, (a,) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (n,)
     assert (a == 1).all()
@@ -788,12 +788,12 @@ def test_make_copy_kernel(ctx_factory):
     cknl1 = lp.fix_parameters(cknl1, n2=3)
 
     cknl1 = lp.set_options(cknl1, write_code=True)
-    evt, a2 = cknl1(queue, input=a1)
+    _evt, a2 = cknl1(queue, input=a1)
 
     cknl2 = lp.make_copy_kernel("c,c,c", intermediate_format)
     cknl2 = lp.fix_parameters(cknl2, n2=3)
 
-    evt, a3 = cknl2(queue, input=a2)
+    _evt, a3 = cknl2(queue, input=a2)
 
     assert (a1 == a3).all()
 
@@ -810,7 +810,7 @@ def test_make_copy_kernel_with_offsets(ctx_factory):
     cknl1 = lp.fix_parameters(cknl1, n0=3)
 
     cknl1 = lp.set_options(cknl1, write_code=True)
-    evt, (a2_dev,) = cknl1(queue, input=a1_dev)
+    _evt, (a2_dev,) = cknl1(queue, input=a1_dev)
 
     assert (a1 == a2_dev.get()).all()
 
@@ -1508,7 +1508,7 @@ def test_finite_difference_expr_subst(ctx_factory):
                 ])
 
     fused_knl = lp.set_options(fused_knl, write_code=True)
-    evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
+    _evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
 
     fused_knl = lp.assignment_to_subst(fused_knl, "f")
 
@@ -1517,7 +1517,7 @@ def test_finite_difference_expr_subst(ctx_factory):
     # This is the real test here: The automatically generated
     # shape expressions are '2+n' and the ones above are 'n+2'.
     # Is loopy smart enough to understand that these are equal?
-    evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
+    _evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
 
     fused0_knl = lp.affine_map_inames(fused_knl, "i", "inew", "inew+1=i")
 
@@ -1530,7 +1530,7 @@ def test_finite_difference_expr_subst(ctx_factory):
 
     precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
-    evt, _ = precomp_knl(queue, u=u, h=h)
+    _evt, _ = precomp_knl(queue, u=u, h=h)
 
 
 # {{{ call without returned values
@@ -1549,7 +1549,7 @@ def test_call_with_no_returned_value(ctx_factory):
     from library_for_test import NoRetFunction
     knl = lp.register_callable(knl, "f", NoRetFunction("f"))
 
-    evt, _ = knl(queue)
+    _evt, _ = knl(queue)
 
 # }}}
 
@@ -1842,7 +1842,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
     knl = lp.set_options(knl, write_code=True)
     knl = lp.fix_parameters(knl, n=a.shape[0])
 
-    evt, (a2,) = knl(queue, out_host=True)
+    _evt, (a2,) = knl(queue, out_host=True)
 
     assert np.array_equal(a, a2)
 
@@ -1939,7 +1939,7 @@ def test_if_else(ctx_factory):
             """
             )
 
-    evt, (out,) = knl(queue, out_host=True)
+    _evt, (out,) = knl(queue, out_host=True)
 
     out_ref = np.empty(50)
     out_ref[::3] = 15
@@ -1967,7 +1967,7 @@ def test_if_else(ctx_factory):
             """
             )
 
-    evt, (out,) = knl(queue, out_host=True)
+    _evt, (out,) = knl(queue, out_host=True)
 
     out_ref = np.zeros(50)
     out_ref[1::2] = 4
@@ -2000,7 +2000,7 @@ def test_if_else(ctx_factory):
             """
             )
 
-    evt, (out,) = knl(queue, out_host=True)
+    _evt, (out,) = knl(queue, out_host=True)
 
     out_ref = np.zeros((50, 50))
     out_ref[:25, 0::2] = 1
@@ -2036,7 +2036,7 @@ def test_tight_loop_bounds(ctx_factory):
 
     knl = lp.set_options(knl, write_code=True)
 
-    evt, (out,) = knl(queue, out_host=True)
+    _evt, (out,) = knl(queue, out_host=True)
 
     assert (out == np.arange(10)).all()
 
@@ -2542,7 +2542,7 @@ def test_relaxed_stride_checks(ctx_factory):
         mat = np.zeros((1, 10), order="F")
         b = np.zeros(10)
 
-        evt, (a,) = knl(queue, A=mat, b=b)
+        _evt, (a,) = knl(queue, A=mat, b=b)
 
         assert a == 0
 
@@ -3020,7 +3020,7 @@ def test_pow(ctx_factory, base_type, exp_type):
 
     knl = lp.add_dtypes(knl, {"base": base_type, "power": exp_type})
 
-    evt, (result,) = knl(queue, base=base, power=power)
+    _evt, (result,) = knl(queue, base=base, power=power)
 
     assert result.dtype == expected_result.dtype
 
@@ -3070,7 +3070,7 @@ def test_scalar_temporary(ctx_factory):
         lp.TemporaryVariable("tmp", address_space=lp.AddressSpace.GLOBAL,
                              shape=lp.auto),
         ...])
-    evt, (out, ) = knl(queue, x=x_in)
+    _evt, (out, ) = knl(queue, x=x_in)
     np.testing.assert_allclose(4*x_in, out.get())
 
 
@@ -3255,7 +3255,7 @@ def test_zero_stride_array(ctx_factory):
         y[i, j] = 1
         """, [lp.GlobalArg("y", shape=(10, 0))])
 
-    evt, (out,) = knl(cq)
+    _evt, (out,) = knl(cq)
     assert out.shape == (10, 0)
 
 
@@ -3277,7 +3277,7 @@ def test_sep_array_ordering(ctx_factory):
     knl = lp.tag_inames(knl, "k:unr")
 
     x = [cl.array.empty(cq, (0,), dtype=np.float64) for i in range(n)]
-    evt, out = knl(cq, x=x)
+    _evt, out = knl(cq, x=x)
 
     for i in range(n):
         assert out[i] is x[i], f"failed on input x{i}: {id(out[i])} {id(x[i])}"
@@ -3532,7 +3532,7 @@ def test_type_inference_of_clbls_in_substitutions(ctx_factory):
         y[i] = subst_0(i)
         """)
 
-    evt, (out,) = knl(cq)
+    _evt, (out,) = knl(cq)
     np.testing.assert_allclose(out.get(), np.abs(10.0*(np.arange(10)-5)))
 
 
@@ -3716,7 +3716,7 @@ def test_loop_imperfect_nest_priorities_in_v2_scheduler():
         loop_priority=frozenset({("i", "j"), ("i", "k")}),
     )
 
-    code = lp.generate_code_v2(knl)
+    lp.generate_code_v2(knl)
 
 
 if __name__ == "__main__":
