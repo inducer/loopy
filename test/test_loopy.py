@@ -3704,6 +3704,21 @@ def test_long_kernel():
     lp.get_one_linearized_kernel(t_unit.default_entrypoint, t_unit.callables_table)
 
 
+@pytest.mark.filterwarnings("error:.*:loopy.LoopyWarning")
+def test_loop_imperfect_nest_priorities_in_v2_scheduler():
+    # Reported by Connor Ward. See <https://github.com/inducer/loopy/issues/890>.
+    knl = lp.make_kernel(
+        "{ [i,j,k]: 0 <= i,j,k < 5}",
+        """
+        x[i, j] = i + j
+        y[i, k] = i + k
+        """,
+        loop_priority=frozenset({("i", "j"), ("i", "k")}),
+    )
+
+    code = lp.generate_code_v2(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
