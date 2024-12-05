@@ -112,7 +112,6 @@ extend-ignore = [
     # FIXME
     "NPY002", # numpy rng
     "C408", # unnecssary dict() -> literal
-    "F841", # local variable unused
 ]
 
 [tool.ruff.lint.per-file-ignores]

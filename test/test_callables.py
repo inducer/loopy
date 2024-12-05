@@ -52,7 +52,7 @@ def test_register_function_lookup(ctx_factory):
             """)
     prog = lp.register_callable(prog, "log2", Log2Callable("log2"))
 
-    evt, (out, ) = prog(queue, x=x)
+    _evt, (out, ) = prog(queue, x=x)
 
     assert np.linalg.norm(np.log2(x)-out)/np.linalg.norm(np.log2(x)) < 1e-15
 
@@ -98,7 +98,7 @@ def test_register_knl(ctx_factory, inline):
         knl = lp.inline_callable_kernel(knl, "linear_combo2")
         knl = lp.inline_callable_kernel(knl, "linear_combo1")
 
-    evt, (out, ) = knl(queue, x=x, y=y)
+    _evt, (out, ) = knl(queue, x=x, y=y)
 
     assert (np.linalg.norm(2*x+3*y-out)/(
         np.linalg.norm(2*x+3*y))) < 1e-15
@@ -137,7 +137,7 @@ def test_slices_with_negative_step(ctx_factory, inline):
     if inline:
         knl = lp.inline_callable_kernel(knl, "linear_combo")
 
-    evt, (out, ) = knl(queue, x=x, y=y)
+    _evt, (out, ) = knl(queue, x=x, y=y)
 
     assert (np.linalg.norm(2*x+3*y-out[:, ::-1, :, :, :])/(
         np.linalg.norm(2*x+3*y))) < 1e-15
@@ -176,7 +176,7 @@ def test_register_knl_with_hw_axes(ctx_factory, inline):
     if inline:
         knl = lp.inline_callable_kernel(knl, "linear_combo")
 
-    evt, out = knl(queue, x=x_dev, y=y_dev)
+    _evt, out = knl(queue, x=x_dev, y=y_dev)
 
     x_host = x_dev.get()
     y_host = y_dev.get()
@@ -231,7 +231,7 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
 
     knl = lp.set_options(knl, write_code=True)
     knl = lp.set_options(knl, return_dict=True)
-    evt, out_dict = knl(queue, x1=x1, x2=x2, x3=x3)
+    _evt, out_dict = knl(queue, x1=x1, x2=x2, x3=x3)
 
     y1 = out_dict["y1"].get()
     y2 = out_dict["y2"].get()
@@ -284,7 +284,7 @@ def test_multi_arg_array_call(ctx_factory):
 
     knl = lp.merge([knl, argmin_kernel])
     b = np.random.randn(n)
-    evt, out_dict = knl(queue, b=b)
+    _evt, out_dict = knl(queue, b=b)
     tol = 1e-15
     from numpy.linalg import norm
     assert norm(out_dict["min_val"] - np.min(b)) < tol
@@ -330,7 +330,7 @@ def test_packing_unpacking(ctx_factory, inline):
 
     knl = lp.set_options(knl, write_code=True)
     knl = lp.set_options(knl, return_dict=True)
-    evt, out_dict = knl(queue, x1=x1, x2=x2)
+    _evt, out_dict = knl(queue, x1=x1, x2=x2)
 
     y1 = out_dict["y1"].get()
     y2 = out_dict["y2"].get()
@@ -367,7 +367,7 @@ def test_empty_sub_array_refs(ctx_factory, inline):
     if inline:
         caller = lp.inline_callable_kernel(caller, "wence_function")
 
-    evt, (out, ) = caller(queue, x=x, y=y)
+    _evt, (out, ) = caller(queue, x=x, y=y)
     assert np.allclose(out, x-y)
 
 
@@ -403,7 +403,7 @@ def test_array_inputs_to_callee_kernels(ctx_factory, inline):
     if inline:
         knl = lp.inline_callable_kernel(knl, "linear_combo")
 
-    evt, (out, ) = knl(queue, x=x, y=y)
+    _evt, (out, ) = knl(queue, x=x, y=y)
 
     assert (np.linalg.norm(2*x+3*y-out)/(
         np.linalg.norm(2*x+3*y))) < 1e-15
@@ -484,7 +484,7 @@ def test_argument_matching_for_inplace_update(ctx_factory):
     knl = lp.merge([knl, twice])
 
     x = np.random.randn(10)
-    evt, (out, ) = knl(queue, x=np.copy(x))
+    _evt, (out, ) = knl(queue, x=np.copy(x))
 
     assert np.allclose(2*x, out)
 
@@ -507,7 +507,7 @@ def test_non_zero_start_in_subarray_ref(ctx_factory):
     knl = lp.merge([knl, twice])
 
     x = np.random.randn(10)
-    evt, (out, ) = knl(queue, x=np.copy(x))
+    _evt, (out, ) = knl(queue, x=np.copy(x))
 
     assert np.allclose(2*x, out)
 
@@ -558,7 +558,7 @@ def test_callees_with_gbarriers_are_inlined(ctx_factory):
             """, [lp.GlobalArg("y", shape=6, dtype=None)])
 
     t_unit = lp.merge([t_unit, ones_and_zeros])
-    evt, (out,) = t_unit(queue)
+    _evt, (out,) = t_unit(queue)
 
     expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
 
@@ -593,7 +593,7 @@ def test_callees_with_gbarriers_are_inlined_with_nested_calls(ctx_factory):
             """, [lp.GlobalArg("y", shape=6, dtype=None)])
 
     t_unit = lp.merge([t_unit, dummy_ones_and_zeros, ones_and_zeros])
-    evt, (out,) = t_unit(queue)
+    _evt, (out,) = t_unit(queue)
 
     expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
 
@@ -626,7 +626,7 @@ def test_inlining_with_indirections(ctx_factory):
 
     map_in = np.arange(3).astype(np.int32)
 
-    evt, (out, ) = t_unit(queue, mymap=map_in)
+    _evt, (out, ) = t_unit(queue, mymap=map_in)
 
     expected_out = np.array([1, 1, 1, 0, 0, 0]).astype(np.float32)
     assert (expected_out == out).all()
@@ -651,7 +651,7 @@ def test_inlining_with_callee_domain_param(ctx_factory):
 
     caller = lp.merge([caller, fill2])
     caller = lp.inline_callable_kernel(caller, "fill2")
-    evt, (out, ) = caller(queue)
+    _evt, (out, ) = caller(queue)
 
     assert (out == 2).all()
 
@@ -703,7 +703,7 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
     if inline:
         knl = lp.inline_callable_kernel(knl, "call_sin")
 
-    evt, (out,) = knl(cq, real_x=np.asarray(3.0, dtype=float))
+    _evt, (_out,) = knl(cq, real_x=np.asarray(3.0, dtype=float))
 
 
 @pytest.mark.parametrize("inline", [False, True])
@@ -731,7 +731,7 @@ def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
     if inline:
         knl = lp.inline_callable_kernel(knl, "twice")
 
-    evt, (out,) = knl(cq, X=x_in)
+    _evt, (out,) = knl(cq, X=x_in)
 
     np.testing.assert_allclose(out.get(), 2*x_in)
 
@@ -752,7 +752,7 @@ def test_symbol_mangler_in_call(ctx_factory):
 
     knl = lp.register_preamble_generators(knl, [preamble_for_x])
 
-    evt, (out,) = knl(cq)
+    _evt, (out,) = knl(cq)
     np.testing.assert_allclose(out.get(), np.sin(10))
 
 
@@ -927,7 +927,7 @@ def test_non1_step_slices(ctx_factory, start, inline):
     if inline:
         t_unit = lp.inline_callable_kernel(t_unit, "squared_arange")
 
-    evt, out_dict = t_unit(cq)
+    _evt, out_dict = t_unit(cq)
 
     np.testing.assert_allclose(out_dict["X"].get(), expected_out1)
     np.testing.assert_allclose(out_dict["Y"].get(), expected_out2)
@@ -1012,7 +1012,7 @@ def test_callee_with_parameter_and_grid(ctx_factory):
     knl = lp.split_iname(knl, "i", 2,
                          outer_tag="g.0", within="in_kernel:arange")
 
-    evt, (out,) = knl(cq)
+    _evt, (out,) = knl(cq)
     np.testing.assert_allclose(out.get(), np.arange(10))
 
 
@@ -1255,7 +1255,7 @@ def test_call_kernel_w_preds(ctx_factory, inline):
     if inline:
         knl = lp.inline_callable_kernel(knl, "twice")
 
-    evt, (out,) = knl(cq, x=np.ones((10, 10)))
+    _evt, (out,) = knl(cq, x=np.ones((10, 10)))
 
     np.testing.assert_allclose(out[:5], 1)
     np.testing.assert_allclose(out[5:], 2)
@@ -1486,7 +1486,7 @@ def test_subarray_ref_with_repeated_indices(ctx_factory):
             )
     knl = lp.merge([parent_knl, child_knl])
     knl = lp.inline_callable_kernel(knl, "ones")
-    evt, (z_dev,) = knl(cq)
+    _evt, (z_dev,) = knl(cq)
     assert np.allclose(z_dev.get(), np.eye(10))
 
 

@@ -176,8 +176,7 @@ double${ width } ${ name }_f64(
 # }}}
 
 
-# not frozen, not eq for Firedrake compatibility
-@dataclass(init=False, eq=False)
+@dataclass(frozen=True, init=False)
 class Random123Callable(ScalarCallable):
     """
     Records information about for the random123 functions.

@@ -86,7 +86,7 @@ def test_empty_reduction(ctx_factory):
     print(knl)
 
     knl = lp.set_options(knl, write_code=True)
-    evt, (a,) = knl(queue)
+    _evt, (a,) = knl(queue)
 
     assert (a.get() == 0).all()
 
@@ -113,7 +113,7 @@ def test_nested_dependent_reduction(ctx_factory):
 
     n = 330
     ell = np.arange(n, dtype=np.int32)
-    evt, (a,) = knl(queue, ell=ell, n=n, out_host=True)
+    _evt, (a,) = knl(queue, ell=ell, n=n, out_host=True)
 
     tgt_result = (2*ell-1)*2*ell/2
     assert (a == tgt_result).all()
@@ -314,7 +314,7 @@ def test_argmax(ctx_factory):
     knl = lp.set_options(knl, write_code=True, allow_terminal_colors=True)
 
     a = np.random.randn(10000).astype(dtype)
-    evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
+    _evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
     assert max_val == np.max(np.abs(a))
     assert max_idx == np.where(np.abs(a) == max_val)[-1]
 
@@ -333,7 +333,7 @@ def test_simul_reduce(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    evt, (a, b) = knl(queue, n=n)
+    _evt, (a, b) = knl(queue, n=n)
 
     ref = sum(i*j for i in range(n) for j in range(n))
     assert a.get() == ref
@@ -358,7 +358,7 @@ def test_reduction_library(ctx_factory, op_name, np_op):
             assumptions="n>=1")
 
     a = np.random.randn(20, 10)
-    evt, (res,) = knl(queue, a=a)
+    _evt, (res,) = knl(queue, a=a)
 
     assert np.allclose(res, np_op(a, axis=1))
 
@@ -395,7 +395,7 @@ def test_double_sum_made_unique(ctx_factory):
     knl = lp.make_reduction_inames_unique(knl)
     print(knl)
 
-    evt, (a, b) = knl(queue, n=n)
+    _evt, (a, b) = knl(queue, n=n)
 
     ref = sum(i*j for i in range(n) for j in range(n))
     assert a.get() == ref
@@ -415,7 +415,7 @@ def test_parallel_multi_output_reduction(ctx_factory):
 
     with cl.CommandQueue(ctx) as queue:
         a = np.random.rand(128)
-        out, (max_index, max_val) = knl(queue, a=a)
+        _out, (max_index, max_val) = knl(queue, a=a)
 
         assert max_val == np.max(a)
         assert max_index == np.argmax(np.abs(a))
@@ -497,7 +497,7 @@ def test_reduction_in_conditional(ctx_factory):
 
     knl = lp.preprocess_program(knl)
 
-    evt, (out,) = knl(cq)
+    _evt, (out,) = knl(cq)
 
     assert (out == 45).all()
 

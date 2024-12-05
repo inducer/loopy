@@ -145,8 +145,8 @@ def test_to_batched(ctx_factory):
     x = np.random.randn(7, 5).astype(np.float32)
 
     # Running both the kernels
-    evt, (out1, ) = bknl(queue, a=a, x=x, n=5, nbatches=7)
-    evt, (out2, ) = ref_knl(queue, a=a, x=x, n=5, nbatches=7)
+    _evt, (out1, ) = bknl(queue, a=a, x=x, n=5, nbatches=7)
+    _evt, (out2, ) = ref_knl(queue, a=a, x=x, n=5, nbatches=7)
 
     # checking that the outputs are same
     assert np.linalg.norm(out1-out2) < 1e-15
@@ -211,7 +211,7 @@ def test_add_barrier(ctx_factory):
     knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "jj", 2, outer_tag="g.1", inner_tag="l.1")
 
-    evt, (out,) = knl(queue, a=a)
+    _evt, (out,) = knl(queue, a=a)
     assert (np.linalg.norm(out-2*a.T) < 1e-16)
 
 
@@ -225,7 +225,7 @@ def test_rename_argument(ctx_factory):
 
     kernel = lp.rename_argument(kernel, "a", "b")
 
-    evt, (out,) = kernel(queue, b=np.float32(12), n=20)
+    _evt, (out,) = kernel(queue, b=np.float32(12), n=20)
 
     assert (np.abs(out.get() - 14) < 1e-8).all()
 
@@ -301,7 +301,7 @@ def test_vectorize(ctx_factory):
     knl = lp.tag_inames(knl, {"i_inner": "vec"})
 
     knl = lp.preprocess_kernel(knl)
-    code, inf = lp.generate_code(knl)
+    _code, _inf = lp.generate_code(knl)
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
@@ -393,7 +393,7 @@ def test_tag_inames_keeps_all_tags_if_able():
 
     knl = t_unit.default_entrypoint
 
-    tags = knl.iname_tags("i")
+    knl.iname_tags("i")
     assert not knl.iname_tags_of_type("i", FooTag)
     assert not knl.iname_tags_of_type("i", BarTag)
 
@@ -1154,7 +1154,7 @@ def test_rename_argument_with_auto_stride(ctx_factory):
     assert code_str.find("double const *__restrict__ x_new,") != -1
     assert code_str.find("double const *__restrict__ x,") == -1
 
-    evt, (out, ) = knl(queue, x_new=np.random.rand(10))
+    _evt, (_out, ) = knl(queue, x_new=np.random.rand(10))
 
 
 def test_rename_argument_with_assumptions():

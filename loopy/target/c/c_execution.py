@@ -324,7 +324,7 @@ class CCompiler:
         c_fname = self._tempname("code." + self.source_suffix)
 
         # build object
-        _, mod_name, ext_file, recompiled = \
+        _, _mod_name, ext_file, recompiled = \
             compile_from_string(
                 self.toolchain.copy(
                     cflags=self.toolchain.cflags+list(extra_build_options)),

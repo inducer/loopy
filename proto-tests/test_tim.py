@@ -46,8 +46,6 @@ def test_tim2d(ctx_factory):
             ],
             name="semlap2D", assumptions="K>=1")
 
-    unroll = 32
-
     seq_knl = knl
     knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "o"], default_tag="l.auto")
     knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"], default_tag="l.auto")
@@ -106,8 +104,6 @@ def test_red2d(ctx_factory):
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="semlap2D", assumptions="K>=1")
-
-    unroll = 32
 
     seq_knl = knl
     knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "o"], default_tag="l.auto")
