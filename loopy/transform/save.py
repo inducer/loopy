@@ -23,7 +23,7 @@ THE SOFTWARE.
 import logging
 from functools import cached_property
 
-from immutables import Map
+from immutabledict import immutabledict
 
 from pytools import Record, memoize_method
 
@@ -249,7 +249,7 @@ class TemporarySaver:
         from collections import defaultdict
         self.insns_to_insert = []
         self.insns_to_update = {}
-        self.updated_iname_objs = Map()
+        self.updated_iname_objs = immutabledict()
         self.updated_temporary_variables = {}
 
         # temporary name -> save or reload insn ids

@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-from immutables import Map
+from immutabledict import immutabledict
 
 import islpy as isl
 from islpy import dim_type
@@ -117,8 +117,8 @@ def _merge_dicts(item_name, dict_a, dict_b):
         else:
             result[k] = v
 
-    if isinstance(dict_a, Map):
-        return Map(result)
+    if isinstance(dict_a, immutabledict):
+        return immutabledict(result)
     else:
         return result
 
@@ -450,7 +450,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
     new_callables[result.name] = CallableKernel(result)
 
-    return TranslationUnit(callables_table=Map(new_callables),
+    return TranslationUnit(callables_table=immutabledict(new_callables),
                            target=result.target,
                            entrypoints=frozenset([result.name]))
 
