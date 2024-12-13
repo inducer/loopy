@@ -532,7 +532,7 @@ def test_fd_demo():
 
     knl = lp.set_options(knl, write_code=True)
     knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
-    code, inf = lp.generate_code(knl)
+    code, _inf = lp.generate_code(knl)
     print(code)
 
     assert "double" not in code

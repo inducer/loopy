@@ -1839,7 +1839,7 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
             raise TypeError("modulo non-constant in '%s' not supported "
                     "for as-pwaff evaluation" % expr)
 
-        (s, denom_aff), = denom.get_pieces()
+        (_s, denom_aff), = denom.get_pieces()
         denom = denom_aff.get_constant_val()
 
         return num.mod_val(denom)
@@ -1866,7 +1866,7 @@ def aff_from_expr(space: isl.Space, expr: Expression, vars_to_zero=None) -> isl.
 
     pieces = pwaff.get_pieces()
     if len(pieces) == 1:
-        (s, aff), = pieces
+        (_s, aff), = pieces
         return aff
     else:
         from loopy.diagnostic import ExpressionNotAffineError
@@ -1970,7 +1970,7 @@ def qpolynomial_from_expr(space, expr):
 
     pieces = pw_qpoly.get_pieces()
     if len(pieces) == 1:
-        (s, qpoly), = pieces
+        (_s, qpoly), = pieces
         return qpoly
     else:
         raise RuntimeError("expression '%s' could not be converted to a "

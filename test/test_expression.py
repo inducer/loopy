@@ -371,9 +371,9 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
         cl_ctx = ctx_factory()
         knl = lp.set_options(knl, write_code=True)
         with cl.CommandQueue(cl_ctx) as queue:
-            evt, lp_values = knl(queue, out_host=True)
+            _evt, lp_values = knl(queue, out_host=True)
     elif type(target) is lp.ExecutableCTarget:
-        evt, lp_values = knl()
+        _evt, lp_values = knl()
     else:
         raise NotImplementedError("unsupported target")
 
@@ -413,7 +413,7 @@ def test_sci_notation_literal(ctx_factory):
 
     set_kernel = lp.set_options(set_kernel, write_code=True)
 
-    evt, (out,) = set_kernel(queue)
+    _evt, (out,) = set_kernel(queue)
 
     assert (np.abs(out.get() - 1e-12) < 1e-20).all()
 
@@ -430,7 +430,7 @@ def test_indexof(ctx_factory):
 
     knl = lp.set_options(knl, write_code=True)
 
-    (evt, (out,)) = knl(queue)
+    (_evt, (out,)) = knl(queue)
     out = out.get()
 
     assert np.array_equal(out.ravel(order="C"), np.arange(25))
@@ -454,7 +454,7 @@ def test_indexof_vec(ctx_factory):
     knl = lp.tag_data_axes(knl, "out", "vec,c,c")
     knl = lp.set_options(knl, write_code=True)
 
-    (evt, (out,)) = knl(queue)
+    (_evt, (_out,)) = knl(queue)
     # out = out.get()
     # assert np.array_equal(out.ravel(order="C"), np.arange(25))
 
@@ -568,9 +568,9 @@ def test_complex_support(ctx_factory, target):
     if target == lp.PyOpenCLTarget:
         cl_ctx = ctx_factory()
         with cl.CommandQueue(cl_ctx) as queue:
-            evt, out = knl(queue, **kwargs)
+            _evt, out = knl(queue, **kwargs)
     elif target == lp.ExecutableCTarget:
-        evt, out = knl(**kwargs)
+        _evt, out = knl(**kwargs)
     else:
         raise NotImplementedError("unsupported target")
 
@@ -623,7 +623,7 @@ def test_bool_type_context(ctx_factory):
             lp.GlobalArg("k", dtype=np.bool_, shape=lp.auto),
         ])
 
-    evt, (out,) = knl(queue)
+    _evt, (out,) = knl(queue)
     assert out.get() == np.logical_and(7.0, 8.0)
 
 
@@ -638,7 +638,7 @@ def test_np_bool_handling(ctx_factory):
         "{:}",
         [lp.Assignment(parse("y"), p.LogicalNot(np.bool_(False)))],
         [lp.GlobalArg("y", dtype=np.bool_, shape=lp.auto)])
-    evt, (out,) = knl(queue)
+    _evt, (out,) = knl(queue)
     assert out.get().item() is True
 
 
@@ -692,10 +692,10 @@ def test_complex_functions_with_real_args(ctx_factory, target):
     if target == lp.PyOpenCLTarget:
         cl_ctx = ctx_factory()
         with cl.CommandQueue(cl_ctx) as queue:
-            evt, out = t_unit(queue, c64=c64, c128=c128, f32=f32, f64=f64)
+            _evt, out = t_unit(queue, c64=c64, c128=c128, f32=f32, f64=f64)
     elif target == lp.ExecutableCTarget:
         t_unit = lp.set_options(t_unit, build_options=["-Werror"])
-        evt, out = t_unit(c64=c64, c128=c128, f32=f32, f64=f64)
+        _evt, out = t_unit(c64=c64, c128=c128, f32=f32, f64=f64)
     else:
         raise NotImplementedError("unsupported target")
 

@@ -862,10 +862,12 @@ def _order_loop_nests(
                                                 .ancestors(inner_iname_nest))
                     ancestors_of_outer_iname = (loop_nest_tree
                                                 .ancestors(outer_iname_nest))
-                    if outer_iname in ancestors_of_inner_iname:
+                    if any(outer_iname in ancestor
+                           for ancestor in ancestors_of_inner_iname):
                         # nesting constraint already satisfied => do nothing
                         pass
-                    elif inner_iname in ancestors_of_outer_iname:
+                    elif any(inner_iname in ancestor
+                             for ancestor in ancestors_of_outer_iname):
                         cannot_satisfy_callback("Cannot satisfy constraint that"
                                                 f" iname '{inner_iname}' must be"
                                                 f" nested within '{outer_iname}''.")

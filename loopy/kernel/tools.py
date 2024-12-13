@@ -100,7 +100,7 @@ def add_dtypes(
 
 
 def _add_dtypes_overdetermined(kernel, dtype_dict):
-    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(kernel, dtype_dict)
+    _dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(kernel, dtype_dict)
     # do not throw error for unused args
     return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 

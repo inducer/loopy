@@ -37,6 +37,7 @@ from cgen import (
     Block,
     Collection,
     Const,
+    Declarator,
     FunctionBody,
     Generable,
     Initializer,
@@ -1027,7 +1028,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult,
             schedule_index: int, function_decl: Generable, function_body: Generable,
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> Generable:
         assert isinstance(function_body, Block)
         kernel = codegen_state.kernel
         assert kernel.linearization is not None
@@ -1055,7 +1056,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
                         tv.initializer is not None):
                     assert tv.read_only
 
-                    decl = self.wrap_global_constant(
+                    decl: Generable = self.wrap_global_constant(
                             self.get_temporary_var_declarator(codegen_state, tv))
 
                     if tv.initializer is not None:
@@ -1109,14 +1110,14 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
         from cgen import FunctionDeclaration, Struct, Value
 
-        name = codegen_result.current_program(codegen_state).name
+        name_str = codegen_result.current_program(codegen_state).name
         if self.target.fortran_abi:
-            name += "_"
+            name_str += "_"
 
         from loopy.target.c import FunctionDeclarationWrapper
 
         if codegen_state.is_entrypoint:
-            name = Value("void", name)
+            name = Value("void", name_str)
 
             # subkernel launches occur only as part of entrypoint kernels for now
             from loopy.schedule.tools import get_subkernel_arg_info
@@ -1146,7 +1147,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
                         (f"declare-{arg_overflow_struct_name}",
                             str(arg_overflow_struct))
                         ] if struct_overflow_arg_names else []
-                arg_struct_args = [CLGlobal(Const(Pointer(Value(
+                arg_struct_args: list[Declarator] = [CLGlobal(Const(Pointer(Value(
                                 f"struct {arg_overflow_struct_name}",
                                 "_lpy_overflow_args"))))]
             else:
@@ -1165,7 +1166,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
                             + arg_struct_args
                             )))
         else:
-            name = Value("static void", name)
+            name = Value("static void", name_str)
             passed_names = [arg.name for arg in kernel.args]
             written_names = kernel.get_written_variables()
 

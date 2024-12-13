@@ -27,7 +27,7 @@ from typing import Sequence, Tuple
 
 import numpy as np
 
-from cgen import Const, Declarator, Generable
+from cgen import Const, Declarator, Generable, Pointer
 from pymbolic import var
 from pytools import memoize_method
 
@@ -186,7 +186,7 @@ class CudaCallable(ScalarCallable):
 
             input_dtype = arg_id_to_dtype[0]
 
-            scalar_dtype, offset, field_name = input_dtype.fields["x"]
+            scalar_dtype, _offset, _field_name = input_dtype.fields["x"]
             return_dtype = scalar_dtype
             return self.copy(arg_id_to_dtype={0: input_dtype, 1: input_dtype,
                                               -1: return_dtype})
@@ -448,7 +448,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def get_array_arg_declarator(
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         from cgen.cuda import CudaRestrictPointer
-        arg_decl = CudaRestrictPointer(
+        arg_decl: Declarator = CudaRestrictPointer(
                     self.get_array_base_declarator(arg))
 
         if not is_written:
@@ -477,11 +477,11 @@ class CUDACASTBuilder(CFamilyASTBuilder):
         assert tv.base_storage is not None
         ecm = codegen_state.expression_to_code_mapper
 
-        cast_decl = POD(self, tv.dtype, "")
-        temp_var_decl = POD(self, tv.dtype, tv.name)
+        cast_decl: Declarator = POD(self, tv.dtype, "")
+        temp_var_decl: Declarator = POD(self, tv.dtype, tv.name)
 
         if tv._base_storage_access_may_be_aliasing:
-            ptrtype = _ConstPointer
+            ptrtype: type[Pointer] = _ConstPointer
         else:
             # The 'restrict' part of this is a complete lie--of course
             # all these temporaries are aliased. But we're promising to

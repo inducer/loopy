@@ -268,7 +268,7 @@ def test_independent_multi_domain(ctx_factory):
     assert knl["loopy_kernel"].parents_per_domain() == 2*[None]
 
     n = 50
-    evt, (a, b) = knl(queue, n=n, out_host=True)
+    _evt, (a, b) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (50,)
     assert b.shape == (50,)

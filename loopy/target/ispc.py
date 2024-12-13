@@ -114,7 +114,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 and ary.address_space == AddressSpace.PRIVATE):
             # generate access code for access to private-index temporaries
 
-            gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
+            _gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:
                 lsize, = lsize
                 from pymbolic import evaluate
@@ -174,7 +174,7 @@ class ISPCTarget(CFamilyTarget):
     device_program_name_suffix = "_inner"
 
     def pre_codegen_entrypoint_check(self, kernel, callables_table):
-        gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs(
+        _gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs(
                 callables_table)
         if len(lsize) > 1:
             for ls_i in lsize[1:]:
@@ -237,7 +237,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         for arg_name in passed_names]
 
         if codegen_state.is_generating_device_code:
-            result = ISPCTask(
+            result: Declarator = ISPCTask(
                         FunctionDeclaration(
                             Value("void", name),
                             arg_decls))
@@ -323,7 +323,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         # FIXME restrict?
         from cgen.ispc import ISPCUniform, ISPCUniformPointer
-        decl = ISPCUniform(
+        decl: Declarator = ISPCUniform(
                 ISPCUniformPointer(self.get_array_base_declarator(arg)))
 
         if not is_written:

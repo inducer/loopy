@@ -821,7 +821,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                         tv.initializer is not None):
                     assert tv.read_only
 
-                    decl = self.wrap_global_constant(
+                    decl: Generable = self.wrap_global_constant(
                             self.get_temporary_var_declarator(codegen_state, tv))
 
                     if tv.initializer is not None:
@@ -850,12 +850,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         from cgen import FunctionDeclaration, Value
 
-        name = codegen_result.current_program(codegen_state).name
+        name_str = codegen_result.current_program(codegen_state).name
         if self.target.fortran_abi:
-            name += "_"
+            name_str += "_"
 
         if codegen_state.is_entrypoint:
-            name = Value("void", name)
+            name: Declarator = Value("void", name_str)
 
             # subkernel launches occur only as part of entrypoint kernels for now
             from loopy.schedule.tools import get_subkernel_arg_info
@@ -863,7 +863,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             passed_names = skai.passed_names
             written_names = skai.written_names
         else:
-            name = Value("static void", name)
+            name = Value("static void", name_str)
             passed_names = [arg.name for arg in kernel.args]
             written_names = kernel.get_written_variables()
 
@@ -892,11 +892,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         assert isinstance(tv.address_space, AddressSpace)
         ecm = codegen_state.expression_to_code_mapper
 
-        cast_decl = POD(self, tv.dtype, "")
-        temp_var_decl = POD(self, tv.dtype, tv.name)
+        cast_decl: Declarator = POD(self, tv.dtype, "")
+        temp_var_decl: Declarator = POD(self, tv.dtype, tv.name)
 
         if tv._base_storage_access_may_be_aliasing:
-            ptrtype = _ConstPointer
+            ptrtype: type[Pointer] = _ConstPointer
         else:
             # The 'restrict' part of this is a complete lie--of course
             # all these temporaries are aliased. But we're promising to
@@ -944,8 +944,6 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         sub_knl_temps = (
                 sub_knl_temps
                 | supporting_temporary_names(kernel, sub_knl_temps))
-
-        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         for tv_name in sorted(sub_knl_temps):
             tv = kernel.temporary_variables[tv_name]
@@ -1018,7 +1016,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     def get_value_arg_declaraotor(
             self, name: str, dtype: LoopyType, is_written: bool) -> Declarator:
-        result = POD(self, dtype, name)
+        result: Declarator = POD(self, dtype, name)
 
         if not is_written:
             from cgen import Const
@@ -1048,7 +1046,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def get_array_arg_declarator(
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         from cgen import RestrictPointer
-        arg_decl = RestrictPointer(
+        arg_decl: Declarator = RestrictPointer(
                 self.wrap_decl_for_address_space(
                     self.get_array_base_declarator(arg), arg.address_space))
 
@@ -1070,7 +1068,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             from cgen import RestrictPointer
             assert temp_var.address_space is not auto
 
-            arg_decl = RestrictPointer(
+            arg_decl: Declarator = RestrictPointer(
                     self.wrap_decl_for_address_space(
                         self.get_array_base_declarator(temp_var),
                         cast(AddressSpace, temp_var.address_space)))

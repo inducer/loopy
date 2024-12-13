@@ -69,7 +69,7 @@ def test_diff(ctx_factory):
     from loopy.transform.diff import diff_kernel
     # FIXME Is this the correct interface. Does it make sense to take the entire
     # translation unit?
-    dknl, diff_map = diff_kernel(knl["diff"], "z", "x")
+    dknl, _diff_map = diff_kernel(knl["diff"], "z", "x")
     dknl = knl.with_kernel(dknl)
     dknl = lp.remove_unused_arguments(dknl)
 
@@ -87,12 +87,12 @@ def test_diff(ctx_factory):
     h1 = 1e-4
     h2 = h1 * fac
 
-    evt, (z0,) = knl(queue, x=x, y=y)
-    evt, (z1,) = knl(queue, x=(x + h1*dx), y=y)
-    evt, (z2,) = knl(queue, x=(x + h2*dx), y=y)
+    _evt, (z0,) = knl(queue, x=x, y=y)
+    _evt, (z1,) = knl(queue, x=(x + h1*dx), y=y)
+    _evt, (z2,) = knl(queue, x=(x + h2*dx), y=y)
 
     dknl = lp.set_options(dknl, write_code=True)
-    evt, (df,) = dknl(queue, x=x, y=y)
+    _evt, (df,) = dknl(queue, x=x, y=y)
 
     diff1 = (z1-z0)
     diff2 = (z2-z0)
