@@ -42,6 +42,7 @@ dependencies = [
     "colorama",
     "Mako",
     "immutabledict",
+    "immutables",
 
     "typing-extensions>=4",
 ]
