@@ -149,11 +149,11 @@ class Tree(Generic[NodeT]):
 
         siblings = self._parent_to_children[parent]
 
-        _parent_to_children_mut = self._parent_to_children.mutate()
-        _parent_to_children_mut[parent] = (*siblings, node)
-        _parent_to_children_mut[node] = ()
+        parent_to_children_mut = self._parent_to_children.mutate()
+        parent_to_children_mut[parent] = (*siblings, node)
+        parent_to_children_mut[node] = ()
 
-        return Tree(_parent_to_children_mut.finish(),
+        return Tree(parent_to_children_mut.finish(),
                     self._child_to_parent.set(node, parent))
 
     def replace_node(self, node: NodeT, new_node: NodeT) -> Tree[NodeT]:
@@ -223,11 +223,11 @@ class Tree(Generic[NodeT]):
         parents_new_children = tuple(frozenset(siblings) - frozenset([node]))
         new_parents_children = (*self.children(new_parent), node)
 
-        _parent_to_children_mut = self._parent_to_children.mutate()
-        _parent_to_children_mut[parent] = parents_new_children
-        _parent_to_children_mut[new_parent] = new_parents_children
+        parent_to_children_mut = self._parent_to_children.mutate()
+        parent_to_children_mut[parent] = parents_new_children
+        parent_to_children_mut[new_parent] = new_parents_children
 
-        return Tree(_parent_to_children_mut.finish(),
+        return Tree(parent_to_children_mut.finish(),
                     self._child_to_parent.set(node, new_parent))
 
     def __str__(self) -> str:

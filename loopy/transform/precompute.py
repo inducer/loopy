@@ -772,8 +772,7 @@ def precompute_for_single_kernel(
             if abm.non1_storage_axis_flags[i]:
                 non1_storage_axis_names.append(saxis)
             else:
-                if saxis in new_iname_to_tag:
-                    del new_iname_to_tag[saxis]
+                new_iname_to_tag.pop(saxis, None)
 
                 if saxis in preexisting_precompute_inames:
                     raise LoopyError("precompute axis %d (1-based) was "
