@@ -305,10 +305,10 @@ def empty_aligned(shape, dtype, order="C", n=64):
 
     # We now need to know how to offset base_ary
     # so it is correctly aligned
-    _array_aligned_offset = (n-address_from_numpy(base_ary)) % n
+    array_aligned_offset = (n-address_from_numpy(base_ary)) % n
 
     array = np.frombuffer(
-            base_ary[_array_aligned_offset:_array_aligned_offset-n].data,
+            base_ary[array_aligned_offset:array_aligned_offset-n].data,
             dtype=dtype).reshape(shape, order=order)
 
     return array
