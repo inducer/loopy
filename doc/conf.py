@@ -32,7 +32,7 @@ intersphinx_mapping = {
         "pyopencl": ("https://documen.tician.de/pyopencl", None),
         "cgen": ("https://documen.tician.de/cgen", None),
         "pymbolic": ("https://documen.tician.de/pymbolic", None),
-        "pyrsistent": ("https://pyrsistent.readthedocs.io/en/latest/", None),
+        "immutabledict": ("https://immutabledict.corenting.fr/", None),
         }
 
 # Some modules need to import things just so that sphinx can resolve symbols in
