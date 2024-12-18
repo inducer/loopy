@@ -219,7 +219,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
     from loopy.symbolic import DependencyMapper
 
     arg_name_vars = {Variable(name) for name in kernel.arg_dict}
-    dep_mapper = DependencyMapper()
+    dep_mapper: DependencyMapper[[]] = DependencyMapper()
 
     def ensure_depends_only_on_arguments(
             what: str, expr: Union[str, Expression]) -> None:

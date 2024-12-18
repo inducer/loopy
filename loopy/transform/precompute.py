@@ -170,7 +170,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
 
         self.access_descriptors: list[RuleAccessDescriptor] = []
 
-    def map_substitution(self, name, tag, arguments, expn_state):
+    def map_subst_rule(self, name, tag, arguments, expn_state):
         process_me = name == self.subst_name
 
         if self.subst_tag is not None and self.subst_tag != tag:
@@ -182,7 +182,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                 expn_state.stack)
 
         if not process_me:
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         rule = self.rule_mapping_context.old_subst_rules[name]
@@ -207,7 +207,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                         ", ".join(arg_deps - self.kernel.all_inames()),
                         ), stacklevel=1)
 
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         args = [arg_context[arg_name] for arg_name in rule.arguments]
@@ -252,7 +252,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         self.compute_read_variables = compute_read_variables
         self.compute_insn_depends_on = set()
 
-    def map_substitution(self, name, tag, arguments, expn_state):
+    def map_subst_rule(self, name, tag, arguments, expn_state):
         if not (
                 name == self.subst_name
                 and self.within(
@@ -260,7 +260,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     expn_state.instruction,
                     expn_state.stack)
                 and (self.subst_tag is None or self.subst_tag == tag)):
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         # {{{ check if in footprint
@@ -275,7 +275,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     self.storage_axis_sources, args))
 
         if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         # }}}

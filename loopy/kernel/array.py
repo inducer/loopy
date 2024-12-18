@@ -28,6 +28,7 @@ import sys
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     ClassVar,
     FrozenSet,
@@ -43,7 +44,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np  # noqa
-from typing_extensions import TypeAlias
+from typing_extensions import Self, TypeAlias
 
 from pymbolic import ArithmeticExpression
 from pymbolic.primitives import is_arithmetic_expression
@@ -1076,16 +1077,18 @@ class ArrayBase(ImmutableRecord, Taggable):
         else:
             return None
 
-    def map_exprs(self, mapper):
+    def map_exprs(self, mapper: Callable[[Expression], Expression]) -> Self:
         """Return a copy of self with all expressions replaced with what *mapper*
         transformed them into.
         """
         changed = False
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         import loopy as lp
 
         if self.shape is not None and self.shape is not lp.auto:
-            def none_pass_mapper(s):
+            assert isinstance(self.shape, tuple)
+
+            def none_pass_mapper(s: Expression | None) -> Expression | None:
                 if s is None:
                     return s
                 else:

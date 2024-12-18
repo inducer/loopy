@@ -154,6 +154,12 @@ exclude = [
 
 [[tool.mypy.overrides]]
 module = [
+    "loopy.symbolic",
+]
+# check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
     "islpy.*",
     "pymbolic.*",
     "genpy.*",
