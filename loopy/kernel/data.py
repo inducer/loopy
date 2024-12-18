@@ -107,7 +107,7 @@ def _names_from_expr(expr: Union[Expression, str, None]) -> FrozenSet[str]:
     from numbers import Number
 
     from loopy.symbolic import DependencyMapper
-    dep_mapper = DependencyMapper()
+    dep_mapper: DependencyMapper[[]] = DependencyMapper()
 
     from pymbolic.primitives import ExpressionNode
     if isinstance(expr, str):

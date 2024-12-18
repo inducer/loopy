@@ -172,7 +172,7 @@ class ExecutionWrapperGeneratorBase(ABC):
         from loopy.kernel.array import get_strides
         from loopy.kernel.data import ArrayArg
         from loopy.symbolic import DependencyMapper, StringifyMapper
-        dep_map = DependencyMapper()
+        dep_map: DependencyMapper[[]] = DependencyMapper()
 
         # {{{ find equations
 
