@@ -408,8 +408,8 @@ def test_parallel_multi_output_reduction(ctx_factory):
                 """
                 max_val, max_indices = argmax(i, abs(a[i]), i)
                 """)
-    knl = lp.tag_inames(knl, dict(i="l.0"))
-    knl = lp.add_dtypes(knl, dict(a=np.float64))
+    knl = lp.tag_inames(knl, {"i": "l.0"})
+    knl = lp.add_dtypes(knl, {"a": np.float64})
 
     ctx = ctx_factory()
 
