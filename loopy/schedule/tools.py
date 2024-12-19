@@ -58,7 +58,7 @@ import enum
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from functools import cached_property, reduce
-from typing import AbstractSet, Dict, FrozenSet, List, Sequence, Set, Tuple
+from typing import AbstractSet, FrozenSet, Sequence
 
 from immutables import Map
 from typing_extensions import TypeAlias
@@ -100,7 +100,7 @@ def get_block_boundaries(schedule: Sequence[ScheduleItem]) -> Mapping[int, int]:
 # {{{ subkernel tools
 
 def temporaries_read_in_subkernel(
-        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+        kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     inames = frozenset().union(*(kernel.insn_inames(insn_id)
@@ -118,7 +118,7 @@ def temporaries_read_in_subkernel(
 
 
 def temporaries_written_in_subkernel(
-        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+        kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     return frozenset(tv
@@ -128,7 +128,7 @@ def temporaries_written_in_subkernel(
 
 
 def args_read_in_subkernel(
-        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+        kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     inames = frozenset().union(*(kernel.insn_inames(insn_id)
@@ -145,7 +145,7 @@ def args_read_in_subkernel(
 
 
 def args_written_in_subkernel(
-        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+        kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     return frozenset(arg
@@ -155,8 +155,8 @@ def args_written_in_subkernel(
 
 
 def supporting_temporary_names(
-        kernel: LoopKernel, tv_names: FrozenSet[str]) -> FrozenSet[str]:
-    result: Set[str] = set()
+        kernel: LoopKernel, tv_names: frozenset[str]) -> frozenset[str]:
+    result: set[str] = set()
 
     for name in tv_names:
         tv = kernel.temporary_variables[name]
@@ -179,7 +179,7 @@ class KernelArgInfo:
     """
 
     passed_arg_names: Sequence[str]
-    written_names: FrozenSet[str]
+    written_names: frozenset[str]
 
     @property
     def passed_names(self) -> Sequence[str]:
@@ -211,7 +211,7 @@ def _should_temp_var_be_passed(tv: TemporaryVariable) -> bool:
 class _SupportingNameTracker:
     def __init__(self, kernel: LoopKernel):
         self.kernel = kernel
-        self.name_to_main_name: Dict[str, str] = {}
+        self.name_to_main_name: dict[str, str] = {}
 
     def add_supporting_names_for(self, name):
         var_descr = self.kernel.get_var_descriptor(name)
@@ -221,8 +221,8 @@ class _SupportingNameTracker:
                     | {name})
 
     def get_additional_args_and_tvs(
-            self, already_passed: Set[str]
-            ) -> Tuple[List[str], List[str]]:
+            self, already_passed: set[str]
+            ) -> tuple[list[str], list[str]]:
         additional_args = []
         additional_temporaries = []
 
@@ -240,11 +240,11 @@ class _SupportingNameTracker:
 
 
 def _process_args_for_arg_info(
-        kernel: LoopKernel, args_read: Set[str], args_written: Set[str],
+        kernel: LoopKernel, args_read: set[str], args_written: set[str],
         supp_name_tracker: _SupportingNameTracker, used_only: bool,
-        ) -> List[str]:
+        ) -> list[str]:
 
-    args_expected: Set[str] = set()
+    args_expected: set[str] = set()
 
     passed_arg_names = []
     for arg in kernel.args:
@@ -322,7 +322,7 @@ def get_subkernel_arg_info(
             supp_name_tracker=supp_name_tracker,
             used_only=True)
 
-    passed_temporaries: List[str] = []
+    passed_temporaries: list[str] = []
     for tv_name in sorted(tvs_read | tvs_written):
         supp_name_tracker.add_supporting_names_for(tv_name)
         tv = kernel.temporary_variables[tv_name]
@@ -786,8 +786,8 @@ def _add_inner_loops(tree, outer_loop_nest, inner_loop_nest):
 
 def _order_loop_nests(
             loop_nest_tree: LoopNestTree,
-            strict_priorities: FrozenSet[Tuple[InameStr, ...]],
-            relaxed_priorities: FrozenSet[Tuple[InameStr, ...]],
+            strict_priorities: frozenset[tuple[InameStr, ...]],
+            relaxed_priorities: frozenset[tuple[InameStr, ...]],
             iname_to_tree_node_id: Mapping[InameStr, InameStrSet],
           ) -> LoopTree:
     """
@@ -828,7 +828,7 @@ def _order_loop_nests(
     # toposort for each loop nest.
 
     def _update_nesting_constraints(
-                priorities: FrozenSet[Tuple[InameStr, ...]],
+                priorities: frozenset[tuple[InameStr, ...]],
                 cannot_satisfy_callback: Callable[[str], None]
             ) -> None:
         """
@@ -973,7 +973,7 @@ def get_partial_loop_nest_tree(kernel: LoopKernel) -> LoopNestTree:
     tree = Tree.from_root(root)
 
     # mapping from iname to the innermost loop nest they are part of in *tree*.
-    iname_to_tree_node_id: Dict[InameStr, InameStrSet] = {}
+    iname_to_tree_node_id: dict[InameStr, InameStrSet] = {}
 
     # if there were any loop with no inames, those have been already account
     # for as the root.
@@ -1072,7 +1072,7 @@ def get_loop_tree(kernel: LoopKernel) -> LoopTree:
     iname_to_tree_node_id = (
         _get_iname_to_tree_node_id_from_partial_loop_nest_tree(tree))
 
-    strict_loop_priorities: FrozenSet[Tuple[InameStr, ...]] = frozenset()
+    strict_loop_priorities: frozenset[tuple[InameStr, ...]] = frozenset()
 
     # {{{ impose constraints by the domain tree
 

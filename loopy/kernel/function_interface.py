@@ -25,7 +25,7 @@ THE SOFTWARE.
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Callable, FrozenSet, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, TypeVar
 from warnings import warn
 
 from immutabledict import immutabledict
@@ -490,7 +490,7 @@ class InKernelCallable(ABC):
                              self,
                              callables_table: CallablesTable,
                              recursive: bool = True
-                         ) -> FrozenSet[FunctionIdT]:
+                         ) -> frozenset[FunctionIdT]:
         """
         Returns a :class:`frozenset` of callable ids called by *self* that are
         resolved via *callables_table*.

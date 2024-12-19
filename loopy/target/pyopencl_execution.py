@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
 from immutables import Map
@@ -276,7 +276,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 @dataclass(frozen=True)
 class _KernelInfo:
-    cl_kernels: "_Kernels"
+    cl_kernels: _Kernels
     invoker: Callable[..., Any]
 
 
@@ -294,7 +294,7 @@ class PyOpenCLExecutor(ExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, context: "cl.Context", t_unit, entrypoint):
+    def __init__(self, context: cl.Context, t_unit, entrypoint):
         super().__init__(t_unit, entrypoint)
 
         self.context = context
@@ -309,7 +309,7 @@ class PyOpenCLExecutor(ExecutorBase):
     @memoize_method
     def translation_unit_info(
             self,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: Map[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         # FIXME: now just need to add the types to the arguments

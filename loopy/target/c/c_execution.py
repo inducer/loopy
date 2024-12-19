@@ -28,7 +28,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, ClassVar, Sequence
 
 import numpy as np
 from codepy.jit import compile_from_string
@@ -108,7 +108,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[Expression, Tuple[Expression]]], str],
+            strify: Callable[[Expression | tuple[Expression]], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for C-execution
@@ -428,7 +428,7 @@ class CompiledCKernel:
 
     def __init__(self, kernel: LoopKernel, devprog: GeneratedProgram,
             passed_names: Sequence[str], dev_code: str,
-            comp: Optional["CCompiler"] = None):
+            comp: CCompiler | None = None):
         # get code and build
         self.code = dev_code
         self.comp = comp if comp is not None else CCompiler()
@@ -476,7 +476,7 @@ class CExecutor(ExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, program, entrypoint, compiler: Optional["CCompiler"] = None):
+    def __init__(self, program, entrypoint, compiler: CCompiler | None = None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -496,7 +496,7 @@ class CExecutor(ExecutorBase):
 
     @memoize_method
     def translation_unit_info(self,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: Map[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2

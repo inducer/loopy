@@ -24,8 +24,6 @@ THE SOFTWARE.
 """
 
 
-from typing import Optional
-
 import numpy as np
 
 import islpy as isl
@@ -126,7 +124,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return s
 
-    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):  # type: ignore[override]
+    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
         result = super().rec(expr, type_context)
 
         if needed_type is None:
@@ -479,7 +477,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif np.isfinite(expr):
             if type_context == "f":
-                return Literal(repr(float((expr)))+"f")
+                return Literal(repr(float(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context in ["i", "b"]:

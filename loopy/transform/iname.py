@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from typing import Any, FrozenSet, Optional
+from typing import Any
 
 from typing_extensions import TypeAlias
 
@@ -1747,7 +1747,7 @@ def add_inames_to_insn(kernel, inames, insn_match):
 # {{{ remove_inames_from_insn
 
 @for_each_kernel
-def remove_inames_from_insn(kernel: LoopKernel, inames: FrozenSet[str],
+def remove_inames_from_insn(kernel: LoopKernel, inames: frozenset[str],
         insn_match) -> LoopKernel:
     """
     :arg inames: a frozenset of inames that will be added to the
@@ -1835,7 +1835,7 @@ def remove_predicates_from_insn(kernel, predicates, insn_match):
 
 class _MapDomainMapper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, new_inames, substitutions):
-        super(_MapDomainMapper, self).__init__(rule_mapping_context)
+        super().__init__(rule_mapping_context)
 
         self.old_inames = frozenset(substitutions)
         self.new_inames = new_inames
@@ -1855,7 +1855,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
             if arg_ctx_overlap:
                 if arg_ctx_overlap == red_overlap:
                     # All variables are shadowed by context, that's OK.
-                    return super(_MapDomainMapper, self).map_reduction(
+                    return super().map_reduction(
                             expr, expn_state)
                 else:
                     raise LoopyError("Reduction '%s' has"
@@ -1874,14 +1874,14 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
                         self.rec(expr.expr, expn_state),
                         expr.allow_simultaneous)
         else:
-            return super(_MapDomainMapper, self).map_reduction(expr, expn_state)
+            return super().map_reduction(expr, expn_state)
 
     def map_variable(self, expr, expn_state):
         if (expr.name in self.old_inames
                 and expr.name not in expn_state.arg_context):
             return self.substitutions[expr.name]
         else:
-            return super(_MapDomainMapper, self).map_variable(expr, expn_state)
+            return super().map_variable(expr, expn_state)
 
 # }}}
 
@@ -2379,7 +2379,7 @@ def rename_inames(
             new_iname: str,
             existing_ok: bool = False,
             within: ToStackMatchCovertible = None,
-            raise_on_domain_mismatch: Optional[bool] = None
+            raise_on_domain_mismatch: bool | None = None
         ) -> LoopKernel:
     r"""
     :arg old_inames: A collection of inames that must be renamed to **new_iname**.
@@ -2524,7 +2524,7 @@ def rename_iname(
             existing_ok: bool = False,
             within: ToStackMatchCovertible = None,
             preserve_tags: bool = True,
-            raise_on_domain_mismatch: Optional[bool] = None
+            raise_on_domain_mismatch: bool | None = None
         ) -> LoopKernel:
     r"""
     Single iname version of :func:`loopy.rename_inames`.

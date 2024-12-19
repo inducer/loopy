@@ -31,14 +31,9 @@ from typing import (
     Any,
     Callable,
     ClassVar,
-    FrozenSet,
-    List,
-    Optional,
     Sequence,
     Tuple,
-    Type,
     TypeVar,
-    Union,
     cast,
 )
 from warnings import warn
@@ -674,7 +669,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     """
     name: str
 
-    dtype: Optional[LoopyType]
+    dtype: LoopyType | None
     """The :class:`loopy.types.LoopyType` of the array. If this is *None*,
     :mod:`loopy` will try to continue without knowing the type of this
     array, where the idea is that precise knowledge of the type will become
@@ -686,7 +681,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     cannot be performed without knowledge of the exact *dtype*.
     """
 
-    shape: Union[ShapeType, Type["auto"], None]
+    shape: ShapeType | type[auto] | None
     """
     May be one of the following:
 
@@ -707,11 +702,11 @@ class ArrayBase(ImmutableRecord, Taggable):
       may be *None*.
       """
 
-    dim_tags: Optional[Sequence[ArrayDimImplementationTag]]
+    dim_tags: Sequence[ArrayDimImplementationTag] | None
     """See :ref:`data-dim-tags`.
     """
 
-    offset: Union[Expression, str, None]
+    offset: Expression | str | None
     """Offset from the beginning of the buffer to the point from
     which the strides are counted, in units of the :attr:`dtype`.
     May be one of
@@ -723,7 +718,7 @@ class ArrayBase(ImmutableRecord, Taggable):
       is added automatically, immediately following this argument.
     """
 
-    dim_names: Optional[Tuple[str, ...]]
+    dim_names: tuple[str, ...] | None
     """A tuple of strings providing names for the array axes, or *None*.
     If given, must have the same number of entries as :attr:`dim_tags`
     and :attr:`dim_tags`. These do not live in any particular namespace
@@ -733,7 +728,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     axis numbers.
     """
 
-    alignment: Optional[int]
+    alignment: int | None
     """Memory alignment of the array in bytes. For temporary arrays,
     this ensures they are allocated with this alignment. For arguments,
     this entails a promise that the incoming array obeys this alignment
@@ -748,7 +743,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     .. versionadded:: 2018.1
     """
 
-    tags: FrozenSet[Tag]
+    tags: frozenset[Tag]
     """A (possibly empty) frozenset of instances of
     :class:`pytools.tag.Tag` intended for
     consumption by an application.
@@ -759,7 +754,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     # Note that order may also wind up in attributes, if the
     # number of dimensions has not yet been determined.
 
-    allowed_extra_kwargs: ClassVar[Tuple[str, ...]] = ()
+    allowed_extra_kwargs: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
@@ -1150,16 +1145,16 @@ class ArrayBase(ImmutableRecord, Taggable):
 # }}}
 
 def drop_vec_dims(
-        dim_tags: Tuple[ArrayDimImplementationTag, ...],
-        t: Tuple[T, ...]) -> Tuple[T, ...]:
+        dim_tags: tuple[ArrayDimImplementationTag, ...],
+        t: tuple[T, ...]) -> tuple[T, ...]:
     assert len(dim_tags) == len(t)
     return tuple(t_i for dim_tag, t_i in zip(dim_tags, t)
             if not isinstance(dim_tag, VectorArrayDimTag))
 
 
-def get_strides(array: ArrayBase) -> Tuple[Expression, ...]:
+def get_strides(array: ArrayBase) -> tuple[Expression, ...]:
     from pymbolic import var
-    result: List[Expression] = []
+    result: list[Expression] = []
 
     if array.dim_tags is None:
         return ()
@@ -1186,8 +1181,8 @@ def get_strides(array: ArrayBase) -> Tuple[Expression, ...]:
 @dataclass(frozen=True)
 class AccessInfo(ImmutableRecord):
     array_name: str
-    vector_index: Optional[int]
-    subscripts: Tuple[Expression, ...]
+    vector_index: int | None
+    subscripts: tuple[Expression, ...]
 
 
 def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
@@ -1225,11 +1220,11 @@ def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
         return sub
 
 
-def get_access_info(kernel: "LoopKernel",
-        ary: Union["ArrayArg", "TemporaryVariable"],
-        index: Union[Expression, Tuple[Expression, ...]],
+def get_access_info(kernel: LoopKernel,
+        ary: ArrayArg | TemporaryVariable,
+        index: Expression | tuple[Expression, ...],
         eval_expr: Callable[[Expression], int],
-        vectorization_info: "VectorizationInfo") -> AccessInfo:
+        vectorization_info: VectorizationInfo) -> AccessInfo:
     """
     :arg ary: an object of type :class:`ArrayBase`
     :arg index: a tuple of indices representing a subscript into ary
@@ -1282,7 +1277,7 @@ def get_access_info(kernel: "LoopKernel",
     num_target_axes = ary.num_target_axes()
 
     vector_index = None
-    subscripts: List[Expression] = [0] * num_target_axes
+    subscripts: list[Expression] = [0] * num_target_axes
 
     vector_size = ary.vector_size(kernel.target)
 

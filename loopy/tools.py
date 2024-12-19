@@ -27,7 +27,6 @@ import collections.abc as abc
 import logging
 from functools import cached_property
 from sys import intern
-from typing import List
 
 import numpy as np
 from immutables import Map
@@ -835,7 +834,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
 
 # {{{ cache management
 
-caches: List[WriteOncePersistentDict] = []
+caches: list[WriteOncePersistentDict] = []
 
 
 def clear_in_mem_caches() -> None:
