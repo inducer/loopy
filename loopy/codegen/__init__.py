@@ -108,8 +108,6 @@ class VectorizationInfo:
 
     iname: str
     length: int
-    # FIXME why is this here?
-    space: isl.Space
 
 
 @dataclass(frozen=True)
@@ -268,7 +266,8 @@ class CodeGenerationState:
         novec_self = self.copy(vectorization_info=None)
 
         for i in range(vinf.length):
-            idx_aff = isl.Aff.zero_on_domain(vinf.space.params()) + i
+            idx_aff = isl.Aff.zero_on_domain(
+                        isl.Space.params_alloc(self.kernel.isl_context, 0)) + i
             new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
             generated = func(new_codegen_state)
 
