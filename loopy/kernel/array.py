@@ -55,7 +55,7 @@ from loopy.typing import Expression, ShapeType, auto, is_integer
 if TYPE_CHECKING:
     from loopy.codegen import VectorizationInfo
     from loopy.kernel import LoopKernel
-    from loopy.kernel.data import ArrayArg, TemporaryVariable, auto
+    from loopy.kernel.data import ArrayArg, TemporaryVariable
     from loopy.target import TargetBase
 
 if getattr(sys, "_BUILDING_SPHINX_DOCS", False):

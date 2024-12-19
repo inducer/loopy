@@ -63,12 +63,12 @@ nitpick_ignore_regex = [
 
         # Reference not found from "<unknown>"? I'm not even sure where to look.
         ["py:class", r"ExpressionNode"],
-        ]
 
-autodoc_type_aliases = {
-    "ToLoopyTypeConvertible": "ToLoopyTypeConvertible",
-    "ExpressionT": "ExpressionT",
-    "InameStr": "InameStr",
-    "ShapeType": "ShapeType",
-    "StridesType": "StridesType",
-}
+        # Type aliases
+        ["py:class", r"InameStr"],
+        ["py:class", r"ConcreteCallablesTable"],
+        ["py:class", r"LoopNestTree"],
+        ["py:class", r"LoopTree"],
+        ["py:class", r"ToLoopyTypeConvertible"],
+        ["py:class", r"ToStackMatchConvertible"],
+        ]
