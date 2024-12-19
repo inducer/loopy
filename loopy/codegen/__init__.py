@@ -70,8 +70,6 @@ if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
 
 
 __doc__ = """
-.. currentmodule:: loopy.codegen
-
 .. autoclass:: PreambleInfo
 
 .. autoclass:: VectorizationInfo
@@ -139,65 +137,37 @@ class SeenFunction:
 @dataclass(frozen=True)
 class CodeGenerationState:
     """
-    .. attribute:: kernel
-    .. attribute:: target
-    .. attribute:: implemented_domain
+    .. autoattribute:: kernel
+    .. autoattribute:: target
+    .. autoattribute:: implemented_domain
+    .. autoattribute:: implemented_predicates
 
-        The entire implemented domain (as an :class:`islpy.Set`)
-        i.e. all constraints that have been enforced so far.
-
-    .. attribute:: implemented_predicates
-
-        A :class:`frozenset` of predicates for which checks have been
-        implemented.
-
-    .. attribute:: seen_dtypes
-
-        set of dtypes that were encountered
-
-    .. attribute:: seen_functions
-
-        set of :class:`SeenFunction` instances
-
+    .. autoattribute:: seen_dtypes
+    .. autoattribute:: seen_functions
     .. attribute:: seen_atomic_dtypes
 
-    .. attribute:: var_subst_map
+    .. autoattribute:: var_subst_map
 
-    .. attribute:: allow_complex
-
-    .. attribute:: vectorization_info
-
-        *None* (to mean vectorization has not yet been applied),  or an instance of
-        :class:`VectorizationInfo`.
-
-    .. attribute:: is_generating_device_code
-
-    .. attribute:: gen_program_name
-
-        None (indicating that host code is being generated)
-        or the name of the device program currently being
-        generated.
-
-    .. attribute:: schedule_index_end
-
-    .. attribute:: callables_table
-
-        A mapping from callable names to instances of
-        :class:`loopy.kernel.function_interface.InKernelCallable`.
-
-    .. attribute:: is_entrypoint
-
-        A :class:`bool` to indicate if the code is being generated for an
-        entrypoint kernel
-
-    .. attribute:: codegen_cache_manager
-
-        An instance of :class:`loopy.codegen.tools.CodegenOperationCacheManager`.
+    .. autoattribute:: allow_complex
+    .. autoattribute:: vectorization_info
+    .. autoattribute:: is_generating_device_code
+    .. autoattribute:: gen_program_name
+    .. autoattribute:: schedule_index_end
+    .. autoattribute:: callables_table
+    .. autoattribute:: is_entrypoint
+    .. autoattribute:: codegen_cache_manager
     """
 
     kernel: LoopKernel
+
+    # LoopKernel should not have a target, should use this instead
     target: TargetBase
+
     implemented_domain: isl.Set
+    """
+    The entire implemented domain (as an :class:`islpy.Set`)
+    i.e. all constraints that have been enforced so far.
+    """
     implemented_predicates: frozenset[str | Expression]
 
     # /!\ mutable
@@ -211,17 +181,12 @@ class CodeGenerationState:
     is_entrypoint: bool
     var_name_generator: UniqueNameGenerator
     is_generating_device_code: bool
+
     gen_program_name: str
+
     schedule_index_end: int
-    codegen_cachemanager: CodegenOperationCacheManager
+    codegen_cache_manager: CodegenOperationCacheManager
     vectorization_info: VectorizationInfo | None = None
-
-    def __post_init__(self):
-        # FIXME: If this doesn't bomb during testing, we can get rid of target.
-        assert self.target == self.kernel.target
-
-        assert self.vectorization_info is None or isinstance(
-                self.vectorization_info, VectorizationInfo)
 
     # {{{ copy helpers
 
@@ -427,7 +392,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             schedule_index_end=len(kernel.linearization),
             callables_table=callables_table,
             is_entrypoint=is_entrypoint,
-            codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
+            codegen_cache_manager=CodegenOperationCacheManager.from_kernel(kernel),
             )
 
     from loopy.codegen.result import generate_host_or_device_program

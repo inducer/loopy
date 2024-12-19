@@ -363,7 +363,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index, hints):
 
     # Note: this does not include loop_iname itself!
     usable_inames = get_usable_inames_for_conditional(kernel, sched_index,
-            codegen_state.codegen_cachemanager)
+            codegen_state.codegen_cache_manager)
 
     domain = kernel.get_inames_domain(loop_iname)
 
