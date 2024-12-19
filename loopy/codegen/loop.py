@@ -213,7 +213,7 @@ def generate_vectorize_loop(codegen_state, sched_index):
             vectorization_info=VectorizationInfo(
                 iname=iname,
                 length=length,
-                space=length_aff.space))
+                ))
 
     return build_loop_nest(new_codegen_state, sched_index+1)
 
