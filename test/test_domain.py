@@ -309,7 +309,7 @@ def test_equality_constraints(ctx_factory):
     # print(knl.domains[0].detect_equalities())
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n), print_ref_code=True)
+            parameters={"n": n}, print_ref_code=True)
 
 
 def test_stride(ctx_factory):
@@ -335,7 +335,7 @@ def test_stride(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n))
+            parameters={"n": n})
 
 
 def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
@@ -363,7 +363,7 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n))
+            parameters={"n": n})
 
 
 def test_triangle_domain():

@@ -52,8 +52,8 @@ def test_op_counter_basic():
             name="basic", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                                  dict(a=np.float32, b=np.float32,
-                                       g=np.float64, h=np.float64))
+                                  {"a": np.float32, "b": np.float32,
+                                       "g": np.float64, "h": np.float64})
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
     n_workgroups = 1
@@ -89,7 +89,7 @@ def test_op_counter_reduction():
             ],
             name="matmul_serial", assumptions="n,m,ell >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
     n_workgroups = 1
     group_size = 1
@@ -125,7 +125,7 @@ def test_op_counter_logic():
             ],
             name="logic", assumptions="n,m,ell >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
+    knl = lp.add_and_infer_dtypes(knl, {"g": np.float32, "h": np.float64})
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
     n_workgroups = 1
     group_size = 1
@@ -163,8 +163,8 @@ def test_op_counter_special_ops():
             name="special_ops", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                                  dict(a=np.float32, b=np.float32,
-                                       g=np.float64, h=np.float64))
+                                  {"a": np.float32, "b": np.float32,
+                                       "g": np.float64, "h": np.float64})
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
     n_workgroups = 1
@@ -211,9 +211,9 @@ def test_op_counter_bitwise():
             name="bitwise", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(
-            knl, dict(
-                a=np.int32, b=np.int32,
-                g=np.int64, h=np.int64))
+            knl, {
+                "a": np.int32, "b": np.int32,
+                "g": np.int64, "h": np.int64})
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=False)
@@ -262,7 +262,7 @@ def test_op_counter_triangular_domain():
             name="bitwise", assumptions="n,m >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-            dict(b=np.float64))
+            {"b": np.float64})
 
     expect_fallback = False
     import islpy as isl
@@ -278,7 +278,7 @@ def test_op_counter_triangular_domain():
                     subgroup_size=SGS,
                     count_redundant_work=True
                     )[lp.Op(np.float64, "mul", CG.SUBGROUP, "bitwise")]
-    value_dict = dict(m=13, n=200)
+    value_dict = {"m": 13, "n": 200}
     flops = op_map.eval_with_dict(value_dict)
 
     n_workgroups = 1
@@ -305,7 +305,7 @@ def test_mem_access_counter_basic():
             name="basic", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                    dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+            {"a": np.float32, "b": np.float32, "g": np.float64, "h": np.float64})
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                     subgroup_size=SGS)
@@ -376,7 +376,7 @@ def test_mem_access_counter_reduction():
             ],
             name="matmul", assumptions="n,m,ell >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                     subgroup_size=SGS)
@@ -437,7 +437,7 @@ def test_mem_access_counter_logic():
             ],
             name="logic", assumptions="n,m,ell >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
+    knl = lp.add_and_infer_dtypes(knl, {"g": np.float32, "h": np.float64})
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                     subgroup_size=SGS)
@@ -481,8 +481,8 @@ def test_mem_access_counter_special_ops():
             ],
             name="special_ops", assumptions="n,m,ell >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
-                                            g=np.float64, h=np.float64))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32,
+                                            "g": np.float64, "h": np.float64})
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                     subgroup_size=SGS)
@@ -563,9 +563,9 @@ def test_mem_access_counter_bitwise():
             name="bitwise", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(
-            knl, dict(
-                a=np.int32, b=np.int32,
-                g=np.int32, h=np.int32))
+            knl, {
+                "a": np.int32, "b": np.int32,
+                "g": np.int32, "h": np.int32})
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
                                     subgroup_size=SGS)
@@ -635,9 +635,9 @@ def test_mem_access_counter_mixed():
             ],
             name="mixed", assumptions="n,m,ell >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(
-                a=np.float32, b=np.float32, g=np.float64, h=np.float64,
-                x=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {
+                "a": np.float32, "b": np.float32, "g": np.float64, "h": np.float64,
+                "x": np.float32})
 
     group_size_0 = 65
 
@@ -750,8 +750,8 @@ def test_mem_access_counter_nonconsec():
             """
             ],
             name="non_consec", assumptions="n,m,ell >= 1")
-    knl = lp.add_and_infer_dtypes(knl, dict(
-                a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    knl = lp.add_and_infer_dtypes(knl, {
+                "a": np.float32, "b": np.float32, "g": np.float64, "h": np.float64})
     lsize0 = 16
     knl = lp.split_iname(knl, "i", lsize0)
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
@@ -871,8 +871,8 @@ def test_mem_access_counter_consec():
             """
             ],
             name="consec", assumptions="n,m,ell >= 1")
-    knl = lp.add_and_infer_dtypes(knl, dict(
-                a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    knl = lp.add_and_infer_dtypes(knl, {
+                "a": np.float32, "b": np.float32, "g": np.float64, "h": np.float64})
     knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
@@ -1000,8 +1000,8 @@ def test_barrier_counter_nobarriers():
             ],
             name="basic", assumptions="n,m,ell >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
-                                            g=np.float64, h=np.float64))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32,
+                                            "g": np.float64, "h": np.float64})
     sync_map = lp.get_synchronization_map(knl)
     n = 512
     m = 256
@@ -1025,7 +1025,7 @@ def test_barrier_counter_barriers():
             ],
             name="weird2",
             )
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.int32})
     knl = lp.split_iname(knl, "k", 128, inner_tag="l.0")
     sync_map = lp.get_synchronization_map(knl)
     print(sync_map)
@@ -1060,7 +1060,7 @@ def test_all_counters_parallel_matmul():
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
             ],
             name="matmul", assumptions="n,m,ell >= 1")
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
     knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", bsize)
@@ -1189,7 +1189,7 @@ def test_floor_div_coefficient_collector():
         name="local",
         lang_version=(2018, 2))
 
-    knl = lp.add_and_infer_dtypes(knl, dict(out0=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"out0": np.float32})
     knl = lp.tag_inames(knl, "i_outer:g.1,i_inner:l.1,j_outer:g.0,j_inner:l.0")
 
     n = 512
@@ -1216,7 +1216,7 @@ def test_mem_access_tagged_variables():
                 "c$mmresult[i, j] = sum(k, a$mmaload[i, k]*b$mmbload[k, j])"
             ],
             name="matmul", assumptions="n,m,ell >= 1")
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
     knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", bsize)
@@ -1280,7 +1280,7 @@ def test_gather_access_footprint():
                 "c[i, j] = sum(k, a[i, k]*b[k, j]) + a[i,j]"
             ],
             name="matmul", assumptions="n >= 1")
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
 
     from loopy.statistics import count, gather_access_footprints
     fp = gather_access_footprints(knl)
@@ -1294,7 +1294,7 @@ def test_gather_access_footprint_2():
             "{[i]: 0<=i<n}",
             "c[2*i] = a[i]",
             name="matmul", assumptions="n >= 1")
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
 
     from loopy.statistics import count, gather_access_footprints
     fp = gather_access_footprints(knl)
@@ -1318,7 +1318,7 @@ def test_summations_and_filters():
             name="basic", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                    dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+            {"a": np.float32, "b": np.float32, "g": np.float64, "h": np.float64})
 
     n = 512
     m = 256
@@ -1407,14 +1407,14 @@ def test_summations_and_filters():
 
 
 def test_strided_footprint():
-    param_dict = dict(n=2**20)
+    param_dict = {"n": 2**20}
     knl = lp.make_kernel(
         "[n] -> {[i]: 0<=i<n}",
         [
             "z[i] = x[3*i]"
         ], name="s3")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(x=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"x": np.float32})
 
     unr = 4
     bx = 256
