@@ -274,7 +274,7 @@ def build_loop_nest(codegen_state, schedule_index):
                 schedule_indices=[i],
                 admissible_cond_inames=(
                     get_usable_inames_for_conditional(kernel, i,
-                        codegen_state.codegen_cachemanager)),
+                        codegen_state.codegen_cache_manager)),
                 required_predicates=get_required_predicates(kernel, i),
                 used_inames_within=find_used_inames_within(kernel, i)
                 )
