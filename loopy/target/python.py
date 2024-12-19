@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
@@ -32,12 +32,15 @@ from genpy import Collection, Generable, Suite
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError
 from loopy.kernel.data import ValueArg
 from loopy.target import ASTBuilderBase
 from loopy.type_inference import TypeReader
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ expression to code

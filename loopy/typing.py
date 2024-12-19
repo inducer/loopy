@@ -2,6 +2,7 @@
 .. autoclass:: Expression
 .. autoclass:: ShapeType
 .. autodata:: InameStr
+.. autodata:: InameStrSet
 
 .. currentmodule:: loopy
 
@@ -50,6 +51,7 @@ ShapeType: TypeAlias = Tuple[ArithmeticExpression, ...]
 StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str
+InameStrSet: TypeAlias = frozenset[InameStr]
 
 
 class auto:  # noqa

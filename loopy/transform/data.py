@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass, replace
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from warnings import warn
 
 import numpy as np
@@ -39,7 +39,10 @@ from loopy.kernel.data import AddressSpace, ImageArg, TemporaryVariable, auto
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.types import LoopyType
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    from loopy.typing import Expression
 
 
 # {{{ convenience: add_prefetch
@@ -1055,7 +1058,7 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
                 approx_array_nbytes = 0
 
             bs_key = (tv.base_storage,
-                      cast(AddressSpace, tv.address_space), tv.dtype)
+                      cast("AddressSpace", tv.address_space), tv.dtype)
             bsi = name_aspace_dtype_to_bsi.get(bs_key)
 
             if bsi is None or (

@@ -28,30 +28,34 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Sequence
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Sequence
 
 import numpy as np
 from codepy.jit import compile_from_string
 from codepy.toolchain import GCCToolchain, ToolchainGuessError, guess_toolchain
-from immutables import Map
 
 from pytools import memoize_method
 from pytools.codegen import CodeGenerator, Indentation
 from pytools.prefork import ExecError
 
-from loopy.codegen.result import GeneratedProgram
-from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase
-from loopy.kernel.data import ArrayArg
-from loopy.schedule.tools import KernelArgInfo
 from loopy.target.execution import (
     ExecutionWrapperGeneratorBase,
     ExecutorBase,
     get_highlighted_code,
 )
-from loopy.translation_unit import TranslationUnit
 from loopy.types import LoopyType
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    from immutables import Map
+
+    from loopy.codegen.result import GeneratedProgram
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.data import ArrayArg
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.translation_unit import TranslationUnit
+    from loopy.typing import Expression
 
 
 logger = logging.getLogger(__name__)

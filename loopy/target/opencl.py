@@ -24,16 +24,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
-from cgen import Declarator, Generable
 from pymbolic import var
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
 from loopy.kernel.data import AddressSpace, ConstantArg, ImageArg
@@ -41,6 +38,13 @@ from loopy.kernel.function_interface import ScalarCallable
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget, DTypeRegistryWrapper
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from cgen import Declarator, Generable
+
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ dtype registry wrappers

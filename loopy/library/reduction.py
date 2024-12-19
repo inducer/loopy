@@ -24,17 +24,22 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from pymbolic import var
 from pymbolic.primitives import expr_dataclass
-from pytools.persistent_dict import Hash, KeyBuilder
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.symbolic import FunctionIdentifier, ResolvedFunction
 from loopy.tools import update_persistent_hash
 from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from pytools.persistent_dict import Hash, KeyBuilder
 
 
 __doc__ = """

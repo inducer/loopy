@@ -23,14 +23,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-from loopy.kernel.instruction import InstructionBase
 from loopy.symbolic import RuleAwareIdentityMapper
 from loopy.translation_unit import TranslationUnit, for_each_kernel
+
+
+if TYPE_CHECKING:
+    from loopy.kernel.instruction import InstructionBase
 
 
 # {{{ find_instructions

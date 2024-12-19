@@ -23,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 from warnings import warn
@@ -35,15 +34,17 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
 from loopy.kernel.data import AddressSpace, ArrayArg, ValueArg
 from loopy.symbolic import DependencyMapper, WalkMapper
-from loopy.types import LoopyType
-from loopy.typing import ShapeType
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from typing_extensions import Self
 
     from loopy.kernel import LoopKernel
     from loopy.translation_unit import CallablesTable, FunctionIdT
+    from loopy.types import LoopyType
+    from loopy.typing import ShapeType
 
 __doc__ = """
 .. currentmodule:: loopy.kernel.function_interface

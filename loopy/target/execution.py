@@ -28,6 +28,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Mapping,
@@ -50,12 +51,15 @@ from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.kernel import KernelState, LoopKernel
 from loopy.kernel.data import ArrayArg, _ArraySeparationInfo, auto
-from loopy.schedule.tools import KernelArgInfo
 from loopy.tools import LoopyKeyBuilder, caches
-from loopy.translation_unit import TranslationUnit
 from loopy.types import LoopyType, NumpyType
 from loopy.typing import Expression, integer_expr_or_err
 from loopy.version import DATA_MODEL_VERSION
+
+
+if TYPE_CHECKING:
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.translation_unit import TranslationUnit
 
 
 # {{{ object array argument packing
@@ -257,7 +261,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                 unknown_var, = deps
                 order_to_unknown_to_equations \
                         .setdefault(eqn.order, {}) \
-                        .setdefault(cast(Variable, unknown_var).name, []) \
+                        .setdefault(cast("Variable", unknown_var).name, []) \
                         .append(eqn)
             else:
                 # Zero deps: nothing to determine, forget about it.

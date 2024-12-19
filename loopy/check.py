@@ -25,8 +25,8 @@ THE SOFTWARE.
 
 import logging
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
 from functools import reduce
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -41,7 +41,6 @@ from loopy.diagnostic import (
     WriteRaceConditionWarning,
     warn_with_kernel,
 )
-from loopy.kernel import LoopKernel
 from loopy.kernel.array import (
     ArrayBase,
     FixedStrideArrayDimTag,
@@ -71,6 +70,14 @@ from loopy.translation_unit import (
 )
 from loopy.type_inference import TypeReader
 from loopy.typing import not_none
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from pymbolic.typing import Expression
+
+    from loopy.kernel import LoopKernel
 
 
 logger = logging.getLogger(__name__)
@@ -216,7 +223,6 @@ def check_separated_array_consistency(kernel: LoopKernel) -> None:
 @check_each_kernel
 def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
     from pymbolic.primitives import ExpressionNode, Variable
-    from pymbolic.typing import Expression
 
     from loopy.symbolic import DependencyMapper
 

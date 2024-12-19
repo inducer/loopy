@@ -31,10 +31,10 @@ from typing import (
     Sequence,
 )
 
-import islpy as isl
-
 
 if TYPE_CHECKING:
+    import islpy
+
     from loopy.codegen import CodeGenerationState
 
 
@@ -57,8 +57,6 @@ def process_preambles(preambles: Sequence[tuple[int, str]]) -> Sequence[str]:
 
 __doc__ = """
 .. currentmodule:: loopy.codegen.result
-
-.. autoclass:: GeneratedProgram
 
 .. autoclass:: CodeGenerationResult
 
@@ -121,7 +119,7 @@ class CodeGenerationResult:
     """
     host_program: GeneratedProgram | None
     device_programs: Sequence[GeneratedProgram]
-    implemented_domains: Mapping[str, isl.Set]
+    implemented_domains: Mapping[str, islpy.Set]
     host_preambles: Sequence[tuple[str, str]] = ()
     device_preambles: Sequence[tuple[str, str]] = ()
 
@@ -249,7 +247,7 @@ def merge_codegen_results(
     new_device_programs = []
     new_device_preambles: list[tuple[str, str]] = []
     dev_program_names = set()
-    implemented_domains: dict[str, isl.Set] = {}
+    implemented_domains: dict[str, islpy.Set] = {}
     codegen_result = None
 
     block_cls = codegen_state.ast_builder.ast_block_class

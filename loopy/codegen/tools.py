@@ -25,12 +25,11 @@ THE SOFTWARE.
 
 from dataclasses import dataclass
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 from pytools import memoize_method
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import Iname
-from loopy.kernel.instruction import InstructionBase
 from loopy.schedule import (
     Barrier,
     BeginBlockItem,
@@ -41,6 +40,11 @@ from loopy.schedule import (
     ScheduleItem,
     gather_schedule_block,
 )
+
+
+if TYPE_CHECKING:
+    import loopy.kernel.data
+    from loopy.kernel.instruction import InstructionBase
 
 
 __doc__ = """
@@ -58,7 +62,7 @@ class KernelProxyForCodegenOperationCacheManager:
     """
     instructions: list[InstructionBase]
     linearization: list[ScheduleItem]
-    inames: dict[str, Iname]
+    inames: dict[str, loopy.kernel.data.Iname]
 
     @cached_property
     def id_to_insn(self):

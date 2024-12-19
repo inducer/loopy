@@ -30,6 +30,7 @@ from dataclasses import dataclass, replace
 from enum import IntEnum
 from sys import intern
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Sequence,
@@ -40,9 +41,7 @@ from typing import (
 
 import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
-from immutables import Map
 
-from pymbolic import ArithmeticExpression, Variable
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
 
@@ -61,8 +60,15 @@ from loopy.kernel.instruction import (  # noqa
     VarAtomicity,
     make_assignment,
 )
-from loopy.types import LoopyType, ToLoopyTypeConvertible
 from loopy.typing import Expression, ShapeType, auto
+
+
+if TYPE_CHECKING:
+    from immutables import Map
+
+    from pymbolic import ArithmeticExpression, Variable
+
+    from loopy.types import LoopyType, ToLoopyTypeConvertible
 
 
 __doc__ = """
@@ -110,7 +116,7 @@ def _names_from_expr(expr: Expression | str | None) -> frozenset[str]:
     if isinstance(expr, str):
         return frozenset({expr})
     elif isinstance(expr, ExpressionNode):
-        return frozenset(cast(Variable, v).name for v in dep_mapper(expr))
+        return frozenset(cast("Variable", v).name for v in dep_mapper(expr))
     elif expr is None:
         return frozenset()
     elif isinstance(expr, Number):
@@ -435,7 +441,7 @@ class _ArraySeparationInfo:
 
 
 class ArrayArg(ArrayBase, KernelArgument):
-    __doc__ = cast(str, ArrayBase.__doc__) + (
+    __doc__ = cast("str", ArrayBase.__doc__) + (
         """
         .. attribute:: address_space
 
@@ -637,7 +643,7 @@ class ValueArg(KernelArgument, Taggable):
 # {{{ temporary variable
 
 class TemporaryVariable(ArrayBase):
-    __doc__ = cast(str, ArrayBase.__doc__) + """
+    __doc__ = cast("str", ArrayBase.__doc__) + """
     .. autoattribute:: storage_shape
     .. autoattribute:: base_indices
     .. autoattribute:: address_space
@@ -814,7 +820,7 @@ class TemporaryVariable(ArrayBase):
                 raise ValueError("shape is None")
             if self.shape is auto:
                 raise ValueError("shape is auto")
-            shape = cast(Tuple[ArithmeticExpression], self.shape)
+            shape = cast("Tuple[ArithmeticExpression]", self.shape)
 
         if self.dtype is None:
             raise ValueError("data type is indeterminate")

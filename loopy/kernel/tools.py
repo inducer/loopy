@@ -28,14 +28,13 @@ import logging
 import sys
 from functools import reduce
 from sys import intern
-from typing import AbstractSet, Mapping, Sequence
+from typing import TYPE_CHECKING, AbstractSet, Mapping, Sequence
 
 import numpy as np
 
 import islpy as isl
 from islpy import dim_type
 from pytools import memoize_on_first_arg, natsorted
-from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
@@ -47,7 +46,12 @@ from loopy.kernel.instruction import (
 )
 from loopy.symbolic import CombineMapper
 from loopy.translation_unit import TranslationUnit, TUnitOrKernelT, for_each_kernel
-from loopy.types import ToLoopyTypeConvertible
+
+
+if TYPE_CHECKING:
+    from pytools.tag import Tag
+
+    from loopy.types import ToLoopyTypeConvertible
 
 
 logger = logging.getLogger(__name__)

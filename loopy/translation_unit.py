@@ -54,11 +54,11 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     SubstitutionRuleMappingContext,
 )
-from loopy.target import TargetBase
 
 
 if TYPE_CHECKING:
     from loopy.kernel import LoopKernel
+    from loopy.target import TargetBase
     from loopy.target.execution import ExecutorBase
 
 

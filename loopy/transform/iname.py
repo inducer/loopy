@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from typing_extensions import TypeAlias
 
@@ -36,14 +36,17 @@ from pytools.tag import Tag
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
-from loopy.kernel.instruction import InstructionBase
-from loopy.match import ToStackMatchCovertible
 from loopy.symbolic import (
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
 )
 from loopy.translation_unit import TranslationUnit, for_each_kernel
+
+
+if TYPE_CHECKING:
+    from loopy.kernel.instruction import InstructionBase
+    from loopy.match import ToStackMatchCovertible
 
 
 __doc__ = """

@@ -25,7 +25,7 @@ THE SOFTWARE.
 """
 
 
-from typing import Sequence, cast
+from typing import TYPE_CHECKING, Sequence, cast
 
 import numpy as np
 
@@ -35,16 +35,19 @@ from pymbolic import var
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError
 from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
-from loopy.schedule import CallKernel
 from loopy.symbolic import Literal
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.types import LoopyType
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.schedule import CallKernel
+    from loopy.types import LoopyType
+    from loopy.typing import Expression
 
 
 # {{{ expression mapper
@@ -215,7 +218,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         assert codegen_state.kernel.linearization is not None
         subkernel_name = cast(
-                        CallKernel,
+                        "CallKernel",
                         codegen_state.kernel.linearization[schedule_index]
                         ).kernel_name
 
