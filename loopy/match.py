@@ -1,5 +1,33 @@
-"""Matching functionality for instruction ids and substitution
-rule invocations stacks."""
+"""
+.. autoclass:: Matchable
+.. autoclass:: StackMatchComponent
+.. autoclass:: StackMatch
+
+.. autofunction:: parse_match
+
+.. autofunction:: parse_stack_match
+
+.. autodata:: ToStackMatchConvertible
+
+Match expressions
+^^^^^^^^^^^^^^^^^
+
+.. autoclass:: MatchExpressionBase
+.. autoclass:: All
+.. autoclass:: And
+.. autoclass:: Or
+.. autoclass:: Not
+.. autoclass:: Id
+.. autoclass:: ObjTagged
+.. autoclass:: Tagged
+.. autoclass:: Writes
+.. autoclass:: Reads
+.. autoclass:: InKernel
+.. autoclass:: Iname
+
+"""
+
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
@@ -28,43 +56,22 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from sys import intern
-from typing import FrozenSet, List, Protocol, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Protocol, Sequence, Union
 
-from loopy.kernel import LoopKernel
+from typing_extensions import TypeAlias
+
 from loopy.kernel.instruction import InstructionBase
 
 
 NoneType = type(None)
 
-import pytools.tag
 from pytools.lex import RE
 
 
-__doc__ = """
-.. autoclass:: Matchable
-.. autoclass:: StackMatchComponent
-.. autoclass:: StackMatch
+if TYPE_CHECKING:
+    import pytools.tag
 
-.. autofunction:: parse_match
-
-.. autofunction:: parse_stack_match
-
-Match expressions
-^^^^^^^^^^^^^^^^^
-
-.. autoclass:: MatchExpressionBase
-.. autoclass:: All
-.. autoclass:: And
-.. autoclass:: Or
-.. autoclass:: Not
-.. autoclass:: Id
-.. autoclass:: ObjTagged
-.. autoclass:: Tagged
-.. autoclass:: Writes
-.. autoclass:: Reads
-.. autoclass:: InKernel
-.. autoclass:: Iname
-"""
+    from loopy.kernel import LoopKernel
 
 
 def re_from_glob(s: str) -> re.Pattern:
@@ -133,7 +140,7 @@ class Matchable(Protocol):
     .. attribute:: tags
     """
     @property
-    def tags(self) -> FrozenSet[pytools.tag.Tag]:
+    def tags(self) -> frozenset[pytools.tag.Tag]:
         ...
 
 
@@ -494,7 +501,7 @@ class StackWildcardMatchComponent(StackMatchComponent):
 @dataclass(eq=True, frozen=True)
 class RuleInvocationMatchable:
     id: str
-    tags: FrozenSet[pytools.tag.Tag]
+    tags: frozenset[pytools.tag.Tag]
 
     def write_dependency_names(self):
         raise TypeError("writes: query may not be applied to rule invocations")
@@ -516,11 +523,11 @@ class StackMatch:
 
     def __call__(
             self, kernel: LoopKernel, insn: InstructionBase,
-            rule_stack: Sequence[Tuple[str, FrozenSet[pytools.tag.Tag]]]) -> bool:
+            rule_stack: Sequence[tuple[str, frozenset[pytools.tag.Tag]]]) -> bool:
         """
         :arg rule_stack: a tuple of (name, tags) rule invocation, outermost first
         """
-        stack_of_matchables: List[Matchable] = [insn]
+        stack_of_matchables: list[Matchable] = [insn]
         for id, tags in rule_stack:
             stack_of_matchables.append(RuleInvocationMatchable(id, tags))
 
@@ -531,10 +538,10 @@ class StackMatch:
 
 # {{{ stack match parsing
 
-ToStackMatchCovertible = Union[StackMatch, str, None]
+ToStackMatchConvertible: TypeAlias = Union[StackMatch, str, None]
 
 
-def parse_stack_match(smatch: ToStackMatchCovertible) -> StackMatch:
+def parse_stack_match(smatch: ToStackMatchConvertible) -> StackMatch:
     """Syntax example::
 
         ... > outer > ... > next > innermost $

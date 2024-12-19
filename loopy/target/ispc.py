@@ -1,4 +1,5 @@
 """Target for Intel ISPC."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -24,7 +25,7 @@ THE SOFTWARE.
 """
 
 
-from typing import Sequence, Tuple, cast
+from typing import TYPE_CHECKING, Sequence, cast
 
 import numpy as np
 
@@ -34,16 +35,19 @@ from pymbolic import var
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError
 from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
-from loopy.schedule import CallKernel
 from loopy.symbolic import Literal
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.types import LoopyType
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.schedule import CallKernel
+    from loopy.types import LoopyType
+    from loopy.typing import Expression
 
 
 # {{{ expression mapper
@@ -208,13 +212,13 @@ class ISPCASTBuilder(CFamilyASTBuilder):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         name = codegen_result.current_program(codegen_state).name
         kernel = codegen_state.kernel
 
         assert codegen_state.kernel.linearization is not None
         subkernel_name = cast(
-                        CallKernel,
+                        "CallKernel",
                         codegen_state.kernel.linearization[schedule_index]
                         ).kernel_name
 
@@ -252,8 +256,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[Expression, ...],
-            lsize: Tuple[Expression, ...]) -> Generable:
+            gsize: tuple[Expression, ...],
+            lsize: tuple[Expression, ...]) -> Generable:
         kernel = codegen_state.kernel
         ecm = self.get_expression_to_code_mapper(codegen_state)
 

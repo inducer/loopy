@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +26,7 @@ THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from typing_extensions import Self
 
@@ -34,7 +37,10 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_method
 
 from loopy.symbolic import SubstitutionMapper, get_dependencies
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    from loopy.typing import Expression
 
 
 @dataclass(frozen=True)
@@ -47,7 +53,7 @@ class AccessDescriptor:
     """
 
     identifier: Any = None
-    storage_axis_exprs: Optional[Sequence[ArithmeticExpression]] = None
+    storage_axis_exprs: Sequence[ArithmeticExpression] | None = None
 
     def copy(self, **kwargs) -> Self:
         return replace(self, **kwargs)
@@ -203,10 +209,10 @@ def compute_bounds(kernel, domain, stor2sweep,
 # {{{ array-to-buffer map
 
 class ArrayToBufferMapBase(ABC):
-    non1_storage_axis_names: Tuple[str, ...]
-    storage_base_indices: Tuple[ArithmeticExpression, ...]
-    non1_storage_shape: Tuple[ArithmeticExpression, ...]
-    non1_storage_axis_flags: Tuple[ArithmeticExpression, ...]
+    non1_storage_axis_names: tuple[str, ...]
+    storage_base_indices: tuple[ArithmeticExpression, ...]
+    non1_storage_shape: tuple[ArithmeticExpression, ...]
+    non1_storage_axis_flags: tuple[ArithmeticExpression, ...]
 
     @abstractmethod
     def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:

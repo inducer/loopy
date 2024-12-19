@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from loopy.kernel.function_interface import InKernelCallable
-from loopy.translation_unit import FunctionIdT
 from loopy.typing import not_none
 
 
@@ -29,7 +27,6 @@ THE SOFTWARE.
 
 import logging
 import sys
-from collections.abc import Hashable, Iterator, Mapping, Sequence, Set
 from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
@@ -44,19 +41,22 @@ from pytools import ImmutableRecord, MinRecursionLimit, ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
-from loopy.kernel.instruction import InstructionBase
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.typing import InameStr
 from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
+    from collections.abc import Hashable, Iterator, Mapping, Sequence, Set
+
     from loopy.kernel import LoopKernel
+    from loopy.kernel.function_interface import InKernelCallable
+    from loopy.kernel.instruction import InstructionBase
     from loopy.schedule.tools import (
         InameStrSet,
         LoopTree,
     )
-    from loopy.translation_unit import CallablesTable, TranslationUnit
+    from loopy.translation_unit import CallablesTable, FunctionIdT, TranslationUnit
 
 
 logger = logging.getLogger(__name__)

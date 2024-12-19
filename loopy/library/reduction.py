@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,17 +24,22 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from pymbolic import var
 from pymbolic.primitives import expr_dataclass
-from pytools.persistent_dict import Hash, KeyBuilder
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.symbolic import FunctionIdentifier, ResolvedFunction
 from loopy.tools import update_persistent_hash
 from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from pytools.persistent_dict import Hash, KeyBuilder
 
 
 __doc__ = """
@@ -537,7 +545,7 @@ def register_reduction_parser(parser):
     _REDUCTION_OP_PARSERS.append(parser)
 
 
-def parse_reduction_op(name):
+def parse_reduction_op(name: str) -> ReductionOperation | None:
     import re
 
     red_op_match = re.match(r"^([a-z]+)_([a-z0-9_]+)$", name)
