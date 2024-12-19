@@ -46,7 +46,7 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 if TYPE_CHECKING:
     from loopy.kernel.instruction import InstructionBase
-    from loopy.match import ToStackMatchCovertible
+    from loopy.match import ToStackMatchConvertible
 
 
 __doc__ = """
@@ -2381,7 +2381,7 @@ def rename_inames(
             old_inames: Collection[str],
             new_iname: str,
             existing_ok: bool = False,
-            within: ToStackMatchCovertible = None,
+            within: ToStackMatchConvertible = None,
             raise_on_domain_mismatch: bool | None = None
         ) -> LoopKernel:
     r"""
@@ -2525,7 +2525,7 @@ def rename_iname(
             old_iname: str,
             new_iname: str,
             existing_ok: bool = False,
-            within: ToStackMatchCovertible = None,
+            within: ToStackMatchConvertible = None,
             preserve_tags: bool = True,
             raise_on_domain_mismatch: bool | None = None
         ) -> LoopKernel:

@@ -7,7 +7,7 @@
 
 .. autofunction:: parse_stack_match
 
-.. autodata:: ToStackMatchCovertible
+.. autodata:: ToStackMatchConvertible
 
 Match expressions
 ^^^^^^^^^^^^^^^^^
@@ -538,10 +538,10 @@ class StackMatch:
 
 # {{{ stack match parsing
 
-ToStackMatchCovertible: TypeAlias = Union[StackMatch, str, None]
+ToStackMatchConvertible: TypeAlias = Union[StackMatch, str, None]
 
 
-def parse_stack_match(smatch: ToStackMatchCovertible) -> StackMatch:
+def parse_stack_match(smatch: ToStackMatchConvertible) -> StackMatch:
     """Syntax example::
 
         ... > outer > ... > next > innermost $
