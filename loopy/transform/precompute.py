@@ -72,7 +72,7 @@ if TYPE_CHECKING:
     from pytools.tag import Tag
 
     from loopy.kernel import LoopKernel
-    from loopy.match import ToStackMatchCovertible
+    from loopy.match import ToStackMatchConvertible
 
 
 # {{{ contains_subst_rule_invocation
@@ -387,7 +387,7 @@ def precompute_for_single_kernel(
         callables_table: CallablesTable,
         subst_use,
         sweep_inames=None,
-        within: ToStackMatchCovertible = None,
+        within: ToStackMatchConvertible = None,
         *,
         storage_axes=None,
         temporary_name: str | None = None,
