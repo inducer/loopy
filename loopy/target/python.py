@@ -1,4 +1,5 @@
 """Python host AST builder for integration with PyOpenCL."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"

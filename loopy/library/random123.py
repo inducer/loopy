@@ -1,4 +1,5 @@
 """Library integration with Random123."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
