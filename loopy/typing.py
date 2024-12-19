@@ -1,6 +1,10 @@
 """
 .. autoclass:: Expression
 .. autoclass:: ShapeType
+.. autodata:: InameStr
+
+.. currentmodule:: loopy
+
 .. autoclass:: auto
 """
 

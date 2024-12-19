@@ -33,7 +33,7 @@ from typing import (
     Sequence,
 )
 
-from immutables import Map
+import immutables
 
 from loopy.codegen.result import CodeGenerationResult
 from loopy.library.reduction import ReductionOpFunction
@@ -44,8 +44,10 @@ logger = logging.getLogger(__name__)
 
 from functools import reduce
 
+import islpy  # to help out Sphinx
 import islpy as isl
-from pytools import ProcessLogger, UniqueNameGenerator
+import pytools  # to help out Sphinx
+from pytools import ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, warn
@@ -161,11 +163,12 @@ class CodeGenerationState:
     # LoopKernel should not have a target, should use this instead
     target: TargetBase
 
-    implemented_domain: isl.Set
+    implemented_domain: islpy.Set
     """
     The entire implemented domain (as an :class:`islpy.Set`)
     i.e. all constraints that have been enforced so far.
     """
+
     implemented_predicates: frozenset[str | Expression]
 
     # /!\ mutable
@@ -173,11 +176,11 @@ class CodeGenerationState:
     seen_functions: set[SeenFunction]
     seen_atomic_dtypes: set[LoopyType]
 
-    var_subst_map: Map[str, Expression]
+    var_subst_map: immutables.Map[str, Expression]
     allow_complex: bool
     callables_table: CallablesTable
     is_entrypoint: bool
-    var_name_generator: UniqueNameGenerator
+    var_name_generator: pytools.UniqueNameGenerator
     is_generating_device_code: bool
 
     gen_program_name: str
@@ -329,6 +332,12 @@ class InKernelCallablesCollector(CombineMapper):
 
 @dataclass(frozen=True)
 class PreambleInfo:
+    """
+    .. autoattribute:: kernel
+    .. autoattribute:: seen_dtypes
+    .. autoattribute:: seen_functions
+    .. autoattribute:: seen_atomic_dtypes
+    """
     kernel: LoopKernel
     seen_dtypes: set[LoopyType]
     seen_functions: set[SeenFunction]
@@ -380,7 +389,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
             seen_atomic_dtypes=seen_atomic_dtypes,
-            var_subst_map=Map(),
+            var_subst_map=immutables.Map(),
             allow_complex=allow_complex,
             var_name_generator=kernel.get_var_name_generator(),
             is_generating_device_code=False,
@@ -481,7 +490,7 @@ def diverge_callee_entrypoints(program):
 
         new_callables[name] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=immutables.Map(new_callables))
 
 
 @dataclass(frozen=True)

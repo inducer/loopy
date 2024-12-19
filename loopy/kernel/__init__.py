@@ -1,4 +1,12 @@
-"""Kernel object."""
+"""
+.. currentmodule:: loopy
+
+.. autoclass:: LoopKernel
+
+.. autoclass:: KernelState
+    :members:
+    :undoc-members:
+"""
 from __future__ import annotations
 
 
@@ -23,7 +31,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
 from collections import defaultdict
 from dataclasses import dataclass, field, fields, replace
 from enum import IntEnum
@@ -37,13 +44,13 @@ from typing import (
     Iterator,
     Mapping,
     Sequence,
-    Tuple,
 )
 from warnings import warn
 
 import numpy as np
 from immutables import Map
 
+import islpy  # to help out Sphinx
 import islpy as isl
 from islpy import dim_type
 from pymbolic import ArithmeticExpression
@@ -55,10 +62,10 @@ from pytools import (
 )
 from pytools.tag import Tag, Taggable
 
+import loopy.kernel.data  # to help out Sphinx
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
     ArrayArg,
-    Iname,
     KernelArgument,
     SubstitutionRule,
     TemporaryVariable,
@@ -76,7 +83,7 @@ from loopy.typing import Expression, InameStr
 
 
 if TYPE_CHECKING:
-    from loopy.codegen import PreambleInfo
+    import loopy.codegen  # to help out Sphinx
     from loopy.kernel.function_interface import InKernelCallable
 
 
@@ -96,12 +103,9 @@ def _get_inames_from_domains(domains):
 
 @dataclass(frozen=True)
 class _BoundsRecord:
-    lower_bound_pw_aff: isl.PwAff
-    upper_bound_pw_aff: isl.PwAff
-    size: isl.PwAff
-
-
-PreambleGenerator = Callable[["PreambleInfo"], Iterator[Tuple[int, str]]]
+    lower_bound_pw_aff: islpy.PwAff
+    upper_bound_pw_aff: islpy.PwAff
+    size: islpy.PwAff
 
 
 @dataclass(frozen=True)
@@ -141,7 +145,7 @@ class LoopKernel(Taggable):
     .. automethod:: tagged
     .. automethod:: without_tags
     """
-    domains: Sequence[isl.BasicSet]
+    domains: Sequence[islpy.BasicSet]
     """Represents the :ref:`domain-tree`."""
 
     instructions: Sequence[InstructionBase]
@@ -150,13 +154,13 @@ class LoopKernel(Taggable):
     """
 
     args: Sequence[KernelArgument]
-    assumptions: isl.BasicSet
+    assumptions: islpy.BasicSet
     """
     Must be a :class:`islpy.BasicSet` parameter domain.
     """
 
     temporary_variables: Mapping[str, TemporaryVariable]
-    inames: Mapping[InameStr, Iname]
+    inames: Mapping[InameStr, loopy.kernel.data.Iname]
     """
     An entry is guaranteed to be present for each iname.
     """
@@ -169,7 +173,11 @@ class LoopKernel(Taggable):
     name: str = "loopy_kernel"
 
     preambles: Sequence[tuple[int, str]] = ()
-    preamble_generators: Sequence[PreambleGenerator] = ()
+    preamble_generators: Sequence[
+        Callable[
+                [loopy.codegen.PreambleInfo],
+                Iterator[tuple[int, str]]]
+            ] = ()
     symbol_manglers: Sequence[
             Callable[[LoopKernel, str], tuple[LoopyType, str] | None]] = ()
     linearization: Sequence[ScheduleItem] | None = None
@@ -1360,7 +1368,8 @@ class LoopKernel(Taggable):
         if "domains" in kwargs:
             inames = kwargs.get("inames", self.inames)
             domains = kwargs["domains"]
-            kwargs["inames"] = {name: inames.get(name, Iname(name, frozenset()))
+            kwargs["inames"] = {name: inames.get(name,
+                                         loopy.kernel.data.Iname(name, frozenset()))
                                 for name in _get_inames_from_domains(domains)}
 
             assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
