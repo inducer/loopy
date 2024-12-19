@@ -405,7 +405,7 @@ def test_nan_support(ctx_factory, target):
          lp.Assignment(parse("g"), NaN(np.complex64)),
          lp.Assignment(parse("h"), NaN(np.complex128)),
          ],
-        [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
+        [lp.GlobalArg("a", is_input=False, shape=()), ...],
         seq_dependencies=True, target=target())
 
     knl = lp.set_options(knl, return_dict=True)

@@ -96,11 +96,11 @@ def test_laplacian(ctx_factory):
     # print lp.preprocess_kernel(knl)
     # 1/0
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     kernel_gen = lp.generate_loop_schedules(knl,
             loop_priority=["m_fetch_G", "i_fetch_u"])
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
@@ -173,10 +173,10 @@ def test_laplacian_lmem(ctx_factory):
     # print lp.preprocess_kernel(knl)
     # 1/0
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
@@ -246,10 +246,10 @@ def test_laplacian_lmem_ilp(ctx_factory):
     # print seq_knl
     # 1/0
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     for knl in kernel_gen:
         print(lp.generate_code(knl))
@@ -333,10 +333,10 @@ def test_advect(ctx_factory):
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")  # , slabs=(0, 1))
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
@@ -446,13 +446,13 @@ def test_advect_dealias(ctx_factory):
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")  # , slabs=(0, 1))
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     print(knl)
     # 1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(knl, ctx, kernel_gen,
@@ -507,13 +507,13 @@ def test_interp_diff(ctx_factory):
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")  # , slabs=(0, 1))
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     print(knl)
     # 1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(knl, ctx, kernel_gen,
