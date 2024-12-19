@@ -100,6 +100,7 @@ extend-select = [
     # TODO
     # "UP",  # pyupgrade
     "RUF",  # ruff
+    "FA",
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
@@ -118,6 +119,12 @@ extend-ignore = [
 "loopy/target/c/compyte/ndarray/**/*.py" = ["Q", "B", "E", "F", "N", "C4"]
 "loopy/frontend/fortran/translator.py" = ["N802", "B028"]
 "proto-tests/*.py" = ["B"]
+"contrib/**/*.py" = ["I002"]
+"doc/conf.py" = ["I002"]
+"*.ipynb" = ["I002"]
+"examples/**/*.py" = ["I002"]
+"proto-tests/**/*.py" = ["I002"]
+"test/**/*.py" = ["I002"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"
@@ -138,6 +145,7 @@ known-local-folder = [
     "loopy",
 ]
 lines-after-imports = 2
+required-imports = ["from __future__ import annotations"]
 
 [tool.mypy]
 python_version = "3.10"

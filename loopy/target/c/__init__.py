@@ -1,4 +1,5 @@
 """Plain C target and base for other C-family languages."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"

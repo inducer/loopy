@@ -1,4 +1,5 @@
 """CUDA target independent of PyCUDA."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"

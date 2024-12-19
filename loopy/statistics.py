@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2015 James Stevens
 Copyright (C) 2018 Kaushik Kulkarni
