@@ -28,7 +28,7 @@ import logging
 import sys
 from functools import reduce
 from sys import intern
-from typing import AbstractSet, Dict, FrozenSet, List, Mapping, Sequence, Set
+from typing import AbstractSet, Mapping, Sequence
 
 import numpy as np
 
@@ -1824,7 +1824,7 @@ def get_subkernels(kernel) -> Sequence[str]:
 
 
 @memoize_on_first_arg
-def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[str]]:
+def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, frozenset[str]]:
     """Return a :class:`dict` mapping subkernel names to a :class:`frozenset`
     consisting of the instruction ids scheduled within the subkernel. The
     kernel must be scheduled.
@@ -1838,7 +1838,7 @@ def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[s
     from loopy.schedule import CallKernel, ReturnFromKernel, sched_item_to_insn_id
 
     subkernel = None
-    result: Dict[str, Set[str]] = {}
+    result: dict[str, set[str]] = {}
 
     for lin_item in kernel.linearization:
         if isinstance(lin_item, CallKernel):
@@ -1856,7 +1856,7 @@ def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[s
 
 
 @memoize_on_first_arg
-def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, FrozenSet[str]]:
+def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, frozenset[str]]:
     from loopy.kernel import KernelState
     if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("Kernel must be scheduled")
@@ -1864,7 +1864,7 @@ def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, FrozenSet[str
     assert kernel.linearization is not None
 
     result = {}
-    inames: List[str] = []
+    inames: list[str] = []
 
     from loopy.schedule import CallKernel, EnterLoop, LeaveLoop
 

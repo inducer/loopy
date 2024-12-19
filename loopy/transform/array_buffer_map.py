@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Optional, Sequence, Tuple
+from typing import Any, Callable, Sequence
 
 from typing_extensions import Self
 
@@ -50,7 +50,7 @@ class AccessDescriptor:
     """
 
     identifier: Any = None
-    storage_axis_exprs: Optional[Sequence[ArithmeticExpression]] = None
+    storage_axis_exprs: Sequence[ArithmeticExpression] | None = None
 
     def copy(self, **kwargs) -> Self:
         return replace(self, **kwargs)
@@ -206,10 +206,10 @@ def compute_bounds(kernel, domain, stor2sweep,
 # {{{ array-to-buffer map
 
 class ArrayToBufferMapBase(ABC):
-    non1_storage_axis_names: Tuple[str, ...]
-    storage_base_indices: Tuple[ArithmeticExpression, ...]
-    non1_storage_shape: Tuple[ArithmeticExpression, ...]
-    non1_storage_axis_flags: Tuple[ArithmeticExpression, ...]
+    non1_storage_axis_names: tuple[str, ...]
+    storage_base_indices: tuple[ArithmeticExpression, ...]
+    non1_storage_shape: tuple[ArithmeticExpression, ...]
+    non1_storage_axis_flags: tuple[ArithmeticExpression, ...]
 
     @abstractmethod
     def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:

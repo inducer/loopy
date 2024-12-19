@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import List, Mapping, Sequence, Tuple
+from typing import Mapping, Sequence
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
@@ -266,8 +266,8 @@ def replace_instruction_ids_in_insn(
         ) -> InstructionBase:
     changed = False
     new_depends_on = list(insn.depends_on)
-    extra_depends_on: List[str] = []
-    new_no_sync_with: List[Tuple[str, str]] = []
+    extra_depends_on: list[str] = []
+    new_no_sync_with: list[tuple[str, str]] = []
 
     if insn.id in replacements:
         assert isinstance(insn.id, str)

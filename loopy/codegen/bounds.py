@@ -24,8 +24,6 @@ THE SOFTWARE.
 """
 
 
-from typing import FrozenSet
-
 import islpy as isl
 from islpy import dim_type
 
@@ -65,7 +63,7 @@ def get_approximate_convex_bounds_checks(domain, check_inames,
 
 def get_usable_inames_for_conditional(
         kernel: LoopKernel, sched_index: int,
-        op_cache_manager: CodegenOperationCacheManager) -> FrozenSet[str]:
+        op_cache_manager: CodegenOperationCacheManager) -> frozenset[str]:
     active_inames = op_cache_manager.active_inames[sched_index]
     crosses_barrier = op_cache_manager.has_barrier_within[sched_index]
 
