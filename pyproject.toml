@@ -98,7 +98,7 @@ extend-select = [
     "W",   # pycodestyle
 
     # TODO
-    # "UP",  # pyupgrade
+    "UP",  # pyupgrade
     "RUF",  # ruff
     "FA",
 ]
@@ -112,6 +112,8 @@ extend-ignore = [
 
     # FIXME
     "NPY002", # numpy rng
+    "UP031", # .format instead of %s
+    "UP032", # .format instead of %s
 ]
 
 [tool.ruff.lint.per-file-ignores]

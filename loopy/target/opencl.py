@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 
@@ -633,7 +633,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 

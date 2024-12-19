@@ -25,7 +25,6 @@ THE SOFTWARE.
 
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Dict, FrozenSet, List
 
 from pytools import memoize_method
 
@@ -57,9 +56,9 @@ class KernelProxyForCodegenOperationCacheManager:
     Proxy to :class:`loopy.LoopKernel` to be used by
     :class:`CodegenOperationCacheManager`.
     """
-    instructions: List[InstructionBase]
-    linearization: List[ScheduleItem]
-    inames: Dict[str, Iname]
+    instructions: list[InstructionBase]
+    linearization: list[ScheduleItem]
+    inames: dict[str, Iname]
 
     @cached_property
     def id_to_insn(self):
@@ -209,7 +208,7 @@ class CodegenOperationCacheManager:
 
     @memoize_method
     def get_concurrent_inames_in_a_callkernel(
-            self, callkernel_index: int) -> FrozenSet[str]:
+            self, callkernel_index: int) -> frozenset[str]:
         """
         Returns a :class:`frozenset` of concurrent inames in a callkernel
 

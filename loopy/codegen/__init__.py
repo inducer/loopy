@@ -29,13 +29,8 @@ from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
     Any,
-    FrozenSet,
     Mapping,
-    Optional,
     Sequence,
-    Set,
-    Tuple,
-    Union,
 )
 
 from immutables import Map
@@ -137,8 +132,8 @@ class SeenFunction:
     """
     name: str
     c_name: str
-    arg_dtypes: Tuple[LoopyType, ...]
-    result_dtypes: Tuple[LoopyType, ...]
+    arg_dtypes: tuple[LoopyType, ...]
+    result_dtypes: tuple[LoopyType, ...]
 
 
 @dataclass(frozen=True)
@@ -203,12 +198,12 @@ class CodeGenerationState:
     kernel: LoopKernel
     target: TargetBase
     implemented_domain: isl.Set
-    implemented_predicates: FrozenSet[Union[str, Expression]]
+    implemented_predicates: frozenset[str | Expression]
 
     # /!\ mutable
-    seen_dtypes: Set[LoopyType]
-    seen_functions: Set[SeenFunction]
-    seen_atomic_dtypes: Set[LoopyType]
+    seen_dtypes: set[LoopyType]
+    seen_functions: set[SeenFunction]
+    seen_atomic_dtypes: set[LoopyType]
 
     var_subst_map: Map[str, Expression]
     allow_complex: bool
@@ -218,8 +213,8 @@ class CodeGenerationState:
     is_generating_device_code: bool
     gen_program_name: str
     schedule_index_end: int
-    codegen_cachemanager: "CodegenOperationCacheManager"
-    vectorization_info: Optional[VectorizationInfo] = None
+    codegen_cachemanager: CodegenOperationCacheManager
+    vectorization_info: VectorizationInfo | None = None
 
     def __post_init__(self):
         # FIXME: If this doesn't bomb during testing, we can get rid of target.
@@ -230,15 +225,15 @@ class CodeGenerationState:
 
     # {{{ copy helpers
 
-    def copy(self, **kwargs: Any) -> "CodeGenerationState":
+    def copy(self, **kwargs: Any) -> CodeGenerationState:
         return replace(self, **kwargs)
 
     def copy_and_assign(
-            self, name: str, value: Expression) -> "CodeGenerationState":
+            self, name: str, value: Expression) -> CodeGenerationState:
         """Make a copy of self with variable *name* fixed to *value*."""
         return self.copy(var_subst_map=self.var_subst_map.set(name, value))
 
-    def copy_and_assign_many(self, assignments) -> "CodeGenerationState":
+    def copy_and_assign_many(self, assignments) -> CodeGenerationState:
         """Make a copy of self with *assignments* included."""
 
         return self.copy(var_subst_map=self.var_subst_map.update(assignments))
@@ -371,9 +366,9 @@ class InKernelCallablesCollector(CombineMapper):
 @dataclass(frozen=True)
 class PreambleInfo:
     kernel: LoopKernel
-    seen_dtypes: Set[LoopyType]
-    seen_functions: Set[SeenFunction]
-    seen_atomic_dtypes: Set[LoopyType]
+    seen_dtypes: set[LoopyType]
+    seen_functions: set[SeenFunction]
+    seen_atomic_dtypes: set[LoopyType]
 
     # FIXME: This makes all the above redundant. It probably shouldn't be here.
     codegen_state: CodeGenerationState
@@ -546,10 +541,10 @@ class TranslationUnitCodeGenerationResult:
     .. automethod:: all_code
 
     """
-    host_programs: Mapping[str, "GeneratedProgram"]
-    device_programs: Sequence["GeneratedProgram"]
-    host_preambles: Sequence[Tuple[int, str]] = ()
-    device_preambles: Sequence[Tuple[int, str]] = ()
+    host_programs: Mapping[str, GeneratedProgram]
+    device_programs: Sequence[GeneratedProgram]
+    host_preambles: Sequence[tuple[int, str]] = ()
+    device_preambles: Sequence[tuple[int, str]] = ()
 
     def host_code(self):
         from loopy.codegen.result import process_preambles

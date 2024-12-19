@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Optional, Sequence, Tuple
+from typing import Sequence
 
 import numpy as np
 
@@ -174,7 +174,7 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Optional[Generable]]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable | None]:
         return [], None
 
     def get_function_definition(self, codegen_state, codegen_result,

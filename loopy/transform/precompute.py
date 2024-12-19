@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 
 from dataclasses import dataclass
-from typing import FrozenSet, List, Optional, Sequence, Type, Union, cast
+from typing import Sequence, cast
 
 import numpy as np
 from immutables import Map
@@ -136,7 +136,7 @@ def contains_a_subst_rule_invocation(kernel, insn):
 
 @dataclass(frozen=True)
 class RuleAccessDescriptor(AccessDescriptor):
-    args: Optional[Sequence[ArithmeticExpression]] = None
+    args: Sequence[ArithmeticExpression] | None = None
 
 
 def access_descriptor_id(args, expansion_stack):
@@ -386,17 +386,17 @@ def precompute_for_single_kernel(
         within: ToStackMatchCovertible = None,
         *,
         storage_axes=None,
-        temporary_name: Optional[str] = None,
-        precompute_inames: Optional[Sequence[str]] = None,
-        precompute_outer_inames: Optional[FrozenSet[str]] = None,
+        temporary_name: str | None = None,
+        precompute_inames: Sequence[str] | None = None,
+        precompute_outer_inames: frozenset[str] | None = None,
         storage_axis_to_tag=None,
 
-        default_tag: Union[Tag, str, None] = None,
+        default_tag: Tag | str | None = None,
 
-        dtype: Optional[ToLoopyTypeConvertible] = None,
+        dtype: ToLoopyTypeConvertible | None = None,
         fetch_bounding_box: bool = False,
-        temporary_address_space: Union[AddressSpace, Type[auto], None] = None,
-        compute_insn_id: Optional[str] = None,
+        temporary_address_space: AddressSpace | type[auto] | None = None,
+        compute_insn_id: str | None = None,
         _enable_mirgecom_workaround: bool = False,
         ) -> LoopKernel:
     """Precompute the expression described in the substitution rule determined by
@@ -517,7 +517,7 @@ def precompute_for_single_kernel(
 
     footprint_generators = None
 
-    subst_name: Optional[str] = None
+    subst_name: str | None = None
     subst_tag = None
 
     from pymbolic.primitives import Call, Variable
@@ -677,8 +677,8 @@ def precompute_for_single_kernel(
 
     prior_storage_axis_name_dict = {}
 
-    storage_axis_names: List[str] = []
-    storage_axis_sources: List[Union[str, int]] = []  # number for arg#, or iname
+    storage_axis_names: list[str] = []
+    storage_axis_sources: list[str | int] = []  # number for arg#, or iname
 
     # {{{ check for pre-existing precompute_inames
 
@@ -965,7 +965,7 @@ def precompute_for_single_kernel(
             # within_inames determined below
             )
     compute_dep_id = compute_insn_id
-    added_compute_insns: List[InstructionBase] = [compute_insn]
+    added_compute_insns: list[InstructionBase] = [compute_insn]
 
     if temporary_address_space == AddressSpace.GLOBAL:
         barrier_insn_id = kernel.make_unique_instruction_id(

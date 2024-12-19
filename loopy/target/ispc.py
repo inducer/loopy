@@ -25,7 +25,7 @@ THE SOFTWARE.
 """
 
 
-from typing import Sequence, Tuple, cast
+from typing import Sequence, cast
 
 import numpy as np
 
@@ -209,7 +209,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         name = codegen_result.current_program(codegen_state).name
         kernel = codegen_state.kernel
 
@@ -253,8 +253,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[Expression, ...],
-            lsize: Tuple[Expression, ...]) -> Generable:
+            gsize: tuple[Expression, ...],
+            lsize: tuple[Expression, ...]) -> Generable:
         kernel = codegen_state.kernel
         ecm = self.get_expression_to_code_mapper(codegen_state)
 

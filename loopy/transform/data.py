@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass, replace
-from typing import Dict, Optional, Tuple, cast
+from typing import cast
 from warnings import warn
 
 import numpy as np
@@ -988,7 +988,7 @@ def add_padding_to_avoid_bank_conflicts(kernel, device):
 class _BaseStorageInfo:
     name: str
     next_offset: Expression
-    approx_nbytes: Optional[int] = None
+    approx_nbytes: int | None = None
 
 
 def _sym_max(a: Expression, b: Expression) -> Expression:
@@ -1002,9 +1002,9 @@ def _sym_max(a: Expression, b: Expression) -> Expression:
 
 @for_each_kernel
 def allocate_temporaries_for_base_storage(kernel: LoopKernel,
-        only_address_space: Optional[int] = None,
+        only_address_space: int | None = None,
         aliased=True,
-        max_nbytes: Optional[int] = None,
+        max_nbytes: int | None = None,
         ) -> LoopKernel:
     from pytools import product
 
@@ -1013,8 +1013,8 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
 
     vng = kernel.get_var_name_generator()
 
-    name_aspace_dtype_to_bsi: Dict[
-            Tuple[str, AddressSpace, LoopyType], _BaseStorageInfo] = {}
+    name_aspace_dtype_to_bsi: dict[
+            tuple[str, AddressSpace, LoopyType], _BaseStorageInfo] = {}
 
     for tv in sorted(
             kernel.temporary_variables.values(),

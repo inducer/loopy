@@ -25,7 +25,7 @@ THE SOFTWARE.
 """
 
 import re
-from typing import Any, Optional, Sequence, Tuple, cast
+from typing import Any, Sequence, cast
 
 import numpy as np
 
@@ -840,7 +840,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 
         assert codegen_state.kernel.linearization is not None
@@ -878,8 +878,8 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[Expression, ...],
-            lsize: Tuple[Expression, ...]) -> Optional[Generable]:
+            gsize: tuple[Expression, ...],
+            lsize: tuple[Expression, ...]) -> Generable | None:
         return None
 
     def emit_temp_var_decl_for_tv_with_base_storage(self,
