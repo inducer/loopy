@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 
 from dataclasses import dataclass
-from typing import Sequence, cast
+from typing import TYPE_CHECKING, Sequence, cast
 
 import numpy as np
 from immutables import Map
@@ -34,10 +34,8 @@ import islpy as isl
 from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_on_first_arg
-from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import AddressSpace
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.kernel.instruction import InstructionBase, MultiAssignmentBase
@@ -45,7 +43,6 @@ from loopy.kernel.tools import (
     find_most_recent_global_barrier,
     kernel_has_global_barriers,
 )
-from loopy.match import ToStackMatchCovertible
 from loopy.symbolic import (
     CombineMapper,
     RuleAwareIdentityMapper,
@@ -69,6 +66,13 @@ from loopy.typing import (
     integer_or_err,
     not_none,
 )
+
+
+if TYPE_CHECKING:
+    from pytools.tag import Tag
+
+    from loopy.kernel import LoopKernel
+    from loopy.match import ToStackMatchCovertible
 
 
 # {{{ contains_subst_rule_invocation
@@ -582,7 +586,7 @@ def precompute_for_single_kernel(
             if isinstance(fpg, Variable):
                 args: tuple[ArithmeticExpression, ...] = ()
             elif isinstance(fpg, Call):
-                args = cast(tuple[ArithmeticExpression, ...], fpg.parameters)
+                args = cast("tuple[ArithmeticExpression, ...]", fpg.parameters)
             else:
                 raise ValueError("footprint generator must "
                         "be substitution rule invocation")

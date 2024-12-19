@@ -29,17 +29,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
-from immutables import Map
 
 from pytools import memoize_method
 from pytools.codegen import CodeGenerator, Indentation
 
-from loopy.codegen.result import CodeGenerationResult
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import ArrayArg
-from loopy.schedule.tools import KernelArgInfo
 from loopy.target.execution import ExecutionWrapperGeneratorBase, ExecutorBase
-from loopy.types import LoopyType
 from loopy.typing import Expression, integer_expr_or_err
 
 
@@ -47,7 +42,14 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
+    from immutables import Map
+
     import pyopencl as cl
+
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.types import LoopyType
 
 
 # {{{ invoker generation

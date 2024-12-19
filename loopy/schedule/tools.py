@@ -25,13 +25,19 @@ __doc__ = """
 .. autoclass:: AccessMapDescriptor
 .. autoclass:: WriteRaceChecker
 
-.. autoclass:: InameStrSet
 .. autoclass:: LoopNestTree
 .. autoclass:: LoopTree
 
 .. autofunction:: separate_loop_nest
 .. autofunction:: get_partial_loop_nest_tree
 .. autofunction:: get_loop_tree
+
+References
+^^^^^^^^^^
+
+.. class:: InameStrSet
+
+    See :class:`loopy.typing.InameStrSet`
 """
 
 __license__ = """
@@ -55,10 +61,9 @@ THE SOFTWARE.
 """
 
 import enum
-from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from functools import cached_property, reduce
-from typing import AbstractSet, FrozenSet, Sequence
+from typing import TYPE_CHECKING, AbstractSet, Sequence
 
 from immutables import Map
 from typing_extensions import TypeAlias
@@ -67,11 +72,16 @@ import islpy as isl
 from pytools import memoize_method, memoize_on_first_arg
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
-from loopy.schedule import ScheduleItem
 from loopy.schedule.tree import Tree
-from loopy.typing import InameStr, not_none
+from loopy.typing import InameStr, InameStrSet, not_none
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Collection, Mapping
+
+    from loopy.kernel import LoopKernel
+    from loopy.schedule import ScheduleItem
 
 
 # {{{ block boundary finder
@@ -674,7 +684,6 @@ class WriteRaceChecker:
 # }}}
 
 
-InameStrSet: TypeAlias = FrozenSet[InameStr]
 LoopNestTree: TypeAlias = Tree[InameStrSet]
 LoopTree: TypeAlias = Tree[InameStr]
 

@@ -25,7 +25,7 @@ THE SOFTWARE.
 """
 
 import re
-from typing import Any, Sequence, cast
+from typing import TYPE_CHECKING, Any, Sequence, cast
 
 import numpy as np
 
@@ -44,10 +44,7 @@ from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
 from loopy.kernel.data import (
     AddressSpace,
@@ -58,14 +55,20 @@ from loopy.kernel.data import (
     ValueArg,
 )
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.schedule import CallKernel
 from loopy.symbolic import IdentityMapper
 from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
-from loopy.target.execution import ExecutorBase
 from loopy.tools import remove_common_indentation
-from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import LoopyType, NumpyType, to_loopy_type
 from loopy.typing import Expression, auto
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.schedule import CallKernel
+    from loopy.target.execution import ExecutorBase
+    from loopy.translation_unit import FunctionIdT, TranslationUnit
 
 
 __doc__ = """
@@ -845,7 +848,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         assert codegen_state.kernel.linearization is not None
         subkernel_name = cast(
-                        CallKernel,
+                        "CallKernel",
                         codegen_state.kernel.linearization[schedule_index]
                         ).kernel_name
 
@@ -1072,7 +1075,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             arg_decl: Declarator = RestrictPointer(
                     self.wrap_decl_for_address_space(
                         self.get_array_base_declarator(temp_var),
-                        cast(AddressSpace, temp_var.address_space)))
+                        cast("AddressSpace", temp_var.address_space)))
             if not is_written:
                 arg_decl = Const(arg_decl)
 

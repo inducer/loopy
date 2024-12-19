@@ -24,7 +24,6 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
@@ -34,10 +33,6 @@ from typing import (
 )
 
 import immutables
-
-from loopy.codegen.result import CodeGenerationResult
-from loopy.library.reduction import ReductionOpFunction
-from loopy.translation_unit import CallablesTable, TranslationUnit
 
 
 logger = logging.getLogger(__name__)
@@ -51,24 +46,21 @@ from pytools import ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, warn
-from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 from loopy.symbolic import CombineMapper
-from loopy.target import TargetBase
 from loopy.tools import LoopyKeyBuilder, caches
-from loopy.types import LoopyType
-from loopy.typing import Expression
 from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
-    from loopy.codegen.result import GeneratedProgram
+    from loopy.codegen.result import CodeGenerationResult, GeneratedProgram
     from loopy.codegen.tools import CodegenOperationCacheManager
-
-
-if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
-    from loopy.codegen.result import GeneratedProgram
-    from loopy.codegen.tools import CodegenOperationCacheManager
+    from loopy.kernel import LoopKernel
+    from loopy.library.reduction import ReductionOpFunction
+    from loopy.target import TargetBase
+    from loopy.translation_unit import CallablesTable, TranslationUnit
+    from loopy.types import LoopyType
+    from loopy.typing import Expression
 
 
 __doc__ = """

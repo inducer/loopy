@@ -24,9 +24,8 @@ THE SOFTWARE.
 """
 
 import re
-from collections.abc import Mapping
 from sys import intern
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import numpy as np
 
@@ -34,7 +33,12 @@ import pytools.lex
 from pymbolic.parser import Parser as ExpressionParserBase
 
 from loopy.frontend.fortran.diagnostic import TranslationError
-from loopy.symbolic import LexTable
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from loopy.symbolic import LexTable
 
 
 _less_than = intern("less_than")

@@ -26,11 +26,14 @@ THE SOFTWARE.
 
 import os
 import re
-from collections.abc import Mapping
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from warnings import warn
 
 from pytools import ImmutableRecord
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 ALLOW_TERMINAL_COLORS = True

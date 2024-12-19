@@ -97,10 +97,10 @@ extend-select = [
     "Q",   # flake8-quotes
     "W",   # pycodestyle
 
-    # TODO
     "UP",  # pyupgrade
     "RUF",  # ruff
     "FA",
+    "TC",
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
@@ -157,7 +157,6 @@ warn_unused_ignores = true
 # check_untyped_defs = true
 
 exclude = [
-  "loopy/target/c/compyte/ndarray/.*",
   "loopy/target/c/compyte/array.py",
 ]
 

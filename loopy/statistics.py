@@ -28,9 +28,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Sequence
 from functools import cached_property, partial
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import islpy as isl
 from islpy import dim_type
@@ -43,6 +42,10 @@ from loopy.kernel.data import AddressSpace, MultiAssignmentBase, TemporaryVariab
 from loopy.kernel.function_interface import CallableKernel
 from loopy.symbolic import CoefficientCollector, flatten
 from loopy.translation_unit import TranslationUnit
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 __doc__ = """

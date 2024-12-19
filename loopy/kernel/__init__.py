@@ -53,7 +53,6 @@ from immutables import Map
 import islpy  # to help out Sphinx
 import islpy as isl
 from islpy import dim_type
-from pymbolic import ArithmeticExpression
 from pytools import (
     UniqueNameGenerator,
     generate_unique_names,
@@ -62,6 +61,7 @@ from pytools import (
 )
 from pytools.tag import Tag, Taggable
 
+import loopy.codegen
 import loopy.kernel.data  # to help out Sphinx
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
@@ -73,18 +73,19 @@ from loopy.kernel.data import (
     _ArraySeparationInfo,
     filter_iname_tags_by_type,
 )
-from loopy.kernel.instruction import InstructionBase
-from loopy.options import Options
-from loopy.schedule import ScheduleItem
-from loopy.target import TargetBase
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import Expression, InameStr
 
 
 if TYPE_CHECKING:
-    import loopy.codegen  # to help out Sphinx
+    from pymbolic import ArithmeticExpression
+
     from loopy.kernel.function_interface import InKernelCallable
+    from loopy.kernel.instruction import InstructionBase
+    from loopy.options import Options
+    from loopy.schedule import ScheduleItem
+    from loopy.target import TargetBase
+    from loopy.typing import Expression, InameStr
 
 
 # {{{ loop kernel object

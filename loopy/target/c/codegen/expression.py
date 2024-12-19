@@ -24,6 +24,8 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 import islpy as isl
@@ -45,11 +47,14 @@ from pymbolic.mapper.stringifier import (
 
 from loopy.diagnostic import LoopyError
 from loopy.expression import dtype_to_type_context
-from loopy.symbolic import TypeCast
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeReader
 from loopy.types import LoopyType
 from loopy.typing import Expression, is_integer
+
+
+if TYPE_CHECKING:
+    from loopy.symbolic import TypeCast
 
 
 __doc__ = """

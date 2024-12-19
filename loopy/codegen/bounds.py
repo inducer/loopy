@@ -24,11 +24,15 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 import islpy as isl
 from islpy import dim_type
 
-from loopy.codegen.tools import CodegenOperationCacheManager
-from loopy.kernel import LoopKernel
+
+if TYPE_CHECKING:
+    from loopy.codegen.tools import CodegenOperationCacheManager
+    from loopy.kernel import LoopKernel
 
 
 # {{{ approximate, convex bounds check generator

@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import Iterable, List, TypeVar, cast
+from typing import TYPE_CHECKING, Iterable, List, TypeVar, cast
 
 
 logger = logging.getLogger(__name__)
@@ -42,8 +42,6 @@ from loopy.diagnostic import (
     WriteRaceConditionWarning,
     warn_with_kernel,
 )
-from loopy.kernel import LoopKernel
-from loopy.kernel.array import ArrayDimImplementationTag
 from loopy.kernel.data import (
     ArrayArg,
     KernelArgument,
@@ -71,7 +69,12 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.array import ArrayDimImplementationTag
+    from loopy.typing import Expression
 
 
 # {{{ check for writes to predicates
@@ -196,7 +199,7 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
                 sep_axis_indices_set=sep_axis_indices_set,
                 subarray_names=Map({
                     ind: vng(f"{arg.name}_s{'_'.join(str(i) for i in ind)}")
-                    for ind in np.ndindex(*cast(List[int], sep_shape))}))
+                    for ind in np.ndindex(*cast("List[int]", sep_shape))}))
 
         new_args.append(arg.copy(_separation_info=sep_info))
 

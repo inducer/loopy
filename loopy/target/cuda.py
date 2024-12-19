@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
@@ -32,8 +32,6 @@ from cgen import Const, Declarator, Generable, Pointer
 from pymbolic import var
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
 from loopy.kernel.data import (
@@ -47,6 +45,11 @@ from loopy.kernel.function_interface import ScalarCallable
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ vector types

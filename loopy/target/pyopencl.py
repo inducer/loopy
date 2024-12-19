@@ -31,7 +31,6 @@ from warnings import warn
 
 import numpy as np
 
-import genpy
 import pymbolic.primitives as p
 from cgen import (
     Block,
@@ -46,10 +45,7 @@ from cgen import (
 )
 from cgen.opencl import CLGlobal
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import (
     ArrayArg,
     ConstantArg,
@@ -64,17 +60,22 @@ from loopy.target.opencl import (
     OpenCLCASTBuilder,
     OpenCLTarget,
 )
-from loopy.target.pyopencl_execution import PyOpenCLExecutor
 from loopy.target.python import PythonASTBuilderBase
-from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import NumpyType
-from loopy.typing import Expression
 
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    import genpy
     import pyopencl as cl
+
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.target.pyopencl_execution import PyOpenCLExecutor
+    from loopy.translation_unit import FunctionIdT, TranslationUnit
+    from loopy.typing import Expression
 
 
 # {{{ pyopencl function scopers
@@ -1033,7 +1034,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
         kernel = codegen_state.kernel
         assert kernel.linearization is not None
 
-        subkernel_name = cast(CallKernel,
+        subkernel_name = cast("CallKernel",
                 kernel.linearization[schedule_index]).kernel_name
 
         result = []
@@ -1104,7 +1105,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
         assert codegen_state.kernel.linearization is not None
         subkernel_name = cast(
-                        CallKernel,
+                        "CallKernel",
                         codegen_state.kernel.linearization[schedule_index]
                         ).kernel_name
 

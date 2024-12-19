@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from typing_extensions import Self
 
@@ -37,7 +37,10 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_method
 
 from loopy.symbolic import SubstitutionMapper, get_dependencies
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    from loopy.typing import Expression
 
 
 @dataclass(frozen=True)

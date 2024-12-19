@@ -29,7 +29,7 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass, replace
-from typing import Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence
 
 
 logger = logging.getLogger(__name__)
@@ -37,18 +37,22 @@ logger = logging.getLogger(__name__)
 from immutables import Map
 
 import islpy as isl
-from pymbolic.primitives import ExpressionNode
 from pytools import memoize_on_first_arg
-from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError, ReductionIsNotTriangularError, warn_with_kernel
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import AddressSpace, TemporaryVariable, make_assignment
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import Assignment, InstructionBase, MultiAssignmentBase
 from loopy.symbolic import ReductionCallbackMapper
 from loopy.transform.instruction import replace_instruction_ids_in_insn
 from loopy.translation_unit import ConcreteCallablesTable, TranslationUnit
+
+
+if TYPE_CHECKING:
+    from pymbolic.primitives import ExpressionNode
+    from pytools.tag import Tag
+
+    from loopy.kernel import LoopKernel
 
 
 # {{{ reduction realization context

@@ -1,5 +1,32 @@
-"""Matching functionality for instruction ids and substitution
-rule invocations stacks."""
+"""
+.. autoclass:: Matchable
+.. autoclass:: StackMatchComponent
+.. autoclass:: StackMatch
+
+.. autofunction:: parse_match
+
+.. autofunction:: parse_stack_match
+
+.. autodata:: ToStackMatchCovertible
+
+Match expressions
+^^^^^^^^^^^^^^^^^
+
+.. autoclass:: MatchExpressionBase
+.. autoclass:: All
+.. autoclass:: And
+.. autoclass:: Or
+.. autoclass:: Not
+.. autoclass:: Id
+.. autoclass:: ObjTagged
+.. autoclass:: Tagged
+.. autoclass:: Writes
+.. autoclass:: Reads
+.. autoclass:: InKernel
+.. autoclass:: Iname
+
+"""
+
 from __future__ import annotations
 
 
@@ -29,43 +56,22 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from sys import intern
-from typing import Protocol, Sequence, Union
+from typing import TYPE_CHECKING, Protocol, Sequence, Union
 
-from loopy.kernel import LoopKernel
+from typing_extensions import TypeAlias
+
 from loopy.kernel.instruction import InstructionBase
 
 
 NoneType = type(None)
 
-import pytools.tag
 from pytools.lex import RE
 
 
-__doc__ = """
-.. autoclass:: Matchable
-.. autoclass:: StackMatchComponent
-.. autoclass:: StackMatch
+if TYPE_CHECKING:
+    import pytools.tag
 
-.. autofunction:: parse_match
-
-.. autofunction:: parse_stack_match
-
-Match expressions
-^^^^^^^^^^^^^^^^^
-
-.. autoclass:: MatchExpressionBase
-.. autoclass:: All
-.. autoclass:: And
-.. autoclass:: Or
-.. autoclass:: Not
-.. autoclass:: Id
-.. autoclass:: ObjTagged
-.. autoclass:: Tagged
-.. autoclass:: Writes
-.. autoclass:: Reads
-.. autoclass:: InKernel
-.. autoclass:: Iname
-"""
+    from loopy.kernel import LoopKernel
 
 
 def re_from_glob(s: str) -> re.Pattern:
@@ -532,7 +538,7 @@ class StackMatch:
 
 # {{{ stack match parsing
 
-ToStackMatchCovertible = Union[StackMatch, str, None]
+ToStackMatchCovertible: TypeAlias = Union[StackMatch, str, None]
 
 
 def parse_stack_match(smatch: ToStackMatchCovertible) -> StackMatch:

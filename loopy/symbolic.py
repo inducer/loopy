@@ -25,7 +25,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 import re
-from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass, replace
 from functools import cached_property, reduce
 from sys import intern
@@ -80,7 +79,6 @@ from pymbolic.mapper.substitutor import (
 )
 from pymbolic.mapper.unifier import UnidirectionalUnifier as UnidirectionalUnifierBase
 from pymbolic.parser import Parser as ParserBase
-from pymbolic.typing import ArithmeticOrExpressionT
 from pytools import memoize, memoize_method, memoize_on_first_arg
 from pytools.tag import Tag, Taggable, ToTagSetConvertible
 
@@ -89,15 +87,19 @@ from loopy.diagnostic import (
     LoopyError,
     UnableToDetermineAccessRangeError,
 )
-from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible
 from loopy.typing import Expression, not_none
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Collection, Iterable
+
+    from pymbolic.typing import ArithmeticOrExpressionT
+
     from loopy.kernel import LoopKernel
     from loopy.kernel.data import KernelArgument, SubstitutionRule, TemporaryVariable
     from loopy.kernel.instruction import InstructionBase
     from loopy.library.reduction import ReductionOperation, ReductionOpFunction
+    from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible
 
 
 __doc__ = """
@@ -226,7 +228,7 @@ class IdentityMapperMixin(Mapper[Expression, P]):
                 and new_subscript is expr.subscript):
             return expr
 
-        return SubArrayRef(cast(tuple[Variable, ...], new_inames), new_subscript)
+        return SubArrayRef(cast("tuple[Variable, ...]", new_inames), new_subscript)
 
     def map_resolved_function(self, expr, *args: P.args, **kwargs: P.kwargs):
         # leaf, doesn't change
@@ -248,7 +250,7 @@ class FlattenMapper(FlattenMapperBase, IdentityMapperMixin):
 
 
 def flatten(expr: ArithmeticOrExpressionT) -> ArithmeticOrExpressionT:
-    return cast(ArithmeticOrExpressionT, FlattenMapper()(expr))
+    return cast("ArithmeticOrExpressionT", FlattenMapper()(expr))
 
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin, Generic[P]):
@@ -1044,7 +1046,7 @@ def _get_dependencies_and_reduction_inames(
         ) -> tuple[AbstractSet[str], AbstractSet[str]]:
     dep_mapper: DependencyMapperWithReductionInames[[]] = \
         DependencyMapperWithReductionInames(composite_leaves=False)
-    deps = frozenset(cast(Variable, dep).name for dep in dep_mapper(expr))
+    deps = frozenset(cast("Variable", dep).name for dep in dep_mapper(expr))
     reduction_inames = dep_mapper.reduction_inames
     return deps, reduction_inames
 

@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from sys import intern
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Mapping,
@@ -44,8 +45,11 @@ from pytools.tag import Tag, Taggable, tag_dataclass
 
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional as LoopyOptional
-from loopy.types import LoopyType
-from loopy.typing import Expression, InameStr
+
+
+if TYPE_CHECKING:
+    from loopy.types import LoopyType
+    from loopy.typing import Expression, InameStr
 
 
 # {{{ instruction tags

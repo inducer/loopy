@@ -24,7 +24,6 @@ THE SOFTWARE.
 """
 
 import re
-import sys
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -41,7 +40,6 @@ from warnings import warn
 import numpy as np  # noqa
 from typing_extensions import Self, TypeAlias
 
-from pymbolic import ArithmeticExpression
 from pymbolic.primitives import is_arithmetic_expression
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable
@@ -53,14 +51,12 @@ from loopy.typing import Expression, ShapeType, auto, is_integer
 
 
 if TYPE_CHECKING:
+    from pymbolic import ArithmeticExpression
+
     from loopy.codegen import VectorizationInfo
     from loopy.kernel import LoopKernel
     from loopy.kernel.data import ArrayArg, TemporaryVariable
     from loopy.target import TargetBase
-
-if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
-    from loopy.target import TargetBase
-
 
 T = TypeVar("T")
 
@@ -629,7 +625,7 @@ def _parse_shape_or_strides(
         x_tup: tuple[Expression | str, ...] = x_parsed
     else:
         assert x_parsed is not auto
-        x_tup = (cast(Expression, x_parsed),)
+        x_tup = (cast("Expression", x_parsed),)
 
     def parse_arith(x: Expression | str) -> ArithmeticExpression:
         if isinstance(x, str):
@@ -1296,7 +1292,7 @@ def get_access_info(kernel: LoopKernel,
 
         index = tuple(remaining_index)
         # only arguments (not temporaries) may be sep-tagged
-        ary = cast(ArrayArg,
+        ary = cast("ArrayArg",
             kernel.arg_dict[ary._separation_info.subarray_names[tuple(sep_index)]])
 
     # }}}

@@ -10,15 +10,6 @@
 .. autoclass:: OpenCLTarget
 .. autoclass:: PyOpenCLTarget
 .. autoclass:: ISPCTarget
-
-References to Canonical Names
------------------------------
-
-.. currentmodule:: loopy.target
-
-.. class:: TargetBase
-
-    See :class:`loopy.TargetBase`.
 """
 
 from __future__ import annotations
