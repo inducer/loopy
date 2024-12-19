@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -20,8 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from typing import Optional
 
 import numpy as np
 
@@ -123,7 +124,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return s
 
-    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):  # type: ignore[override]
+    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
         result = super().rec(expr, type_context)
 
         if needed_type is None:
@@ -476,7 +477,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif np.isfinite(expr):
             if type_context == "f":
-                return Literal(repr(float((expr)))+"f")
+                return Literal(repr(float(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context in ["i", "b"]:

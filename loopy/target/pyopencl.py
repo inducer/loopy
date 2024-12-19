@@ -26,7 +26,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, List, Optional, Sequence, Tuple, Union, cast
+from typing import TYPE_CHECKING, Any, Sequence, cast
 from warnings import warn
 
 import numpy as np
@@ -513,14 +513,14 @@ class PyOpenCLTarget(OpenCLTarget):
     host_program_name_suffix = ""
 
     # FIXME Not yet complete
-    limit_arg_size_nbytes: Optional[int]
+    limit_arg_size_nbytes: int | None
     pointer_size_nbytes: int
 
     def __init__(
             self, device=None, *, pyopencl_module_name: str = "_lpy_cl",
             atomics_flavor=None, use_int8_for_bool: bool = True,
-            limit_arg_size_nbytes: Optional[int] = None,
-            pointer_size_nbytes: Optional[int] = None
+            limit_arg_size_nbytes: int | None = None,
+            pointer_size_nbytes: int | None = None
             ) -> None:
         # This ensures the dtype registry is populated.
         import pyopencl.tools
@@ -620,7 +620,7 @@ class PyOpenCLTarget(OpenCLTarget):
     # type-ignore because we're making things from *args: Any more concrete,
     # and mypy doesn't like it.
     def get_kernel_executor(self, t_unit: TranslationUnit,  # type: ignore[override]
-                            queue_or_context: Union[cl.CommandQueue, cl.Context],
+                            queue_or_context: cl.CommandQueue | cl.Context,
                             *args: Any, entrypoint: FunctionIdT, **kwargs: Any
                             ) -> PyOpenCLExecutor:
         from pyopencl import CommandQueue
@@ -647,7 +647,7 @@ def generate_value_arg_setup(
     import loopy as lp
     from loopy.kernel.array import ArrayBase
 
-    result: List[genpy.Generable] = []
+    result: list[genpy.Generable] = []
     gen = result.append
 
     buf_indices_and_args = []
@@ -732,10 +732,10 @@ def generate_array_arg_setup(
 
     from loopy.kernel.array import ArrayBase
 
-    result: List[genpy.Generable] = []
+    result: list[genpy.Generable] = []
     gen = result.append
 
-    cl_indices_and_args: List[Union[int, str]] = []
+    cl_indices_and_args: list[int | str] = []
     for arg_idx, passed_name in enumerate(passed_names):
         if passed_name in kernel.all_inames():
             continue
@@ -801,7 +801,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Optional[genpy.Generable]]:
+            ) -> tuple[Sequence[tuple[str, str]], genpy.Generable | None]:
         # no such thing in Python
         return [], None
 
@@ -853,7 +853,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_kernel_call(
             self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[Expression, ...], lsize: Tuple[Expression, ...]
+            gsize: tuple[Expression, ...], lsize: tuple[Expression, ...]
             ) -> genpy.Suite:
         from genpy import Assert, Assign, Comment, Line, Suite
 
@@ -978,8 +978,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
 def split_args_for_overflow(
         kernel: LoopKernel, passed_names: Sequence[str],
-        *, limit_arg_size_nbytes: Optional[int], pointer_size_nbytes: int
-        ) -> Tuple[Sequence[str], Sequence[str]]:
+        *, limit_arg_size_nbytes: int | None, pointer_size_nbytes: int
+        ) -> tuple[Sequence[str], Sequence[str]]:
     if limit_arg_size_nbytes is None:
         return passed_names, []
 
@@ -1099,7 +1099,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 
         assert codegen_state.kernel.linearization is not None

@@ -1,4 +1,6 @@
 """isl helpers"""
+from __future__ import annotations
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2015 James Stevens
 Copyright (C) 2018 Kaushik Kulkarni
@@ -893,7 +896,6 @@ class CounterBase(CombineMapper):
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
 
-    map_substitution = map_common_subexpression
     map_derivative = map_common_subexpression
     map_slice = map_common_subexpression
 
@@ -1054,11 +1056,6 @@ class ExpressionOpCounter(CounterBase):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
-
-    def map_substitution(self, expr):
-        raise NotImplementedError("ExpressionOpCounter encountered "
-                                  "substitution, "
-                                  "map_substitution not implemented.")
 
     def map_derivative(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered "

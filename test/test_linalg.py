@@ -644,7 +644,7 @@ def test_fancy_matrix_mul(ctx_factory):
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
-            parameters=dict(n=n))
+            parameters={"n": n})
 
 
 def test_small_batched_matvec(ctx_factory):
@@ -678,7 +678,7 @@ def test_small_batched_matvec(ctx_factory):
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[K*2*Np**2/1e9], op_label=["GFlops"],
-            parameters=dict(K=K))
+            parameters={"K": K})
 
 
 if __name__ == "__main__":

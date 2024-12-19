@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -24,7 +27,6 @@ import logging
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from functools import reduce
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -219,10 +221,10 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
     from loopy.symbolic import DependencyMapper
 
     arg_name_vars = {Variable(name) for name in kernel.arg_dict}
-    dep_mapper = DependencyMapper()
+    dep_mapper: DependencyMapper[[]] = DependencyMapper()
 
     def ensure_depends_only_on_arguments(
-            what: str, expr: Union[str, Expression]) -> None:
+            what: str, expr: str | Expression) -> None:
         if isinstance(expr, str):
             expr = Variable(expr)
 
@@ -249,7 +251,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                 raise LoopyError(f"invalid value of offset for '{arg.name}'")
 
             if arg.dim_tags is None:
-                new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]] = \
+                new_dim_tags: tuple[ArrayDimImplementationTag, ...] | None = \
                         arg.dim_tags
             else:
                 new_dim_tags = ()
@@ -1324,7 +1326,7 @@ def check_for_nested_base_storage(kernel: LoopKernel) -> None:
     # must run after preprocessing has created variables for base_storage
 
     from loopy.kernel.data import ArrayArg
-    arrays: List[ArrayBase] = [
+    arrays: list[ArrayBase] = [
         arg for arg in kernel.args if isinstance(arg, ArrayArg)
         ]
     arrays = arrays + list(kernel.temporary_variables.values())

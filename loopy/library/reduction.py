@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -537,7 +540,7 @@ def register_reduction_parser(parser):
     _REDUCTION_OP_PARSERS.append(parser)
 
 
-def parse_reduction_op(name):
+def parse_reduction_op(name: str) -> ReductionOperation | None:
     import re
 
     red_op_match = re.match(r"^([a-z]+)_([a-z0-9_]+)$", name)

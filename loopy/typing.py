@@ -31,7 +31,7 @@ THE SOFTWARE.
 """
 
 
-from typing import Optional, Tuple, TypeVar
+from typing import Tuple, TypeVar
 
 import numpy as np
 from typing_extensions import TypeAlias, TypeIs
@@ -58,7 +58,7 @@ class auto:  # noqa
 T = TypeVar("T")
 
 
-def not_none(obj: Optional[T]) -> T:
+def not_none(obj: T | None) -> T:
     assert obj is not None
     return obj
 

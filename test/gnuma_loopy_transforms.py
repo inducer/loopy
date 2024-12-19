@@ -39,6 +39,6 @@ def set_D_storage_format(kernel):  # noqa: N802
 def set_up_volume_loop(kernel, Nq):  # noqa
     kernel = lp.fix_parameters(kernel, Nq=Nq)
     kernel = lp.prioritize_loops(kernel, "e,k,j,i")
-    kernel = lp.tag_inames(kernel, dict(e="g.0", j="l.1", i="l.0"))
+    kernel = lp.tag_inames(kernel, {"e": "g.0", "j": "l.1", "i": "l.0"})
     kernel = lp.assume(kernel, "elements >= 1")
     return kernel
