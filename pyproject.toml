@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "pytools>=2024.1.5",
-    "pymbolic>=2024.2",
+    "pymbolic>=2024.2.2",
     "genpy>=2016.1.2",
 
     # https://github.com/inducer/loopy/pull/419
