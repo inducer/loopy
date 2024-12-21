@@ -795,9 +795,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     # {{{ code generation
 
     def get_function_definition(
-            self, codegen_state: CodeGenerationState,
+            self,
+            codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult,
-            schedule_index: int, function_decl: Generable, function_body: Generable
+            schedule_index: int,
+            function_decl: Generable,
+            function_body: Generable
             ) -> Generable:
         kernel = codegen_state.kernel
         assert kernel.linearization is not None
@@ -825,16 +828,23 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                         tv.initializer is not None):
                     assert tv.read_only
 
-                    decl: Generable = self.wrap_global_constant(
+                    decl = self.wrap_global_constant(
                             self.get_temporary_var_declarator(codegen_state, tv))
 
                     if tv.initializer is not None:
-                        decl = Initializer(decl, generate_array_literal(
+                        init_decl = Initializer(decl, generate_array_literal(
                             codegen_state, tv, tv.initializer))
+                    else:
+                        init_decl = decl
 
-                    result.append(decl)
+                    result.append(init_decl)
+
+        assert isinstance(function_decl, FunctionDeclarationWrapper)
+        if not isinstance(function_body, Block):
+            function_body = Block([function_body])
 
         fbody = FunctionBody(function_decl, function_body)
+
         if not result:
             return fbody
         else:
@@ -1338,8 +1348,7 @@ class CFunctionDeclExtractor(CASTIdentityMapper):
 
     def map_function_decl_wrapper(self, node):
         self.decls.append(node.subdecl)
-        return super()\
-                .map_function_decl_wrapper(node)
+        return super().map_function_decl_wrapper(node)
 
 
 def generate_header(kernel, codegen_result=None):

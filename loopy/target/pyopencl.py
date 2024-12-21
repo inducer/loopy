@@ -1026,9 +1026,12 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     # {{{ function decl/def, with arg overflow handling
 
     def get_function_definition(
-            self, codegen_state: CodeGenerationState,
+            self,
+            codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult,
-            schedule_index: int, function_decl: Generable, function_body: Generable,
+            schedule_index: int,
+            function_decl: Generable,
+            function_body: Generable,
             ) -> Generable:
         assert isinstance(function_body, Block)
         kernel = codegen_state.kernel
@@ -1057,15 +1060,17 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
                         tv.initializer is not None):
                     assert tv.read_only
 
-                    decl: Generable = self.wrap_global_constant(
+                    decl = self.wrap_global_constant(
                             self.get_temporary_var_declarator(codegen_state, tv))
 
                     if tv.initializer is not None:
                         from loopy.target.c import generate_array_literal
-                        decl = Initializer(decl, generate_array_literal(
+                        init_decl = Initializer(decl, generate_array_literal(
                             codegen_state, tv, tv.initializer))
+                    else:
+                        init_decl = decl
 
-                    result.append(decl)
+                    result.append(init_decl)
 
         # {{{ unpack overflow args
 
@@ -1090,6 +1095,12 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
             function_body = Block(arg_unpack_code + function_body.contents)
 
         # }}}
+
+        from loopy.target.c import FunctionDeclarationWrapper
+
+        assert isinstance(function_decl, FunctionDeclarationWrapper)
+        if not isinstance(function_body, Block):
+            function_body = Block([function_body])
 
         fbody = FunctionBody(function_decl, function_body)
         if not result:
