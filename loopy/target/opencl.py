@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 
@@ -766,12 +766,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     def get_image_arg_declarator(
             self, arg: ImageArg, is_written: bool) -> Declarator:
-        if is_written:
-            mode = "w"
-        else:
-            mode = "r"
-
         from cgen.opencl import CLImage
+
+        mode: Literal["r", "w"] = "w" if is_written else "r"
         return CLImage(arg.num_target_axes(), mode, arg.name)
 
     # }}}
