@@ -168,17 +168,12 @@ module = [
 
 [[tool.mypy.overrides]]
 module = [
-    "islpy.*",
-    "pymbolic.*",
-    "genpy.*",
-    "pyopencl.*",
-    "colorama.*",
-    "codepy.*",
-    "mako.*",
-    "fparser.*",
-    "ply.*",
-    "pygments.*",
     "IPython.*",
+    "fparser.*",
+    "islpy.*",
+    "mako.*",
+    "ply.*",
+    "pyopencl.*",
 ]
 ignore_missing_imports = true
 

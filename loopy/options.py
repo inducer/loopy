@@ -227,7 +227,7 @@ class Options(ImmutableRecord):
         kwargs = _apply_legacy_map(self._legacy_options_map, kwargs)
 
         try:
-            import colorama  # noqa
+            import colorama  # noqa: F401
         except ImportError:
             allow_terminal_colors_def = False
         else:
