@@ -198,6 +198,8 @@ dout = "dout"
 ue = "ue"
 # used in an ordering context, "ab" / "ba"
 ba = "ba"
+# Fortran Loopy
+floopy = "floopy"
 
 "dependees" = "dependees"
 
