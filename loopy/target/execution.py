@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-17 Andreas Kloeckner, Nick Curtis"
 
 __license__ = """
@@ -25,17 +28,11 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
-    Dict,
-    FrozenSet,
-    List,
     Mapping,
-    Optional,
     Sequence,
-    Set,
-    Tuple,
-    Union,
     cast,
 )
 
@@ -54,12 +51,15 @@ from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.kernel import KernelState, LoopKernel
 from loopy.kernel.data import ArrayArg, _ArraySeparationInfo, auto
-from loopy.schedule.tools import KernelArgInfo
 from loopy.tools import LoopyKeyBuilder, caches
-from loopy.translation_unit import TranslationUnit
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import ExpressionT, integer_expr_or_err
+from loopy.typing import Expression, integer_expr_or_err
 from loopy.version import DATA_MODEL_VERSION
+
+
+if TYPE_CHECKING:
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.translation_unit import TranslationUnit
 
 
 # {{{ object array argument packing
@@ -74,10 +74,10 @@ class SeparateArrayPackingController:
     It also repacks outgoing arrays of this type back into an object array.
     """
 
-    def __init__(self, packing_info: Dict[str, _ArraySeparationInfo]) -> None:
+    def __init__(self, packing_info: dict[str, _ArraySeparationInfo]) -> None:
         # These must work to index tuples if 1D.
         def untuple_length_1_indices(
-                ind: Tuple[int, ...]) -> Union[int, Tuple[int, ...]]:
+                ind: tuple[int, ...]) -> int | tuple[int, ...]:
             if len(ind) == 1:
                 return ind[0]
             else:
@@ -91,7 +91,7 @@ class SeparateArrayPackingController:
                 for name, sep_info in packing_info.items()
                 }
 
-    def __call__(self, kernel_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def __call__(self, kernel_kwargs: dict[str, Any]) -> dict[str, Any]:
         kernel_kwargs = kernel_kwargs.copy()
 
         for name, ind_to_subary_name in self.packing_info.items():
@@ -109,7 +109,7 @@ class SeparateArrayPackingController:
 
 # {{{ ExecutionWrapperGeneratorBase
 
-def _str_to_expr(name_or_expr: Union[str, ExpressionT]) -> ExpressionT:
+def _str_to_expr(name_or_expr: str | Expression) -> Expression:
     if isinstance(name_or_expr, str):
         return var(name_or_expr)
     else:
@@ -118,14 +118,14 @@ def _str_to_expr(name_or_expr: Union[str, ExpressionT]) -> ExpressionT:
 
 @dataclass(frozen=True)
 class _ArgFindingEquation:
-    lhs: ExpressionT
-    rhs: ExpressionT
+    lhs: Expression
+    rhs: Expression
 
     # Arg finding code is sorted by priority, all equations (across all unknowns)
     # of lowest priority first.
     order: int
 
-    based_on_names: FrozenSet[str]
+    based_on_names: frozenset[str]
 
 
 class ExecutionWrapperGeneratorBase(ABC):
@@ -172,11 +172,11 @@ class ExecutionWrapperGeneratorBase(ABC):
         from loopy.kernel.array import get_strides
         from loopy.kernel.data import ArrayArg
         from loopy.symbolic import DependencyMapper, StringifyMapper
-        dep_map = DependencyMapper()
+        dep_map: DependencyMapper[[]] = DependencyMapper()
 
         # {{{ find equations
 
-        equations: List[_ArgFindingEquation] = []
+        equations: list[_ArgFindingEquation] = []
 
         for arg_name in kai.passed_arg_names:
             arg = kernel.arg_dict[arg_name]
@@ -252,7 +252,7 @@ class ExecutionWrapperGeneratorBase(ABC):
         # {{{ regroup equations by unknown
 
         order_to_unknown_to_equations: \
-                Dict[int, Dict[str, List[_ArgFindingEquation]]] = {}
+                dict[int, dict[str, list[_ArgFindingEquation]]] = {}
 
         for eqn in equations:
             deps = dep_map(eqn.rhs)
@@ -261,8 +261,8 @@ class ExecutionWrapperGeneratorBase(ABC):
                 unknown_var, = deps
                 order_to_unknown_to_equations \
                         .setdefault(eqn.order, {}) \
-                        .setdefault(cast(Variable, unknown_var).name, []) \
-                        .append((eqn))
+                        .setdefault(cast("Variable", unknown_var).name, []) \
+                        .append(eqn)
             else:
                 # Zero deps: nothing to determine, forget about it.
                 # 2+ deps: not implemented
@@ -287,7 +287,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         key=lambda eqn: eqn.order)
                 subgen = CodeGenerator()
 
-                seen_based_on_names: Set[FrozenSet[str]] = set()
+                seen_based_on_names: set[frozenset[str]] = set()
 
                 if_or_elif = "if"
 
@@ -389,7 +389,7 @@ class ExecutionWrapperGeneratorBase(ABC):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[Expression | tuple[Expression]], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for C-execution
@@ -534,7 +534,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         else:
                             return strify(shape_axis)
 
-                    def strify_tuple(t: Optional[Tuple[ExpressionT, ...]]) -> str:
+                    def strify_tuple(t: tuple[Expression, ...] | None) -> str:
                         if t is None:
                             return "None"
                         if len(t) == 0:
@@ -735,7 +735,7 @@ class ExecutionWrapperGeneratorBase(ABC):
 
 
 typed_and_scheduled_cache: WriteOncePersistentDict[
-    Tuple[str, TranslationUnit, Optional[Mapping[str, LoopyType]]],
+    tuple[str, TranslationUnit, Mapping[str, LoopyType] | None],
     TranslationUnit
 ] = WriteOncePersistentDict(
         "loopy-typed-and-scheduled-cache-v1-"+DATA_MODEL_VERSION,
@@ -747,7 +747,7 @@ caches.append(typed_and_scheduled_cache)
 
 
 invoker_cache: WriteOncePersistentDict[
-    Tuple[str, TranslationUnit, str],
+    tuple[str, TranslationUnit, str],
     str
 ] = WriteOncePersistentDict(
         "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
@@ -767,7 +767,7 @@ class ExecutorBase:
 
     .. automethod:: __call__
     """
-    packing_controller: Optional[SeparateArrayPackingController]
+    packing_controller: SeparateArrayPackingController | None
 
     def __init__(self, t_unit: TranslationUnit, entrypoint: str):
         self.t_unit = t_unit
@@ -817,7 +817,7 @@ class ExecutorBase:
                 "your argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
-            self, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: Map[str, LoopyType] | None
             ) -> TranslationUnit:
         t_unit = self.t_unit
 
@@ -854,7 +854,7 @@ class ExecutorBase:
         return t_unit
 
     def get_typed_and_scheduled_translation_unit(
-            self, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: Map[str, LoopyType] | None
             ) -> TranslationUnit:
         from loopy import CACHING_ENABLED
 
@@ -876,7 +876,7 @@ class ExecutorBase:
 
         return t_unit
 
-    def arg_to_dtype(self, kwargs) -> Optional[Map[str, LoopyType]]:
+    def arg_to_dtype(self, kwargs) -> Map[str, LoopyType] | None:
         if not self.has_runtime_typed_args:
             return None
 
@@ -904,7 +904,7 @@ class ExecutorBase:
 
     def get_code(
             self, entrypoint: str,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> str:
+            arg_to_dtype: Map[str, LoopyType] | None = None) -> str:
         kernel = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2

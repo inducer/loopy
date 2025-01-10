@@ -1,4 +1,5 @@
 """Code generation for Instruction objects."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
@@ -191,7 +192,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
         from pymbolic.mapper.stringifier import PREC_NONE
         lhs_code = codegen_state.expression_to_code_mapper(insn.assignee, PREC_NONE)
 
-        from cgen import Statement as S  # noqa
+        from cgen import Statement as S
 
         gs, ls = kernel.get_grid_size_upper_bounds(codegen_state.callables_table)
 

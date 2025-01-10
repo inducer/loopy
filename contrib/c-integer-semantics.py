@@ -95,8 +95,7 @@ def main():
         func.argtypes = [ctypes.c_longlong, ctypes.c_longlong]
         func.restype = ctypes.c_longlong
 
-    cdiv = int_exp.cdiv  # noqa
-    cmod = int_exp.cmod  # noqa
+    cmod = int_exp.cmod
     int_floor_div = int_exp.loopy_floor_div_int64
     int_floor_div_pos_b = int_exp.loopy_floor_div_pos_b_int64
     int_mod_pos_b = int_exp.loopy_mod_pos_b_int64

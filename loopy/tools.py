@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -24,7 +27,6 @@ import collections.abc as abc
 import logging
 from functools import cached_property
 from sys import intern
-from typing import List
 
 import numpy as np
 from immutables import Map
@@ -136,8 +138,8 @@ class LoopyEqKeyBuilder:
         kb = LoopyKeyBuilder()
         # Build the key. For faster hashing, avoid hashing field names.
         key = (
-            (self.class_.__name__.encode("utf-8"),) +
-            tuple(self.field_dict[k] for k in sorted(self.field_dict.keys())))
+            (self.class_.__name__.encode("utf-8"),
+                *(self.field_dict[k] for k in sorted(self.field_dict.keys()))))
 
         return kb(key)
 
@@ -242,25 +244,14 @@ def build_ispc_shared_lib(
 
     from subprocess import check_call
 
-    ispc_cmd = ([ispc_bin,
-                "--pic",
-                "-o", "ispc.o"]
-            + ispc_options
-            + list(ispc_source_names))
+    ispc_cmd = ([ispc_bin, "--pic", "-o", "ispc.o", *ispc_options, *ispc_source_names])
     if not quiet:
         print(" ".join(ispc_cmd))
 
     check_call(ispc_cmd, cwd=cwd)
 
-    cxx_cmd = ([
-                cxx_bin,
-                "-shared", "-Wl,--export-dynamic",
-                "-fPIC",
-                "-oshared.so",
-                "ispc.o",
-                ]
-            + cxx_options
-            + list(cxx_source_names))
+    cxx_cmd = ([cxx_bin, "-shared", "-Wl,--export-dynamic", "-fPIC", "-oshared.so",
+        "ispc.o", *cxx_options, *cxx_source_names])
 
     check_call(cxx_cmd, cwd=cwd)
 
@@ -279,7 +270,7 @@ def address_from_numpy(obj):
     if ary_intf is None:
         raise RuntimeError("no array interface")
 
-    buf_base, is_read_only = ary_intf["data"]
+    buf_base, _is_read_only = ary_intf["data"]
     return buf_base + ary_intf.get("offset", 0)
 
 
@@ -316,10 +307,10 @@ def empty_aligned(shape, dtype, order="C", n=64):
 
     # We now need to know how to offset base_ary
     # so it is correctly aligned
-    _array_aligned_offset = (n-address_from_numpy(base_ary)) % n
+    array_aligned_offset = (n-address_from_numpy(base_ary)) % n
 
     array = np.frombuffer(
-            base_ary[_array_aligned_offset:_array_aligned_offset-n].data,
+            base_ary[array_aligned_offset:array_aligned_offset-n].data,
             dtype=dtype).reshape(shape, order=order)
 
     return array
@@ -535,7 +526,7 @@ class Optional:
         The value, if present.
     """
 
-    __slots__ = ("has_value", "_value")
+    __slots__ = ("_value", "has_value")
 
     def __init__(self, value=_no_value):
         self.has_value = value is not _no_value
@@ -828,7 +819,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
         "from pymbolic.primitives import *",
         "import immutables",
         ])
-    body_str = "\n".join(knl_python_code_srcs + ["\n", merge_stmt])
+    body_str = "\n".join([*knl_python_code_srcs, "\n", merge_stmt])
 
     python_code = "\n".join([preamble_str, "\n", body_str])
     assert _is_generated_t_unit_the_same(python_code, var_name, t_unit)
@@ -843,7 +834,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
 
 # {{{ cache management
 
-caches: List[WriteOncePersistentDict] = []
+caches: list[WriteOncePersistentDict] = []
 
 
 def clear_in_mem_caches() -> None:

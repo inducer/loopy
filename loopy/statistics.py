@@ -31,20 +31,9 @@ THE SOFTWARE.
 from dataclasses import dataclass, replace
 from enum import Enum, auto as enum_auto
 from functools import cached_property, partial
-from typing import (
-    Any,
-    Callable,
-    Generic,
-    Iterable,
-    Mapping,
-    Sequence,
-    Type,
-    TypeVar,
-    Union,
-    cast,
-)
 
 from immutabledict import immutabledict
+from typing import TYPE_CHECKING, ClassVar
 
 import islpy as isl
 import pymbolic.primitives as p
@@ -71,6 +60,10 @@ from loopy.symbolic import (
 from loopy.translation_unit import ConcreteCallablesTable, TranslationUnit
 from loopy.types import LoopyType
 from loopy.typing import Expression, ExpressionT, auto
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 __doc__ = """
@@ -443,7 +436,7 @@ class ToCountMap(Generic[CountT]):
 
         # make sure all item keys have same type
         if self.count_map:
-            key_type = type(list(self.keys())[0])
+            key_type = type(next(iter(self.keys())))
             if not all(isinstance(x, key_type) for x in self.keys()):
                 raise ValueError("ToCountMap: group_by() function may only "
                                  "be used on ToCountMaps with uniform keys")
@@ -651,9 +644,10 @@ class CountGranularity(Enum):
 
     """
 
-    WORKITEM = 0
-    SUBGROUP = 1
-    WORKGROUP = 2
+    WORKITEM = "workitem"
+    SUBGROUP = "subgroup"
+    WORKGROUP = "workgroup"
+    ALL: ClassVar[Sequence[str]] = [WORKITEM, SUBGROUP, WORKGROUP]
 
 # }}}
 
@@ -716,7 +710,6 @@ class Op:
     .. attribute:: tags
 
         A :class:`frozenset` of tags to the operation.
-
     """
     dtype: LoopyType | None = None
     op_type: OpType | None = None
@@ -776,7 +769,7 @@ class MemAccess:
     .. attribute:: lid_strides
 
        A :class:`dict` of **{** :class:`int` **:**
-       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
+       :data:`~pymbolic.typing.Expression` or :class:`int` **}** that
        specifies local strides for each local id in the memory access index.
        Local ids not found will not be present in ``lid_strides.keys()``.
        Uniform access (i.e. work-items within a sub-group access the same
@@ -787,7 +780,7 @@ class MemAccess:
     .. attribute:: gid_strides
 
        A :class:`dict` of **{** :class:`int` **:**
-       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
+       :data:`~pymbolic.typing.Expression` or :class:`int` **}** that
        specifies global strides for each global id in the memory access index.
        global ids not found will not be present in ``gid_strides.keys()``.
 
@@ -1045,7 +1038,6 @@ class CounterBase(CombineMapper):
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
 
-    map_substitution = map_common_subexpression
     map_derivative = map_common_subexpression
     map_slice = map_common_subexpression
 
@@ -1226,11 +1218,6 @@ class ExpressionOpCounter(CounterBase):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
-
-    def map_substitution(self, expr, tags):
-        raise NotImplementedError("ExpressionOpCounter encountered "
-                                  "substitution, "
-                                  "map_substitution not implemented.")
 
     def map_derivative(self, expr, tags):
         raise NotImplementedError("ExpressionOpCounter encountered "
@@ -1944,7 +1931,7 @@ def get_op_map(
         if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(t_unit.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in t_unit.entrypoints
 
@@ -2175,7 +2162,7 @@ def get_mem_access_map(
         if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(t_unit.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in t_unit.entrypoints
 
@@ -2308,7 +2295,7 @@ def get_synchronization_map(
         if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(t_unit.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in t_unit.entrypoints
     from loopy.preprocess import infer_unknown_types, preprocess_program
@@ -2373,7 +2360,7 @@ def gather_access_footprints(
         if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(t_unit.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in t_unit.entrypoints
 

@@ -34,9 +34,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import operator
 from collections.abc import Hashable, Iterator, Sequence
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, reduce
 from typing import Generic, TypeVar
 
 from immutables import Map
@@ -49,7 +50,9 @@ from pytools import memoize_method
 NodeT = TypeVar("NodeT", bound=Hashable)
 
 
-@dataclass(frozen=True)
+# Not frozen when optimizations are enabled because it is slower.
+# Tree objects are immutable, and offer no way to mutate the tree.
+@dataclass(frozen=__debug__)  # type: ignore[literal-required]
 class Tree(Generic[NodeT]):
     """
     An immutable tree containing nodes of type :class:`NodeT`.
@@ -94,31 +97,23 @@ class Tree(Generic[NodeT]):
         """
         Returns a :class:`tuple` of nodes that are ancestors of *node*.
         """
-        assert node in self
-
-        if self.is_root(node):
+        parent = self.parent(node)
+        if parent is None:
             # => root
             return ()
 
-        parent = self._child_to_parent[node]
-        assert parent is not None
-
-        return (parent,) + self.ancestors(parent)
+        return (parent, *self.ancestors(parent))
 
     def parent(self, node: NodeT) -> NodeT | None:
         """
         Returns the parent of *node*.
         """
-        assert node in self
-
         return self._child_to_parent[node]
 
     def children(self, node: NodeT) -> tuple[NodeT, ...]:
         """
         Returns the children of *node*.
         """
-        assert node in self
-
         return self._parent_to_children[node]
 
     @memoize_method
@@ -126,25 +121,18 @@ class Tree(Generic[NodeT]):
         """
         Returns the depth of *node*, with the root having depth 0.
         """
-        assert node in self
-
-        if self.is_root(node):
-            # => None
-            return 0
-
         parent_of_node = self.parent(node)
-        assert parent_of_node is not None
+        if parent_of_node is None:
+            return 0
 
         return 1 + self.depth(parent_of_node)
 
     def is_root(self, node: NodeT) -> bool:
-        assert node in self
-
+        """Return *True* if *node* is the root of the tree."""
         return self.parent(node) is None
 
     def is_leaf(self, node: NodeT) -> bool:
-        assert node in self
-
+        """Return *True* if *node* has no children."""
         return len(self.children(node)) == 0
 
     def __contains__(self, node: NodeT) -> bool:
@@ -161,9 +149,11 @@ class Tree(Generic[NodeT]):
 
         siblings = self._parent_to_children[parent]
 
-        return Tree((self._parent_to_children
-                     .set(parent, siblings + (node,))
-                     .set(node, ())),
+        parent_to_children_mut = self._parent_to_children.mutate()
+        parent_to_children_mut[parent] = (*siblings, node)
+        parent_to_children_mut[node] = ()
+
+        return Tree(parent_to_children_mut.finish(),
                     self._child_to_parent.set(node, parent))
 
     def replace_node(self, node: NodeT, new_node: NodeT) -> Tree[NodeT]:
@@ -231,15 +221,14 @@ class Tree(Generic[NodeT]):
         assert parent is not None  # parent=root handled as a special case
         siblings = self.children(parent)
         parents_new_children = tuple(frozenset(siblings) - frozenset([node]))
-        new_parents_children = self.children(new_parent) + (node,)
+        new_parents_children = (*self.children(new_parent), node)
 
-        new_child_to_parent = self._child_to_parent.set(node, new_parent)
-        new_parent_to_children = (self._parent_to_children
-                                  .set(parent, parents_new_children)
-                                  .set(new_parent, new_parents_children))
+        parent_to_children_mut = self._parent_to_children.mutate()
+        parent_to_children_mut[parent] = parents_new_children
+        parent_to_children_mut[new_parent] = new_parents_children
 
-        return Tree(new_parent_to_children,
-                    new_child_to_parent)
+        return Tree(parent_to_children_mut.finish(),
+                    self._child_to_parent.set(node, new_parent))
 
     def __str__(self) -> str:
         """
@@ -276,7 +265,7 @@ class Tree(Generic[NodeT]):
                                 for c in children_result[:-1]]
                             + [post_process_last_child(c)
                                 for c in children_result[-1:]])
-            return [str(node)] + sum(children_result, start=[])
+            return [str(node), *reduce(operator.iadd, children_result, [])]
 
         return "\n".join(rec(self.root))
 

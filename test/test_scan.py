@@ -30,8 +30,8 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
 
 import loopy as lp
 
@@ -77,7 +77,7 @@ def test_sequential_scan(ctx_factory, n, stride):
     knl = lp.fix_parameters(knl, n=n)
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    evt, (a,) = knl(queue)
+    _evt, (a,) = knl(queue)
 
     assert (a.get() == np.cumsum(np.arange(stride*n)**2)[::stride]).all()
 
@@ -108,7 +108,7 @@ def test_scan_with_different_lower_bound_from_sweep(
 
     knl = lp.fix_parameters(knl, sweep_lbound=sweep_lbound, scan_lbound=scan_lbound)
     knl = lp.realize_reduction(knl, force_scan=True)
-    evt, (out,) = knl(queue, n=n)
+    _evt, (out,) = knl(queue, n=n)
 
     assert (out.get()
             == np.cumsum(np.arange(scan_lbound, 2*n+scan_lbound)**2)[::2]).all()
@@ -138,7 +138,7 @@ def test_force_outer_iname_for_scan():
         "[n] -> {[i,j,k]: 0<=k<n and 0<=i<=k and 0<=j<=i}",
         "out[i] = product(j, a[j]) {inames=i:k}")
 
-    knl = lp.add_dtypes(knl, dict(a=np.float32))
+    knl = lp.add_dtypes(knl, {"a": np.float32})
 
     # TODO: Maybe this deserves to work?
     with pytest.raises(lp.diagnostic.ReductionIsNotTriangularError):
@@ -161,7 +161,7 @@ def test_dependent_domain_scan(ctx_factory):
         """
         )
     knl = lp.realize_reduction(knl, force_scan=True)
-    evt, (a,) = knl(queue, n=100)
+    _evt, (a,) = knl(queue, n=100)
 
     assert (a.get() == np.cumsum(np.arange(200)**2)[::2]).all()
 
@@ -185,13 +185,13 @@ def test_nested_scan(ctx_factory, i_tag, j_tag):
         """)
 
     knl = lp.fix_parameters(knl, n=10)
-    knl = lp.tag_inames(knl, dict(i=i_tag, j=j_tag))
+    knl = lp.tag_inames(knl, {"i": i_tag, "j": j_tag})
 
     knl = lp.realize_reduction(knl, force_scan=True)
 
     print(knl)
 
-    evt, (out,) = knl(queue)
+    _evt, (out,) = knl(queue)
 
     print(out)
 
@@ -222,12 +222,12 @@ def test_local_parallel_scan(ctx_factory, n):
         )
 
     knl = lp.fix_parameters(knl, n=n)
-    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.tag_inames(knl, {"i": "l.0"})
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    knl = lp.add_dtypes(knl, dict(a=int))
+    knl = lp.add_dtypes(knl, {"a": int})
 
-    evt, (a,) = knl(queue, a=np.arange(n))
+    _evt, (a,) = knl(queue, a=np.arange(n))
     assert (a == np.cumsum(np.arange(n)**2)).all()
 
 
@@ -244,11 +244,11 @@ def test_local_parallel_scan_with_nonzero_lower_bounds(ctx_factory):
         )
 
     knl = lp.fix_parameters(knl, n=16)
-    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.tag_inames(knl, {"i": "l.0"})
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    knl = lp.add_dtypes(knl, dict(a=int))
-    evt, (out,) = knl(queue, a=np.arange(1, 17))
+    knl = lp.add_dtypes(knl, {"a": int})
+    _evt, (out,) = knl(queue, a=np.arange(1, 17))
 
     assert (out == np.cumsum(np.arange(1, 17)**2)).all()
 
@@ -276,12 +276,12 @@ def test_scan_with_outer_parallel_iname(ctx_factory, sweep_iname_tag):
         "out[k,i] = k + sum(j, j**2)"
         )
 
-    knl = lp.tag_inames(knl, dict(k="l.0", i=sweep_iname_tag))
+    knl = lp.tag_inames(knl, {"k": "l.0", "i": sweep_iname_tag})
     n = 10
     knl = lp.fix_parameters(knl, n=n)
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    evt, (out,) = knl(queue)
+    _evt, (out,) = knl(queue)
 
     inner = np.cumsum(np.arange(n)**2)
 
@@ -300,9 +300,9 @@ def test_scan_data_types(ctx_factory, dtype):
             assumptions="n>=1")
 
     a = np.random.randn(20).astype(dtype)
-    knl = lp.add_dtypes(knl, dict(a=dtype))
+    knl = lp.add_dtypes(knl, {"a": dtype})
     knl = lp.realize_reduction(knl, force_scan=True)
-    evt, (res,) = knl(queue, a=a)
+    _evt, (res,) = knl(queue, a=a)
 
     assert np.allclose(res, np.cumsum(a))
 
@@ -323,9 +323,9 @@ def test_scan_library(ctx_factory, op_name, np_op):
             assumptions="n>=1")
 
     a = np.random.randn(20)
-    knl = lp.add_dtypes(knl, dict(a=np.float64))
+    knl = lp.add_dtypes(knl, {"a": np.float64})
     knl = lp.realize_reduction(knl, force_scan=True)
-    evt, (res,) = knl(queue, a=a)
+    _evt, (res,) = knl(queue, a=a)
 
     assert np.allclose(res, np.array(
             [np_op(a[:i+1]) for i in range(len(a))]))
@@ -351,12 +351,12 @@ def test_argmax(ctx_factory, i_tag):
             max_vals[i], max_indices[i] = argmax(j, abs(a[j]), j)
             """)
 
-    knl = lp.tag_inames(knl, dict(i=i_tag))
+    knl = lp.tag_inames(knl, {"i": i_tag})
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
     knl = lp.realize_reduction(knl, force_scan=True)
 
     a = np.random.randn(n).astype(dtype)
-    evt, (max_indices, max_vals) = knl(queue, a=a, out_host=True)
+    _evt, (max_indices, max_vals) = knl(queue, a=a, out_host=True)
 
     assert (max_vals == [np.max(np.abs(a)[0:i+1]) for i in range(n)]).all()
     assert (max_indices == [np.argmax(np.abs(a[0:i+1])) for i in range(n)]).all()
@@ -402,7 +402,7 @@ def test_segmented_scan(ctx_factory, n, segment_boundaries_indices, iname_tag):
 
     arr = np.ones(n, dtype=np.float32)
     segment_boundaries = np.zeros(n, dtype=np.int32)
-    segment_boundaries[(segment_boundaries_indices,)] = 1
+    segment_boundaries[segment_boundaries_indices,] = 1
 
     knl = lp.make_kernel(
         "{[i,j]: 0<=i<n and 0<=j<=i}",
@@ -414,10 +414,10 @@ def test_segmented_scan(ctx_factory, n, segment_boundaries_indices, iname_tag):
         ])
 
     knl = lp.fix_parameters(knl, n=n)
-    knl = lp.tag_inames(knl, dict(i=iname_tag))
+    knl = lp.tag_inames(knl, {"i": iname_tag})
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    (evt, (out,)) = knl(queue, arr=arr, segflag=segment_boundaries)
+    (_evt, (out,)) = knl(queue, arr=arr, segflag=segment_boundaries)
 
     check_segmented_scan_output(arr, segment_boundaries_indices, out)
 

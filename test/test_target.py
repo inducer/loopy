@@ -218,7 +218,7 @@ def test_random123(ctx_factory, tp):
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
     knl = lp.set_options(knl, write_code=True)
 
-    evt, (out,) = knl(queue, n=n)
+    _evt, (out,) = knl(queue, n=n)
 
     out = out.get()
     assert (out < 1).all()
@@ -236,7 +236,7 @@ def test_tuple(ctx_factory):
             a, b = make_tuple(1, 2.)
             """)
 
-    evt, (a, b) = knl(queue)
+    _evt, (a, b) = knl(queue)
 
     assert a.get() == 1
     assert b.get() == 2.
@@ -256,7 +256,7 @@ def test_clamp(ctx_factory):
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
     knl = lp.set_options(knl, write_code=True)
 
-    evt, (out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
+    _evt, (_out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
 
 
 def test_sized_integer_c_codegen(ctx_factory):
@@ -272,7 +272,7 @@ def test_sized_integer_c_codegen(ctx_factory):
     knl = lp.set_options(knl, write_code=True)
     n = 40
 
-    evt, (a,) = knl(queue, n=n)
+    _evt, (a,) = knl(queue, n=n)
 
     a_ref = 1 << np.arange(n, dtype=np.int64)
 
@@ -316,7 +316,7 @@ def test_ispc_streaming_stores():
 
     knl = lp.add_and_infer_dtypes(knl, dict.fromkeys(vars, stream_dtype))
 
-    knl = lp.set_argument_order(knl, vars + ["n"])
+    knl = lp.set_argument_order(knl, [*vars, "n"])
 
     lp.generate_code_v2(knl).all_code()
     assert "streaming_store(" in lp.generate_code_v2(knl).all_code()
@@ -348,7 +348,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory):
 
     y = np.array([3.])
     x = np.array([4.])
-    evt, out = knl(queue, y=y, x=x)
+    _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
     assert x[0] == 7.
 
@@ -357,7 +357,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory):
     import pyopencl.array as cla
     y = cla.zeros(queue, shape=(1), dtype="float64") + 3.
     x = np.array([4.])
-    evt, out = knl(queue, y=y, x=x)
+    _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
     assert x[0] == 7.
 
@@ -366,7 +366,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory):
 
     y = np.array([3.])
     x = np.array([4.])
-    evt, out = knl(queue, y=y, x=x)
+    _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
     assert x[0] == 5.
 
@@ -380,7 +380,7 @@ def test_opencl_support_for_bool(ctx_factory):
         [lp.GlobalArg("y", dtype=np.bool_, shape=lp.auto)])
 
     cl_ctx = ctx_factory()
-    evt, (out, ) = knl(cl.CommandQueue(cl_ctx))
+    _evt, (out, ) = knl(cl.CommandQueue(cl_ctx))
     out = out.get()
 
     np.testing.assert_equal(out, np.tile(np.array([0, 1], dtype=np.bool_), 5))
@@ -405,16 +405,16 @@ def test_nan_support(ctx_factory, target):
          lp.Assignment(parse("g"), NaN(np.complex64)),
          lp.Assignment(parse("h"), NaN(np.complex128)),
          ],
-        [lp.GlobalArg("a", is_input=False, shape=tuple()), ...],
+        [lp.GlobalArg("a", is_input=False, shape=()), ...],
         seq_dependencies=True, target=target())
 
     knl = lp.set_options(knl, return_dict=True)
 
     if target == lp.PyOpenCLTarget:
-        evt, out_dict = knl(queue)
+        _evt, out_dict = knl(queue)
         out_dict = {k: v.get() for k, v in out_dict.items()}
     elif target == lp.ExecutableCTarget:
-        evt, out_dict = knl()
+        _evt, out_dict = knl()
     else:
         raise NotImplementedError("unsupported target")
 
@@ -451,9 +451,9 @@ def test_emits_ternary_operators_correctly(ctx_factory, target):
     knl = lp.set_options(knl, return_dict=True)
 
     if target == lp.PyOpenCLTarget:
-        evt, out_dict = knl(queue)
+        _evt, out_dict = knl(queue)
     elif target == lp.ExecutableCTarget:
-        evt, out_dict = knl()
+        _evt, out_dict = knl()
     else:
         raise NotImplementedError("unsupported target")
 
@@ -479,7 +479,7 @@ def test_scalar_array_take_offset(ctx_factory):
     x_in_base = cla.arange(cq, 42, dtype=np.int32)
     x_in = x_in_base[13]
 
-    evt, (out,) = knl(cq, x=x_in)
+    _evt, (out,) = knl(cq, x=x_in)
     np.testing.assert_allclose(out.get(), 1729)
 
 
@@ -630,7 +630,7 @@ def test_glibc_bessel_functions(dtype):
         second_kind_bessel[i] = bessel_yn(n, x[i])
         """, target=lp.ExecutableCWithGNULibcTarget(compiler))
 
-    if knl.target.compiler.toolchain.cc not in ["gcc", "g++"]:  # pylint: disable=no-member  # noqa: E501
+    if knl.target.compiler.toolchain.cc not in ["gcc", "g++"]:  # pylint: disable=no-member
         pytest.skip("GNU-libc not found.")
 
     knl = lp.fix_parameters(knl, n=2)
@@ -772,7 +772,7 @@ def test_passing_bajillions_of_svm_args(ctx_factory, with_gbarrier):
                 cl.array.zeros(queue, 20, np.float32, allocator=alloc)
                 + np.float32(iargset))
 
-    evt, res = knl(queue, **args, allocator=alloc)
+    _evt, res = knl(queue, **args, allocator=alloc)
 
     for iargset in range(nargsets):
         assert (res[f"c{iargset}"].get() == iargset * multiplier + iargset).all()

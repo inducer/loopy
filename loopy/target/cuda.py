@@ -1,4 +1,5 @@
 """CUDA target independent of PyCUDA."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -23,16 +24,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence, Tuple
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
 
-from cgen import Const, Declarator, Generable
+from cgen import Const, Declarator, Generable, Pointer
 from pymbolic import var
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
 from loopy.kernel.data import (
@@ -46,6 +45,11 @@ from loopy.kernel.function_interface import ScalarCallable
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ vector types
@@ -186,7 +190,7 @@ class CudaCallable(ScalarCallable):
 
             input_dtype = arg_id_to_dtype[0]
 
-            scalar_dtype, offset, field_name = input_dtype.fields["x"]
+            scalar_dtype, _offset, _field_name = input_dtype.fields["x"]
             return_dtype = scalar_dtype
             return self.copy(arg_id_to_dtype={0: input_dtype, 1: input_dtype,
                                               -1: return_dtype})
@@ -332,7 +336,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
@@ -369,8 +373,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
 
         return (
-                super().preamble_generators() + [
-                    cuda_preamble_generator])
+                [*super().preamble_generators(), cuda_preamble_generator])
 
     # }}}
 
@@ -449,7 +452,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def get_array_arg_declarator(
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         from cgen.cuda import CudaRestrictPointer
-        arg_decl = CudaRestrictPointer(
+        arg_decl: Declarator = CudaRestrictPointer(
                     self.get_array_base_declarator(arg))
 
         if not is_written:
@@ -478,11 +481,11 @@ class CUDACASTBuilder(CFamilyASTBuilder):
         assert tv.base_storage is not None
         ecm = codegen_state.expression_to_code_mapper
 
-        cast_decl = POD(self, tv.dtype, "")
-        temp_var_decl = POD(self, tv.dtype, tv.name)
+        cast_decl: Declarator = POD(self, tv.dtype, "")
+        temp_var_decl: Declarator = POD(self, tv.dtype, tv.name)
 
         if tv._base_storage_access_may_be_aliasing:
-            ptrtype = _ConstPointer
+            ptrtype: type[Pointer] = _ConstPointer
         else:
             # The 'restrict' part of this is a complete lie--of course
             # all these temporaries are aliased. But we're promising to

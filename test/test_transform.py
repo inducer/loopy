@@ -27,8 +27,8 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
 from pytools.tag import Tag
 
 import loopy as lp
@@ -111,14 +111,14 @@ def test_collect_common_factors(ctx_factory):
             out[i] = out_tmp {dep=out_up1:out_up2}
             """)
     knl = lp.add_and_infer_dtypes(knl,
-            dict(a=np.float32, alpha=np.float32, b1=np.float32, b2=np.float32))
+            {"a": np.float32, "alpha": np.float32, "b1": np.float32, "b2": np.float32})
 
     ref_knl = knl
 
     knl = lp.split_iname(knl, "i", 256, outer_tag="g.0", inner_tag="l.0")
     knl = lp.collect_common_factors_on_increment(knl, "out_tmp")
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=13))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 13})
 
 
 def test_to_batched(ctx_factory):
@@ -128,25 +128,25 @@ def test_to_batched(ctx_factory):
     knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<n } """,
          """ out[i] = sum(j, a[i,j]*x[j])""")
-    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
-                                            x=np.float32,
-                                            a=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"out": np.float32,
+                                            "x": np.float32,
+                                            "a": np.float32})
 
     bknl = lp.to_batched(knl, "nbatches", "out,x")
 
     ref_knl = lp.make_kernel(
          """ { [i,j,k]: 0<=i,j<n and 0<=k<nbatches} """,
          """out[k, i] = sum(j, a[i,j]*x[k, j])""")
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
-                                                    x=np.float32,
-                                                    a=np.float32))
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"out": np.float32,
+                                                    "x": np.float32,
+                                                    "a": np.float32})
 
     a = np.random.randn(5, 5).astype(np.float32)
     x = np.random.randn(7, 5).astype(np.float32)
 
     # Running both the kernels
-    evt, (out1, ) = bknl(queue, a=a, x=x, n=5, nbatches=7)
-    evt, (out2, ) = ref_knl(queue, a=a, x=x, n=5, nbatches=7)
+    _evt, (out1, ) = bknl(queue, a=a, x=x, n=5, nbatches=7)
+    _evt, (out2, ) = ref_knl(queue, a=a, x=x, n=5, nbatches=7)
 
     # checking that the outputs are same
     assert np.linalg.norm(out1-out2) < 1e-15
@@ -164,15 +164,15 @@ def test_to_batched_temp(ctx_factory):
              dtype=np.float32,
              shape=(),
              address_space=lp.AddressSpace.PRIVATE), "..."])
-    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
-                                            x=np.float32,
-                                            a=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"out": np.float32,
+                                            "x": np.float32,
+                                            "a": np.float32})
     ref_knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<n } """,
          """out[i] = sum(j, 2.0*a[i,j]*x[j])""")
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
-                                                    x=np.float32,
-                                                    a=np.float32))
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"out": np.float32,
+                                                    "x": np.float32,
+                                                    "a": np.float32})
 
     bknl = lp.to_batched(knl, "nbatches", "out,x")
     bref_knl = lp.to_batched(ref_knl, "nbatches", "out,x")
@@ -186,7 +186,7 @@ def test_to_batched_temp(ctx_factory):
     # Checking that the program compiles and the logic is correct
     lp.auto_test_vs_ref(
             bref_knl, ctx, bknl,
-            parameters=dict(a=a, x=x, n=5, nbatches=7))
+            parameters={"a": a, "x": x, "n": 5, "nbatches": 7})
 
 
 def test_add_barrier(ctx_factory):
@@ -211,7 +211,7 @@ def test_add_barrier(ctx_factory):
     knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "jj", 2, outer_tag="g.1", inner_tag="l.1")
 
-    evt, (out,) = knl(queue, a=a)
+    _evt, (out,) = knl(queue, a=a)
     assert (np.linalg.norm(out-2*a.T) < 1e-16)
 
 
@@ -225,7 +225,7 @@ def test_rename_argument(ctx_factory):
 
     kernel = lp.rename_argument(kernel, "a", "b")
 
-    evt, (out,) = kernel(queue, b=np.float32(12), n=20)
+    _evt, (out,) = kernel(queue, b=np.float32(12), n=20)
 
     assert (np.abs(out.get() - 14) < 1e-8).all()
 
@@ -277,7 +277,7 @@ def test_alias_temporaries(ctx_factory):
     knl = lp.allocate_temporaries_for_base_storage(knl)
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
-            parameters=dict(n=30))
+            parameters={"n": 30})
 
 
 def test_vectorize(ctx_factory):
@@ -289,10 +289,10 @@ def test_vectorize(ctx_factory):
         <> temp = 2*b[i]
         a[i] = temp
         """)
-    knl = lp.add_and_infer_dtypes(knl, dict(b=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32})
     knl = lp.set_array_axis_names(knl, "a,b", "i")
     knl = lp.split_array_dim(knl, [("a", 0), ("b", 0)], 4,
-            split_kwargs=dict(slabs=(0, 1)))
+            split_kwargs={"slabs": (0, 1)})
 
     knl = lp.tag_array_axes(knl, "a,b", "c,vec")
     ref_knl = knl
@@ -301,11 +301,11 @@ def test_vectorize(ctx_factory):
     knl = lp.tag_inames(knl, {"i_inner": "vec"})
 
     knl = lp.preprocess_kernel(knl)
-    code, inf = lp.generate_code(knl)
+    _code, _inf = lp.generate_code(knl)
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
-            parameters=dict(n=30))
+            parameters={"n": 30})
 
 
 def test_extract_subst(ctx_factory):
@@ -363,10 +363,10 @@ def test_tag_data_axes(ctx_factory):
         lp.tag_array_axes(knl, "out", "N1,N0,c")
 
     knl = lp.tag_array_axes(knl, "out", "N1,N0,N2")
-    knl = lp.tag_inames(knl, dict(j="g.0", i="g.1"))
+    knl = lp.tag_inames(knl, {"j": "g.0", "i": "g.1"})
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
-            parameters=dict(n=20))
+            parameters={"n": 20})
 
 
 def test_set_arg_order():
@@ -393,7 +393,7 @@ def test_tag_inames_keeps_all_tags_if_able():
 
     knl = t_unit.default_entrypoint
 
-    tags = knl.iname_tags("i")
+    knl.iname_tags("i")
     assert not knl.iname_tags_of_type("i", FooTag)
     assert not knl.iname_tags_of_type("i", BarTag)
 
@@ -428,11 +428,11 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
         b[i,j] = D(j)
         """, name="precomputer")
 
-    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, {"a": np.float32})
 
     ref_prog = prog
 
-    prog = lp.tag_inames(prog, dict(j="g.1"))
+    prog = lp.tag_inames(prog, {"j": "g.1"})
     prog = lp.split_iname(prog, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies
@@ -444,7 +444,7 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
 
     lp.auto_test_vs_ref(
             ref_prog, ctx, prog,
-            parameters=dict(n=12345))
+            parameters={"n": 12345})
 
 
 def test_precompute_nested_subst(ctx_factory):
@@ -458,7 +458,7 @@ def test_precompute_nested_subst(ctx_factory):
         b[i] = D
         """, name="precomputer")
 
-    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, {"a": np.float32})
 
     ref_prog = prog
 
@@ -482,7 +482,7 @@ def test_precompute_nested_subst(ctx_factory):
 
     lp.auto_test_vs_ref(
             ref_prog, ctx, prog,
-            parameters=dict(n=12345))
+            parameters={"n": 12345})
 
 
 def test_precompute_with_preexisting_inames(ctx_factory):
@@ -517,7 +517,7 @@ def test_precompute_with_preexisting_inames(ctx_factory):
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
-            parameters=dict(E=200))
+            parameters={"E": 200})
 
 
 def test_precompute_with_preexisting_inames_fail():
@@ -798,13 +798,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     # Prioritize loops
     desired_prio = "x, t_outer, t_inner, z, y_new"
 
-    # Use constrain_loop_nesting if it's available
-    cln_attr = getattr(lp, "constrain_loop_nesting", None)
-    if cln_attr is not None:
-        knl_map_dom = lp.constrain_loop_nesting(  # noqa pylint:disable=no-member
-            knl_map_dom, desired_prio)
-    else:
-        knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
+    knl_map_dom = lp.prioritize_loops(knl_map_dom, desired_prio)
 
     # Get a linearization
     proc_knl_map_dom = lp.preprocess_kernel(knl_map_dom)
@@ -818,11 +812,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
     knl_split_iname = ref_knl
     knl_split_iname = lp.split_iname(knl_split_iname, "t", 16)
     knl_split_iname = lp.rename_iname(knl_split_iname, "y", "y_new")
-    try:
-        # Use constrain_loop_nesting if it's available
-        knl_split_iname = lp.constrain_loop_nesting(knl_split_iname, desired_prio)
-    except AttributeError:
-        knl_split_iname = lp.prioritize_loops(knl_split_iname, desired_prio)
+    knl_split_iname = lp.prioritize_loops(knl_split_iname, desired_prio)
     proc_knl_split_iname = lp.preprocess_kernel(knl_split_iname)
     lin_knl_split_iname = lp.get_one_linearized_kernel(
         proc_knl_split_iname["loopy_kernel"], proc_knl_split_iname.callables_table)
@@ -1164,7 +1154,7 @@ def test_rename_argument_with_auto_stride(ctx_factory):
     assert code_str.find("double const *__restrict__ x_new,") != -1
     assert code_str.find("double const *__restrict__ x,") == -1
 
-    evt, (out, ) = knl(queue, x_new=np.random.rand(10))
+    _evt, (_out, ) = knl(queue, x_new=np.random.rand(10))
 
 
 def test_rename_argument_with_assumptions():

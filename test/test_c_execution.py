@@ -365,7 +365,7 @@ def test_one_length_loop():
 
 def test_scalar_global_args():
     n = np.random.default_rng().integers(30, 100)
-    evt, (out,) = lp.make_kernel(
+    _evt, (out,) = lp.make_kernel(
             "{[i]: 0<=i<n}",
             "res  = sum(i, i)",
             target=lp.ExecutableCTarget())(n=n)

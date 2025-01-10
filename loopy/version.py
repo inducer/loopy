@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -26,7 +29,7 @@ from importlib import metadata
 
 
 VERSION_TEXT = metadata.version("loopy")
-_match = re.match("^([0-9.]+)([a-z0-9]*?)$", VERSION_TEXT)
+_match = re.match(r"^([0-9.]+)([a-z0-9]*?)$", VERSION_TEXT)
 assert _match is not None
 VERSION_STATUS = _match.group(2)
 VERSION = tuple(int(nr) for nr in _match.group(1).split("."))

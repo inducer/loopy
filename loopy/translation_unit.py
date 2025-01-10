@@ -31,9 +31,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    FrozenSet,
     Mapping,
-    Optional,
     TypeVar,
     Union,
 )
@@ -45,7 +43,6 @@ from typing_extensions import Concatenate, ParamSpec, Self
 from pymbolic.primitives import Call, Variable
 
 from loopy.diagnostic import DirectCallUncachedWarning, LoopyError
-from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (
     CallableKernel,
     InKernelCallable,
@@ -57,10 +54,11 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     SubstitutionRuleMappingContext,
 )
-from loopy.target import TargetBase
 
 
 if TYPE_CHECKING:
+    from loopy.kernel import LoopKernel
+    from loopy.target import TargetBase
     from loopy.target.execution import ExecutorBase
 
 
@@ -237,7 +235,7 @@ class TranslationUnit:
 
     callables_table: ConcreteCallablesTable
     target: TargetBase
-    entrypoints: FrozenSet[str]
+    entrypoints: frozenset[str]
 
     def __post_init__(self):
 
@@ -336,6 +334,7 @@ class TranslationUnit:
             ep_name, = self.entrypoints
             entrypoint = self[ep_name]
 
+            from loopy import LoopKernel
             if not isinstance(entrypoint, LoopKernel):
                 raise ValueError("default entrypoint is not a kernel")
 
@@ -346,7 +345,7 @@ class TranslationUnit:
                              " determined.")
 
     def executor(self,
-                 *args, entrypoint: Optional[str] = None, **kwargs) -> ExecutorBase:
+                 *args, entrypoint: str | None = None, **kwargs) -> ExecutorBase:
         """Return an object that hosts caches of compiled code for execution (i.e.
         a subclass of :class:`ExecutorBase`, specific to an execution
         environment (e.g. an OpenCL context) and a given entrypoint.
@@ -584,9 +583,9 @@ class CallablesInferenceContext:
     """
     callables: Mapping[str, InKernelCallable]
     clbl_name_gen: Callable[[str], str]
-    renames: Mapping[str, FrozenSet[str]] = field(
+    renames: Mapping[str, frozenset[str]] = field(
             default_factory=lambda: collections.defaultdict(frozenset))
-    new_entrypoints: FrozenSet[str] = frozenset()
+    new_entrypoints: frozenset[str] = frozenset()
 
     def copy(self, **kwargs: Any) -> CallablesInferenceContext:
         return replace(self, **kwargs)
@@ -749,7 +748,7 @@ class CallablesInferenceContext:
 # }}}
 
 
-TUnitOrKernelT = TypeVar("TUnitOrKernelT", LoopKernel, TranslationUnit)
+TUnitOrKernelT = TypeVar("TUnitOrKernelT", "LoopKernel", TranslationUnit)
 
 
 # {{{ helper functions
@@ -778,6 +777,7 @@ def check_each_kernel(
                 *args: P.args,
                 **kwargs: P.kwargs
             ) -> None:
+        from loopy import LoopKernel
         if isinstance(t_unit_or_kernel, TranslationUnit):
             for clbl in t_unit_or_kernel.callables_table.values():
                 if isinstance(clbl, CallableKernel):
@@ -807,6 +807,7 @@ def for_each_kernel(
                 *args: P.args,
                 **kwargs: P.kwargs
             ) -> TUnitOrKernelT:
+        from loopy import LoopKernel
         if isinstance(t_unit_or_kernel, TranslationUnit):
             t_unit = t_unit_or_kernel
             new_callables = {}
@@ -886,7 +887,7 @@ def resolve_callables(t_unit: TranslationUnit) -> TranslationUnit:
     # get loopy specific callables
     known_callables.update(get_loopy_callables())
 
-    callables_table = {}
+    callables_table: dict[FunctionIdT, InKernelCallable] = {}
 
     # callables: name of the calls seen in the program
     callables = {name for name, clbl in t_unit.callables_table.items()

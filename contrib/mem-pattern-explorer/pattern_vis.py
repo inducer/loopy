@@ -27,7 +27,7 @@ class ArrayAccessPatternContext:
 
         self.arrays = []
 
-    def l(self, index):  # noqa: E741,E743
+    def l(self, index):  # noqa: E743
         subscript = [np.newaxis] * self.ind_length
         subscript[len(self.gsize) + index] = slice(None)
 
@@ -147,7 +147,7 @@ class Array:
                 div_ceil(nelements, self.elements_per_row),
                 self.elements_per_row,)
         shaped_array = np.zeros(
-                base_shape + (self.nattributes,),
+                (*base_shape, self.nattributes),
                 dtype=np.float32)
         shaped_array.reshape(-1, self.nattributes)[:nelements] = self.array
 
@@ -160,7 +160,7 @@ class Array:
         else:
             subgroup.fill(1)
 
-        rgb_array = np.zeros(base_shape + (3,))
+        rgb_array = np.zeros((*base_shape, 3))
         if 1:
             if len(self.ctx.gsize) > 1:
                 # g.0 -> red

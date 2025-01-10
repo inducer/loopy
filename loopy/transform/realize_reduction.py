@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2012 Andreas Kloeckner
 Copyright (C) 2022 University of Illinois Board of Trustees
@@ -26,7 +29,7 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass, replace
-from typing import Callable, Dict, FrozenSet, List, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Sequence
 
 
 logger = logging.getLogger(__name__)
@@ -34,18 +37,22 @@ logger = logging.getLogger(__name__)
 from immutables import Map
 
 import islpy as isl
-from pymbolic.primitives import Expression
 from pytools import memoize_on_first_arg
-from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError, ReductionIsNotTriangularError, warn_with_kernel
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import AddressSpace, TemporaryVariable, make_assignment
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import Assignment, InstructionBase, MultiAssignmentBase
 from loopy.symbolic import ReductionCallbackMapper
 from loopy.transform.instruction import replace_instruction_ids_in_insn
 from loopy.translation_unit import ConcreteCallablesTable, TranslationUnit
+
+
+if TYPE_CHECKING:
+    from pymbolic.primitives import ExpressionNode
+    from pytools.tag import Tag
+
+    from loopy.kernel import LoopKernel
 
 
 # {{{ reduction realization context
@@ -59,14 +66,14 @@ class _ChangeFlag:
 class _ReductionRealizationContext:
     # {{{ read-only
 
-    mapper: "RealizeReductionCallbackMapper"
+    mapper: RealizeReductionCallbackMapper
 
     force_scan: bool
     automagic_scans_ok: bool
     unknown_types_ok: bool
 
     # FIXME: This feels like a broken-by-design concept.
-    force_outer_iname_for_scan: Optional[str]
+    force_outer_iname_for_scan: str | None
 
     # We use the original kernel for a number of lookups whose value
     # we do not change and which might be already cached on it.
@@ -82,17 +89,17 @@ class _ReductionRealizationContext:
     insn_id_gen: Callable[[str], str]
     var_name_gen: Callable[[str], str]
 
-    additional_temporary_variables: Dict[str, TemporaryVariable]
-    additional_insns: List[InstructionBase]
-    domains: List[isl.BasicSet]
-    additional_iname_tags: Dict[str, Sequence[Tag]]
+    additional_temporary_variables: dict[str, TemporaryVariable]
+    additional_insns: list[InstructionBase]
+    domains: list[isl.BasicSet]
+    additional_iname_tags: dict[str, Sequence[Tag]]
     # list only to facilitate mutation
-    boxed_callables_table: List[ConcreteCallablesTable]
+    boxed_callables_table: list[ConcreteCallablesTable]
 
     # FIXME: This is a broken-by-design concept. Local-parallel scans emit a
     # reduction internally. This serves to avoid force_scan acting on that
     # reduction.
-    inames_added_for_scan: Set[str]
+    inames_added_for_scan: set[str]
 
     # }}}
 
@@ -100,10 +107,10 @@ class _ReductionRealizationContext:
 
     # These are attributes from 'surrounding' instruction, for generated
     # instructions to potentially inherit.
-    surrounding_within_inames: FrozenSet[str]
-    surrounding_depends_on: FrozenSet[str]
-    surrounding_no_sync_with: FrozenSet[Tuple[str, str]]
-    surrounding_predicates: FrozenSet[Expression]
+    surrounding_within_inames: frozenset[str]
+    surrounding_depends_on: frozenset[str]
+    surrounding_no_sync_with: frozenset[tuple[str, str]]
+    surrounding_predicates: frozenset[ExpressionNode]
 
     # }}}
 
@@ -113,10 +120,10 @@ class _ReductionRealizationContext:
     # These are requested additions to attributes of the surrounding instruction.
 
     # FIXME add_within_inames seems broken by design.
-    surrounding_insn_add_within_inames: Set[str]
+    surrounding_insn_add_within_inames: set[str]
 
-    surrounding_insn_add_depends_on: Set[str]
-    surrounding_insn_add_no_sync_with: Set[Tuple[str, str]]
+    surrounding_insn_add_depends_on: set[str]
+    surrounding_insn_add_no_sync_with: set[tuple[str, str]]
 
     # }}}
 
@@ -171,9 +178,9 @@ class _ReductionRealizationContext:
 
 @dataclass(frozen=True)
 class _InameClassification:
-    sequential: Tuple[str, ...]
-    local_parallel: Tuple[str, ...]
-    nonlocal_parallel: Tuple[str, ...]
+    sequential: tuple[str, ...]
+    local_parallel: tuple[str, ...]
+    nonlocal_parallel: tuple[str, ...]
 
 
 def _classify_reduction_inames(red_realize_ctx, inames):
@@ -1124,7 +1131,7 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
             red_realize_ctx=red_realize_ctx,
             name_based_on="acc_"+red_iname,
             nvars=nresults,
-            shape=outer_local_iname_sizes + (size,),
+            shape=(*outer_local_iname_sizes, size),
             dtypes=reduction_dtypes,
             address_space=AddressSpace.LOCAL)
 
@@ -1151,7 +1158,7 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
     init_insn = make_assignment(
             id=init_id,
             assignees=tuple(
-                acc_var[outer_local_iname_vars + (var(base_exec_iname),)]
+                acc_var[(*outer_local_iname_vars, var(base_exec_iname))]
                 for acc_var in acc_vars),
             expression=neutral,
             within_inames=(
@@ -1234,7 +1241,7 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
     transfer_insn = make_assignment(
             id=transfer_id,
             assignees=tuple(
-                acc_var[outer_local_iname_vars + (var(red_iname),)]
+                acc_var[(*outer_local_iname_vars, var(red_iname))]
                 for acc_var in acc_vars),
             expression=expression,
             **transfer_red_realize_ctx.get_insn_kwargs())
@@ -1269,12 +1276,11 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
                 arg_dtypes,
                 _strip_if_scalar(acc_vars, tuple(
                     acc_var[
-                        outer_local_iname_vars + (var(stage_exec_iname),)]
+                        (*outer_local_iname_vars, var(stage_exec_iname))]
                     for acc_var in acc_vars)),
                 _strip_if_scalar(acc_vars, tuple(
                     acc_var[
-                        outer_local_iname_vars + (
-                            var(stage_exec_iname) + new_size,)]
+                        (*outer_local_iname_vars, var(stage_exec_iname) + new_size)]
                     for acc_var in acc_vars)),
                 red_realize_ctx.boxed_callables_table[0],
                 orig_kernel.target)
@@ -1282,7 +1288,7 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
         stage_insn = make_assignment(
                 id=stage_id,
                 assignees=tuple(
-                    acc_var[outer_local_iname_vars + (var(stage_exec_iname),)]
+                    acc_var[(*outer_local_iname_vars, var(stage_exec_iname))]
                     for acc_var in acc_vars),
                 expression=expression,
                 within_inames=(
@@ -1307,9 +1313,9 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
 
     if nresults == 1:
         assert len(acc_vars) == 1
-        return acc_vars[0][outer_local_iname_vars + (0,)]
+        return acc_vars[0][(*outer_local_iname_vars, 0)]
     else:
-        return [acc_var[outer_local_iname_vars + (0,)] for acc_var in
+        return [acc_var[(*outer_local_iname_vars, 0)] for acc_var in
                 acc_vars]
 # }}}
 
@@ -1419,7 +1425,7 @@ def map_scan_seq(red_realize_ctx, expr, nresults, arg_dtypes,
             assignees=acc_vars,
             within_inames=(
                 red_realize_ctx.surrounding_within_inames
-                - frozenset((scan_param.sweep_iname,) + expr.inames)),
+                - frozenset((scan_param.sweep_iname, *expr.inames))),
             within_inames_is_final=True,
             depends_on=init_insn_depends_on,
             expression=expression,
@@ -1558,7 +1564,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
             red_realize_ctx=red_realize_ctx,
             name_based_on="acc_"+scan_param.scan_iname,
             nvars=nresults,
-            shape=outer_local_iname_sizes + (scan_size,),
+            shape=(*outer_local_iname_sizes, scan_size),
             dtypes=reduction_dtypes,
             address_space=AddressSpace.LOCAL)
 
@@ -1579,7 +1585,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
     init_insn = make_assignment(
             id=init_id,
             assignees=tuple(
-                acc_var[outer_local_iname_vars + (var(base_exec_iname),)]
+                acc_var[(*outer_local_iname_vars, var(base_exec_iname))]
                 for acc_var in acc_vars),
             expression=neutral,
             within_inames=base_iname_deps | frozenset([base_exec_iname]),
@@ -1640,8 +1646,10 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
                 f"{red_realize_ctx.id_prefix}_{scan_param.scan_iname}_transfer")
         transfer_insn = make_assignment(
                 id=transfer_id,
-                assignees=(acc_var[outer_local_iname_vars
-                    + (var(scan_param.sweep_iname) - sweep_lower_bound_expr,)],),
+                assignees=(acc_var[(
+                    *outer_local_iname_vars,
+                    var(scan_param.sweep_iname) - sweep_lower_bound_expr)
+                ],),
                 expression=pre_scan_result_i,
                 within_inames=(
                     red_realize_ctx.surrounding_within_inames
@@ -1684,8 +1692,8 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
                     assignees=(read_var,),
                     expression=(
                             acc_var[
-                                outer_local_iname_vars
-                                + (var(stage_exec_iname) - cur_size,)]),
+                                (*outer_local_iname_vars,
+                                    var(stage_exec_iname) - cur_size)]),
                     within_inames=(
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=True,
@@ -1713,7 +1721,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
             _strip_if_scalar(acc_vars, read_vars),
             _strip_if_scalar(acc_vars, tuple(
                 acc_var[
-                    outer_local_iname_vars + (var(stage_exec_iname),)]
+                    (*outer_local_iname_vars, var(stage_exec_iname))]
                 for acc_var in acc_vars)),
             red_realize_ctx.boxed_callables_table[0],
             orig_kernel.target)
@@ -1721,7 +1729,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
         write_stage_insn = make_assignment(
                 id=write_stage_id,
                 assignees=tuple(
-                    acc_var[outer_local_iname_vars + (var(stage_exec_iname),)]
+                    acc_var[(*outer_local_iname_vars, var(stage_exec_iname))]
                     for acc_var in acc_vars),
                 expression=expression,
                 within_inames=(
@@ -1744,9 +1752,9 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
 
     if nresults == 1:
         assert len(acc_vars) == 1
-        return acc_vars[0][outer_local_iname_vars + (output_idx,)]
+        return acc_vars[0][(*outer_local_iname_vars, output_idx)]
     else:
-        return [acc_var[outer_local_iname_vars + (output_idx,)]
+        return [acc_var[(*outer_local_iname_vars, output_idx)]
                 for acc_var in acc_vars]
 
 # }}}

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -478,7 +481,7 @@ def register_preamble_generators(kernel: LoopKernel, preamble_generators):
                         "and would thus disrupt loopy's caches"
                         % pgen)
 
-            new_pgens = (pgen,) + new_pgens
+            new_pgens = (pgen, *new_pgens)
 
     return kernel.copy(preamble_generators=new_pgens)
 
@@ -496,7 +499,7 @@ def register_symbol_manglers(kernel, manglers):
                         "and would disrupt loopy's caches"
                         % m)
 
-            new_manglers = (m,) + new_manglers
+            new_manglers = (m, *new_manglers)
 
     return kernel.copy(symbol_manglers=new_manglers)
 

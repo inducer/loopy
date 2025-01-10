@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,17 +24,22 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from pymbolic import var
 from pymbolic.primitives import expr_dataclass
-from pytools.persistent_dict import Hash, KeyBuilder
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.symbolic import FunctionIdentifier, ResolvedFunction
 from loopy.tools import update_persistent_hash
 from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from pytools.persistent_dict import Hash, KeyBuilder
 
 
 __doc__ = """
@@ -329,7 +337,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         from loopy.library.function import MakeTupleCallable
         from loopy.translation_unit import add_callable_to_table
 
-        scalar_neutral_element, calables_table = (
+        scalar_neutral_element, _calables_table = (
                 self.inner_reduction.neutral_element(
                     scalar_dtype, callables_table, target))
 
@@ -347,8 +355,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
                 segment_flag_dtype.numpy_dtype.type(0)), callables_table
 
     def result_dtypes(self, scalar_dtype, segment_flag_dtype):
-        return (self.inner_reduction.result_dtypes(scalar_dtype)
-                + (segment_flag_dtype,))
+        return ((*self.inner_reduction.result_dtypes(scalar_dtype), segment_flag_dtype))
 
     def __str__(self):
         return "segmented(%s)" % self.which
@@ -538,7 +545,7 @@ def register_reduction_parser(parser):
     _REDUCTION_OP_PARSERS.append(parser)
 
 
-def parse_reduction_op(name):
+def parse_reduction_op(name: str) -> ReductionOperation | None:
     import re
 
     red_op_match = re.match(r"^([a-z]+)_([a-z0-9_]+)$", name)
@@ -571,12 +578,12 @@ class ReductionCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, callables_table):
         scalar_dtype = arg_id_to_dtype[0]
         index_dtype = arg_id_to_dtype[1]
-        result_dtypes = self.name.reduction_op.result_dtypes(scalar_dtype,
+        result_dtypes = self.name.reduction_op.result_dtypes(scalar_dtype,  # pylint: disable=no-member
                 index_dtype)
         new_arg_id_to_dtype = arg_id_to_dtype.copy()
         new_arg_id_to_dtype[-1] = result_dtypes[0]
         new_arg_id_to_dtype[-2] = result_dtypes[1]
-        name_in_target = self.name.reduction_op.prefix(scalar_dtype,
+        name_in_target = self.name.reduction_op.prefix(scalar_dtype,  # pylint: disable=no-member
                 index_dtype) + "_op"
 
         return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
@@ -594,7 +601,7 @@ class ReductionCallable(ScalarCallable):
 class ArgExtOpCallable(ReductionCallable):
 
     def generate_preambles(self, target):
-        op = self.name.reduction_op
+        op = self.name.reduction_op  # pylint: disable=no-member
         scalar_dtype = self.arg_id_to_dtype[-1]
         index_dtype = self.arg_id_to_dtype[-2]
 
@@ -630,7 +637,7 @@ class ArgExtOpCallable(ReductionCallable):
 class SegmentOpCallable(ReductionCallable):
 
     def generate_preambles(self, target):
-        op = self.name.reduction_op
+        op = self.name.reduction_op  # pylint: disable=no-member
         scalar_dtype = self.arg_id_to_dtype[-1]
         segment_flag_dtype = self.arg_id_to_dtype[-2]
         prefix = op.prefix(scalar_dtype, segment_flag_dtype)

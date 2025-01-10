@@ -28,7 +28,7 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.clrandom  # noqa
+import pyopencl.clrandom
 
 import loopy as lp
 
@@ -136,7 +136,7 @@ def test_assign_single_precision_scalar(ctx_factory):
     t_unit = lp.parse_fortran(fortran_src)
 
     import re
-    assert re.search("1.1000000[0-9]*f", lp.generate_code_v2(t_unit).device_code())
+    assert re.search(r"1.1000000[0-9]*f", lp.generate_code_v2(t_unit).device_code())
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
     t_unit(queue, a=a_dev)
@@ -176,7 +176,7 @@ def test_fill(ctx_factory):
 
     ctx = ctx_factory()
 
-    lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5, a=5))
+    lp.auto_test_vs_ref(knl, ctx, knl, parameters={"n": 5, "a": 5})
 
 
 def test_fill_const(ctx_factory):
@@ -197,7 +197,7 @@ def test_fill_const(ctx_factory):
 
     ctx = ctx_factory()
 
-    lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5, a=5))
+    lp.auto_test_vs_ref(knl, ctx, knl, parameters={"n": 5, "a": 5})
 
 
 def test_asterisk_in_shape(ctx_factory):
@@ -247,7 +247,7 @@ def test_assignment_to_subst(ctx_factory):
     knl = lp.assignment_to_subst(knl, "a", "i")
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 5})
 
 
 def test_assignment_to_subst_two_defs(ctx_factory):
@@ -274,7 +274,7 @@ def test_assignment_to_subst_two_defs(ctx_factory):
     knl = lp.assignment_to_subst(knl, "a")
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 5})
 
 
 def test_assignment_to_subst_indices(ctx_factory):
@@ -339,7 +339,7 @@ def test_if(ctx_factory):
     knl = lp.assignment_to_subst(knl, "a")
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 5})
 
 
 def test_tagged(ctx_factory):
@@ -427,7 +427,8 @@ def test_matmul(ctx_factory, buffer_inames):
     prog = lp.buffer_array(prog, "c", buffer_inames=buffer_inames,
             init_expression="0", store_expression="base+buffer")
 
-    lp.auto_test_vs_ref(ref_prog, ctx, prog, parameters=dict(n=128, m=128, ell=128))
+    lp.auto_test_vs_ref(ref_prog, ctx, prog,
+                        parameters={"n": 128, "m": 128, "ell": 128})
 
 
 @pytest.mark.xfail
@@ -524,7 +525,7 @@ def test_fuse_kernels(ctx_factory):
     assert len(knl["xderiv_and_yderiv"].temporary_variables) == 2
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
+    lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters={"nelements": 20, "ndofs": 4})
 
 
 def test_parse_and_fuse_two_kernels():
@@ -610,7 +611,7 @@ def test_precompute_some_exist(ctx_factory):
     ref_knl = knl
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, ell=128))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 128, "m": 128, "ell": 128})
 
 
 def test_fortran_subroutines():
@@ -679,7 +680,7 @@ def test_division_in_shapes(ctx_factory):
     print(t_unit)
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit, parameters=dict(m=128))
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit, parameters={"m": 128})
 
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ def test_tim2d(ctx_factory):
             [
                 lp.GlobalArg("u", dtype, shape=field_shape, order=order),
                 lp.GlobalArg("lap", dtype, shape=field_shape, order=order),
-                lp.GlobalArg("G", dtype, shape=(3,)+field_shape, order=order),
+                lp.GlobalArg("G", dtype, shape=(3, *field_shape), order=order),
                 # lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
                 lp.GlobalArg("D", dtype, shape=(n, n), order=order),
                 # lp.ImageArg("D", dtype, shape=(n, n)),
@@ -78,7 +78,7 @@ def test_tim2d(ctx_factory):
     seq_knl = knl
 
     def variant_orig(knl):
-        knl = lp.tag_inames(knl, dict(i="l.0", j="l.1", e="g.0"))
+        knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1", "e": "g.0"})
 
         knl = lp.add_prefetch(knl, "D[:,:]", fetch_outer_inames="e",
                 default_tag="l.auto")
@@ -94,8 +94,8 @@ def test_tim2d(ctx_factory):
         knl = lp.add_prefetch(knl, "G$x[:,e,:,:]", default_tag="l.auto")
         knl = lp.add_prefetch(knl, "G$y[:,e,:,:]", default_tag="l.auto")
 
-        knl = lp.tag_inames(knl, dict(o="unr"))
-        knl = lp.tag_inames(knl, dict(m="unr"))
+        knl = lp.tag_inames(knl, {"o": "unr"})
+        knl = lp.tag_inames(knl, {"m": "unr"})
 
         knl = lp.set_instruction_priority(knl, "id:D_fetch", 5)
         print(knl)

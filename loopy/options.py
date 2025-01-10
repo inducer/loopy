@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -23,10 +26,14 @@ THE SOFTWARE.
 
 import os
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 from warnings import warn
 
 from pytools import ImmutableRecord
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 ALLOW_TERMINAL_COLORS = True
@@ -198,7 +205,7 @@ class Options(ImmutableRecord):
         RAW, WAR and WAW races.
     """
 
-    _legacy_options_map = {
+    _legacy_options_map: ClassVar[Mapping[str, tuple[str, None] | None]] = {
             "cl_build_options": ("build_options", None),
             "write_cl": ("write_code", None),
             "highlight_cl": None,
@@ -220,7 +227,7 @@ class Options(ImmutableRecord):
         kwargs = _apply_legacy_map(self._legacy_options_map, kwargs)
 
         try:
-            import colorama  # noqa
+            import colorama  # noqa: F401
         except ImportError:
             allow_terminal_colors_def = False
         else:
@@ -332,7 +339,7 @@ class Options(ImmutableRecord):
             return _ColoramaStub()
 
 
-KEY_VAL_RE = re.compile("^([a-zA-Z0-9]+)=(.*)$")
+KEY_VAL_RE = re.compile(r"^([a-zA-Z0-9]+)=(.*)$")
 
 
 def make_options(options_arg):

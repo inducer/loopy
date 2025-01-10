@@ -1,4 +1,6 @@
 """isl helpers"""
+from __future__ import annotations
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -93,12 +95,12 @@ def make_slab(space, iname, start, stop, iname_multiplier=1):
 
     space = zero.get_domain_space()
 
-    from pymbolic.primitives import Expression
+    from pymbolic.primitives import ExpressionNode
 
     from loopy.symbolic import aff_from_expr
-    if isinstance(start, Expression):
+    if isinstance(start, ExpressionNode):
         start = aff_from_expr(space, start)
-    if isinstance(stop, Expression):
+    if isinstance(stop, ExpressionNode):
         stop = aff_from_expr(space, stop)
 
     if isinstance(start, int):

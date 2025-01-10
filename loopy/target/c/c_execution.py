@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Nick Curtis"
 
 __license__ = """
@@ -25,30 +28,34 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Sequence
 
 import numpy as np
 from codepy.jit import compile_from_string
 from codepy.toolchain import GCCToolchain, ToolchainGuessError, guess_toolchain
-from immutables import Map
 
 from pytools import memoize_method
 from pytools.codegen import CodeGenerator, Indentation
 from pytools.prefork import ExecError
 
-from loopy.codegen.result import GeneratedProgram
-from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase
-from loopy.kernel.data import ArrayArg
-from loopy.schedule.tools import KernelArgInfo
 from loopy.target.execution import (
     ExecutionWrapperGeneratorBase,
     ExecutorBase,
     get_highlighted_code,
 )
-from loopy.translation_unit import TranslationUnit
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT
+
+
+if TYPE_CHECKING:
+    from immutables import Map
+
+    from loopy.codegen.result import GeneratedProgram
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.data import ArrayArg
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.translation_unit import TranslationUnit
+    from loopy.typing import Expression
 
 
 logger = logging.getLogger(__name__)
@@ -105,7 +112,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[Expression | tuple[Expression]], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for C-execution
@@ -324,7 +331,7 @@ class CCompiler:
         c_fname = self._tempname("code." + self.source_suffix)
 
         # build object
-        _, mod_name, ext_file, recompiled = \
+        _, _mod_name, ext_file, recompiled = \
             compile_from_string(
                 self.toolchain.copy(
                     cflags=self.toolchain.cflags+list(extra_build_options)),
@@ -365,15 +372,15 @@ class CPlusPlusCompiler(CCompiler):
 # {{{ placeholder till ctypes fixes: https://github.com/python/cpython/issues/61103
 
 class Complex64(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
+    _fields_: ClassVar = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
 
 
 class Complex128(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_double), ("imag", ctypes.c_double)]
+    _fields_: ClassVar = [("real", ctypes.c_double), ("imag", ctypes.c_double)]
 
 
 class Complex256(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
+    _fields_: ClassVar = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
 
 
 _NUMPY_COMPLEX_TYPE_TO_CTYPE = {
@@ -425,7 +432,7 @@ class CompiledCKernel:
 
     def __init__(self, kernel: LoopKernel, devprog: GeneratedProgram,
             passed_names: Sequence[str], dev_code: str,
-            comp: Optional["CCompiler"] = None):
+            comp: CCompiler | None = None):
         # get code and build
         self.code = dev_code
         self.comp = comp if comp is not None else CCompiler()
@@ -473,7 +480,7 @@ class CExecutor(ExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, program, entrypoint, compiler: Optional["CCompiler"] = None):
+    def __init__(self, program, entrypoint, compiler: CCompiler | None = None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -493,7 +500,7 @@ class CExecutor(ExecutorBase):
 
     @memoize_method
     def translation_unit_info(self,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: Map[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,9 +25,8 @@ THE SOFTWARE.
 
 import logging
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
 from functools import reduce
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -39,7 +41,6 @@ from loopy.diagnostic import (
     WriteRaceConditionWarning,
     warn_with_kernel,
 )
-from loopy.kernel import LoopKernel
 from loopy.kernel.array import (
     ArrayBase,
     FixedStrideArrayDimTag,
@@ -68,7 +69,15 @@ from loopy.translation_unit import (
     check_each_kernel,
 )
 from loopy.type_inference import TypeReader
-from loopy.typing import ExpressionT, not_none
+from loopy.typing import not_none
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from pymbolic.typing import Expression
+
+    from loopy.kernel import LoopKernel
 
 
 logger = logging.getLogger(__name__)
@@ -206,22 +215,22 @@ def check_separated_array_consistency(kernel: LoopKernel) -> None:
                 for attr_name in ["address_space", "is_input", "is_output"]:
                     if getattr(arg, attr_name) != getattr(sub_arg, attr_name):
                         raise LoopyError(
-                                "Attribute '{attr_name}' of "
+                                f"Attribute '{attr_name}' of "
                                 f"'{arg.name}' and associated sep array "
                                 f"'{sub_arg.name}' is not consistent.")
 
 
 @check_each_kernel
 def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
-    from pymbolic.primitives import Expression, Variable
+    from pymbolic.primitives import ExpressionNode, Variable
 
     from loopy.symbolic import DependencyMapper
 
     arg_name_vars = {Variable(name) for name in kernel.arg_dict}
-    dep_mapper = DependencyMapper()
+    dep_mapper: DependencyMapper[[]] = DependencyMapper()
 
     def ensure_depends_only_on_arguments(
-            what: str, expr: Union[str, ExpressionT]) -> None:
+            what: str, expr: str | Expression) -> None:
         if isinstance(expr, str):
             expr = Variable(expr)
 
@@ -241,14 +250,14 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                 continue
             if arg.offset is auto:
                 pass
-            elif isinstance(arg.offset, (int, np.integer, Expression, str)):
+            elif isinstance(arg.offset, (int, np.integer, ExpressionNode, str)):
                 ensure_depends_only_on_arguments(what, arg.offset)
 
             else:
                 raise LoopyError(f"invalid value of offset for '{arg.name}'")
 
             if arg.dim_tags is None:
-                new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]] = \
+                new_dim_tags: tuple[ArrayDimImplementationTag, ...] | None = \
                         arg.dim_tags
             else:
                 new_dim_tags = ()
@@ -259,13 +268,13 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                         if dim_tag.stride is auto:
                             pass
                         elif isinstance(
-                                dim_tag.stride, (int, np.integer, Expression)):
+                                dim_tag.stride, (int, np.integer, ExpressionNode)):
                             ensure_depends_only_on_arguments(what, dim_tag.stride)
                         else:
                             raise LoopyError(f"invalid value of {what}")
 
                     assert new_dim_tags is not None
-                    new_dim_tags = new_dim_tags + (dim_tag,)
+                    new_dim_tags = (*new_dim_tags, dim_tag)
 
             arg = arg.copy(dim_tags=new_dim_tags)
 
@@ -281,7 +290,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
             pass
         if tv.offset is auto:
             pass
-        elif isinstance(tv.offset, (int, np.integer, Expression, str)):
+        elif isinstance(tv.offset, (int, np.integer, ExpressionNode, str)):
             ensure_depends_only_on_arguments(what, tv.offset)
         else:
             raise LoopyError(f"invalid value of offset for '{tv.name}'")
@@ -294,7 +303,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                     if dim_tag.stride is auto:
                         raise LoopyError(f"The {what}" f" is 'auto', "
                                 "which is not allowed.")
-                    elif isinstance(dim_tag.stride, (int, np.integer, Expression)):
+                    elif isinstance(dim_tag.stride, (int, np.integer, ExpressionNode)):
                         ensure_depends_only_on_arguments(what, dim_tag.stride)
                     else:
                         raise LoopyError(f"invalid value of {what}")
@@ -1323,7 +1332,7 @@ def check_for_nested_base_storage(kernel: LoopKernel) -> None:
     # must run after preprocessing has created variables for base_storage
 
     from loopy.kernel.data import ArrayArg
-    arrays: List[ArrayBase] = [
+    arrays: list[ArrayBase] = [
         arg for arg in kernel.args if isinstance(arg, ArrayArg)
         ]
     arrays = arrays + list(kernel.temporary_variables.values())

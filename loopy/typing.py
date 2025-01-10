@@ -1,6 +1,11 @@
 """
-.. autoclass:: ExpressionT
+.. autoclass:: Expression
 .. autoclass:: ShapeType
+.. autodata:: InameStr
+.. autodata:: InameStrSet
+
+.. currentmodule:: loopy
+
 .. autoclass:: auto
 """
 
@@ -31,21 +36,22 @@ THE SOFTWARE.
 """
 
 
-from typing import Optional, Tuple, TypeVar
+from typing import Tuple, TypeVar
 
 import numpy as np
 from typing_extensions import TypeAlias, TypeIs
 
-from pymbolic.primitives import Expression
-from pymbolic.typing import ArithmeticExpressionT, ExpressionT, IntegerT
+from pymbolic.primitives import ExpressionNode
+from pymbolic.typing import ArithmeticExpression, Expression, Integer
 
 
 # The Fortran parser may insert dimensions of 'None', but I'd like to phase
 # that out, so we're not encoding that in the type.
-ShapeType: TypeAlias = Tuple[ArithmeticExpressionT, ...]
+ShapeType: TypeAlias = Tuple[ArithmeticExpression, ...]
 StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str
+InameStrSet: TypeAlias = frozenset[InameStr]
 
 
 class auto:  # noqa
@@ -58,7 +64,7 @@ class auto:  # noqa
 T = TypeVar("T")
 
 
-def not_none(obj: Optional[T]) -> T:
+def not_none(obj: T | None) -> T:
     assert obj is not None
     return obj
 
@@ -67,15 +73,15 @@ def is_integer(obj: object) -> TypeIs[int | np.integer]:
     return isinstance(obj, (int, np.integer))
 
 
-def integer_or_err(expr: ExpressionT) -> IntegerT:
+def integer_or_err(expr: Expression) -> Integer:
     if isinstance(expr, (int, np.integer)):
         return expr
     else:
         raise ValueError(f"expected integer, got {type(expr)}")
 
 
-def integer_expr_or_err(expr: ExpressionT) -> IntegerT | Expression:
-    if isinstance(expr, (int, np.integer, Expression)):
+def integer_expr_or_err(expr: Expression) -> Integer | ExpressionNode:
+    if isinstance(expr, (int, np.integer, ExpressionNode)):
         return expr
     else:
         raise ValueError(f"expected integer or expression, got {type(expr)}")

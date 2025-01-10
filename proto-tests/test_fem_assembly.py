@@ -25,10 +25,10 @@ def test_laplacian_stiffness(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "[Nc] -> {[K,i,j,q, dx_axis, ax_b]: 0<=K<Nc and 0<=i,j<%(Nb)d and 0<=q<%(Nq)d "  # noqa
             "and 0<= dx_axis, ax_b < %(dim)d}"
-            % dict(Nb=Nb, Nq=Nq, dim=dim),
+            % {"Nb": Nb, "Nq": Nq, "dim": dim},
             [
                 "dPsi(ij, dxi) := sum_float32(@ax_b,"
-                    "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])",  # noqa
+                    "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])",
                 "A[K, i, j] = sum_float32(q, w[q] * jacDet[K,q] * ("
                     "sum_float32(dx_axis, dPsi$one(i,dx_axis)*dPsi$two(j,dx_axis))))"
                 ],
@@ -42,7 +42,7 @@ def test_laplacian_stiffness(ctx_factory):
             ],
             name="lapquad", assumptions="Nc>=1")
 
-    knl = lp.tag_inames(knl, dict(ax_b="unr"))
+    knl = lp.tag_inames(knl, {"ax_b": "unr"})
     seq_knl = knl
 
     def variant_fig31(knl):
@@ -77,7 +77,7 @@ def test_laplacian_stiffness(ctx_factory):
         Ncloc = 16  # noqa
         knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
-        knl = lp.precompute(knl, "dPsi$one", np.float32, ["dx_axis"], default_tag=None)  # noqa
+        knl = lp.precompute(knl, "dPsi$one", np.float32, ["dx_axis"], default_tag=None)
         knl = lp.tag_inames(knl, {"j": "ilp.seq"})
 
         return knl, ["Ko", "Kloc"]
@@ -123,7 +123,7 @@ def test_laplacian_stiffness(ctx_factory):
         var_knl, loop_prio = variant(knl)
         kernel_gen = lp.generate_loop_schedules(var_knl,
                 loop_priority=loop_prio)
-        kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
+        kernel_gen = lp.check_kernels(kernel_gen, {"Nc": Nc})
 
         # print lp.preprocess_kernel(var_knl)
 

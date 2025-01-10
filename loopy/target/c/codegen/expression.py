@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -44,11 +47,14 @@ from pymbolic.mapper.stringifier import (
 
 from loopy.diagnostic import LoopyError
 from loopy.expression import dtype_to_type_context
-from loopy.symbolic import TypeCast
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeReader
 from loopy.types import LoopyType
-from loopy.typing import ExpressionT, is_integer
+from loopy.typing import Expression, is_integer
+
+
+if TYPE_CHECKING:
+    from loopy.symbolic import TypeCast
 
 
 __doc__ = """
@@ -92,7 +98,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
         return type(self)(self.codegen_state, self.fortran_abi, type_inf_mapper)
 
-    def infer_type(self, expr: ExpressionT) -> LoopyType:
+    def infer_type(self, expr: Expression) -> LoopyType:
         result = self.type_inf_mapper(expr)
         assert isinstance(result, LoopyType)
 
@@ -123,7 +129,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return s
 
-    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):  # type: ignore[override]
+    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
         result = super().rec(expr, type_context)
 
         if needed_type is None:
@@ -476,7 +482,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif np.isfinite(expr):
             if type_context == "f":
-                return Literal(repr(float((expr)))+"f")
+                return Literal(repr(float(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context in ["i", "b"]:
@@ -641,7 +647,7 @@ class CExpressionToCodeMapper(Mapper):
                 # FIXME: Add type suffixes?
                 return repr(int(expr))
             elif isinstance(expr, np.float32):
-                return f"{repr(float(expr))}f"
+                return f"{float(expr)!r}f"
             elif isinstance(expr, np.float64):
                 return repr(float(expr))
             else:

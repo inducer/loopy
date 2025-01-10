@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
 __license__ = """
@@ -23,18 +26,21 @@ THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 from typing_extensions import Self
 
 import islpy as isl
 from islpy import dim_type
-from pymbolic import ArithmeticExpressionT, var
+from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_method
 
 from loopy.symbolic import SubstitutionMapper, get_dependencies
-from loopy.typing import ExpressionT
+
+
+if TYPE_CHECKING:
+    from loopy.typing import Expression
 
 
 @dataclass(frozen=True)
@@ -47,7 +53,7 @@ class AccessDescriptor:
     """
 
     identifier: Any = None
-    storage_axis_exprs: Optional[Sequence[ArithmeticExpressionT]] = None
+    storage_axis_exprs: Sequence[ArithmeticExpression] | None = None
 
     def copy(self, **kwargs) -> Self:
         return replace(self, **kwargs)
@@ -72,10 +78,10 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 # {{{ construct storage->sweep map
 
 def build_per_access_storage_to_domain_map(
-        storage_axis_exprs: Sequence[ExpressionT],
+        storage_axis_exprs: Sequence[Expression],
         domain: isl.BasicSet,
         storage_axis_names: Sequence[str],
-        prime_sweep_inames: Callable[[ExpressionT], ExpressionT]
+        prime_sweep_inames: Callable[[Expression], Expression]
         ) -> isl.BasicMap:
 
     map_space = domain.space
@@ -203,10 +209,10 @@ def compute_bounds(kernel, domain, stor2sweep,
 # {{{ array-to-buffer map
 
 class ArrayToBufferMapBase(ABC):
-    non1_storage_axis_names: Tuple[str, ...]
-    storage_base_indices: Tuple[ArithmeticExpressionT, ...]
-    non1_storage_shape: Tuple[ArithmeticExpressionT, ...]
-    non1_storage_axis_flags: Tuple[ArithmeticExpressionT, ...]
+    non1_storage_axis_names: tuple[str, ...]
+    storage_base_indices: tuple[ArithmeticExpression, ...]
+    non1_storage_shape: tuple[ArithmeticExpression, ...]
+    non1_storage_axis_flags: tuple[ArithmeticExpression, ...]
 
     @abstractmethod
     def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:

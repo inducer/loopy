@@ -203,13 +203,13 @@ class OpaqueType(LoopyType):
 # }}}
 
 
-ToLoopyTypeConvertible: TypeAlias = Union[Type[auto], None, np.dtype, LoopyType]
+ToLoopyTypeConvertible: TypeAlias = Union[Type[auto], np.dtype, LoopyType, None]
 
 
 def to_loopy_type(dtype: ToLoopyTypeConvertible,
                   allow_auto: bool = False, allow_none: bool = False,
                   for_atomic: bool = False
-                  ) -> Union[Type[auto], None, LoopyType]:
+                  ) -> type[auto] | LoopyType | None:
     if dtype is None:
         if allow_none:
             return None
@@ -262,7 +262,7 @@ _TO_UNSIGNED_MAPPING: Mapping[np.dtype[Any], np.dtype[Any]] = {
         }
 
 
-def to_unsigned_dtype(dtype: "np.dtype[Any]") -> "np.dtype[Any]":
+def to_unsigned_dtype(dtype: np.dtype[Any]) -> np.dtype[Any]:
     if dtype.kind == "u":
         return dtype
     if dtype.kind != "i":

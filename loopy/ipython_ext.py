@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from IPython.core.magic import Magics, cell_magic, magics_class
 
 import loopy as lp

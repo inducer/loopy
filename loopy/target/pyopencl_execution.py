@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,28 +26,30 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
-from immutables import Map
 
 from pytools import memoize_method
 from pytools.codegen import CodeGenerator, Indentation
 
-from loopy.codegen.result import CodeGenerationResult
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import ArrayArg
-from loopy.schedule.tools import KernelArgInfo
 from loopy.target.execution import ExecutionWrapperGeneratorBase, ExecutorBase
-from loopy.types import LoopyType
-from loopy.typing import ExpressionT, integer_expr_or_err
+from loopy.typing import Expression, integer_expr_or_err
 
 
 logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
+    from immutables import Map
+
     import pyopencl as cl
+
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.types import LoopyType
 
 
 # {{{ invoker generation
@@ -109,7 +114,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[ExpressionT], str],
+            strify: Callable[[Expression], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for pyopencl execution
@@ -201,9 +206,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
             gen("")
 
-        arg_list = (["_lpy_cl_kernels", "queue"]
-                + list(args)
-                + ["wait_for=wait_for", "allocator=allocator"])
+        arg_list = (["_lpy_cl_kernels", "queue", *args,
+            "wait_for=wait_for", "allocator=allocator"])
         gen(f"_lpy_evt = {host_program_name}({', '.join(arg_list)})")
 
         if kernel.options.cl_exec_manage_array_events:
@@ -274,7 +278,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 @dataclass(frozen=True)
 class _KernelInfo:
-    cl_kernels: "_Kernels"
+    cl_kernels: _Kernels
     invoker: Callable[..., Any]
 
 
@@ -292,7 +296,7 @@ class PyOpenCLExecutor(ExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, context: "cl.Context", t_unit, entrypoint):
+    def __init__(self, context: cl.Context, t_unit, entrypoint):
         super().__init__(t_unit, entrypoint)
 
         self.context = context
@@ -307,7 +311,7 @@ class PyOpenCLExecutor(ExecutorBase):
     @memoize_method
     def translation_unit_info(
             self,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: Map[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         # FIXME: now just need to add the types to the arguments

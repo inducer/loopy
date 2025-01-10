@@ -24,11 +24,11 @@ import logging
 import sys
 
 import numpy as np
-import pytest  # noqa
+import pytest
 
 import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
+import pyopencl.clmath
+import pyopencl.clrandom
 
 import loopy as lp
 
@@ -268,7 +268,7 @@ def test_independent_multi_domain(ctx_factory):
     assert knl["loopy_kernel"].parents_per_domain() == 2*[None]
 
     n = 50
-    evt, (a, b) = knl(queue, n=n, out_host=True)
+    _evt, (a, b) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (50,)
     assert b.shape == (50,)
@@ -309,7 +309,7 @@ def test_equality_constraints(ctx_factory):
     # print(knl.domains[0].detect_equalities())
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n), print_ref_code=True)
+            parameters={"n": n}, print_ref_code=True)
 
 
 def test_stride(ctx_factory):
@@ -335,7 +335,7 @@ def test_stride(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n))
+            parameters={"n": n})
 
 
 def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
@@ -363,7 +363,7 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n))
+            parameters={"n": n})
 
 
 def test_triangle_domain():

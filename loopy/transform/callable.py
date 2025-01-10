@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
@@ -20,7 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Sequence
+
+from typing import TYPE_CHECKING
 
 from immutables import Map
 
@@ -47,6 +51,10 @@ from loopy.symbolic import (
     SubstitutionRuleMappingContext,
 )
 from loopy.translation_unit import FunctionIdT, TranslationUnit, for_each_kernel
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 __doc__ = """
@@ -314,7 +322,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     parameters = call_insn.expression.parameters  # reads
 
     from loopy.kernel.function_interface import get_kw_pos_association
-    kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
+    _kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
 
     for i, par in enumerate(parameters):
         arg_map[pos_to_kw[i]] = par

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -36,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExprDescriptor(ImmutableRecord):
-    __slots__ = ["insn", "expr", "unif_var_dict"]
+    __slots__ = ["expr", "insn", "unif_var_dict"]
 
 
 # {{{ extract_subst

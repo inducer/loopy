@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-16 Andreas Kloeckner"
 
 __license__ = """
@@ -100,7 +103,7 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
             else:
                 return super().map_call(expr, expn_state)
         else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
+            return self.map_subst_rule(name, tag, expr.parameters, expn_state)
 
     def map_call_with_kwargs(self, expr):
         # See https://github.com/inducer/loopy/pull/323
@@ -1060,7 +1063,7 @@ def infer_unknown_types(
                 t_unit[e].args if arg.dtype not in (None, auto)}
         new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_types(
                 arg_id_to_dtype, clbl_inf_ctx)
-        clbl_inf_ctx, new_name = clbl_inf_ctx.with_callable(e, new_callable,
+        clbl_inf_ctx, _new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
         if expect_completion:
             from loopy.types import LoopyType

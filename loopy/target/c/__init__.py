@@ -1,4 +1,5 @@
 """Plain C target and base for other C-family languages."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -24,9 +25,9 @@ THE SOFTWARE.
 """
 
 import re
-from typing import Any, Optional, Sequence, Tuple, cast
+from typing import TYPE_CHECKING, Any, Sequence, cast
 
-import numpy as np  # noqa
+import numpy as np
 
 import pymbolic.primitives as p
 from cgen import (
@@ -43,10 +44,7 @@ from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
 from loopy.kernel.data import (
     AddressSpace,
@@ -57,14 +55,20 @@ from loopy.kernel.data import (
     ValueArg,
 )
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.schedule import CallKernel
 from loopy.symbolic import IdentityMapper
 from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
-from loopy.target.execution import ExecutorBase
 from loopy.tools import remove_common_indentation
-from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import LoopyType, NumpyType, to_loopy_type
-from loopy.typing import ExpressionT, auto
+from loopy.typing import Expression, auto
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.schedule import CallKernel
+    from loopy.target.execution import ExecutorBase
+    from loopy.translation_unit import FunctionIdT, TranslationUnit
 
 
 __doc__ = """
@@ -259,7 +263,7 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
             inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
-              {re.sub("^", 14*" ", signed_exponent_preamble, flags=re.M)}
+              {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.M)}
 
               {res_ctype} y = 1;
 
@@ -414,8 +418,8 @@ class CFamilyTarget(TargetBase):
     usable as a common base for C99, C++, OpenCL, CUDA, and the like.
     """
 
-    hash_fields = TargetBase.hash_fields + ("fortran_abi",)
-    comparison_fields = TargetBase.comparison_fields + ("fortran_abi",)
+    hash_fields = (*TargetBase.hash_fields, "fortran_abi")
+    comparison_fields = (*TargetBase.comparison_fields, "fortran_abi")
 
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
@@ -772,16 +776,13 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     def symbol_manglers(self):
         return (
-                super().symbol_manglers() + [
-                    c_symbol_mangler
-                    ])
+                [*super().symbol_manglers(), c_symbol_mangler])
 
     def preamble_generators(self):
         return (
-                super().preamble_generators() + [
-                    lambda preamble_info: _preamble_generator(preamble_info,
-                        self.preamble_function_qualifier),
-                    ])
+                [*super().preamble_generators(),
+                    lambda preamble_info: _preamble_generator(
+                          preamble_info, self.preamble_function_qualifier)])
 
     @property
     def known_callables(self):
@@ -794,9 +795,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     # {{{ code generation
 
     def get_function_definition(
-            self, codegen_state: CodeGenerationState,
+            self,
+            codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult,
-            schedule_index: int, function_decl: Generable, function_body: Generable
+            schedule_index: int,
+            function_decl: Generable,
+            function_body: Generable
             ) -> Generable:
         kernel = codegen_state.kernel
         assert kernel.linearization is not None
@@ -828,37 +832,44 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                             self.get_temporary_var_declarator(codegen_state, tv))
 
                     if tv.initializer is not None:
-                        decl = Initializer(decl, generate_array_literal(
+                        init_decl = Initializer(decl, generate_array_literal(
                             codegen_state, tv, tv.initializer))
+                    else:
+                        init_decl = decl
 
-                    result.append(decl)
+                    result.append(init_decl)
+
+        assert isinstance(function_decl, FunctionDeclarationWrapper)
+        if not isinstance(function_body, Block):
+            function_body = Block([function_body])
 
         fbody = FunctionBody(function_decl, function_body)
+
         if not result:
             return fbody
         else:
-            return Collection(result+[Line(), fbody])
+            return Collection([*result, Line(), fbody])
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 
         assert codegen_state.kernel.linearization is not None
         subkernel_name = cast(
-                        CallKernel,
+                        "CallKernel",
                         codegen_state.kernel.linearization[schedule_index]
                         ).kernel_name
 
         from cgen import FunctionDeclaration, Value
 
-        name = codegen_result.current_program(codegen_state).name
+        name_str = codegen_result.current_program(codegen_state).name
         if self.target.fortran_abi:
-            name += "_"
+            name_str += "_"
 
         if codegen_state.is_entrypoint:
-            name = Value("void", name)
+            name: Declarator = Value("void", name_str)
 
             # subkernel launches occur only as part of entrypoint kernels for now
             from loopy.schedule.tools import get_subkernel_arg_info
@@ -866,7 +877,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             passed_names = skai.passed_names
             written_names = skai.written_names
         else:
-            name = Value("static void", name)
+            name = Value("static void", name_str)
             passed_names = [arg.name for arg in kernel.args]
             written_names = kernel.get_written_variables()
 
@@ -880,8 +891,8 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[ExpressionT, ...],
-            lsize: Tuple[ExpressionT, ...]) -> Optional[Generable]:
+            gsize: tuple[Expression, ...],
+            lsize: tuple[Expression, ...]) -> Generable | None:
         return None
 
     def emit_temp_var_decl_for_tv_with_base_storage(self,
@@ -895,11 +906,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         assert isinstance(tv.address_space, AddressSpace)
         ecm = codegen_state.expression_to_code_mapper
 
-        cast_decl = POD(self, tv.dtype, "")
-        temp_var_decl = POD(self, tv.dtype, tv.name)
+        cast_decl: Declarator = POD(self, tv.dtype, "")
+        temp_var_decl: Declarator = POD(self, tv.dtype, tv.name)
 
         if tv._base_storage_access_may_be_aliasing:
-            ptrtype = _ConstPointer
+            ptrtype: type[Pointer] = _ConstPointer
         else:
             # The 'restrict' part of this is a complete lie--of course
             # all these temporaries are aliased. But we're promising to
@@ -947,8 +958,6 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         sub_knl_temps = (
                 sub_knl_temps
                 | supporting_temporary_names(kernel, sub_knl_temps))
-
-        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         for tv_name in sorted(sub_knl_temps):
             tv = kernel.temporary_variables[tv_name]
@@ -1021,7 +1030,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     def get_value_arg_declaraotor(
             self, name: str, dtype: LoopyType, is_written: bool) -> Declarator:
-        result = POD(self, dtype, name)
+        result: Declarator = POD(self, dtype, name)
 
         if not is_written:
             from cgen import Const
@@ -1051,7 +1060,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def get_array_arg_declarator(
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         from cgen import RestrictPointer
-        arg_decl = RestrictPointer(
+        arg_decl: Declarator = RestrictPointer(
                 self.wrap_decl_for_address_space(
                     self.get_array_base_declarator(arg), arg.address_space))
 
@@ -1073,10 +1082,10 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             from cgen import RestrictPointer
             assert temp_var.address_space is not auto
 
-            arg_decl = RestrictPointer(
+            arg_decl: Declarator = RestrictPointer(
                     self.wrap_decl_for_address_space(
                         self.get_array_base_declarator(temp_var),
-                        cast(AddressSpace, temp_var.address_space)))
+                        cast("AddressSpace", temp_var.address_space)))
             if not is_written:
                 arg_decl = Const(arg_decl)
 
@@ -1281,7 +1290,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 inner)
 
         if hints:
-            return Collection(list(hints) + [loop])
+            return Collection([*list(hints), loop])
         else:
             return loop
 
@@ -1339,8 +1348,7 @@ class CFunctionDeclExtractor(CASTIdentityMapper):
 
     def map_function_decl_wrapper(self, node):
         self.decls.append(node.subdecl)
-        return super()\
-                .map_function_decl_wrapper(node)
+        return super().map_function_decl_wrapper(node)
 
 
 def generate_header(kernel, codegen_result=None):
@@ -1397,9 +1405,7 @@ class CTarget(CFamilyTarget):
 class CASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
         return (
-                super().preamble_generators() + [
-                    c99_preamble_generator,
-                    ])
+                [*super().preamble_generators(), c99_preamble_generator])
 
 # }}}
 

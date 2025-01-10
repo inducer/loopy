@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
 __license__ = """
@@ -125,7 +128,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
         # Can't possibly be nested, but recurse anyway to
         # make sure substitution rules referenced below here
         # do not get thrown away.
-        self.rec(result, expn_state.copy(arg_context={}))
+        self.rec(result, expn_state.copy(arg_context=Map()))
 
         return result
 

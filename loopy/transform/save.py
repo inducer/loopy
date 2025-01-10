@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2016 Matt Wala"
 
 __license__ = """
@@ -77,7 +80,7 @@ class LivenessAnalysis:
 
         for idx, (item, next_item) in enumerate(zip(
                 reversed(self.schedule),
-                reversed(self.schedule + [None]))):
+                reversed([*self.schedule, None]))):
             sched_idx = len(self.schedule) - idx - 1
 
             # Look at next_item
@@ -760,7 +763,7 @@ def save_and_reload_temporaries(program, entrypoint=None):
     if entrypoint is None:
         if len(program.entrypoints) != 1:
             raise LoopyError("Missing argument 'entrypoint'.")
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     knl = program[entrypoint]
 
