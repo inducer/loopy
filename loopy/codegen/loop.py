@@ -162,7 +162,7 @@ def generate_unroll_loop(codegen_state, sched_index):
         original_knl_ = new_codegen_state.kernel.copy()
         context = new_codegen_state.var_subst_map
         # Add in the other variables as variables.
-        for key in original_knl_.arg_dict:
+        for key in original_knl_.get_read_variables():
             if key not in context.keys():
                 context = context.update({key: Variable(key)})
 
