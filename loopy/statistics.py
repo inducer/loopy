@@ -31,25 +31,30 @@ THE SOFTWARE.
 from dataclasses import dataclass, replace
 from enum import Enum, auto as enum_auto
 from functools import cached_property, partial
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Generic,
+    Iterable,
+    TypeVar,
+    Union,
+    cast,
+)
 
 from immutabledict import immutabledict
-from typing import TYPE_CHECKING, ClassVar
 
 import islpy as isl
-import pymbolic.primitives as p
 from islpy import PwQPolynomial, dim_type
 from pymbolic.mapper import CombineMapper
-from pymbolic.typing import ArithmeticExpressionT
 from pytools import memoize_method
-from pytools.tag import Tag
 
 import loopy as lp
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
-from loopy.kernel.array import ArrayBase
 from loopy.kernel.data import AddressSpace, MultiAssignmentBase
 from loopy.kernel.function_interface import CallableKernel
-from loopy.kernel.instruction import InstructionBase
 from loopy.symbolic import (
     CoefficientCollector,
     Reduction,
@@ -58,12 +63,19 @@ from loopy.symbolic import (
     flatten,
 )
 from loopy.translation_unit import ConcreteCallablesTable, TranslationUnit
-from loopy.types import LoopyType
-from loopy.typing import Expression, ExpressionT, auto
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
+
+    import pymbolic.primitives as p
+    from pymbolic.typing import ArithmeticExpressionT
+    from pytools.tag import Tag
+
+    from loopy.kernel.array import ArrayBase
+    from loopy.kernel.instruction import InstructionBase
+    from loopy.types import LoopyType
+    from loopy.typing import Expression, ExpressionT, auto
 
 
 __doc__ = """
@@ -245,7 +257,7 @@ class ToCountMap(Generic[CountT]):
             result[k] = self.count_map.get(k, 0) + v
         return self.copy(count_map=result)
 
-    def __radd__(self, other: Union[int, ToCountMap[CountT]]) -> ToCountMap[CountT]:
+    def __radd__(self, other: int | ToCountMap[CountT]) -> ToCountMap[CountT]:
         if other != 0:
             raise ValueError("ToCountMap: Attempted to add ToCountMap "
                                 "to {} {}. ToCountMap may only be added to "
@@ -487,7 +499,7 @@ class ToCountMap(Generic[CountT]):
         new_count_map = {}
 
         for key, val in self.count_map.items():
-            new_count_map[key] = int(key.dtype.itemsize) * val  # type: ignore[union-attr]  # noqa: E501
+            new_count_map[key] = int(key.dtype.itemsize) * val  # type: ignore[union-attr]
 
         return self.copy(new_count_map)
 
@@ -821,7 +833,7 @@ class MemAccess:
         A :class:`frozenset` of tags to the operation.
     """
 
-    address_space: AddressSpace | Type[auto] | None = None
+    address_space: AddressSpace | type[auto] | None = None
     dtype: LoopyType | None = None
     lid_strides: Mapping[int, Expression] | None = None
     gid_strides: Mapping[int, Expression] | None = None
@@ -1127,7 +1139,7 @@ class ExpressionOpCounter(CounterBase):
                                   kernel_name=self.knl.name): self.one})
                    + self.rec(child, tags)
                    for child in expr.children
-                   if not is_zero(cast(ArithmeticExpressionT, child) + 1)) + \
+                   if not is_zero(cast("ArithmeticExpressionT", child) + 1)) + \
                    self.new_poly_map({Op(dtype=self.type_inf(expr),
                                   op_type=OpType.MUL,
                                   tags=tags,
@@ -1159,7 +1171,7 @@ class ExpressionOpCounter(CounterBase):
                                 + self.rec(expr.exponent, tags)
 
     def map_left_shift(
-            self, expr: Union[p.LeftShift, p.RightShift], tags: frozenset[Tag]
+            self, expr: p.LeftShift | p.RightShift, tags: frozenset[Tag]
             ) -> ToCountPolynomialMap:
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               op_type=OpType.SHIFT,
@@ -1181,7 +1193,7 @@ class ExpressionOpCounter(CounterBase):
                                 + self.rec(expr.child, tags)
 
     def map_bitwise_or(
-            self, expr: Union[p.BitwiseOr, p.BitwiseAnd, p.BitwiseXor],
+            self, expr: p.BitwiseOr | p.BitwiseAnd | p.BitwiseXor,
             tags: frozenset[Tag]) -> ToCountPolynomialMap:
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               op_type=OpType.BITWISE,
@@ -1202,7 +1214,7 @@ class ExpressionOpCounter(CounterBase):
                + self.rec(expr.else_, tags)
 
     def map_min(
-            self, expr: Union[p. Min, p.Max], tags: frozenset[Tag]
+            self, expr: p.Min | p.Max, tags: frozenset[Tag]
             ) -> ToCountPolynomialMap:
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               op_type=OpType.MAXMIN,
@@ -1847,7 +1859,7 @@ def _get_op_map_for_single_kernel(
             if isinstance(insn, (CallInstruction, Assignment)):
                 ops = op_counter(insn.assignees) + op_counter(insn.expression)
                 for key, val in ops.count_map.items():
-                    key = cast(Op, key)
+                    key = cast("Op", key)
                     count = _get_insn_count(knl, callables_table, insn.id,
                                 subgroup_size, count_redundant_work,
                                 key.count_granularity)
@@ -1931,7 +1943,7 @@ def get_op_map(
         if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
     assert entrypoint in t_unit.entrypoints
 
@@ -2052,7 +2064,7 @@ def _get_mem_access_map_for_single_kernel(
                             ).with_set_attributes(read_write=AccessDirection.WRITE)
 
                 for key, val in insn_access_map.count_map.items():
-                    key = cast(MemAccess, key)
+                    key = cast("MemAccess", key)
                     count = _get_insn_count(knl, callables_table, insn.id,
                                 subgroup_size, count_redundant_work,
                                 key.count_granularity)
@@ -2162,7 +2174,7 @@ def get_mem_access_map(
         if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
     assert entrypoint in t_unit.entrypoints
 
@@ -2295,7 +2307,7 @@ def get_synchronization_map(
         if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
     assert entrypoint in t_unit.entrypoints
     from loopy.preprocess import infer_unknown_types, preprocess_program
@@ -2360,7 +2372,7 @@ def gather_access_footprints(
         if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
     assert entrypoint in t_unit.entrypoints
 

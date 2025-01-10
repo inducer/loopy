@@ -87,7 +87,7 @@ from loopy.diagnostic import (
     LoopyError,
     UnableToDetermineAccessRangeError,
 )
-from loopy.typing import Expression, not_none
+from loopy.typing import Expression, ExpressionT, not_none
 
 
 if TYPE_CHECKING:
@@ -283,7 +283,7 @@ class WalkMapperMixin(WalkMapperBase[P]):
             return
 
         self.rec(expr.expr, *args, **kwargs)
-        
+
     def map_literal(self, expr, *args: P.args, **kwargs: P.kwargs) -> None:
         self.visit(expr, *args, **kwargs)
 
@@ -363,7 +363,7 @@ class CallbackMapper(IdentityMapperMixin, CallbackMapperBase):
 class CombineMapper(CombineMapperBase[ResultT, P]):
     def map_tagged_expression(self, expr, *args, **kwargs):
         return self.rec(expr.expr, *args, **kwargs)
-      
+
     def map_reduction(self, expr, *args: P.args, **kwargs: P.kwargs):
         return self.rec(expr.expr, *args, **kwargs)
 
