@@ -72,13 +72,18 @@ if TYPE_CHECKING:
 
 
 __doc__ = """
-.. currentmodule loopy.target.c
-
 .. autoclass:: POD
 
 .. autoclass:: ScopingBlock
 
 .. automodule:: loopy.target.c.codegen.expression
+
+References
+^^^^^^^^^^
+
+.. class:: Generable
+
+    See :class:`cgen.Generable`.
 """
 
 
