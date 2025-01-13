@@ -87,7 +87,7 @@ from loopy.diagnostic import (
     LoopyError,
     UnableToDetermineAccessRangeError,
 )
-from loopy.typing import Expression, ExpressionT, not_none
+from loopy.typing import Expression, not_none
 
 
 if TYPE_CHECKING:
@@ -159,7 +159,7 @@ References
 
 # {{{ mappers with support for loopy-specific primitives
 
-class IdentityMapperMixin(Mapper[ExpressionT, P]):
+class IdentityMapperMixin(Mapper[Expression, P]):
     def map_tagged_expression(self, expr: TaggedExpression, *args, **kwargs):
         new_expr = self.rec(expr.expr, *args, **kwargs)
         return TaggedExpression(expr.tags, new_expr)
@@ -799,7 +799,7 @@ class TaggedExpression(LoopyExpressionBase):
     init_arg_names = ("tags", "expr")
 
     tags: frozenset[Tag]
-    expr: ExpressionT
+    expr: Expression
 
 
 @p.expr_dataclass(init=False)

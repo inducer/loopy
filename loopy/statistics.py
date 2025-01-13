@@ -75,7 +75,7 @@ if TYPE_CHECKING:
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.instruction import InstructionBase
     from loopy.types import LoopyType
-    from loopy.typing import Expression, ExpressionT, auto
+    from loopy.typing import Expression, auto
 
 
 __doc__ = """
@@ -1259,8 +1259,8 @@ class _IndexStrideCoefficientCollector(CoefficientCollector):
 # {{{ _get_lid_and_gid_strides
 
 def _get_lid_and_gid_strides(
-        knl: LoopKernel, array: ArrayBase, index: tuple[ExpressionT, ...]
-        ) -> tuple[Mapping[int, ExpressionT], Mapping[int, ExpressionT]]:
+        knl: LoopKernel, array: ArrayBase, index: tuple[Expression, ...]
+        ) -> tuple[Mapping[int, Expression], Mapping[int, Expression]]:
     # find all local and global index tags and corresponding inames
     from loopy.symbolic import get_dependencies
     my_inames = get_dependencies(index) & knl.all_inames()
@@ -1377,7 +1377,7 @@ class MemAccessCounter(CounterBase):
     def count_var_access(self,
                          dtype: LoopyType,
                          name: str,
-                         index: ExpressionT | None,
+                         index: Expression | None,
                          tags: frozenset[Tag],
                          var_tags: frozenset[Tag] = frozenset()
                          ) -> ToCountPolynomialMap:
