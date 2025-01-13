@@ -35,7 +35,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    ClassVar,
     Generic,
     Iterable,
     TypeVar,
@@ -2356,11 +2355,10 @@ def _gather_access_footprints_for_single_kernel(
 
 def gather_access_footprints(
         t_unit: TranslationUnit, *, ignore_uncountable: bool = False,
-        entrypoint: str | None = None) -> Mapping[MemAccess, "isl.Set"]:
-    """Return a dictionary mapping ``(var_name, direction)`` to
-    :class:`islpy.Set` instances capturing which indices of each the array
-    *var_name* are read/written (where *direction* is either ``read`` or
-    ``write``.
+        entrypoint: str | None = None) -> Mapping[MemAccess, "isl.Set"]:  # noqa: UP037
+    """Return a dictionary mapping :class:`MemAccess` to
+    :class:`islpy.Set` instances capturing which indices of each array
+    are read/written.
 
     :arg ignore_uncountable: If *False*, an error will be raised for accesses
         on which the footprint cannot be determined (e.g. data-dependent or
