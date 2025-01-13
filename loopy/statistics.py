@@ -656,10 +656,9 @@ class CountGranularity(Enum):
 
     """
 
-    WORKITEM = "workitem"
-    SUBGROUP = "subgroup"
-    WORKGROUP = "workgroup"
-    ALL: ClassVar[Sequence[str]] = [WORKITEM, SUBGROUP, WORKGROUP]
+    WORKITEM = 0
+    SUBGROUP = 1
+    WORKGROUP = 2
 
 # }}}
 
@@ -2357,7 +2356,7 @@ def _gather_access_footprints_for_single_kernel(
 
 def gather_access_footprints(
         t_unit: TranslationUnit, *, ignore_uncountable: bool = False,
-        entrypoint: str | None = None) -> Mapping[MemAccess, isl.Set]:
+        entrypoint: str | None = None) -> Mapping[MemAccess, "isl.Set"]:
     """Return a dictionary mapping ``(var_name, direction)`` to
     :class:`islpy.Set` instances capturing which indices of each the array
     *var_name* are read/written (where *direction* is either ``read`` or
