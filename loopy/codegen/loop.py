@@ -31,7 +31,9 @@ from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.codegen.control import build_loop_nest
 from loopy.codegen.result import merge_codegen_results
 from loopy.diagnostic import LoopyError, warn
-from loopy.symbolic import EvaluatorWithDeficientContext, flatten
+from loopy.symbolic import ConstantFoldingMapper, SubstitutionMapper, flatten
+from pymbolic.mapper.substitutor import make_subst_func
+from loopy.transform.parameter import fix_parameters
 
 
 # {{{ conditional-reducing slab decomposition
@@ -151,7 +153,7 @@ def generate_unroll_loop(codegen_state, sched_index):
 
     result = []
 
-    from loopy.kernel.instruction import Assignment
+    fold_consts = ConstantFoldingMapper()
 
     for i in range(length):
         idx_aff = lower_bound_aff + i
@@ -159,19 +161,32 @@ def generate_unroll_loop(codegen_state, sched_index):
         original_knl_ = new_codegen_state.kernel.copy()
         context = new_codegen_state.var_subst_map
         # Add in the other variables as variables.
-        mymapper = EvaluatorWithDeficientContext(context)
+
+        from loopy.kernel.instruction import Assignment
+        #new_knl = fix_parameters(original_knl_, **context)
+
+        subst_func = make_subst_func(context)
+        mymapper = SubstitutionMapper(subst_func)
 
         new_insns = []
         for insn in new_codegen_state.kernel.instructions:
+            """
+            new_insn = mymapper(insn)
+            new_insns.append(fold_consts(new_insn))
+            
+            """
             if isinstance(insn, Assignment):
                 # We can update the evaluation of this potentially.
                 new_expr = mymapper(insn.expression)
+                new_expr = fold_consts(new_expr)
                 new_insns.append(insn.copy(expression=new_expr))
             else:
                 new_insns.append(insn)
 
         new_knl = original_knl_.copy(instructions=new_insns)
         new_codegen_state = new_codegen_state.copy(kernel=new_knl)
+        
+        #new_codegen_state = new_codegen_state.copy(kernel=new_knl)
 
         result.append(
                 build_loop_nest(new_codegen_state, sched_index+1))
