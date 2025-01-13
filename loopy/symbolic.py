@@ -160,7 +160,8 @@ References
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(Mapper[Expression, P]):
-    def map_tagged_expression(self, expr: TaggedExpression, *args, **kwargs):
+    def map_tagged_expression(self, expr: TaggedExpression,
+                              *args: P.args, **kwargs: P.kwargs) -> Expression:
         new_expr = self.rec(expr.expr, *args, **kwargs)
         return TaggedExpression(expr.tags, new_expr)
 
@@ -278,7 +279,8 @@ class PartialEvaluationMapper(
 
 
 class WalkMapperMixin(WalkMapperBase[P]):
-    def map_tagged_expression(self, expr, *args, **kwargs):
+    def map_tagged_expression(self, expr: TaggedExpression,
+                              *args: P.args, **kwargs: P.kwargs) -> None:
         if not self.visit(expr, *args, **kwargs):
             return
 
@@ -361,7 +363,7 @@ class CallbackMapper(IdentityMapperMixin, CallbackMapperBase):
 
 
 class CombineMapper(CombineMapperBase[ResultT, P]):
-    def map_tagged_expression(self, expr, *args, **kwargs):
+    def map_tagged_expression(self, expr, *args: P.args, **kwargs: P.kwargs):
         return self.rec(expr.expr, *args, **kwargs)
 
     def map_reduction(self, expr, *args: P.args, **kwargs: P.kwargs):
@@ -403,7 +405,7 @@ class ConstantFoldingMapper(ConstantFoldingMapperBase,
 
 
 class StringifyMapper(StringifyMapperBase[[]]):
-    def map_tagged_expression(self, expr, *args):
+    def map_tagged_expression(self, expr: TaggedExpression, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
         return f"TaggedExpression({expr.tags}, {self.rec(expr.expr, PREC_NONE)}"
 
@@ -533,7 +535,8 @@ class DependencyMapper(DependencyMapperBase[P]):
     def map_loopy_function_identifier(self, expr, *args: P.args, **kwargs: P.kwargs):
         return set()
 
-    def map_tagged_expression(self, expr, *args, **kwargs):
+    def map_tagged_expression(self, expr: TaggedExpression, *args: P.args,
+                              **kwargs: P.kwargs) -> DependenciesT:
         deps = self.rec(expr.expr, *args, **kwargs)
         return deps
 
