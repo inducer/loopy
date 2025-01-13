@@ -796,8 +796,6 @@ class TaggedExpression(LoopyExpressionBase):
         An expression to which :attr:`tags` are attached.
     """
 
-    init_arg_names = ("tags", "expr")
-
     tags: frozenset[Tag]
     expr: Expression
 
