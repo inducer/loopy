@@ -31,7 +31,7 @@ from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.codegen.control import build_loop_nest
 from loopy.codegen.result import merge_codegen_results
 from loopy.diagnostic import LoopyError, warn
-from loopy.symbolic import flatten
+from loopy.symbolic import PartialEvaluationMapper, flatten
 
 
 # {{{ conditional-reducing slab decomposition
@@ -151,9 +151,6 @@ def generate_unroll_loop(codegen_state, sched_index):
 
     result = []
 
-    from pymbolic.mapper.evaluator import evaluate
-    from pymbolic.primitives import Variable
-
     from loopy.kernel.instruction import Assignment
 
     for i in range(length):
@@ -162,16 +159,13 @@ def generate_unroll_loop(codegen_state, sched_index):
         original_knl_ = new_codegen_state.kernel.copy()
         context = new_codegen_state.var_subst_map
         # Add in the other variables as variables.
-        for key in original_knl_.get_read_variables():
-            if key not in context.keys():
-                context = context.update({key: Variable(key)})
+        mymapper = PartialEvaluationMapper(context)
 
         new_insns = []
         for insn in new_codegen_state.kernel.instructions:
             if isinstance(insn, Assignment):
                 # We can update the evaluation of this potentially.
-                new_insns.append(insn.copy(expression=evaluate(insn.expression,
-                                                               context)))
+                new_insns.append(insn.copy(expression=mymapper(insn.expression)))
             else:
                 new_insns.append(insn)
 
