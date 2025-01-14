@@ -475,7 +475,7 @@ def build_loop_nest(codegen_state, schedule_index):
                     condition_exprs = ([
                             constraint_to_cond_expr(cns)
                             for cns in bounds_checks]
-                            + list(sorted(pred_checks, key=lambda pred: repr(pred))))
+                            + sorted(pred_checks, key=lambda pred: repr(pred)))
 
                     prev_result = prev_gen_code(inner_codegen_state)
 
