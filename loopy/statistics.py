@@ -1004,7 +1004,8 @@ class ExpressionOpCounter(CounterBase):
                                 + self.rec(expr.exponent)
 
     def map_type_cast(self, expr):
-        return self.new_zero_poly_map()
+        # Treats type casting as free
+        return self.rec(expr.child)
 
     def map_left_shift(self, expr):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
