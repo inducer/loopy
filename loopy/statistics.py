@@ -1168,6 +1168,10 @@ class ExpressionOpCounter(CounterBase):
                                 + self.rec(expr.base, tags) \
                                 + self.rec(expr.exponent, tags)
 
+    def map_type_cast(self, expr):
+        # Treats type casting as free
+        return self.rec(expr.child)
+
     def map_left_shift(
             self, expr: p.LeftShift | p.RightShift, tags: frozenset[Tag]
             ) -> ToCountPolynomialMap:
