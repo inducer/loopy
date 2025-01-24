@@ -29,7 +29,7 @@ from typing import ClassVar
 from warnings import warn
 
 import numpy as np
-from immutabledict import immutabledict
+from constantdict import constantdict
 
 import islpy as isl
 from islpy import dim_type
@@ -334,7 +334,7 @@ def specialize_fortran_division(t_unit):
 
         new_callables[name] = clbl
 
-    return t_unit.copy(callables_table=immutabledict(new_callables))
+    return t_unit.copy(callables_table=constantdict(new_callables))
 
 # }}}
 

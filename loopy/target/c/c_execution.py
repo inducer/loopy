@@ -48,7 +48,7 @@ from loopy.types import LoopyType
 
 
 if TYPE_CHECKING:
-    from constantdict import constantdict
+    from collections.abc import Mapping
 
     from loopy.codegen.result import GeneratedProgram
     from loopy.kernel import LoopKernel
@@ -500,7 +500,7 @@ class CExecutor(ExecutorBase):
 
     @memoize_method
     def translation_unit_info(self,
-            arg_to_dtype: constantdict[str, LoopyType] | None = None) -> _KernelInfo:
+            arg_to_dtype: Mapping[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2

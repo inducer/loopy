@@ -34,7 +34,7 @@ from typing import (
     TypeVar,
 )
 
-from immutabledict import immutabledict
+from constantdict import constantdict
 
 import islpy as isl
 from pytools import ImmutableRecord, MinRecursionLimit, ProcessLogger
@@ -2482,7 +2482,7 @@ def linearize(t_unit: TranslationUnit) -> TranslationUnit:
         else:
             raise NotImplementedError(type(clbl))
 
-    return t_unit.copy(callables_table=immutabledict(new_callables))
+    return t_unit.copy(callables_table=constantdict(new_callables))
 
 
 # vim: foldmethod=marker
