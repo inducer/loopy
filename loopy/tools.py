@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -24,7 +27,6 @@ import collections.abc as abc
 import logging
 from functools import cached_property
 from sys import intern
-from typing import List
 
 import numpy as np
 from immutabledict import immutabledict
@@ -828,7 +830,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
 
 # {{{ cache management
 
-caches: List[WriteOncePersistentDict] = []
+caches: list[WriteOncePersistentDict] = []
 
 
 def clear_in_mem_caches() -> None:

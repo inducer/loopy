@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
 __license__ = """
@@ -28,15 +31,11 @@ from dataclasses import dataclass
 from functools import cached_property
 from sys import intern
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
-    FrozenSet,
     Mapping,
-    Optional,
     Sequence,
-    Tuple,
-    Type,
-    Union,
 )
 from warnings import warn
 
@@ -46,8 +45,11 @@ from pytools.tag import Tag, Taggable, tag_dataclass
 
 from loopy.diagnostic import LoopyError
 from loopy.tools import Optional as LoopyOptional
-from loopy.types import LoopyType
-from loopy.typing import Expression, InameStr
+
+
+if TYPE_CHECKING:
+    from loopy.types import LoopyType
+    from loopy.typing import Expression, InameStr
 
 
 # {{{ instruction tags
@@ -125,8 +127,8 @@ class HappensAfter:
         statement-level dependencies of prior versions of :mod:`loopy`.
     """
 
-    variable_name: Optional[str]
-    instances_rel: Optional[isl.Map]
+    variable_name: str | None
+    instances_rel: isl.Map | None
 
 # }}}
 
@@ -254,14 +256,14 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     Inherits from :class:`pytools.tag.Taggable`.
     """
-    id: Optional[str]
+    id: str | None
     happens_after: Mapping[str, HappensAfter]
     depends_on_is_final: bool
-    groups: FrozenSet[str]
-    conflicts_with_groups: FrozenSet[str]
-    no_sync_with: FrozenSet[Tuple[str, str]]
-    predicates: FrozenSet[Expression]
-    within_inames: FrozenSet[InameStr]
+    groups: frozenset[str]
+    conflicts_with_groups: frozenset[str]
+    no_sync_with: frozenset[tuple[str, str]]
+    predicates: frozenset[Expression]
+    within_inames: frozenset[InameStr]
     within_inames_is_final: bool
     priority: int
 
@@ -275,20 +277,20 @@ class InstructionBase(ImmutableRecord, Taggable):
             "priority".split())
 
     def __init__(self,
-                 id: Optional[str],
-                 happens_after: Union[
-                     Mapping[str, HappensAfter], FrozenSet[str], str, None],
-                 depends_on_is_final: Optional[bool],
-                 groups: Optional[FrozenSet[str]],
-                 conflicts_with_groups: Optional[FrozenSet[str]],
-                 no_sync_with: Optional[FrozenSet[Tuple[str, str]]],
-                 within_inames_is_final: Optional[bool],
-                 within_inames: Optional[FrozenSet[str]],
-                 priority: Optional[int],
-                 predicates: Optional[FrozenSet[str]],
-                 tags: Optional[FrozenSet[Tag]],
+                 id: str | None,
+                 happens_after: (
+                     Mapping[str, HappensAfter] | frozenset[str] | str | None),
+                 depends_on_is_final: bool | None,
+                 groups: frozenset[str] | None,
+                 conflicts_with_groups: frozenset[str] | None,
+                 no_sync_with: frozenset[tuple[str, str]] | None,
+                 within_inames_is_final: bool | None,
+                 within_inames: frozenset[str] | None,
+                 priority: int | None,
+                 predicates: frozenset[str] | None,
+                 tags: frozenset[Tag] | None,
                  *,
-                 depends_on: Union[FrozenSet[str], str, None] = None,
+                 depends_on: frozenset[str] | str | None = None,
                  ) -> None:
         from immutabledict import immutabledict
 
@@ -444,7 +446,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         return result
 
-    def reduction_inames(self) -> FrozenSet[str]:
+    def reduction_inames(self) -> frozenset[str]:
         raise NotImplementedError
 
     def sub_array_ref_inames(self):
@@ -582,7 +584,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         self.within_inames = (
                 intern_frozenset_of_ids(self.within_inames))
 
-    def _with_new_tags(self, tags: FrozenSet[Tag]):
+    def _with_new_tags(self, tags: frozenset[Tag]):
         return self.copy(tags=tags)
 
 # }}}
@@ -914,32 +916,32 @@ class Assignment(MultiAssignmentBase):
     assignee: Expression
     expression: Expression
     temp_var_type: LoopyOptional
-    atomicity: Tuple[VarAtomicity, ...]
+    atomicity: tuple[VarAtomicity, ...]
 
     fields = MultiAssignmentBase.fields | \
             set("assignee temp_var_type atomicity".split())
 
     def __init__(self,
-                 assignee: Union[str, Expression],
-                 expression: Union[str, Expression],
-                 id: Optional[str] = None,
-                 happens_after: Union[
-                     Mapping[str, HappensAfter], FrozenSet[str], str, None] = None,
-                 depends_on_is_final: Optional[bool] = None,
-                 groups: Optional[FrozenSet[str]] = None,
-                 conflicts_with_groups: Optional[FrozenSet[str]] = None,
-                 no_sync_with: Optional[FrozenSet[Tuple[str, str]]] = None,
-                 within_inames_is_final: Optional[bool] = None,
-                 within_inames: Optional[FrozenSet[str]] = None,
-                 priority: Optional[int] = None,
-                 predicates: Optional[FrozenSet[str]] = None,
-                 tags: Optional[FrozenSet[Tag]] = None,
-                 temp_var_type: Union[
-                     Type[_not_provided], LoopyOptional,
-                     LoopyType, None] = _not_provided,
-                 atomicity: Tuple[VarAtomicity, ...] = (),
+                 assignee: str | Expression,
+                 expression: str | Expression,
+                 id: str | None = None,
+                 happens_after:
+                     Mapping[str, HappensAfter] | frozenset[str] | str | None = None,
+                 depends_on_is_final: bool | None = None,
+                 groups: frozenset[str] | None = None,
+                 conflicts_with_groups: frozenset[str] | None = None,
+                 no_sync_with: frozenset[tuple[str, str]] | None = None,
+                 within_inames_is_final: bool | None = None,
+                 within_inames: frozenset[str] | None = None,
+                 priority: int | None = None,
+                 predicates: frozenset[str] | None = None,
+                 tags: frozenset[Tag] | None = None,
+                 temp_var_type:
+                    type[_not_provided] | LoopyOptional | LoopyType | None
+                    = _not_provided,
+                 atomicity: tuple[VarAtomicity, ...] = (),
                  *,
-                 depends_on: Union[FrozenSet[str], str, None] = None,
+                 depends_on: frozenset[str] | str | None = None,
                  ) -> None:
 
         if temp_var_type is _not_provided:

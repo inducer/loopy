@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,21 +25,16 @@ THE SOFTWARE.
 
 
 import logging
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
 
 from pytools import memoize_method
 from pytools.codegen import CodeGenerator, Indentation
 
-from loopy.codegen.result import CodeGenerationResult
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import ArrayArg
-from loopy.schedule.tools import KernelArgInfo
 from loopy.target.execution import ExecutionWrapperGeneratorBase, ExecutorBase
-from loopy.types import LoopyType
 from loopy.typing import Expression, integer_expr_or_err
 
 
@@ -44,7 +42,15 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
+
+    from collections.abc import Mapping
+
     import pyopencl as cl
+
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.types import LoopyType
 
 
 # {{{ invoker generation
@@ -273,7 +279,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 @dataclass(frozen=True)
 class _KernelInfo:
-    cl_kernels: "_Kernels"
+    cl_kernels: _Kernels
     invoker: Callable[..., Any]
 
 
@@ -291,7 +297,7 @@ class PyOpenCLExecutor(ExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, context: "cl.Context", t_unit, entrypoint):
+    def __init__(self, context: cl.Context, t_unit, entrypoint):
         super().__init__(t_unit, entrypoint)
 
         self.context = context
@@ -306,7 +312,7 @@ class PyOpenCLExecutor(ExecutorBase):
     @memoize_method
     def translation_unit_info(
             self,
-            arg_to_dtype: Optional[Mapping[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: Mapping[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         # FIXME: now just need to add the types to the arguments

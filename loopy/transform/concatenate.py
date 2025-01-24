@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2022 Isuru Fernando"
 
 __license__ = """
@@ -25,7 +28,7 @@ __doc__ = """
 .. autofunction:: concatenate_arrays
 """
 
-from typing import List, Optional, Sequence
+from typing import Sequence
 
 import numpy as np
 
@@ -42,7 +45,7 @@ from loopy.translation_unit import for_each_kernel
 def concatenate_arrays(
         kernel: LoopKernel,
         array_names: Sequence[str],
-        new_name: Optional[str] = None,
+        new_name: str | None = None,
         axis_nr: int = 0) -> LoopKernel:
     """Merges arrays (temporaries or arguments) into one array along the axis
     given by *axis_nr*.
@@ -125,7 +128,7 @@ def concatenate_arrays(
         new_tvs[new_name] = new_ary
         return kernel.copy(temporary_variables=new_tvs)
     elif isinstance(new_ary, ArrayArg):
-        new_args: List[KernelArgument] = []
+        new_args: list[KernelArgument] = []
         inserted = False
         for arg in kernel.args:
             if arg.name in array_names:

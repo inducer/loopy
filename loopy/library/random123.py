@@ -1,4 +1,5 @@
 """Library integration with Random123."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
@@ -25,6 +26,7 @@ THE SOFTWARE.
 
 
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
 import numpy as np
 from mako.template import Template
@@ -32,7 +34,10 @@ from mako.template import Template
 from pymbolic.typing import not_none
 
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.target import TargetBase
+
+
+if TYPE_CHECKING:
+    from loopy.target import TargetBase
 
 
 # {{{ rng metadata

@@ -656,8 +656,6 @@ Helper values
 
 .. {{{
 
-.. autoclass:: auto
-
 .. autoclass:: UniqueName
 
 .. autoclass:: Optional
@@ -693,11 +691,7 @@ The Kernel Object
 Do not create :class:`LoopKernel` objects directly. Instead, refer to
 :ref:`creating-kernels`.
 
-.. autoclass:: LoopKernel
-
-.. autoclass:: KernelState
-    :members:
-    :undoc-members:
+.. automodule:: loopy.kernel
 
 Implementation Details: The Base Array
 --------------------------------------

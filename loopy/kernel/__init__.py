@@ -1,4 +1,14 @@
-"""Kernel object."""
+"""
+.. currentmodule:: loopy
+
+.. autoclass:: LoopKernel
+
+.. autoclass:: KernelState
+    :members:
+    :undoc-members:
+"""
+from __future__ import annotations
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -21,7 +31,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
 from collections import defaultdict
 from dataclasses import dataclass, field, fields, replace
 from enum import IntEnum
@@ -32,25 +41,18 @@ from typing import (
     Any,
     Callable,
     ClassVar,
-    Dict,
-    FrozenSet,
     Iterator,
-    List,
     Mapping,
-    Optional,
     Sequence,
-    Set,
-    Tuple,
-    Union,
 )
 from warnings import warn
 
 import numpy as np
-from immutabledict import immutabledict
+from constantdict import constantdict
 
+import islpy  # to help out Sphinx
 import islpy as isl
 from islpy import dim_type
-from pymbolic import ArithmeticExpression
 from pytools import (
     UniqueNameGenerator,
     generate_unique_names,
@@ -59,10 +61,11 @@ from pytools import (
 )
 from pytools.tag import Tag, Taggable
 
+import loopy.codegen
+import loopy.kernel.data  # to help out Sphinx
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
     ArrayArg,
-    Iname,
     KernelArgument,
     SubstitutionRule,
     TemporaryVariable,
@@ -70,18 +73,19 @@ from loopy.kernel.data import (
     _ArraySeparationInfo,
     filter_iname_tags_by_type,
 )
-from loopy.kernel.instruction import InstructionBase
-from loopy.options import Options
-from loopy.schedule import ScheduleItem
-from loopy.target import TargetBase
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import Expression, InameStr
 
 
 if TYPE_CHECKING:
-    from loopy.codegen import PreambleInfo
+    from pymbolic import ArithmeticExpression
+
     from loopy.kernel.function_interface import InKernelCallable
+    from loopy.kernel.instruction import InstructionBase
+    from loopy.options import Options
+    from loopy.schedule import ScheduleItem
+    from loopy.target import TargetBase
+    from loopy.typing import Expression, InameStr
 
 
 # {{{ loop kernel object
@@ -100,12 +104,9 @@ def _get_inames_from_domains(domains):
 
 @dataclass(frozen=True)
 class _BoundsRecord:
-    lower_bound_pw_aff: isl.PwAff
-    upper_bound_pw_aff: isl.PwAff
-    size: isl.PwAff
-
-
-PreambleGenerator = Callable[["PreambleInfo"], Iterator[Tuple[int, str]]]
+    lower_bound_pw_aff: islpy.PwAff
+    upper_bound_pw_aff: islpy.PwAff
+    size: islpy.PwAff
 
 
 @dataclass(frozen=True)
@@ -145,7 +146,7 @@ class LoopKernel(Taggable):
     .. automethod:: tagged
     .. automethod:: without_tags
     """
-    domains: Sequence[isl.BasicSet]
+    domains: Sequence[islpy.BasicSet]
     """Represents the :ref:`domain-tree`."""
 
     instructions: Sequence[InstructionBase]
@@ -154,13 +155,13 @@ class LoopKernel(Taggable):
     """
 
     args: Sequence[KernelArgument]
-    assumptions: isl.BasicSet
+    assumptions: islpy.BasicSet
     """
     Must be a :class:`islpy.BasicSet` parameter domain.
     """
 
     temporary_variables: Mapping[str, TemporaryVariable]
-    inames: Mapping[InameStr, Iname]
+    inames: Mapping[InameStr, loopy.kernel.data.Iname]
     """
     An entry is guaranteed to be present for each iname.
     """
@@ -168,24 +169,28 @@ class LoopKernel(Taggable):
     substitutions: Mapping[str, SubstitutionRule]
     options: Options
     target: TargetBase
-    tags: FrozenSet[Tag]
+    tags: frozenset[Tag]
     state: KernelState = KernelState.INITIAL
     name: str = "loopy_kernel"
 
-    preambles: Sequence[Tuple[int, str]] = ()
-    preamble_generators: Sequence[PreambleGenerator] = ()
+    preambles: Sequence[tuple[int, str]] = ()
+    preamble_generators: Sequence[
+        Callable[
+                [loopy.codegen.PreambleInfo],
+                Iterator[tuple[int, str]]]
+            ] = ()
     symbol_manglers: Sequence[
-            Callable[["LoopKernel", str], Optional[Tuple[LoopyType, str]]]] = ()
-    linearization: Optional[Sequence[ScheduleItem]] = None
-    iname_slab_increments: Mapping[InameStr, Tuple[int, int]] = field(
-            default_factory=immutabledict)
+            Callable[[LoopKernel, str], tuple[LoopyType, str] | None]] = ()
+    linearization: Sequence[ScheduleItem] | None = None
+    iname_slab_increments: Mapping[InameStr, tuple[int, int]] = field(
+            default_factory=constantdict)
     """
     A mapping from inames to (lower_incr,
     upper_incr) tuples that will be separated out in the execution to generate
     'bulk' slabs with fewer conditionals.
     """
 
-    loop_priority: FrozenSet[Tuple[InameStr, ...]] = field(
+    loop_priority: frozenset[tuple[InameStr, ...]] = field(
             default_factory=frozenset)
     """
     A frozenset of priority constraints to the kernel. Each such constraint
@@ -194,22 +199,20 @@ class LoopKernel(Taggable):
     with non-parallel implementation tags.
     """
 
-    applied_iname_rewrites: Tuple[Dict[InameStr, Expression], ...] = ()
+    applied_iname_rewrites: tuple[dict[InameStr, Expression], ...] = ()
     """
     A list of past substitution dictionaries that
     were applied to the kernel. These are stored so that they may be repeated
     on expressions the user specifies later.
     """
     index_dtype: NumpyType = NumpyType(np.dtype(np.int32))  # noqa: RUF009
-    silenced_warnings: FrozenSet[str] = frozenset()
+    silenced_warnings: frozenset[str] = frozenset()
 
     # FIXME Yuck, this should go.
-    overridden_get_grid_sizes_for_insn_ids: Optional[
-            Callable[
-                [FrozenSet[str],
-                    Dict[str, "InKernelCallable"],
-                    bool],
-                Tuple[Tuple[int, ...], Tuple[int, ...]]]] = None
+    overridden_get_grid_sizes_for_insn_ids: \
+        Callable[[frozenset[str], dict[str, InKernelCallable], bool],
+            tuple[tuple[int, ...], tuple[int, ...]]
+        ] | None = None
 
     def __post_init__(self):
         assert isinstance(self.assumptions, isl.BasicSet)
@@ -282,7 +285,7 @@ class LoopKernel(Taggable):
         return UniqueNameGenerator(set(self.all_group_names()))
 
     def get_var_descriptor(
-            self, name: str) -> Union[TemporaryVariable, KernelArgument]:
+            self, name: str) -> TemporaryVariable | KernelArgument:
         try:
             return self.arg_dict[name]
         except KeyError:
@@ -318,7 +321,7 @@ class LoopKernel(Taggable):
     # {{{ domain wrangling
 
     @memoize_method
-    def parents_per_domain(self) -> Sequence[Optional[int]]:
+    def parents_per_domain(self) -> Sequence[int | None]:
         """Return a list corresponding to self.domains (by index)
         containing domain indices which are nested around this
         domain.
@@ -332,8 +335,8 @@ class LoopKernel(Taggable):
         # determines the granularity of inames to be popped/decactivated
         # if we ascend a level.
 
-        iname_set_stack: List[Set[str]] = []
-        result: List[Optional[int]] = []
+        iname_set_stack: list[set[str]] = []
+        result: list[int | None] = []
 
         from loopy.kernel.tools import is_domain_dependent_on_inames
 
@@ -460,7 +463,7 @@ class LoopKernel(Taggable):
 
         return result
 
-    def get_inames_domain(self, inames: FrozenSet[str]) -> isl.BasicSet:
+    def get_inames_domain(self, inames: frozenset[str]) -> isl.BasicSet:
         if not inames:
             return self.combine_domains(())
 
@@ -561,7 +564,7 @@ class LoopKernel(Taggable):
         return frozenset(self.inames.keys())
 
     @memoize_method
-    def all_params(self) -> FrozenSet[str]:
+    def all_params(self) -> frozenset[str]:
         all_inames = self.all_inames()
 
         result = set()
@@ -759,7 +762,7 @@ class LoopKernel(Taggable):
     # {{{ argument wrangling
 
     @cached_property
-    def arg_dict(self) -> Dict[str, KernelArgument]:
+    def arg_dict(self) -> dict[str, KernelArgument]:
         return {arg.name: arg for arg in self.args}
 
     @cached_property
@@ -1036,9 +1039,9 @@ class LoopKernel(Taggable):
     def get_grid_size_upper_bounds_as_exprs(
             self, callables_table,
             ignore_auto=False, return_dict=False
-            ) -> Tuple[
-                    Tuple[ArithmeticExpression, ...],
-                    Tuple[ArithmeticExpression, ...]]:
+            ) -> tuple[
+                    tuple[ArithmeticExpression, ...],
+                    tuple[ArithmeticExpression, ...]]:
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 
@@ -1362,18 +1365,19 @@ class LoopKernel(Taggable):
 
     # }}}
 
-    def get_copy_kwargs(self, **kwargs: Any) -> Dict[str, Any]:
+    def get_copy_kwargs(self, **kwargs: Any) -> dict[str, Any]:
         if "domains" in kwargs:
             inames = kwargs.get("inames", self.inames)
             domains = kwargs["domains"]
-            kwargs["inames"] = {name: inames.get(name, Iname(name, frozenset()))
+            kwargs["inames"] = {name: inames.get(name,
+                                         loopy.kernel.data.Iname(name, frozenset()))
                                 for name in _get_inames_from_domains(domains)}
 
             assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
 
         return kwargs
 
-    def copy(self, **kwargs: Any) -> "LoopKernel":
+    def copy(self, **kwargs: Any) -> LoopKernel:
         result = replace(self, **self.get_copy_kwargs(**kwargs))
 
         object.__setattr__(result, "_cache_manager", self.cache_manager)
@@ -1392,11 +1396,11 @@ class LoopKernel(Taggable):
 
         return result
 
-    def _with_new_tags(self, tags) -> "LoopKernel":
+    def _with_new_tags(self, tags) -> LoopKernel:
         return replace(self, tags=tags)
 
     @memoize_method
-    def _separation_info(self) -> Dict[str, _ArraySeparationInfo]:
+    def _separation_info(self) -> dict[str, _ArraySeparationInfo]:
         return {
                 arg.name: arg._separation_info
                 for arg in self.args

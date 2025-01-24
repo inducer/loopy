@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-16 Andreas Kloeckner"
 
 __license__ = """
@@ -100,7 +103,7 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
             else:
                 return super().map_call(expr, expn_state)
         else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
+            return self.map_subst_rule(name, tag, expr.parameters, expn_state)
 
     def map_call_with_kwargs(self, expr):
         # See https://github.com/inducer/loopy/pull/323

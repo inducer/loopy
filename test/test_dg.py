@@ -79,22 +79,22 @@ def test_dg_volume(ctx_factory):
     seq_knl = knl
 
     def variant_basic(knl):
-        knl = lp.tag_inames(knl, dict(k="g.0", n="l.0"))
+        knl = lp.tag_inames(knl, {"k": "g.0", "n": "l.0"})
         return knl
 
     def variant_more_per_work_group(knl):
-        knl = lp.tag_inames(knl, dict(n="l.0"))
+        knl = lp.tag_inames(knl, {"n": "l.0"})
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
         return knl
 
     def variant_image_d(knl):
-        knl = lp.tag_inames(knl, dict(n="l.0"))
+        knl = lp.tag_inames(knl, {"n": "l.0"})
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
         knl = lp.change_arg_to_image(knl, "DrDsDt")
         return knl
 
     def variant_prefetch_d(knl):
-        knl = lp.tag_inames(knl, dict(n="l.0"))
+        knl = lp.tag_inames(knl, {"n": "l.0"})
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
         knl = lp.add_prefetch(knl, "DrDsDt[:,:]",
                 fetch_outer_inames="k_outer",
@@ -102,7 +102,7 @@ def test_dg_volume(ctx_factory):
         return knl
 
     def variant_prefetch_fields(knl):
-        knl = lp.tag_inames(knl, dict(n="l.0"))
+        knl = lp.tag_inames(knl, {"n": "l.0"})
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
         for name in ["u", "v", "w", "p"]:
             knl = lp.add_prefetch(knl, "%s[k,:]" % name, ["k_inner"],
@@ -111,14 +111,14 @@ def test_dg_volume(ctx_factory):
         return knl
 
     def variant_k_ilp(knl):
-        knl = lp.tag_inames(knl, dict(n="l.0"))
+        knl = lp.tag_inames(knl, {"n": "l.0"})
 
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="ilp")
-        knl = lp.tag_inames(knl, dict(m="unr"))
+        knl = lp.tag_inames(knl, {"m": "unr"})
         return knl
 
     def variant_simple_padding(knl):
-        knl = lp.tag_inames(knl, dict(n="l.0"))
+        knl = lp.tag_inames(knl, {"n": "l.0"})
 
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
 
@@ -130,12 +130,12 @@ def test_dg_volume(ctx_factory):
         for name in arg_names:
             knl = lp.add_padding(knl, name, axis=0, align_bytes=32)
 
-        knl = lp.tag_inames(knl, dict(m="unr"))
+        knl = lp.tag_inames(knl, {"m": "unr"})
 
         return knl
 
     def variant_fancy_padding(knl):
-        knl = lp.tag_inames(knl, dict(n="l.0"))
+        knl = lp.tag_inames(knl, {"n": "l.0"})
 
         pad_mult = lp.find_padding_multiple(knl, "u", 1, 32)
 
@@ -148,7 +148,7 @@ def test_dg_volume(ctx_factory):
 
         return knl
 
-    parameters_dict = dict(K=K)
+    parameters_dict = {"K": K}
 
     variants = [
             variant_basic,
@@ -232,7 +232,7 @@ def no_test_dg_surface(ctx_factory):
     def variant_basic(knl):
         return knl
 
-    parameters_dict = dict(K=K)
+    parameters_dict = {"K": K}
 
     for variant in [
             variant_basic,

@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from functools import cached_property, reduce
 from typing import Generic, TypeVar
 
-from immutables import Map
+from constantdict import constantdict as Map
 
 from pytools import memoize_method
 

@@ -53,16 +53,16 @@ def test_tim2d(ctx_factory):
     knl = lp.precompute(knl, "us", np.float32, ["a", "b"], default_tag="l.auto")
     knl = lp.split_iname(knl, "e", 1, outer_tag="g.0")  # , slabs=(0, 1))
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
-    knl = lp.tag_inames(knl, dict(o="unr"))
-    knl = lp.tag_inames(knl, dict(m="unr"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
+    knl = lp.tag_inames(knl, {"o": "unr"})
+    knl = lp.tag_inames(knl, {"m": "unr"})
 
 
 #    knl = lp.add_prefetch(knl, "G", [2,3], default_tag=None) # axis/argument indices on G  # noqa
     knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # noqa
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
@@ -118,13 +118,13 @@ def test_red2d(ctx_factory):
     knl = lp.split_iname(knl, "j", n, inner_tag="l.0")  # , slabs=(0, 1))
     knl = lp.split_iname(knl, "i", n, inner_tag="l.1")  # , slabs=(0, 1))
 
-    knl = lp.tag_inames(knl, dict(o="unr"))
-    knl = lp.tag_inames(knl, dict(m="unr"))
+    knl = lp.tag_inames(knl, {"o": "unr"})
+    knl = lp.tag_inames(knl, {"m": "unr"})
 
     knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # noqa
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
@@ -188,14 +188,14 @@ def test_tim3d(ctx_factory):
 
 #    knl = lp.tag_inames(knl, dict(k_inner="unr"))
 
-    knl = lp.tag_inames(knl, dict(o="unr"))
-    knl = lp.tag_inames(knl, dict(m="unr"))
+    knl = lp.tag_inames(knl, {"o": "unr"})
+    knl = lp.tag_inames(knl, {"m": "unr"})
 #    knl = lp.tag_inames(knl, dict(i="unr"))
 
     knl = lp.add_prefetch(knl, "G", [2, 3, 4], default_tag="l.auto")  # axis/argument indices on G  # noqa
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     K = 4000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,

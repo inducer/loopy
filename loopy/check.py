@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,9 +25,8 @@ THE SOFTWARE.
 
 import logging
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
 from functools import reduce
-from typing import List, Optional, Tuple, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -39,7 +41,6 @@ from loopy.diagnostic import (
     WriteRaceConditionWarning,
     warn_with_kernel,
 )
-from loopy.kernel import LoopKernel
 from loopy.kernel.array import (
     ArrayBase,
     FixedStrideArrayDimTag,
@@ -69,6 +70,14 @@ from loopy.translation_unit import (
 )
 from loopy.type_inference import TypeReader
 from loopy.typing import not_none
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from pymbolic.typing import Expression
+
+    from loopy.kernel import LoopKernel
 
 
 logger = logging.getLogger(__name__)
@@ -214,15 +223,14 @@ def check_separated_array_consistency(kernel: LoopKernel) -> None:
 @check_each_kernel
 def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
     from pymbolic.primitives import ExpressionNode, Variable
-    from pymbolic.typing import Expression
 
     from loopy.symbolic import DependencyMapper
 
     arg_name_vars = {Variable(name) for name in kernel.arg_dict}
-    dep_mapper = DependencyMapper()
+    dep_mapper: DependencyMapper[[]] = DependencyMapper()
 
     def ensure_depends_only_on_arguments(
-            what: str, expr: Union[str, Expression]) -> None:
+            what: str, expr: str | Expression) -> None:
         if isinstance(expr, str):
             expr = Variable(expr)
 
@@ -249,7 +257,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                 raise LoopyError(f"invalid value of offset for '{arg.name}'")
 
             if arg.dim_tags is None:
-                new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]] = \
+                new_dim_tags: tuple[ArrayDimImplementationTag, ...] | None = \
                         arg.dim_tags
             else:
                 new_dim_tags = ()
@@ -1324,7 +1332,7 @@ def check_for_nested_base_storage(kernel: LoopKernel) -> None:
     # must run after preprocessing has created variables for base_storage
 
     from loopy.kernel.data import ArrayArg
-    arrays: List[ArrayBase] = [
+    arrays: list[ArrayBase] = [
         arg for arg in kernel.args if isinstance(arg, ArrayArg)
         ]
     arrays = arrays + list(kernel.temporary_variables.values())

@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "pytools>=2024.1.5",
-    "pymbolic>=2024.2",
+    "pymbolic>=2024.2.2",
     "genpy>=2016.1.2",
 
     # https://github.com/inducer/loopy/pull/419
@@ -41,8 +41,7 @@ dependencies = [
     "codepy>=2017.1",
     "colorama",
     "Mako",
-    "immutabledict",
-    "immutables",
+    "constantdict",
 
     "typing-extensions>=4",
 ]
@@ -96,9 +95,10 @@ extend-select = [
     "Q",   # flake8-quotes
     "W",   # pycodestyle
 
-    # TODO
-    # "UP",  # pyupgrade
+    "UP",  # pyupgrade
     "RUF",  # ruff
+    "FA",
+    "TC",
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
@@ -110,7 +110,8 @@ extend-ignore = [
 
     # FIXME
     "NPY002", # numpy rng
-    "C408", # unnecessary dict() -> literal
+    "UP031", # .format instead of %s
+    "UP032", # .format instead of %s
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -118,6 +119,12 @@ extend-ignore = [
 "loopy/target/c/compyte/ndarray/**/*.py" = ["Q", "B", "E", "F", "N", "C4"]
 "loopy/frontend/fortran/translator.py" = ["N802", "B028"]
 "proto-tests/*.py" = ["B"]
+"contrib/**/*.py" = ["I002"]
+"doc/conf.py" = ["I002"]
+"*.ipynb" = ["I002"]
+"examples/**/*.py" = ["I002"]
+"proto-tests/**/*.py" = ["I002"]
+"test/**/*.py" = ["I002"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"
@@ -138,6 +145,7 @@ known-local-folder = [
     "loopy",
 ]
 lines-after-imports = 2
+required-imports = ["from __future__ import annotations"]
 
 [tool.mypy]
 python_version = "3.10"
@@ -147,23 +155,23 @@ warn_unused_ignores = true
 # check_untyped_defs = true
 
 exclude = [
-  "loopy/target/c/compyte/ndarray/.*",
   "loopy/target/c/compyte/array.py",
 ]
 
 [[tool.mypy.overrides]]
 module = [
-    "islpy.*",
-    "pymbolic.*",
-    "genpy.*",
-    "pyopencl.*",
-    "colorama.*",
-    "codepy.*",
-    "mako.*",
-    "fparser.*",
-    "ply.*",
-    "pygments.*",
+    "loopy.symbolic",
+]
+# check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
     "IPython.*",
+    "fparser.*",
+    "islpy.*",
+    "mako.*",
+    "ply.*",
+    "pyopencl.*",
 ]
 ignore_missing_imports = true
 
@@ -183,6 +191,8 @@ dout = "dout"
 ue = "ue"
 # used in an ordering context, "ab" / "ba"
 ba = "ba"
+# Fortran Loopy
+floopy = "floopy"
 
 "dependees" = "dependees"
 

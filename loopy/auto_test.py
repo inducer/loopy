@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,7 +24,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Tuple
+from typing import TYPE_CHECKING
 from warnings import warn
 
 import numpy as np
@@ -77,26 +80,26 @@ def fill_rand(ary):
 @dataclass
 class TestArgInfo:
     name: str
-    ref_array: "cla.Array"
-    ref_storage_array: "cla.Array"
+    ref_array: cla.Array
+    ref_storage_array: cla.Array
 
-    ref_pre_run_array: "cla.Array"
-    ref_pre_run_storage_array: "cla.Array"
+    ref_pre_run_array: cla.Array
+    ref_pre_run_storage_array: cla.Array
 
-    ref_shape: Tuple[int, ...]
-    ref_strides: Tuple[int, ...]
+    ref_shape: tuple[int, ...]
+    ref_strides: tuple[int, ...]
     ref_alloc_size: int
-    ref_numpy_strides: Tuple[int, ...]
+    ref_numpy_strides: tuple[int, ...]
     needs_checking: bool
 
     # The attributes below are being modified in make_args, hence this dataclass
     # cannot be frozen.
-    test_storage_array: Optional["cla.Array"] = None
-    test_array: Optional["cla.Array"] = None
-    test_shape: Optional[Tuple[int, ...]] = None
-    test_strides: Optional[Tuple[int, ...]] = None
-    test_numpy_strides: Optional[Tuple[int, ...]] = None
-    test_alloc_size: Optional[Tuple[int, ...]] = None
+    test_storage_array: cla.Array | None = None
+    test_array: cla.Array | None = None
+    test_shape: tuple[int, ...] | None = None
+    test_strides: tuple[int, ...] | None = None
+    test_numpy_strides: tuple[int, ...] | None = None
+    test_alloc_size: tuple[int, ...] | None = None
 
 
 # {{{ "reference" arguments

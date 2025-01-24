@@ -25,18 +25,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import IntEnum
 from sys import intern
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
-    FrozenSet,
-    Optional,
     Sequence,
     Tuple,
-    Type,
     Union,
     cast,
 )
@@ -44,7 +41,6 @@ from typing import (
 import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
 
-from pymbolic import ArithmeticExpression, Variable
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
 
@@ -63,8 +59,16 @@ from loopy.kernel.instruction import (  # noqa
     VarAtomicity,
     make_assignment,
 )
-from loopy.types import LoopyType, ToLoopyTypeConvertible
 from loopy.typing import Expression, ShapeType, auto
+
+
+if TYPE_CHECKING:
+
+    from collections.abc import Mapping
+
+    from pymbolic import ArithmeticExpression, Variable
+
+    from loopy.types import LoopyType, ToLoopyTypeConvertible
 
 
 __doc__ = """
@@ -102,17 +106,17 @@ References
 
 # {{{ utilities
 
-def _names_from_expr(expr: Union[Expression, str, None]) -> FrozenSet[str]:
+def _names_from_expr(expr: Expression | str | None) -> frozenset[str]:
     from numbers import Number
 
     from loopy.symbolic import DependencyMapper
-    dep_mapper = DependencyMapper()
+    dep_mapper: DependencyMapper[[]] = DependencyMapper()
 
     from pymbolic.primitives import ExpressionNode
     if isinstance(expr, str):
         return frozenset({expr})
     elif isinstance(expr, ExpressionNode):
-        return frozenset(cast(Variable, v).name for v in dep_mapper(expr))
+        return frozenset(cast("Variable", v).name for v in dep_mapper(expr))
     elif expr is None:
         return frozenset()
     elif isinstance(expr, Number):
@@ -122,7 +126,7 @@ def _names_from_expr(expr: Union[Expression, str, None]) -> FrozenSet[str]:
 
 
 def _names_from_dim_tags(
-        dim_tags: Optional[Sequence[ArrayDimImplementationTag]]) -> FrozenSet[str]:
+        dim_tags: Sequence[ArrayDimImplementationTag] | None) -> frozenset[str]:
     from loopy.kernel.array import FixedStrideArrayDimTag
     if dim_tags is not None:
         return frozenset({
@@ -170,7 +174,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
 
 
 class InameImplementationTag(ImmutableRecord, UniqueTagBase):
-    __slots__: ClassVar[Tuple[str, ...]] = ()
+    __slots__: ClassVar[tuple[str, ...]] = ()
 
     def __hash__(self):
         return hash(self.key)
@@ -305,7 +309,7 @@ class InOrderSequentialSequentialTag(InameImplementationTag):
 ToInameTagConvertible = Union[str, Tag, None]
 
 
-def parse_tag(tag: ToInameTagConvertible) -> Optional[Tag]:
+def parse_tag(tag: ToInameTagConvertible) -> Tag | None:
     if tag is None:
         return tag
 
@@ -364,7 +368,7 @@ class AddressSpace(IntEnum):
     GLOBAL = 2
 
     @classmethod
-    def stringify(cls, val: Union["AddressSpace", Type[auto]]) -> str:
+    def stringify(cls, val: AddressSpace | type[auto]) -> str:
         if val == cls.PRIVATE:
             return "private"
         elif val == cls.LOCAL:
@@ -392,7 +396,7 @@ class KernelArgument(ImmutableRecord):
     .. automethod:: supporting_names
     """
     name: str
-    dtype: Optional[LoopyType]
+    dtype: LoopyType | None
     is_output: bool
     is_input: bool
 
@@ -417,7 +421,7 @@ class KernelArgument(ImmutableRecord):
 
         ImmutableRecord.__init__(self, **kwargs)
 
-    def supporting_names(self) -> FrozenSet[str]:
+    def supporting_names(self) -> frozenset[str]:
         """'Supporting' names are those that are likely to be required to be
         present for any use of the argument.
         """
@@ -432,12 +436,12 @@ class _ArraySeparationInfo:
     this records the names of the actually present sub-arrays that
     should be used to realize this array.
     """
-    sep_axis_indices_set: FrozenSet[int]
-    subarray_names: Mapping[Tuple[int, ...], str]
+    sep_axis_indices_set: frozenset[int]
+    subarray_names: Mapping[tuple[int, ...], str]
 
 
 class ArrayArg(ArrayBase, KernelArgument):
-    __doc__ = cast(str, ArrayBase.__doc__) + (
+    __doc__ = cast("str", ArrayBase.__doc__) + (
         """
         .. attribute:: address_space
 
@@ -460,7 +464,7 @@ class ArrayArg(ArrayBase, KernelArgument):
     address_space: AddressSpace
 
     # _separation_info is not user-facing and hence not documented.
-    _separation_info: Optional[_ArraySeparationInfo]
+    _separation_info: _ArraySeparationInfo | None
 
     allowed_extra_kwargs = (
             "address_space",
@@ -512,7 +516,7 @@ class ArrayArg(ArrayBase, KernelArgument):
         key_builder.rec(key_hash, self.is_input)
         key_builder.rec(key_hash, self._separation_info)
 
-    def supporting_names(self) -> FrozenSet[str]:
+    def supporting_names(self) -> frozenset[str]:
         # Do not consider separation info here: The subarrays don't support, they
         # replace this array.
         return (
@@ -575,7 +579,7 @@ class ImageArg(ArrayBase, KernelArgument):
         return ast_builder.get_image_arg_decl(self.name + name_suffix, shape,
                 self.num_target_axes(), dtype, is_written)
 
-    def supporting_names(self) -> FrozenSet[str]:
+    def supporting_names(self) -> frozenset[str]:
         return (
                 _names_from_expr(self.offset)
                 | _names_from_dim_tags(self.dim_tags)
@@ -639,7 +643,7 @@ class ValueArg(KernelArgument, Taggable):
 # {{{ temporary variable
 
 class TemporaryVariable(ArrayBase):
-    __doc__ = cast(str, ArrayBase.__doc__) + """
+    __doc__ = cast("str", ArrayBase.__doc__) + """
     .. autoattribute:: storage_shape
     .. autoattribute:: base_indices
     .. autoattribute:: address_space
@@ -649,17 +653,17 @@ class TemporaryVariable(ArrayBase):
     .. autoattribute:: _base_storage_access_may_be_aliasing
     """
 
-    storage_shape: Optional[ShapeType]
-    base_indices: Optional[Tuple[Expression, ...]]
-    address_space: Union[AddressSpace, Type[auto]]
-    base_storage: Optional[str]
+    storage_shape: ShapeType | None
+    base_indices: tuple[Expression, ...] | None
+    address_space: AddressSpace | type[auto]
+    base_storage: str | None
     """The name of a storage array that is to be used to actually
     hold the data in this temporary, or *None*. If not *None* or the name
     of an existing variable, a variable of this name and appropriate size
     will be created.
     """
 
-    initializer: Optional[numpy.ndarray]
+    initializer: numpy.ndarray | None
     """*None* or a :class:`numpy.ndarray` of data to be used to initialize the
     array.
     """
@@ -694,19 +698,19 @@ class TemporaryVariable(ArrayBase):
                 self,
                 name: str,
                 dtype: ToLoopyTypeConvertible = None,
-                shape: Union[ShapeType, Type["auto"], None] = auto,
-                address_space: Union[AddressSpace, Type[auto], None] = None,
-                dim_tags: Optional[Sequence[ArrayDimImplementationTag]] = None,
-                offset: Union[Expression, str, None] = 0,
-                dim_names: Optional[Tuple[str, ...]] = None,
-                strides: Optional[Tuple[Expression, ...]] = None,
+                shape: ShapeType | type[auto] | None = auto,
+                address_space: AddressSpace | type[auto] | None = None,
+                dim_tags: Sequence[ArrayDimImplementationTag] | None = None,
+                offset: Expression | str | None = 0,
+                dim_names: tuple[str, ...] | None = None,
+                strides: tuple[Expression, ...] | None = None,
                 order: str | None = None,
 
-                base_indices: Optional[Tuple[Expression, ...]] = None,
+                base_indices: tuple[Expression, ...] | None = None,
                 storage_shape: ShapeType | None = None,
 
-                base_storage: Optional[str] = None,
-                initializer: Optional[np.ndarray] = None,
+                base_storage: str | None = None,
+                initializer: np.ndarray | None = None,
                 read_only: bool = False,
 
                 _base_storage_access_may_be_aliasing: bool = False,
@@ -816,7 +820,7 @@ class TemporaryVariable(ArrayBase):
                 raise ValueError("shape is None")
             if self.shape is auto:
                 raise ValueError("shape is auto")
-            shape = cast(Tuple[ArithmeticExpression], self.shape)
+            shape = cast("Tuple[ArithmeticExpression]", self.shape)
 
         if self.dtype is None:
             raise ValueError("data type is indeterminate")
@@ -873,7 +877,7 @@ class TemporaryVariable(ArrayBase):
         key_builder.rec(key_hash, self.read_only)
         key_builder.rec(key_hash, self._base_storage_access_may_be_aliasing)
 
-    def supporting_names(self) -> FrozenSet[str]:
+    def supporting_names(self) -> frozenset[str]:
         return (
                 _names_from_expr(self.offset)
                 | _names_from_dim_tags(self.dim_tags)
@@ -965,9 +969,9 @@ class Iname(Taggable):
         An instance of :class:`frozenset` of :class:`pytools.tag.Tag`.
     """
     name: str
-    tags: FrozenSet[Tag]
+    tags: frozenset[Tag]
 
-    def copy(self, **kwargs: Any) -> "Iname":
+    def copy(self, **kwargs: Any) -> Iname:
         return replace(self, **kwargs)
 
     def _with_new_tags(self, tags):

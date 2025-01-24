@@ -1,4 +1,5 @@
 """Operations on the kernel object."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
@@ -27,14 +28,13 @@ import logging
 import sys
 from functools import reduce
 from sys import intern
-from typing import AbstractSet, Dict, FrozenSet, List, Mapping, Sequence, Set
+from typing import TYPE_CHECKING, AbstractSet, Mapping, Sequence
 
 import numpy as np
 
 import islpy as isl
 from islpy import dim_type
 from pytools import memoize_on_first_arg, natsorted
-from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
@@ -46,7 +46,12 @@ from loopy.kernel.instruction import (
 )
 from loopy.symbolic import CombineMapper
 from loopy.translation_unit import TranslationUnit, TUnitOrKernelT, for_each_kernel
-from loopy.types import ToLoopyTypeConvertible
+
+
+if TYPE_CHECKING:
+    from pytools.tag import Tag
+
+    from loopy.types import ToLoopyTypeConvertible
 
 
 logger = logging.getLogger(__name__)
@@ -1823,7 +1828,7 @@ def get_subkernels(kernel) -> Sequence[str]:
 
 
 @memoize_on_first_arg
-def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[str]]:
+def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, frozenset[str]]:
     """Return a :class:`dict` mapping subkernel names to a :class:`frozenset`
     consisting of the instruction ids scheduled within the subkernel. The
     kernel must be scheduled.
@@ -1837,7 +1842,7 @@ def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[s
     from loopy.schedule import CallKernel, ReturnFromKernel, sched_item_to_insn_id
 
     subkernel = None
-    result: Dict[str, Set[str]] = {}
+    result: dict[str, set[str]] = {}
 
     for lin_item in kernel.linearization:
         if isinstance(lin_item, CallKernel):
@@ -1855,7 +1860,7 @@ def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[s
 
 
 @memoize_on_first_arg
-def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, FrozenSet[str]]:
+def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, frozenset[str]]:
     from loopy.kernel import KernelState
     if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("Kernel must be scheduled")
@@ -1863,7 +1868,7 @@ def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, FrozenSet[str
     assert kernel.linearization is not None
 
     result = {}
-    inames: List[str] = []
+    inames: list[str] = []
 
     from loopy.schedule import CallKernel, EnterLoop, LeaveLoop
 

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,7 +25,7 @@ THE SOFTWARE.
 
 
 from dataclasses import dataclass
-from typing import FrozenSet, List, Optional, Sequence, Type, Union, cast
+from typing import TYPE_CHECKING, Sequence, cast
 
 import numpy as np
 from immutabledict import immutabledict
@@ -31,10 +34,8 @@ import islpy as isl
 from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_on_first_arg
-from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import AddressSpace
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.kernel.instruction import InstructionBase, MultiAssignmentBase
@@ -42,7 +43,6 @@ from loopy.kernel.tools import (
     find_most_recent_global_barrier,
     kernel_has_global_barriers,
 )
-from loopy.match import ToStackMatchCovertible
 from loopy.symbolic import (
     CombineMapper,
     RuleAwareIdentityMapper,
@@ -66,6 +66,13 @@ from loopy.typing import (
     integer_or_err,
     not_none,
 )
+
+
+if TYPE_CHECKING:
+    from pytools.tag import Tag
+
+    from loopy.kernel import LoopKernel
+    from loopy.match import ToStackMatchConvertible
 
 
 # {{{ contains_subst_rule_invocation
@@ -133,7 +140,7 @@ def contains_a_subst_rule_invocation(kernel, insn):
 
 @dataclass(frozen=True)
 class RuleAccessDescriptor(AccessDescriptor):
-    args: Optional[Sequence[ArithmeticExpression]] = None
+    args: Sequence[ArithmeticExpression] | None = None
 
 
 def access_descriptor_id(args, expansion_stack):
@@ -170,7 +177,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
 
         self.access_descriptors: list[RuleAccessDescriptor] = []
 
-    def map_substitution(self, name, tag, arguments, expn_state):
+    def map_subst_rule(self, name, tag, arguments, expn_state):
         process_me = name == self.subst_name
 
         if self.subst_tag is not None and self.subst_tag != tag:
@@ -182,7 +189,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                 expn_state.stack)
 
         if not process_me:
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         rule = self.rule_mapping_context.old_subst_rules[name]
@@ -207,7 +214,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                         ", ".join(arg_deps - self.kernel.all_inames()),
                         ), stacklevel=1)
 
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         args = [arg_context[arg_name] for arg_name in rule.arguments]
@@ -252,7 +259,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         self.compute_read_variables = compute_read_variables
         self.compute_insn_depends_on = set()
 
-    def map_substitution(self, name, tag, arguments, expn_state):
+    def map_subst_rule(self, name, tag, arguments, expn_state):
         if not (
                 name == self.subst_name
                 and self.within(
@@ -260,7 +267,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     expn_state.instruction,
                     expn_state.stack)
                 and (self.subst_tag is None or self.subst_tag == tag)):
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         # {{{ check if in footprint
@@ -275,7 +282,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     self.storage_axis_sources, args))
 
         if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         # }}}
@@ -380,20 +387,20 @@ def precompute_for_single_kernel(
         callables_table: CallablesTable,
         subst_use,
         sweep_inames=None,
-        within: ToStackMatchCovertible = None,
+        within: ToStackMatchConvertible = None,
         *,
         storage_axes=None,
-        temporary_name: Optional[str] = None,
-        precompute_inames: Optional[Sequence[str]] = None,
-        precompute_outer_inames: Optional[FrozenSet[str]] = None,
+        temporary_name: str | None = None,
+        precompute_inames: Sequence[str] | None = None,
+        precompute_outer_inames: frozenset[str] | None = None,
         storage_axis_to_tag=None,
 
-        default_tag: Union[Tag, str, None] = None,
+        default_tag: Tag | str | None = None,
 
-        dtype: Optional[ToLoopyTypeConvertible] = None,
+        dtype: ToLoopyTypeConvertible | None = None,
         fetch_bounding_box: bool = False,
-        temporary_address_space: Union[AddressSpace, Type[auto], None] = None,
-        compute_insn_id: Optional[str] = None,
+        temporary_address_space: AddressSpace | type[auto] | None = None,
+        compute_insn_id: str | None = None,
         _enable_mirgecom_workaround: bool = False,
         ) -> LoopKernel:
     """Precompute the expression described in the substitution rule determined by
@@ -514,7 +521,7 @@ def precompute_for_single_kernel(
 
     footprint_generators = None
 
-    subst_name: Optional[str] = None
+    subst_name: str | None = None
     subst_tag = None
 
     from pymbolic.primitives import Call, Variable
@@ -579,7 +586,7 @@ def precompute_for_single_kernel(
             if isinstance(fpg, Variable):
                 args: tuple[ArithmeticExpression, ...] = ()
             elif isinstance(fpg, Call):
-                args = cast(tuple[ArithmeticExpression, ...], fpg.parameters)
+                args = cast("tuple[ArithmeticExpression, ...]", fpg.parameters)
             else:
                 raise ValueError("footprint generator must "
                         "be substitution rule invocation")
@@ -674,8 +681,8 @@ def precompute_for_single_kernel(
 
     prior_storage_axis_name_dict = {}
 
-    storage_axis_names: List[str] = []
-    storage_axis_sources: List[Union[str, int]] = []  # number for arg#, or iname
+    storage_axis_names: list[str] = []
+    storage_axis_sources: list[str | int] = []  # number for arg#, or iname
 
     # {{{ check for pre-existing precompute_inames
 
@@ -962,7 +969,7 @@ def precompute_for_single_kernel(
             # within_inames determined below
             )
     compute_dep_id = compute_insn_id
-    added_compute_insns: List[InstructionBase] = [compute_insn]
+    added_compute_insns: list[InstructionBase] = [compute_insn]
 
     if temporary_address_space == AddressSpace.GLOBAL:
         barrier_insn_id = kernel.make_unique_instruction_id(

@@ -1,4 +1,5 @@
 """Plain C target and base for other C-family languages."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -24,7 +25,7 @@ THE SOFTWARE.
 """
 
 import re
-from typing import Any, Optional, Sequence, Tuple, cast
+from typing import TYPE_CHECKING, Any, Sequence, cast
 
 import numpy as np
 
@@ -43,10 +44,7 @@ from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.kernel import LoopKernel
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
 from loopy.kernel.data import (
     AddressSpace,
@@ -57,24 +55,35 @@ from loopy.kernel.data import (
     ValueArg,
 )
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.schedule import CallKernel
 from loopy.symbolic import IdentityMapper
 from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
-from loopy.target.execution import ExecutorBase
 from loopy.tools import remove_common_indentation
-from loopy.translation_unit import FunctionIdT, TranslationUnit
 from loopy.types import LoopyType, NumpyType, to_loopy_type
 from loopy.typing import Expression, auto
 
 
-__doc__ = """
-.. currentmodule loopy.target.c
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.schedule import CallKernel
+    from loopy.target.execution import ExecutorBase
+    from loopy.translation_unit import FunctionIdT, TranslationUnit
 
+
+__doc__ = """
 .. autoclass:: POD
 
 .. autoclass:: ScopingBlock
 
 .. automodule:: loopy.target.c.codegen.expression
+
+References
+^^^^^^^^^^
+
+.. class:: Generable
+
+    See :class:`cgen.Generable`.
 """
 
 
@@ -791,9 +800,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     # {{{ code generation
 
     def get_function_definition(
-            self, codegen_state: CodeGenerationState,
+            self,
+            codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult,
-            schedule_index: int, function_decl: Generable, function_body: Generable
+            schedule_index: int,
+            function_decl: Generable,
+            function_body: Generable
             ) -> Generable:
         kernel = codegen_state.kernel
         assert kernel.linearization is not None
@@ -821,16 +833,23 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                         tv.initializer is not None):
                     assert tv.read_only
 
-                    decl: Generable = self.wrap_global_constant(
+                    decl = self.wrap_global_constant(
                             self.get_temporary_var_declarator(codegen_state, tv))
 
                     if tv.initializer is not None:
-                        decl = Initializer(decl, generate_array_literal(
+                        init_decl = Initializer(decl, generate_array_literal(
                             codegen_state, tv, tv.initializer))
+                    else:
+                        init_decl = decl
 
-                    result.append(decl)
+                    result.append(init_decl)
+
+        assert isinstance(function_decl, FunctionDeclarationWrapper)
+        if not isinstance(function_body, Block):
+            function_body = Block([function_body])
 
         fbody = FunctionBody(function_decl, function_body)
+
         if not result:
             return fbody
         else:
@@ -839,12 +858,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 
         assert codegen_state.kernel.linearization is not None
         subkernel_name = cast(
-                        CallKernel,
+                        "CallKernel",
                         codegen_state.kernel.linearization[schedule_index]
                         ).kernel_name
 
@@ -877,8 +896,8 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[Expression, ...],
-            lsize: Tuple[Expression, ...]) -> Optional[Generable]:
+            gsize: tuple[Expression, ...],
+            lsize: tuple[Expression, ...]) -> Generable | None:
         return None
 
     def emit_temp_var_decl_for_tv_with_base_storage(self,
@@ -1071,7 +1090,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             arg_decl: Declarator = RestrictPointer(
                     self.wrap_decl_for_address_space(
                         self.get_array_base_declarator(temp_var),
-                        cast(AddressSpace, temp_var.address_space)))
+                        cast("AddressSpace", temp_var.address_space)))
             if not is_written:
                 arg_decl = Const(arg_decl)
 
@@ -1334,8 +1353,7 @@ class CFunctionDeclExtractor(CASTIdentityMapper):
 
     def map_function_decl_wrapper(self, node):
         self.decls.append(node.subdecl)
-        return super()\
-                .map_function_decl_wrapper(node)
+        return super().map_function_decl_wrapper(node)
 
 
 def generate_header(kernel, codegen_result=None):

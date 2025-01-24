@@ -111,14 +111,14 @@ def test_collect_common_factors(ctx_factory):
             out[i] = out_tmp {dep=out_up1:out_up2}
             """)
     knl = lp.add_and_infer_dtypes(knl,
-            dict(a=np.float32, alpha=np.float32, b1=np.float32, b2=np.float32))
+            {"a": np.float32, "alpha": np.float32, "b1": np.float32, "b2": np.float32})
 
     ref_knl = knl
 
     knl = lp.split_iname(knl, "i", 256, outer_tag="g.0", inner_tag="l.0")
     knl = lp.collect_common_factors_on_increment(knl, "out_tmp")
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=13))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 13})
 
 
 def test_to_batched(ctx_factory):
@@ -128,18 +128,18 @@ def test_to_batched(ctx_factory):
     knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<n } """,
          """ out[i] = sum(j, a[i,j]*x[j])""")
-    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
-                                            x=np.float32,
-                                            a=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"out": np.float32,
+                                            "x": np.float32,
+                                            "a": np.float32})
 
     bknl = lp.to_batched(knl, "nbatches", "out,x")
 
     ref_knl = lp.make_kernel(
          """ { [i,j,k]: 0<=i,j<n and 0<=k<nbatches} """,
          """out[k, i] = sum(j, a[i,j]*x[k, j])""")
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
-                                                    x=np.float32,
-                                                    a=np.float32))
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"out": np.float32,
+                                                    "x": np.float32,
+                                                    "a": np.float32})
 
     a = np.random.randn(5, 5).astype(np.float32)
     x = np.random.randn(7, 5).astype(np.float32)
@@ -164,15 +164,15 @@ def test_to_batched_temp(ctx_factory):
              dtype=np.float32,
              shape=(),
              address_space=lp.AddressSpace.PRIVATE), "..."])
-    knl = lp.add_and_infer_dtypes(knl, dict(out=np.float32,
-                                            x=np.float32,
-                                            a=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"out": np.float32,
+                                            "x": np.float32,
+                                            "a": np.float32})
     ref_knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<n } """,
          """out[i] = sum(j, 2.0*a[i,j]*x[j])""")
-    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(out=np.float32,
-                                                    x=np.float32,
-                                                    a=np.float32))
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, {"out": np.float32,
+                                                    "x": np.float32,
+                                                    "a": np.float32})
 
     bknl = lp.to_batched(knl, "nbatches", "out,x")
     bref_knl = lp.to_batched(ref_knl, "nbatches", "out,x")
@@ -186,7 +186,7 @@ def test_to_batched_temp(ctx_factory):
     # Checking that the program compiles and the logic is correct
     lp.auto_test_vs_ref(
             bref_knl, ctx, bknl,
-            parameters=dict(a=a, x=x, n=5, nbatches=7))
+            parameters={"a": a, "x": x, "n": 5, "nbatches": 7})
 
 
 def test_add_barrier(ctx_factory):
@@ -277,7 +277,7 @@ def test_alias_temporaries(ctx_factory):
     knl = lp.allocate_temporaries_for_base_storage(knl)
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
-            parameters=dict(n=30))
+            parameters={"n": 30})
 
 
 def test_vectorize(ctx_factory):
@@ -289,10 +289,10 @@ def test_vectorize(ctx_factory):
         <> temp = 2*b[i]
         a[i] = temp
         """)
-    knl = lp.add_and_infer_dtypes(knl, dict(b=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"b": np.float32})
     knl = lp.set_array_axis_names(knl, "a,b", "i")
     knl = lp.split_array_dim(knl, [("a", 0), ("b", 0)], 4,
-            split_kwargs=dict(slabs=(0, 1)))
+            split_kwargs={"slabs": (0, 1)})
 
     knl = lp.tag_array_axes(knl, "a,b", "c,vec")
     ref_knl = knl
@@ -305,7 +305,7 @@ def test_vectorize(ctx_factory):
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
-            parameters=dict(n=30))
+            parameters={"n": 30})
 
 
 def test_extract_subst(ctx_factory):
@@ -363,10 +363,10 @@ def test_tag_data_axes(ctx_factory):
         lp.tag_array_axes(knl, "out", "N1,N0,c")
 
     knl = lp.tag_array_axes(knl, "out", "N1,N0,N2")
-    knl = lp.tag_inames(knl, dict(j="g.0", i="g.1"))
+    knl = lp.tag_inames(knl, {"j": "g.0", "i": "g.1"})
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
-            parameters=dict(n=20))
+            parameters={"n": 20})
 
 
 def test_set_arg_order():
@@ -428,11 +428,11 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
         b[i,j] = D(j)
         """, name="precomputer")
 
-    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, {"a": np.float32})
 
     ref_prog = prog
 
-    prog = lp.tag_inames(prog, dict(j="g.1"))
+    prog = lp.tag_inames(prog, {"j": "g.1"})
     prog = lp.split_iname(prog, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     from loopy.symbolic import get_dependencies
@@ -444,7 +444,7 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
 
     lp.auto_test_vs_ref(
             ref_prog, ctx, prog,
-            parameters=dict(n=12345))
+            parameters={"n": 12345})
 
 
 def test_precompute_nested_subst(ctx_factory):
@@ -458,7 +458,7 @@ def test_precompute_nested_subst(ctx_factory):
         b[i] = D
         """, name="precomputer")
 
-    prog = lp.add_and_infer_dtypes(prog, dict(a=np.float32))
+    prog = lp.add_and_infer_dtypes(prog, {"a": np.float32})
 
     ref_prog = prog
 
@@ -482,7 +482,7 @@ def test_precompute_nested_subst(ctx_factory):
 
     lp.auto_test_vs_ref(
             ref_prog, ctx, prog,
-            parameters=dict(n=12345))
+            parameters={"n": 12345})
 
 
 def test_precompute_with_preexisting_inames(ctx_factory):
@@ -517,7 +517,7 @@ def test_precompute_with_preexisting_inames(ctx_factory):
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
-            parameters=dict(E=200))
+            parameters={"E": 200})
 
 
 def test_precompute_with_preexisting_inames_fail():

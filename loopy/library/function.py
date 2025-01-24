@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -20,12 +23,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.translation_unit import CallablesTable
 from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from loopy.translation_unit import CallablesTable
 
 
 class MakeTupleCallable(ScalarCallable):

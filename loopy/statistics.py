@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2015 James Stevens
 Copyright (C) 2018 Kaushik Kulkarni
@@ -25,9 +28,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Sequence
 from functools import cached_property, partial
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import islpy as isl
 from islpy import dim_type
@@ -40,6 +42,10 @@ from loopy.kernel.data import AddressSpace, MultiAssignmentBase, TemporaryVariab
 from loopy.kernel.function_interface import CallableKernel
 from loopy.symbolic import CoefficientCollector, flatten
 from loopy.translation_unit import TranslationUnit
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 __doc__ = """
@@ -893,7 +899,6 @@ class CounterBase(CombineMapper):
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
 
-    map_substitution = map_common_subexpression
     map_derivative = map_common_subexpression
     map_slice = map_common_subexpression
 
@@ -998,6 +1003,10 @@ class ExpressionOpCounter(CounterBase):
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
+    def map_type_cast(self, expr):
+        # Treats type casting as free
+        return self.rec(expr.child)
+
     def map_left_shift(self, expr):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="shift",
@@ -1054,11 +1063,6 @@ class ExpressionOpCounter(CounterBase):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
-
-    def map_substitution(self, expr):
-        raise NotImplementedError("ExpressionOpCounter encountered "
-                                  "substitution, "
-                                  "map_substitution not implemented.")
 
     def map_derivative(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered "

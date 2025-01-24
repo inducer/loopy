@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -44,11 +47,14 @@ from pymbolic.mapper.stringifier import (
 
 from loopy.diagnostic import LoopyError
 from loopy.expression import dtype_to_type_context
-from loopy.symbolic import TypeCast
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeReader
 from loopy.types import LoopyType
 from loopy.typing import Expression, is_integer
+
+
+if TYPE_CHECKING:
+    from loopy.symbolic import TypeCast
 
 
 __doc__ = """
@@ -123,7 +129,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return s
 
-    def rec(self, expr, type_context=None, needed_type: Optional[LoopyType] = None):  # type: ignore[override]
+    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
         result = super().rec(expr, type_context)
 
         if needed_type is None:
@@ -476,7 +482,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif np.isfinite(expr):
             if type_context == "f":
-                return Literal(repr(float((expr)))+"f")
+                return Literal(repr(float(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context in ["i", "b"]:

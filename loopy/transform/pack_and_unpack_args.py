@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Tianjiao Sun, Kaushik Kulkarni"
 
 __license__ = """

@@ -1,4 +1,5 @@
 """OpenCL target independent of PyOpenCL."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -23,16 +24,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence, Tuple
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 
-from cgen import Declarator, Generable
 from pymbolic import var
 from pytools import memoize_method
 
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
 from loopy.kernel.data import AddressSpace, ConstantArg, ImageArg
@@ -40,6 +38,13 @@ from loopy.kernel.function_interface import ScalarCallable
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget, DTypeRegistryWrapper
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from cgen import Declarator, Generable
+
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ dtype registry wrappers
@@ -632,7 +637,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
@@ -761,12 +766,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     def get_image_arg_declarator(
             self, arg: ImageArg, is_written: bool) -> Declarator:
-        if is_written:
-            mode = "w"
-        else:
-            mode = "r"
-
         from cgen.opencl import CLImage
+
+        mode: Literal["r", "w"] = "w" if is_written else "r"
         return CLImage(arg.num_target_axes(), mode, arg.name)
 
     # }}}

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,59 +24,46 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
     Any,
-    FrozenSet,
     Mapping,
-    Optional,
     Sequence,
-    Set,
-    Tuple,
-    Union,
 )
 
-from immutabledict import immutabledict
-
-from loopy.codegen.result import CodeGenerationResult
-from loopy.library.reduction import ReductionOpFunction
-from loopy.translation_unit import CallablesTable, TranslationUnit
+from constantdict import constantdict
 
 
 logger = logging.getLogger(__name__)
 
 from functools import reduce
 
+import islpy  # to help out Sphinx
 import islpy as isl
-from pytools import ProcessLogger, UniqueNameGenerator
+import pytools  # to help out Sphinx
+from pytools import ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, warn
-from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 from loopy.symbolic import CombineMapper
-from loopy.target import TargetBase
 from loopy.tools import LoopyKeyBuilder, caches
-from loopy.types import LoopyType
-from loopy.typing import Expression
 from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
-    from loopy.codegen.result import GeneratedProgram
+    from loopy.codegen.result import CodeGenerationResult, GeneratedProgram
     from loopy.codegen.tools import CodegenOperationCacheManager
-
-
-if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
-    from loopy.codegen.result import GeneratedProgram
-    from loopy.codegen.tools import CodegenOperationCacheManager
+    from loopy.kernel import LoopKernel
+    from loopy.library.reduction import ReductionOpFunction
+    from loopy.target import TargetBase
+    from loopy.translation_unit import CallablesTable, TranslationUnit
+    from loopy.types import LoopyType
+    from loopy.typing import Expression
 
 
 __doc__ = """
-.. currentmodule:: loopy.codegen
-
 .. autoclass:: PreambleInfo
 
 .. autoclass:: VectorizationInfo
@@ -112,8 +102,6 @@ class VectorizationInfo:
 
     iname: str
     length: int
-    # FIXME why is this here?
-    space: isl.Space
 
 
 @dataclass(frozen=True)
@@ -134,108 +122,76 @@ class SeenFunction:
     """
     name: str
     c_name: str
-    arg_dtypes: Tuple[LoopyType, ...]
-    result_dtypes: Tuple[LoopyType, ...]
+    arg_dtypes: tuple[LoopyType, ...]
+    result_dtypes: tuple[LoopyType, ...]
 
 
 @dataclass(frozen=True)
 class CodeGenerationState:
     """
-    .. attribute:: kernel
-    .. attribute:: target
-    .. attribute:: implemented_domain
+    .. autoattribute:: kernel
+    .. autoattribute:: target
+    .. autoattribute:: implemented_domain
+    .. autoattribute:: implemented_predicates
 
-        The entire implemented domain (as an :class:`islpy.Set`)
-        i.e. all constraints that have been enforced so far.
-
-    .. attribute:: implemented_predicates
-
-        A :class:`frozenset` of predicates for which checks have been
-        implemented.
-
-    .. attribute:: seen_dtypes
-
-        set of dtypes that were encountered
-
-    .. attribute:: seen_functions
-
-        set of :class:`SeenFunction` instances
-
+    .. autoattribute:: seen_dtypes
+    .. autoattribute:: seen_functions
     .. attribute:: seen_atomic_dtypes
 
-    .. attribute:: var_subst_map
+    .. autoattribute:: var_subst_map
 
-    .. attribute:: allow_complex
-
-    .. attribute:: vectorization_info
-
-        *None* (to mean vectorization has not yet been applied),  or an instance of
-        :class:`VectorizationInfo`.
-
-    .. attribute:: is_generating_device_code
-
-    .. attribute:: gen_program_name
-
-        None (indicating that host code is being generated)
-        or the name of the device program currently being
-        generated.
-
-    .. attribute:: schedule_index_end
-
-    .. attribute:: callables_table
-
-        A mapping from callable names to instances of
-        :class:`loopy.kernel.function_interface.InKernelCallable`.
-
-    .. attribute:: is_entrypoint
-
-        A :class:`bool` to indicate if the code is being generated for an
-        entrypoint kernel
-
-    .. attribute:: codegen_cache_manager
-
-        An instance of :class:`loopy.codegen.tools.CodegenOperationCacheManager`.
+    .. autoattribute:: allow_complex
+    .. autoattribute:: vectorization_info
+    .. autoattribute:: is_generating_device_code
+    .. autoattribute:: gen_program_name
+    .. autoattribute:: schedule_index_end
+    .. autoattribute:: callables_table
+    .. autoattribute:: is_entrypoint
+    .. autoattribute:: codegen_cache_manager
     """
 
     kernel: LoopKernel
+
+    # LoopKernel should not have a target, should use this instead
     target: TargetBase
-    implemented_domain: isl.Set
-    implemented_predicates: FrozenSet[Union[str, Expression]]
+
+    implemented_domain: islpy.Set
+    """
+    The entire implemented domain (as an :class:`islpy.Set`)
+    i.e. all constraints that have been enforced so far.
+    """
+
+    implemented_predicates: frozenset[str | Expression]
 
     # /!\ mutable
-    seen_dtypes: Set[LoopyType]
-    seen_functions: Set[SeenFunction]
-    seen_atomic_dtypes: Set[LoopyType]
+    seen_dtypes: set[LoopyType]
+    seen_functions: set[SeenFunction]
+    seen_atomic_dtypes: set[LoopyType]
 
-    var_subst_map: immutabledict[str, Expression]
+    var_subst_map: constantdict[str, Expression]
     allow_complex: bool
     callables_table: CallablesTable
     is_entrypoint: bool
-    var_name_generator: UniqueNameGenerator
+    var_name_generator: pytools.UniqueNameGenerator
     is_generating_device_code: bool
+
     gen_program_name: str
+
     schedule_index_end: int
-    codegen_cachemanager: "CodegenOperationCacheManager"
-    vectorization_info: Optional[VectorizationInfo] = None
-
-    def __post_init__(self):
-        # FIXME: If this doesn't bomb during testing, we can get rid of target.
-        assert self.target == self.kernel.target
-
-        assert self.vectorization_info is None or isinstance(
-                self.vectorization_info, VectorizationInfo)
+    codegen_cache_manager: CodegenOperationCacheManager
+    vectorization_info: VectorizationInfo | None = None
 
     # {{{ copy helpers
 
-    def copy(self, **kwargs: Any) -> "CodeGenerationState":
+    def copy(self, **kwargs: Any) -> CodeGenerationState:
         return replace(self, **kwargs)
 
     def copy_and_assign(
-            self, name: str, value: Expression) -> "CodeGenerationState":
+            self, name: str, value: Expression) -> CodeGenerationState:
         """Make a copy of self with variable *name* fixed to *value*."""
         return self.copy(var_subst_map=self.var_subst_map.set(name, value))
 
-    def copy_and_assign_many(self, assignments) -> "CodeGenerationState":
+    def copy_and_assign_many(self, assignments) -> CodeGenerationState:
         """Make a copy of self with *assignments* included."""
 
         return self.copy(var_subst_map=self.var_subst_map.update(assignments))
@@ -305,7 +261,8 @@ class CodeGenerationState:
         novec_self = self.copy(vectorization_info=None)
 
         for i in range(vinf.length):
-            idx_aff = isl.Aff.zero_on_domain(vinf.space.params()) + i
+            idx_aff = isl.Aff.zero_on_domain(
+                        isl.Space.params_alloc(self.kernel.isl_context, 0)) + i
             new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
             generated = func(new_codegen_state)
 
@@ -367,10 +324,16 @@ class InKernelCallablesCollector(CombineMapper):
 
 @dataclass(frozen=True)
 class PreambleInfo:
+    """
+    .. autoattribute:: kernel
+    .. autoattribute:: seen_dtypes
+    .. autoattribute:: seen_functions
+    .. autoattribute:: seen_atomic_dtypes
+    """
     kernel: LoopKernel
-    seen_dtypes: Set[LoopyType]
-    seen_functions: Set[SeenFunction]
-    seen_atomic_dtypes: Set[LoopyType]
+    seen_dtypes: set[LoopyType]
+    seen_functions: set[SeenFunction]
+    seen_atomic_dtypes: set[LoopyType]
 
     # FIXME: This makes all the above redundant. It probably shouldn't be here.
     codegen_state: CodeGenerationState
@@ -418,7 +381,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
             seen_atomic_dtypes=seen_atomic_dtypes,
-            var_subst_map=immutabledict(),
+            var_subst_map=constantdict(),
             allow_complex=allow_complex,
             var_name_generator=kernel.get_var_name_generator(),
             is_generating_device_code=False,
@@ -429,7 +392,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             schedule_index_end=len(kernel.linearization),
             callables_table=callables_table,
             is_entrypoint=is_entrypoint,
-            codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
+            codegen_cache_manager=CodegenOperationCacheManager.from_kernel(kernel),
             )
 
     from loopy.codegen.result import generate_host_or_device_program
@@ -519,7 +482,7 @@ def diverge_callee_entrypoints(program):
 
         new_callables[name] = clbl
 
-    return program.copy(callables_table=immutabledict(new_callables))
+    return program.copy(callables_table=constantdict(new_callables))
 
 
 @dataclass(frozen=True)
@@ -543,10 +506,10 @@ class TranslationUnitCodeGenerationResult:
     .. automethod:: all_code
 
     """
-    host_programs: Mapping[str, "GeneratedProgram"]
-    device_programs: Sequence["GeneratedProgram"]
-    host_preambles: Sequence[Tuple[int, str]] = ()
-    device_preambles: Sequence[Tuple[int, str]] = ()
+    host_programs: Mapping[str, GeneratedProgram]
+    device_programs: Sequence[GeneratedProgram]
+    host_preambles: Sequence[tuple[int, str]] = ()
+    device_preambles: Sequence[tuple[int, str]] = ()
 
     def host_code(self):
         from loopy.codegen.result import process_preambles

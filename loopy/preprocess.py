@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,7 +24,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import FrozenSet, Iterable, List, Optional, Tuple, TypeVar, cast
+from typing import TYPE_CHECKING, Iterable, List, TypeVar, cast
 
 
 logger = logging.getLogger(__name__)
@@ -39,8 +42,6 @@ from loopy.diagnostic import (
     WriteRaceConditionWarning,
     warn_with_kernel,
 )
-from loopy.kernel import LoopKernel
-from loopy.kernel.array import ArrayDimImplementationTag
 from loopy.kernel.data import (
     ArrayArg,
     KernelArgument,
@@ -68,7 +69,12 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.array import ArrayDimImplementationTag
+    from loopy.typing import Expression
 
 
 # {{{ check for writes to predicates
@@ -135,8 +141,8 @@ T = TypeVar("T")
 
 
 def _remove_at_indices(
-        indices: FrozenSet[int], values: Optional[Iterable[T]]
-        ) -> Optional[Tuple[T, ...]]:
+        indices: frozenset[int], values: Iterable[T] | None
+        ) -> tuple[T, ...] | None:
     """
     Assumes *indices* is sorted.
     """
@@ -174,14 +180,14 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
         sep_axis_indices_set = frozenset(sep_axis_indices)
 
         assert isinstance(arg.shape, tuple)
-        new_shape: Optional[Tuple[Expression, ...]] = \
+        new_shape: tuple[Expression, ...] | None = \
                 _remove_at_indices(sep_axis_indices_set, arg.shape)
-        new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]] = \
+        new_dim_tags: tuple[ArrayDimImplementationTag, ...] | None = \
                 _remove_at_indices(sep_axis_indices_set, arg.dim_tags)
-        new_dim_names: Optional[Tuple[Optional[str], ...]] = \
+        new_dim_names: tuple[str | None, ...] | None = \
                 _remove_at_indices(sep_axis_indices_set, arg.dim_names)
 
-        sep_shape: List[Expression] = [arg.shape[i] for i in sep_axis_indices]
+        sep_shape: list[Expression] = [arg.shape[i] for i in sep_axis_indices]
         for i, sep_shape_i in enumerate(sep_shape):
             if not isinstance(sep_shape_i, (int, np.integer)):
                 raise LoopyError(
@@ -193,7 +199,7 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
                 sep_axis_indices_set=sep_axis_indices_set,
                 subarray_names=immutabledict({
                     ind: vng(f"{arg.name}_s{'_'.join(str(i) for i in ind)}")
-                    for ind in np.ndindex(*cast(List[int], sep_shape))}))
+                    for ind in np.ndindex(*cast("List[int]", sep_shape))}))
 
         new_args.append(arg.copy(_separation_info=sep_info))
 
@@ -220,7 +226,7 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
 # {{{ make temporary variables for offsets and strides
 
 def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
-    additional_args: List[KernelArgument] = []
+    additional_args: list[KernelArgument] = []
 
     vng = kernel.get_var_name_generator()
 
@@ -247,7 +253,7 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
                 raise LoopyError(f"invalid value of {what}")
 
             if arg.dim_tags is None:
-                new_dim_tags: Optional[Tuple[ArrayDimImplementationTag, ...]]  \
+                new_dim_tags: tuple[ArrayDimImplementationTag, ...] | None \
                         = arg.dim_tags
             else:
                 new_dim_tags = ()

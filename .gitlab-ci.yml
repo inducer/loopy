@@ -158,11 +158,10 @@ Ruff:
 
 Mypy:
   script: |
-    EXTRA_INSTALL="pybind11 numpy"
+    EXTRA_INSTALL="mypy pybind11 numpy types-colorama types-Pygments"
     curl -L -O https://tiker.net/ci-support-v0
     . ./ci-support-v0
     build_py_project_in_venv
-    python -m pip install mypy
     ./run-mypy.sh
   tags:
   - python3

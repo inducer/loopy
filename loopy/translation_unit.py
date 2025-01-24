@@ -31,9 +31,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    FrozenSet,
     Mapping,
-    Optional,
     TypeVar,
     Union,
 )
@@ -56,11 +54,11 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     SubstitutionRuleMappingContext,
 )
-from loopy.target import TargetBase
 
 
 if TYPE_CHECKING:
     from loopy.kernel import LoopKernel
+    from loopy.target import TargetBase
     from loopy.target.execution import ExecutorBase
 
 
@@ -237,7 +235,7 @@ class TranslationUnit:
 
     callables_table: ConcreteCallablesTable
     target: TargetBase
-    entrypoints: FrozenSet[str]
+    entrypoints: frozenset[str]
 
     def __post_init__(self):
 
@@ -347,7 +345,7 @@ class TranslationUnit:
                              " determined.")
 
     def executor(self,
-                 *args, entrypoint: Optional[str] = None, **kwargs) -> ExecutorBase:
+                 *args, entrypoint: str | None = None, **kwargs) -> ExecutorBase:
         """Return an object that hosts caches of compiled code for execution (i.e.
         a subclass of :class:`ExecutorBase`, specific to an execution
         environment (e.g. an OpenCL context) and a given entrypoint.
@@ -585,9 +583,9 @@ class CallablesInferenceContext:
     """
     callables: Mapping[str, InKernelCallable]
     clbl_name_gen: Callable[[str], str]
-    renames: Mapping[str, FrozenSet[str]] = field(
+    renames: Mapping[str, frozenset[str]] = field(
             default_factory=lambda: collections.defaultdict(frozenset))
-    new_entrypoints: FrozenSet[str] = frozenset()
+    new_entrypoints: frozenset[str] = frozenset()
 
     def copy(self, **kwargs: Any) -> CallablesInferenceContext:
         return replace(self, **kwargs)

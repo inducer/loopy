@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
@@ -20,7 +23,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Sequence
+
+from typing import TYPE_CHECKING
 
 from immutabledict import immutabledict
 
@@ -47,6 +51,10 @@ from loopy.symbolic import (
     SubstitutionRuleMappingContext,
 )
 from loopy.translation_unit import FunctionIdT, TranslationUnit, for_each_kernel
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 __doc__ = """
