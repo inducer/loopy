@@ -1003,8 +1003,6 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
                 insn_iname, dep_iname = _get_outermost_diverging_inames(
                         loop_tree, insn_loop_inames, dep_loop_inames)
                 dag[LeaveLoop(iname=dep_iname)] |= {EnterLoop(iname=insn_iname)}
-            else:
-                pass
 
             # }}}
 
