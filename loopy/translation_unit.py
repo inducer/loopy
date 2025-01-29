@@ -238,11 +238,8 @@ class TranslationUnit:
     entrypoints: frozenset[str]
 
     def __post_init__(self):
-
         assert isinstance(self.entrypoints, abc_Set)
         assert isinstance(self.callables_table, constantdict)
-
-        object.__setattr__(self, "_program_executor_cache", {})
 
     def copy(self, **kwargs: Any) -> Self:
         target = kwargs.pop("target", None)
@@ -411,7 +408,7 @@ class TranslationUnit:
         #
         # In addition, the executor interface speeds up kernel invocation
         # by removing one unnecessary layer of function call.
-        warn("TranslationUnit.__call__ will become uncached in 2024, "
+        warn("TranslationUnit.__call__ is uncached as of 2025, "
              "meaning it will incur possibly substantial compilation cost "
              "with every invocation. Use TranslationUnit.executor to obtain "
              "an object that holds longer-lived caches.",
@@ -444,12 +441,7 @@ class TranslationUnit:
 
         kwargs["entrypoint"] = entrypoint
 
-        key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
-        try:
-            pex = self._program_executor_cache[key]  # pylint: disable=no-member
-        except KeyError:
-            pex = self.target.get_kernel_executor(self, *args, **kwargs)
-            self._program_executor_cache[key] = pex  # pylint: disable=no-member
+        pex = self.target.get_kernel_executor(self, *args, **kwargs)
 
         del kwargs["entrypoint"]
 
@@ -460,19 +452,8 @@ class TranslationUnit:
 
         return "\n".join(
                 str(clbl.subkernel)
-                for name, clbl in self.callables_table.items()
+                for _name, clbl in self.callables_table.items()
                 if isinstance(clbl, CallableKernel))
-
-    # FIXME: Delete these when _program_executor_cache leaves the building
-    def __getstate__(self):
-        from dataclasses import asdict
-        return asdict(self)
-
-    def __setstate__(self, state_obj):
-        for k, v in state_obj.items():
-            object.__setattr__(self, k, v)
-
-        object.__setattr__(self, "_program_executor_cache", {})
 
     # FIXME: This is here because Firedrake expects it, for some legacy reason.
     # Without that, it would be safe to delete.

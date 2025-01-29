@@ -679,8 +679,6 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
                 option += "atomic, "
         elif isinstance(insn, BarrierInstruction):
             option += (f"mem_kind={insn.mem_kind}, ")
-        else:
-            pass
 
         options[insn.id] = option[:-2]  # get rid of the trailing ", "
 
