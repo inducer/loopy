@@ -348,8 +348,7 @@ class InKernelCallable(ABC):
         try:
             hash(arg_id_to_dtype)
         except TypeError:
-            if arg_id_to_dtype is None:
-                arg_id_to_dtype = {}
+            assert arg_id_to_dtype is not None
             arg_id_to_dtype = constantdict(arg_id_to_dtype)
             warn("arg_id_to_dtype passed to InKernelCallable was not hashable. "
                  "This usage is deprecated and will stop working in 2026.",
@@ -358,8 +357,7 @@ class InKernelCallable(ABC):
         try:
             hash(arg_id_to_descr)
         except TypeError:
-            if arg_id_to_descr is None:
-                arg_id_to_descr = {}
+            assert arg_id_to_descr is not None
             arg_id_to_descr = constantdict(arg_id_to_descr)
             warn("arg_id_to_descr passed to InKernelCallable was not hashable. "
                  "This usage is deprecated and will stop working in 2026.",

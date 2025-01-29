@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from constantdict import constantdict
 
     import pyopencl as cl
 
@@ -311,7 +311,7 @@ class PyOpenCLExecutor(ExecutorBase):
     @memoize_method
     def translation_unit_info(
             self,
-            arg_to_dtype: Mapping[str, LoopyType] | None = None) -> _KernelInfo:
+            arg_to_dtype: constantdict[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         # FIXME: now just need to add the types to the arguments

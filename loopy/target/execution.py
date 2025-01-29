@@ -817,7 +817,7 @@ class ExecutorBase:
                 "your argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
-            self, arg_to_dtype: Mapping[str, LoopyType] | None
+            self, arg_to_dtype: constantdict[str, LoopyType] | None
             ) -> TranslationUnit:
         t_unit = self.t_unit
 
@@ -827,7 +827,7 @@ class ExecutorBase:
             # FIXME: This is not so nice. This transfers types from the
             # subarrays of sep-tagged arrays to the 'main' array, because
             # type inference fails otherwise.
-            mm = dict(arg_to_dtype)
+            mm = arg_to_dtype.mutate()
             for name, sep_info in self.sep_info.items():
                 if entry_knl.arg_dict[name].dtype is None:
                     for sep_name in sep_info.subarray_names.values():
@@ -835,7 +835,7 @@ class ExecutorBase:
                             mm[name] = arg_to_dtype[sep_name]
                             del mm[sep_name]
 
-            arg_to_dtype = constantdict(mm)
+            arg_to_dtype = mm.finish()
 
             from loopy.kernel.tools import add_dtypes
             t_unit = t_unit.with_kernel(add_dtypes(entry_knl, arg_to_dtype))
@@ -854,7 +854,7 @@ class ExecutorBase:
         return t_unit
 
     def get_typed_and_scheduled_translation_unit(
-            self, arg_to_dtype: Mapping[str, LoopyType] | None
+            self, arg_to_dtype: constantdict[str, LoopyType] | None
             ) -> TranslationUnit:
         from loopy import CACHING_ENABLED
 
@@ -904,7 +904,7 @@ class ExecutorBase:
 
     def get_code(
             self, entrypoint: str,
-            arg_to_dtype: Mapping[str, LoopyType] | None = None) -> str:
+            arg_to_dtype: constantdict[str, LoopyType] | None = None) -> str:
         kernel = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
