@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from functools import cached_property, reduce
 from typing import Generic, TypeVar
 
-from constantdict import constantdict as Map
+from constantdict import constantdict as Map  # noqa: N812
 
 from pytools import memoize_method
 

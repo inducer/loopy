@@ -302,14 +302,14 @@ class TranslationUnit:
             # update the callable kernel
             new_in_knl_callable = self.callables_table[kernel.name].copy(
                     subkernel=kernel)
-            new_callables = self.callables_table.delete(kernel.name).set(
-                    kernel.name, new_in_knl_callable)
-            return self.copy(callables_table=new_callables)
+            new_callables = self.callables_table.mutate()
+            new_callables[kernel.name] = new_in_knl_callable
+            return self.copy(callables_table=new_callables.finish())
         else:
             # add a new callable kernel
             clbl = CallableKernel(kernel)
-            new_callables = self.callables_table.set(kernel.name, clbl)
-            return self.copy(callables_table=new_callables)
+            return self.copy(
+                callables_table=self.callables_table.set(kernel.name, clbl))
 
     def __getitem__(self, name) -> LoopKernel:
         """
