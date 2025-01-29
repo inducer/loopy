@@ -168,7 +168,7 @@ class CodeGenerationState:
     seen_functions: set[SeenFunction]
     seen_atomic_dtypes: set[LoopyType]
 
-    var_subst_map: constantdict[str, Expression]
+    var_subst_map: Mapping[str, Expression]
     allow_complex: bool
     callables_table: CallablesTable
     is_entrypoint: bool

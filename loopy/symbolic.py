@@ -1114,7 +1114,7 @@ class ExpansionState:
     kernel: LoopKernel
     instruction: InstructionBase
     stack: tuple[tuple[str, Tag], ...]
-    arg_context: constantdict[str, Expression]
+    arg_context: Mapping[str, Expression]
 
     def __post_init__(self) -> None:
         hash(self.arg_context)
