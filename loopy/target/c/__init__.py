@@ -28,6 +28,7 @@ import re
 from typing import TYPE_CHECKING, Any, Sequence, cast
 
 import numpy as np
+from constantdict import constantdict
 
 import pymbolic.primitives as p
 from cgen import (
@@ -530,7 +531,7 @@ class CMathCallable(ScalarCallable):
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = arg_id_to_dtype[0].numpy_dtype
@@ -563,9 +564,9 @@ class CMathCallable(ScalarCallable):
 
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype={
+                        arg_id_to_dtype=constantdict({
                             0: NumpyType(dtype),
-                            -1: NumpyType(result_dtype)}),
+                            -1: NumpyType(result_dtype)})),
                     callables_table)
 
         # binary functions
@@ -580,7 +581,7 @@ class CMathCallable(ScalarCallable):
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = np.result_type(*[
@@ -607,7 +608,7 @@ class CMathCallable(ScalarCallable):
             dtype = NumpyType(dtype)
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                        arg_id_to_dtype=constantdict({-1: dtype, 0: dtype, 1: dtype})),
                     callables_table)
         elif name in ["max", "min"]:
 
@@ -620,7 +621,7 @@ class CMathCallable(ScalarCallable):
                 # the types provided aren't resolved enough to specialize the
                 # callable
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = np.result_type(*[
@@ -632,9 +633,10 @@ class CMathCallable(ScalarCallable):
 
             return (
                     self.copy(name_in_target=f"lpy_{name}_{dtype.name}",
-                              arg_id_to_dtype={-1: NumpyType(dtype),
-                                               0: NumpyType(dtype),
-                                               1: NumpyType(dtype)}),
+                              arg_id_to_dtype=constantdict({
+                                  -1: NumpyType(dtype),
+                                  0: NumpyType(dtype),
+                                  1: NumpyType(dtype)})),
                     callables_table)
         elif name == "isnan":
             for id in arg_id_to_dtype:
@@ -645,7 +647,7 @@ class CMathCallable(ScalarCallable):
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = arg_id_to_dtype[0].numpy_dtype
@@ -662,9 +664,9 @@ class CMathCallable(ScalarCallable):
             return (
                     self.copy(
                         name_in_target=name,
-                        arg_id_to_dtype={
+                        arg_id_to_dtype=constantdict({
                             0: NumpyType(dtype),
-                            -1: NumpyType(np.int32)}),
+                            -1: NumpyType(np.int32)})),
                     callables_table)
 
     def generate_preambles(self, target):
@@ -713,7 +715,7 @@ class GNULibcCallable(ScalarCallable):
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             if not arg_id_to_dtype[0].is_integral():
@@ -738,9 +740,10 @@ class GNULibcCallable(ScalarCallable):
 
             return (
                     self.copy(name_in_target=name_in_target,
-                              arg_id_to_dtype={-1: arg_id_to_dtype[1],
-                                               0: NumpyType(np.int32),
-                                               1: arg_id_to_dtype[1]}),
+                              arg_id_to_dtype=constantdict({
+                                  -1: arg_id_to_dtype[1],
+                                  0: NumpyType(np.int32),
+                                  1: arg_id_to_dtype[1]})),
                     callables_table)
         else:
             raise NotImplementedError(f"with_types for '{name}'")
