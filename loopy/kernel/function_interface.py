@@ -565,9 +565,10 @@ class ScalarCallable(InKernelCallable):
                 "the function %s." % (self.name))
 
     def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
+        new_arg_id_to_descr = constantdict(arg_id_to_descr).mutate()
+        new_arg_id_to_descr[-1] = ValueArgDescriptor()
 
-        arg_id_to_descr[-1] = ValueArgDescriptor()
-        return (self.copy(arg_id_to_descr=arg_id_to_descr),
+        return (self.copy(arg_id_to_descr=new_arg_id_to_descr.finish()),
                 clbl_inf_ctx)
 
     def get_hw_axes_sizes(self, arg_id_to_arg, space, callables_table):
@@ -782,6 +783,7 @@ class CallableKernel(InKernelCallable):
         # arg_id_to_descr expressions provided are from the caller's namespace,
         # need to register
 
+        new_arg_id_to_descr = constantdict(arg_id_to_descr).mutate()
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         kw_to_callee_idx = {arg.name: i
@@ -789,7 +791,7 @@ class CallableKernel(InKernelCallable):
 
         new_args = self.subkernel.args[:]
 
-        for arg_id, descr in arg_id_to_descr.items():
+        for arg_id, descr in new_arg_id_to_descr.items():
             if isinstance(arg_id, int):
                 arg_id = pos_to_kw[arg_id]
 
@@ -837,20 +839,20 @@ class CallableKernel(InKernelCallable):
         for arg in subkernel.args:
             kw = arg.name
             if isinstance(arg, ArrayBase):
-                arg_id_to_descr[kw] = (
+                new_arg_id_to_descr[kw] = (
                         ArrayArgDescriptor(shape=arg.shape,
                                            dim_tags=arg.dim_tags,
                                            address_space=arg.address_space))
             else:
                 assert isinstance(arg, ValueArg)
-                arg_id_to_descr[kw] = ValueArgDescriptor()
+                new_arg_id_to_descr[kw] = ValueArgDescriptor()
 
-            arg_id_to_descr[kw_to_pos[kw]] = arg_id_to_descr[kw]
+            new_arg_id_to_descr[kw_to_pos[kw]] = new_arg_id_to_descr[kw]
 
         # }}}
 
         return (self.copy(subkernel=subkernel,
-                          arg_id_to_descr=constantdict(arg_id_to_descr)),
+                          arg_id_to_descr=new_arg_id_to_descr.finish()),
                 clbl_inf_ctx)
 
     def with_added_arg(self, arg_dtype, arg_descr):
@@ -868,6 +870,7 @@ class CallableKernel(InKernelCallable):
                 arg_id_to_dtype = {}
             else:
                 arg_id_to_dtype = dict(self.arg_id_to_dtype)
+
             if self.arg_id_to_descr is None:
                 arg_id_to_descr = {}
             else:
@@ -879,8 +882,8 @@ class CallableKernel(InKernelCallable):
             arg_id_to_descr[kw_to_pos[var_name]] = arg_descr
 
             return (self.copy(subkernel=subknl,
-                              arg_id_to_dtype=arg_id_to_dtype,
-                              arg_id_to_descr=arg_id_to_descr),
+                              arg_id_to_dtype=constantdict(arg_id_to_dtype),
+                              arg_id_to_descr=constantdict(arg_id_to_descr)),
                     var_name)
 
         else:
@@ -902,7 +905,7 @@ class CallableKernel(InKernelCallable):
                     address_space=AddressSpace.GLOBAL)
 
         return self.copy(subkernel=self.subkernel,
-                arg_id_to_descr=arg_id_to_descr)
+                arg_id_to_descr=constantdict(arg_id_to_descr))
 
     def get_used_hw_axes(self, callables_table):
         gsize, lsize = self.subkernel.get_grid_size_upper_bounds(callables_table,

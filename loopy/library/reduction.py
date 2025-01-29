@@ -27,6 +27,7 @@ THE SOFTWARE.
 from typing import TYPE_CHECKING
 
 import numpy as np
+from constantdict import constantdict
 
 from pymbolic import var
 from pymbolic.primitives import expr_dataclass
@@ -580,21 +581,25 @@ class ReductionCallable(ScalarCallable):
         index_dtype = arg_id_to_dtype[1]
         result_dtypes = self.name.reduction_op.result_dtypes(scalar_dtype,  # pylint: disable=no-member
                 index_dtype)
-        new_arg_id_to_dtype = arg_id_to_dtype.copy()
+
+        new_arg_id_to_dtype = constantdict(arg_id_to_dtype).mutate()
         new_arg_id_to_dtype[-1] = result_dtypes[0]
         new_arg_id_to_dtype[-2] = result_dtypes[1]
         name_in_target = self.name.reduction_op.prefix(scalar_dtype,  # pylint: disable=no-member
                 index_dtype) + "_op"
 
-        return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                name_in_target=name_in_target), callables_table
+        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype.finish(),
+                          name_in_target=name_in_target),
+                callables_table)
 
     def with_descrs(self, arg_id_to_descr, callables_table):
         from loopy.kernel.function_interface import ValueArgDescriptor
-        new_arg_id_to_descr = arg_id_to_descr.copy()
+
+        new_arg_id_to_descr = constantdict(arg_id_to_descr).mutate()
         new_arg_id_to_descr[-1] = ValueArgDescriptor()
+
         return (
-                self.copy(arg_id_to_descr=arg_id_to_descr),
+                self.copy(arg_id_to_descr=new_arg_id_to_descr.finish()),
                 callables_table)
 
 

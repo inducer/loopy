@@ -29,6 +29,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 import numpy as np
+from constantdict import constantdict
 from mako.template import Template
 
 from pymbolic.typing import not_none
@@ -221,8 +222,8 @@ class Random123Callable(ScalarCallable):
             new_arg_id_to_dtype = {-1: ctr_dtype, -2: ctr_dtype, 0: ctr_dtype, 1:
                     key_dtype}
             return (
-                    self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                        name_in_target=fn+"_gen"),
+                    self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
+                              name_in_target=fn+"_gen"),
                     callables_table)
 
         elif name == fn + "_f32":
@@ -230,18 +231,22 @@ class Random123Callable(ScalarCallable):
                 rng_variant.width),
                     -2: ctr_dtype, 0: ctr_dtype, 1:
                     key_dtype}
-            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                    name_in_target=name), callables_table
+            return (
+                    self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
+                              name_in_target=name),
+                    callables_table)
 
         elif name == fn + "_f64":
             new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float64),
                 rng_variant.width),
                     -2: ctr_dtype, 0: ctr_dtype, 1:
                     key_dtype}
-            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                    name_in_target=name), callables_table
+            return (
+                    self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
+                              name_in_target=name),
+                    callables_table)
 
-        return (self.copy(arg_id_to_dtype=arg_id_to_dtype),
+        return (self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                 callables_table)
 
     def generate_preambles(self, target):
