@@ -25,6 +25,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+
 from dataclasses import dataclass, replace
 from enum import IntEnum
 from sys import intern
@@ -63,7 +64,6 @@ from loopy.typing import Expression, ShapeType, auto
 
 
 if TYPE_CHECKING:
-
     from collections.abc import Mapping
 
     from pymbolic import ArithmeticExpression, Variable
