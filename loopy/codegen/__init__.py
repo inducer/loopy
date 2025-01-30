@@ -32,7 +32,7 @@ from typing import (
     Sequence,
 )
 
-import immutables
+import constantdict
 
 
 logger = logging.getLogger(__name__)
@@ -168,7 +168,7 @@ class CodeGenerationState:
     seen_functions: set[SeenFunction]
     seen_atomic_dtypes: set[LoopyType]
 
-    var_subst_map: immutables.Map[str, Expression]
+    var_subst_map: constantdict.constantdict[str, Expression]
     allow_complex: bool
     callables_table: CallablesTable
     is_entrypoint: bool
@@ -381,7 +381,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
             seen_atomic_dtypes=seen_atomic_dtypes,
-            var_subst_map=immutables.Map(),
+            var_subst_map=constantdict.constantdict(),
             allow_complex=allow_complex,
             var_name_generator=kernel.get_var_name_generator(),
             is_generating_device_code=False,
@@ -482,7 +482,7 @@ def diverge_callee_entrypoints(program):
 
         new_callables[name] = clbl
 
-    return program.copy(callables_table=immutables.Map(new_callables))
+    return program.copy(callables_table=constantdict.constantdict(new_callables))
 
 
 @dataclass(frozen=True)

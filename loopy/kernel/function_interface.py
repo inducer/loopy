@@ -27,7 +27,7 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 from warnings import warn
 
-from immutabledict import immutabledict
+from constantdict import constantdict
 from typing_extensions import Self
 
 from loopy.diagnostic import LoopyError
@@ -348,7 +348,8 @@ class InKernelCallable(ABC):
         try:
             hash(arg_id_to_dtype)
         except TypeError:
-            arg_id_to_dtype = immutabledict(arg_id_to_dtype)
+            assert arg_id_to_dtype is not None
+            arg_id_to_dtype = constantdict(arg_id_to_dtype)
             warn("arg_id_to_dtype passed to InKernelCallable was not hashable. "
                  "This usage is deprecated and will stop working in 2026.",
                  DeprecationWarning, stacklevel=3)
@@ -356,7 +357,8 @@ class InKernelCallable(ABC):
         try:
             hash(arg_id_to_descr)
         except TypeError:
-            arg_id_to_descr = immutabledict(arg_id_to_descr)
+            assert arg_id_to_descr is not None
+            arg_id_to_descr = constantdict(arg_id_to_descr)
             warn("arg_id_to_descr passed to InKernelCallable was not hashable. "
                  "This usage is deprecated and will stop working in 2026.",
                  DeprecationWarning, stacklevel=3)
@@ -773,7 +775,7 @@ class CallableKernel(InKernelCallable):
         # Return the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
         return self.copy(subkernel=specialized_kernel,
-                arg_id_to_dtype=immutabledict(new_arg_id_to_dtype)), callables_table
+                arg_id_to_dtype=constantdict(new_arg_id_to_dtype)), callables_table
 
     def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
 
@@ -848,7 +850,7 @@ class CallableKernel(InKernelCallable):
         # }}}
 
         return (self.copy(subkernel=subkernel,
-                          arg_id_to_descr=immutabledict(arg_id_to_descr)),
+                          arg_id_to_descr=constantdict(arg_id_to_descr)),
                 clbl_inf_ctx)
 
     def with_added_arg(self, arg_dtype, arg_descr):

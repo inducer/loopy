@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, cast
 from warnings import warn
 
 import numpy as np
-from immutables import Map
+from constantdict import constantdict
 
 from islpy import dim_type
 from pytools import MovedFunctionDeprecationWrapper
@@ -431,7 +431,7 @@ def add_prefetch(t_unit,
 
         new_callables[func_id] = in_knl_callable
 
-    return t_unit.copy(callables_table=Map(new_callables))
+    return t_unit.copy(callables_table=constantdict(new_callables))
 
 # }}}
 

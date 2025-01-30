@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Sequence, cast
 
 import numpy as np
-from immutables import Map
+from constantdict import constantdict
 
 import islpy as isl
 from pymbolic import ArithmeticExpression, var
@@ -1187,6 +1187,6 @@ def precompute(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=constantdict(new_callables))
 
 # vim: foldmethod=marker

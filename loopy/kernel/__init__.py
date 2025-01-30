@@ -48,7 +48,7 @@ from typing import (
 from warnings import warn
 
 import numpy as np
-from immutables import Map
+from constantdict import constantdict
 
 import islpy  # to help out Sphinx
 import islpy as isl
@@ -183,7 +183,7 @@ class LoopKernel(Taggable):
             Callable[[LoopKernel, str], tuple[LoopyType, str] | None]] = ()
     linearization: Sequence[ScheduleItem] | None = None
     iname_slab_increments: Mapping[InameStr, tuple[int, int]] = field(
-            default_factory=Map)
+            default_factory=constantdict)
     """
     A mapping from inames to (lower_incr,
     upper_incr) tuples that will be separated out in the execution to generate

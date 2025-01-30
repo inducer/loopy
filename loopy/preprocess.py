@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 from functools import partial
 
 import numpy as np
-from immutables import Map
+from constantdict import constantdict
 
 from pytools import ProcessLogger
 
@@ -197,7 +197,7 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
 
         sep_info = _ArraySeparationInfo(
                 sep_axis_indices_set=sep_axis_indices_set,
-                subarray_names=Map({
+                subarray_names=constantdict({
                     ind: vng(f"{arg.name}_s{'_'.join(str(i) for i in ind)}")
                     for ind in np.ndindex(*cast("List[int]", sep_shape))}))
 
@@ -605,8 +605,6 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         raise NotImplementedError
 
     def __call__(self, expr, kernel, insn, assignees=None):
-        import immutables
-
         from loopy.kernel.data import InstructionBase
         from loopy.symbolic import ExpansionState, UncachedIdentityMapper
         assert insn is None or isinstance(insn, InstructionBase)
@@ -616,7 +614,7 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context=immutables.Map()), assignees=assignees)
+                    arg_context=constantdict()), assignees=assignees)
 
     def map_kernel(self, kernel):
 
@@ -750,7 +748,7 @@ def filter_reachable_callables(t_unit):
                                                                  t_unit.entrypoints)
     new_callables = {name: clbl for name, clbl in t_unit.callables_table.items()
                      if name in (reachable_function_ids | t_unit.entrypoints)}
-    return t_unit.copy(callables_table=Map(new_callables))
+    return t_unit.copy(callables_table=constantdict(new_callables))
 
 
 def _preprocess_single_kernel(kernel: LoopKernel, is_entrypoint: bool) -> LoopKernel:
@@ -875,7 +873,7 @@ def preprocess_program(t_unit: TranslationUnit) -> TranslationUnit:
 
         new_callables[func_id] = in_knl_callable
 
-    t_unit = t_unit.copy(callables_table=Map(new_callables))
+    t_unit = t_unit.copy(callables_table=constantdict(new_callables))
 
     # }}}
 

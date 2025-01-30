@@ -2089,7 +2089,7 @@ def get_call_graph(t_unit, only_kernel_callables=False):
 
     :arg t_unit: An instance of :class:`TranslationUnit`.
     """
-    from pyrsistent import pmap
+    from constantdict import constantdict
 
     from loopy.kernel import KernelState
 
@@ -2116,7 +2116,7 @@ def get_call_graph(t_unit, only_kernel_callables=False):
                 call_graph[name] = clbl.get_called_callables(t_unit.callables_table,
                                                              recursive=False)
 
-    return pmap(call_graph)
+    return constantdict(call_graph)
 
 # }}}
 

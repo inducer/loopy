@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Callable, Sequence
 
 logger = logging.getLogger(__name__)
 
-from immutables import Map
+from constantdict import constantdict
 
 import islpy as isl
 from pytools import memoize_on_first_arg
@@ -2184,6 +2184,6 @@ def realize_reduction(t_unit, *args, **kwargs):
                 subkernel=new_knl)
         callables_table[knl.name] = in_knl_callable
 
-    return t_unit.copy(callables_table=Map(callables_table))
+    return t_unit.copy(callables_table=constantdict(callables_table))
 
 # vim: foldmethod=marker

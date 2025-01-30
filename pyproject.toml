@@ -41,9 +41,7 @@ dependencies = [
     "codepy>=2017.1",
     "colorama",
     "Mako",
-    "pyrsistent",
-    "immutables",
-    "immutabledict",
+    "constantdict",
 
     "typing-extensions>=4",
 ]

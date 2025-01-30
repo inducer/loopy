@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 from typing import TYPE_CHECKING
 
-from immutables import Map
+from constantdict import constantdict
 
 import islpy as isl
 from pytools import UniqueNameGenerator
@@ -129,7 +129,7 @@ def merge(translation_units: Sequence[TranslationUnit]) -> TranslationUnit:
     return TranslationUnit(
             entrypoints=frozenset().union(*(
                 t.entrypoints or frozenset() for t in translation_units)),
-            callables_table=Map(callables_table),
+            callables_table=constantdict(callables_table),
             target=translation_units[0].target)
 
 
@@ -605,7 +605,7 @@ def rename_callable(
         new_entrypoints = ((new_entrypoints | frozenset([new_name]))
                            - frozenset([old_name]))
 
-    return t_unit.copy(callables_table=Map(new_callables_table),
+    return t_unit.copy(callables_table=constantdict(new_callables_table),
                         entrypoints=new_entrypoints)
 
 # }}}
