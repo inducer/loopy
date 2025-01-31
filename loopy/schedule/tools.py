@@ -65,7 +65,7 @@ from dataclasses import dataclass
 from functools import cached_property, reduce
 from typing import TYPE_CHECKING, AbstractSet, Sequence
 
-from immutables import Map
+from constantdict import constantdict
 from typing_extensions import TypeAlias
 
 import islpy as isl
@@ -1062,7 +1062,7 @@ def _get_iname_to_tree_node_id_from_partial_loop_nest_tree(
         for iname in node:
             iname_to_tree_node_id[iname] = node
 
-    return Map(iname_to_tree_node_id)
+    return constantdict(iname_to_tree_node_id)
 
 
 def get_loop_tree(kernel: LoopKernel) -> LoopTree:

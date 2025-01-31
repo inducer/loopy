@@ -27,6 +27,7 @@ THE SOFTWARE.
 from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
+from constantdict import constantdict
 
 from pymbolic import var
 from pytools import memoize_method
@@ -208,7 +209,7 @@ class OpenCLCallable(ScalarCallable):
 
             if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = arg_id_to_dtype[0].numpy_dtype
@@ -217,9 +218,10 @@ class OpenCLCallable(ScalarCallable):
                 # OpenCL C 2.2, Section 6.13.3: abs returns *u*gentype
                 from loopy.types import to_unsigned_dtype
                 return (self.copy(name_in_target=name,
-                            arg_id_to_dtype={
+                            arg_id_to_dtype=constantdict({
                                 0: NumpyType(dtype),
-                                -1: NumpyType(to_unsigned_dtype(dtype))}),
+                                -1: NumpyType(to_unsigned_dtype(dtype))
+                                })),
                         callables_table)
             elif dtype.kind == "f":
                 name = "fabs"
@@ -237,7 +239,7 @@ class OpenCLCallable(ScalarCallable):
 
             if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = arg_id_to_dtype[0]
@@ -251,8 +253,10 @@ class OpenCLCallable(ScalarCallable):
 
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype={0: NumpyType(dtype), -1:
-                            NumpyType(dtype)}),
+                        arg_id_to_dtype=constantdict({
+                            0: NumpyType(dtype),
+                            -1: NumpyType(dtype)
+                            })),
                     callables_table)
 
         # }}}
@@ -270,7 +274,7 @@ class OpenCLCallable(ScalarCallable):
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = np.result_type(*[
@@ -283,7 +287,9 @@ class OpenCLCallable(ScalarCallable):
             dtype = NumpyType(dtype)
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                        arg_id_to_dtype=constantdict({
+                            -1: dtype, 0: dtype, 1: dtype
+                            })),
                     callables_table)
 
         elif name in ["max", "min"]:
@@ -292,7 +298,7 @@ class OpenCLCallable(ScalarCallable):
                     raise LoopyError("%s can take only 2 arguments." % name)
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype:
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
             common_dtype = np.result_type(*[
                     dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
@@ -305,7 +311,9 @@ class OpenCLCallable(ScalarCallable):
                 dtype = NumpyType(common_dtype)
                 return (
                         self.copy(name_in_target=name,
-                            arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                            arg_id_to_dtype=constantdict({
+                                -1: dtype, 0: dtype, 1: dtype
+                                })),
                         callables_table)
             else:
                 # Unsupported type.
@@ -322,14 +330,15 @@ class OpenCLCallable(ScalarCallable):
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = arg_id_to_dtype[0]
             scalar_dtype, _offset, _field_name = dtype.numpy_dtype.fields["s0"]
             return (
-                    self.copy(name_in_target=name, arg_id_to_dtype={-1:
-                        NumpyType(scalar_dtype), 0: dtype, 1: dtype}),
+                    self.copy(name_in_target=name, arg_id_to_dtype=constantdict({
+                        -1: NumpyType(scalar_dtype), 0: dtype, 1: dtype
+                        })),
                     callables_table)
 
         elif name == "pow":
@@ -352,8 +361,11 @@ class OpenCLCallable(ScalarCallable):
 
             return (
                     self.copy(name_in_target=name,
-                              arg_id_to_dtype={-1: result_dtype,
-                                               0: common_dtype, 1: common_dtype}),
+                              arg_id_to_dtype=constantdict({
+                                  -1: result_dtype,
+                                  0: common_dtype,
+                                  1: common_dtype
+                                  })),
                     callables_table)
 
         elif name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
@@ -368,7 +380,7 @@ class OpenCLCallable(ScalarCallable):
                     # the types provided aren't mature enough to specialize the
                     # callable
                     return (
-                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                             callables_table)
 
             dtype = np.result_type(*[
@@ -379,8 +391,9 @@ class OpenCLCallable(ScalarCallable):
                 raise LoopyError("%s does not support complex numbers"
                         % name)
 
-            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
-                num_args)}
+            updated_arg_id_to_dtype = constantdict({
+                id: NumpyType(dtype) for id in range(-1, num_args)
+                })
 
             return (
                     self.copy(name_in_target=name,
@@ -400,23 +413,23 @@ class OpenCLCallable(ScalarCallable):
                     # the types provided aren't mature enough to specialize the
                     # callable
                     return (
-                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                             callables_table)
 
-            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in
-                    range(count)}
+            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(count)}
             updated_arg_id_to_dtype[-1] = OpenCLTarget().vector_dtype(
                         NumpyType(dtype), count)
 
             return (
-                    self.copy(name_in_target="(%s%d) " % (base_tp_name, count),
-                        arg_id_to_dtype=updated_arg_id_to_dtype),
+                    self.copy(
+                        name_in_target="(%s%d) " % (base_tp_name, count),
+                        arg_id_to_dtype=constantdict(updated_arg_id_to_dtype)),
                     callables_table)
 
         # does not satisfy any of the conditions needed for specialization.
         # hence just returning a copy of the callable.
         return (
-                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                 callables_table)
 
 

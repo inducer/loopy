@@ -64,7 +64,7 @@ from loopy.typing import Expression, ShapeType, auto
 
 
 if TYPE_CHECKING:
-    from immutables import Map
+    from collections.abc import Mapping
 
     from pymbolic import ArithmeticExpression, Variable
 
@@ -441,7 +441,7 @@ class _ArraySeparationInfo:
     should be used to realize this array.
     """
     sep_axis_indices_set: frozenset[int]
-    subarray_names: Map[tuple[int, ...], str]
+    subarray_names: Mapping[tuple[int, ...], str]
 
 
 class ArrayArg(ArrayBase, KernelArgument):

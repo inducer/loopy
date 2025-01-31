@@ -292,7 +292,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                  *,
                  depends_on: frozenset[str] | str | None = None,
                  ) -> None:
-        from immutabledict import immutabledict
+        from constantdict import constantdict
 
         if predicates is None:
             predicates = frozenset()
@@ -324,29 +324,29 @@ class InstructionBase(ImmutableRecord, Taggable):
             raise LoopyError("Setting depends_on_is_final to True requires "
                     "actually specifying happens_after/depends_on")
 
-        if isinstance(happens_after, immutabledict):
+        if isinstance(happens_after, constantdict):
             pass
         elif happens_after is None:
-            happens_after = immutabledict()
+            happens_after = constantdict()
         elif isinstance(happens_after, str):
             warn("Passing a string for happens_after/depends_on is deprecated and "
                  "will stop working in 2025. Instead, pass a full-fledged "
                  "happens_after data structure.", DeprecationWarning, stacklevel=2)
 
-            happens_after = immutabledict({
+            happens_after = constantdict({
                     after_id.strip(): HappensAfter(
                         variable_name=None,
                         instances_rel=None)
                     for after_id in happens_after.split(",")
                     if after_id.strip()})
         elif isinstance(happens_after, frozenset):
-            happens_after = immutabledict({
+            happens_after = constantdict({
                     after_id: HappensAfter(
                         variable_name=None,
                         instances_rel=None)
                     for after_id in happens_after})
         elif isinstance(happens_after, dict):
-            happens_after = immutabledict(happens_after)
+            happens_after = constantdict(happens_after)
         else:
             raise TypeError("'happens_after' has unexpected type: "
                             f"{type(happens_after)}")
@@ -569,13 +569,13 @@ class InstructionBase(ImmutableRecord, Taggable):
     def __setstate__(self, val):
         super().__setstate__(val)
 
-        from immutabledict import immutabledict
+        from constantdict import constantdict
 
         from loopy.tools import intern_frozenset_of_ids
 
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
-        self.happens_after = immutabledict({
+        self.happens_after = constantdict({
                 intern(after_id): ha
                 for after_id, ha in self.happens_after.items()})
         self.groups = intern_frozenset_of_ids(self.groups)

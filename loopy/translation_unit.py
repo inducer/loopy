@@ -37,7 +37,7 @@ from typing import (
 )
 from warnings import warn
 
-from immutables import Map
+from constantdict import constantdict
 from typing_extensions import Concatenate, ParamSpec, Self
 
 from pymbolic.primitives import Call, Variable
@@ -175,7 +175,7 @@ class CallableResolver(RuleAwareIdentityMapper):
 # {{{ translation unit
 
 FunctionIdT = Union[str, ReductionOpFunction]
-ConcreteCallablesTable = Map[FunctionIdT, InKernelCallable]
+ConcreteCallablesTable = constantdict[FunctionIdT, InKernelCallable]
 CallablesTable = Mapping[FunctionIdT, InKernelCallable]
 
 
@@ -203,7 +203,7 @@ class TranslationUnit:
 
     .. attribute:: callables_table
 
-        An instance of :class:`pyrsistent.PMap` mapping the function
+        An instance of :class:`constantdict.constantdict` mapping the function
         identifiers in a kernel to their associated instances of
         :class:`~loopy.kernel.function_interface.InKernelCallable`.
 
@@ -238,11 +238,8 @@ class TranslationUnit:
     entrypoints: frozenset[str]
 
     def __post_init__(self):
-
         assert isinstance(self.entrypoints, abc_Set)
-        assert isinstance(self.callables_table, Map)
-
-        object.__setattr__(self, "_program_executor_cache", {})
+        assert isinstance(self.callables_table, constantdict)
 
     def copy(self, **kwargs: Any) -> Self:
         target = kwargs.pop("target", None)
@@ -270,7 +267,7 @@ class TranslationUnit:
                 new_callables[func_id] = clbl
 
             t_unit = replace(
-                    self, callables_table=Map(new_callables), target=target)
+                    self, callables_table=constantdict(new_callables), target=target)
 
         return t_unit
 
@@ -305,14 +302,14 @@ class TranslationUnit:
             # update the callable kernel
             new_in_knl_callable = self.callables_table[kernel.name].copy(
                     subkernel=kernel)
-            new_callables = self.callables_table.delete(kernel.name).set(
-                    kernel.name, new_in_knl_callable)
-            return self.copy(callables_table=new_callables)
+            return self.copy(
+                callables_table=self.callables_table.set(
+                                        kernel.name, new_in_knl_callable))
         else:
             # add a new callable kernel
             clbl = CallableKernel(kernel)
-            new_callables = self.callables_table.set(kernel.name, clbl)
-            return self.copy(callables_table=new_callables)
+            return self.copy(
+                callables_table=self.callables_table.set(kernel.name, clbl))
 
     def __getitem__(self, name) -> LoopKernel:
         """
@@ -411,7 +408,7 @@ class TranslationUnit:
         #
         # In addition, the executor interface speeds up kernel invocation
         # by removing one unnecessary layer of function call.
-        warn("TranslationUnit.__call__ will become uncached in 2024, "
+        warn("TranslationUnit.__call__ is uncached as of 2025, "
              "meaning it will incur possibly substantial compilation cost "
              "with every invocation. Use TranslationUnit.executor to obtain "
              "an object that holds longer-lived caches.",
@@ -444,12 +441,7 @@ class TranslationUnit:
 
         kwargs["entrypoint"] = entrypoint
 
-        key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
-        try:
-            pex = self._program_executor_cache[key]  # pylint: disable=no-member
-        except KeyError:
-            pex = self.target.get_kernel_executor(self, *args, **kwargs)
-            self._program_executor_cache[key] = pex  # pylint: disable=no-member
+        pex = self.target.get_kernel_executor(self, *args, **kwargs)
 
         del kwargs["entrypoint"]
 
@@ -460,19 +452,8 @@ class TranslationUnit:
 
         return "\n".join(
                 str(clbl.subkernel)
-                for name, clbl in self.callables_table.items()
+                for _name, clbl in self.callables_table.items()
                 if isinstance(clbl, CallableKernel))
-
-    # FIXME: Delete these when _program_executor_cache leaves the building
-    def __getstate__(self):
-        from dataclasses import asdict
-        return asdict(self)
-
-    def __setstate__(self, state_obj):
-        for k, v in state_obj.items():
-            object.__setattr__(self, k, v)
-
-        object.__setattr__(self, "_program_executor_cache", {})
 
     # FIXME: This is here because Firedrake expects it, for some legacy reason.
     # Without that, it would be safe to delete.
@@ -739,7 +720,7 @@ class CallablesInferenceContext:
 
         # }}}
 
-        return program.copy(callables_table=Map(new_callables))
+        return program.copy(callables_table=constantdict(new_callables))
 
     def __getitem__(self, name):
         result = self.callables[name]
@@ -760,7 +741,7 @@ def make_program(kernel: LoopKernel) -> TranslationUnit:
     """
 
     return TranslationUnit(
-            callables_table=Map({
+            callables_table=constantdict({
                 kernel.name: CallableKernel(kernel)}),
             target=kernel.target,
             entrypoints=frozenset())
@@ -822,7 +803,7 @@ def for_each_kernel(
 
                 new_callables[func_id] = clbl
 
-            return t_unit.copy(callables_table=Map(new_callables))
+            return t_unit.copy(callables_table=constantdict(new_callables))
         elif isinstance(t_unit_or_kernel, LoopKernel):
             kernel = t_unit_or_kernel
             return transform(kernel, *args, **kwargs)
@@ -918,7 +899,7 @@ def resolve_callables(t_unit: TranslationUnit) -> TranslationUnit:
         else:
             raise NotImplementedError(f"{type(clbl)}")
 
-    t_unit = t_unit.copy(callables_table=Map(callables_table))
+    t_unit = t_unit.copy(callables_table=constantdict(callables_table))
 
     validate_kernel_call_sites(t_unit)
 

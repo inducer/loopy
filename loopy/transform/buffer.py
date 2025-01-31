@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 import logging
 
-from immutables import Map
+from constantdict import constantdict
 
 from pymbolic import var
 from pymbolic.mapper.substitutor import make_subst_func
@@ -128,7 +128,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
         # Can't possibly be nested, but recurse anyway to
         # make sure substitution rules referenced below here
         # do not get thrown away.
-        self.rec(result, expn_state.copy(arg_context=Map()))
+        self.rec(result, expn_state.copy(arg_context=constantdict()))
 
         return result
 
@@ -540,7 +540,7 @@ def buffer_array(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=constantdict(new_callables))
 
 
 # vim: foldmethod=marker

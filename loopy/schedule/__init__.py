@@ -34,7 +34,7 @@ from typing import (
     TypeVar,
 )
 
-from immutables import Map
+from constantdict import constantdict
 
 import islpy as isl
 from pytools import ImmutableRecord, MinRecursionLimit, ProcessLogger
@@ -1003,8 +1003,6 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
                 insn_iname, dep_iname = _get_outermost_diverging_inames(
                         loop_tree, insn_loop_inames, dep_loop_inames)
                 dag[LeaveLoop(iname=dep_iname)] |= {EnterLoop(iname=insn_iname)}
-            else:
-                pass
 
             # }}}
 
@@ -2482,7 +2480,7 @@ def linearize(t_unit: TranslationUnit) -> TranslationUnit:
         else:
             raise NotImplementedError(type(clbl))
 
-    return t_unit.copy(callables_table=Map(new_callables))
+    return t_unit.copy(callables_table=constantdict(new_callables))
 
 
 # vim: foldmethod=marker

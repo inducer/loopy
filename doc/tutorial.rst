@@ -210,6 +210,7 @@ For convenience, loopy kernels also directly accept :mod:`numpy` arrays:
 
 .. doctest::
 
+    >>> knl = lp.set_options(knl, write_code=False)
     >>> evt, (out,) = knl(queue, a=x_vec_host)
     >>> assert (out == (2*x_vec_host)).all()
 

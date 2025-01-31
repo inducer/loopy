@@ -42,8 +42,8 @@ from typing import (
 )
 from warnings import warn
 
-import immutables
 import numpy as np
+from constantdict import constantdict
 from typing_extensions import Self
 
 import islpy as isl
@@ -1159,7 +1159,7 @@ class ExpansionState:
     kernel: LoopKernel
     instruction: InstructionBase
     stack: tuple[tuple[str, Tag], ...]
-    arg_context: immutables.Map[str, Expression]
+    arg_context: Mapping[str, Expression]
 
     def __post_init__(self) -> None:
         hash(self.arg_context)
@@ -1397,7 +1397,7 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
 
         from pymbolic.mapper.substitutor import make_subst_func
         arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
-        return immutables.Map({
+        return constantdict({
             formal_arg_name: arg_subst_map(arg_value)
             for formal_arg_name, arg_value in zip(arg_names, arguments)})
 
@@ -1443,7 +1443,7 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
                     kernel=kernel,
                     instruction=insn,
                     stack=(),
-                    arg_context=immutables.Map()))
+                    arg_context=constantdict()))
 
     def map_instruction(self, kernel, insn):
         return insn
