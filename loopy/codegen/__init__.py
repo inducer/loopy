@@ -550,7 +550,7 @@ class TranslationUnitCodeGenerationResult:
 def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
     # {{{ cache retrieval
 
-    from loopy import CACHING_ENABLED, ABORT_ON_CACHE_MISS
+    from loopy import ABORT_ON_CACHE_MISS, CACHING_ENABLED
     from loopy.kernel import LoopKernel
     from loopy.translation_unit import make_program
 
