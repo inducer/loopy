@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -21,10 +24,16 @@ THE SOFTWARE.
 """
 
 
-from pytools import ImmutableRecord
-import re
 import os
+import re
+from typing import TYPE_CHECKING, Any, ClassVar
 from warnings import warn
+
+from pytools import ImmutableRecord
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 ALLOW_TERMINAL_COLORS = True
@@ -47,7 +56,7 @@ def _apply_legacy_map(lmap, kwargs):
             if lmap_value is None:
                 # ignore this
                 warn("option '%s' is deprecated and was ignored" % name,
-                        DeprecationWarning)
+                        DeprecationWarning, stacklevel=1)
                 continue
 
             new_name, translator = lmap_value
@@ -57,7 +66,7 @@ def _apply_legacy_map(lmap, kwargs):
 
             warn(f"Loopy option '{name}' is deprecated. '{new_name}' should be "
                     "used instead. The old option will stop working in 2022.",
-                    DeprecationWarning)
+                    DeprecationWarning, stacklevel=1)
             if translator is not None:
                 val = translator(val)
 
@@ -117,7 +126,7 @@ class Options(ImmutableRecord):
 
     .. attribute:: cl_exec_manage_array_events
 
-        Within the PyOpenCL executor, respect and udpate
+        Within the PyOpenCL executor, respect and update
         :attr:`pyopencl.array.Array.events`.
 
         Defaults to *True*.
@@ -155,7 +164,7 @@ class Options(ImmutableRecord):
 
         Allow re-ordering of floating point arithmetic. Re-ordering may
         give different results as floating point arithmetic is not
-        associative in addition and mulitplication. Default is *True*.
+        associative in addition and multiplication. Default is *True*.
         Note that the implementation of this option is currently incomplete.
 
     .. attribute:: build_options
@@ -196,7 +205,7 @@ class Options(ImmutableRecord):
         RAW, WAR and WAW races.
     """
 
-    _legacy_options_map = {
+    _legacy_options_map: ClassVar[Mapping[str, tuple[str, None] | None]] = {
             "cl_build_options": ("build_options", None),
             "write_cl": ("write_code", None),
             "highlight_cl": None,
@@ -213,12 +222,12 @@ class Options(ImmutableRecord):
             # All defaults are further required to be False when cast to bool
             # for the update() functionality to work.
 
-            self, **kwargs):
+            self, **kwargs: Any) -> None:
 
         kwargs = _apply_legacy_map(self._legacy_options_map, kwargs)
 
         try:
-            import colorama  # noqa
+            import colorama  # noqa: F401
         except ImportError:
             allow_terminal_colors_def = False
         else:
@@ -330,7 +339,7 @@ class Options(ImmutableRecord):
             return _ColoramaStub()
 
 
-KEY_VAL_RE = re.compile("^([a-zA-Z0-9]+)=(.*)$")
+KEY_VAL_RE = re.compile(r"^([a-zA-Z0-9]+)=(.*)$")
 
 
 def make_options(options_arg):

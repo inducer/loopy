@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -20,16 +23,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, Tuple, Optional
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from warnings import warn
 
 import numpy as np
 
 import loopy as lp
+from loopy.diagnostic import AutomaticTestFailure, LoopyError
 from loopy.kernel.array import get_strides
 
-from loopy.diagnostic import LoopyError, AutomaticTestFailure
 
 if TYPE_CHECKING:
     import pyopencl.array as cla
@@ -38,6 +41,8 @@ if TYPE_CHECKING:
 AUTO_TEST_SKIP_RUN = False
 
 import logging
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,26 +80,26 @@ def fill_rand(ary):
 @dataclass
 class TestArgInfo:
     name: str
-    ref_array: "cla.Array"
-    ref_storage_array: "cla.Array"
+    ref_array: cla.Array
+    ref_storage_array: cla.Array
 
-    ref_pre_run_array: "cla.Array"
-    ref_pre_run_storage_array: "cla.Array"
+    ref_pre_run_array: cla.Array
+    ref_pre_run_storage_array: cla.Array
 
-    ref_shape: Tuple[int, ...]
-    ref_strides: Tuple[int, ...]
+    ref_shape: tuple[int, ...]
+    ref_strides: tuple[int, ...]
     ref_alloc_size: int
-    ref_numpy_strides: Tuple[int, ...]
+    ref_numpy_strides: tuple[int, ...]
     needs_checking: bool
 
     # The attributes below are being modified in make_args, hence this dataclass
     # cannot be frozen.
-    test_storage_array: Optional["cla.Array"] = None
-    test_array: Optional["cla.Array"] = None
-    test_shape: Optional[Tuple[int, ...]] = None
-    test_strides: Optional[Tuple[int, ...]] = None
-    test_numpy_strides: Optional[Tuple[int, ...]] = None
-    test_alloc_size: Optional[Tuple[int, ...]] = None
+    test_storage_array: cla.Array | None = None
+    test_array: cla.Array | None = None
+    test_shape: tuple[int, ...] | None = None
+    test_strides: tuple[int, ...] | None = None
+    test_numpy_strides: tuple[int, ...] | None = None
+    test_alloc_size: tuple[int, ...] | None = None
 
 
 # {{{ "reference" arguments
@@ -102,11 +107,15 @@ class TestArgInfo:
 def make_ref_args(kernel, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
-
-    from loopy.kernel.data import ValueArg, ArrayArg, ImageArg, \
-            TemporaryVariable, ConstantArg
-
     from pymbolic import evaluate
+
+    from loopy.kernel.data import (
+        ArrayArg,
+        ConstantArg,
+        ImageArg,
+        TemporaryVariable,
+        ValueArg,
+    )
 
     ref_args = {}
     ref_arg_data = []
@@ -213,10 +222,9 @@ def make_ref_args(kernel, queue, parameters):
 def make_args(kernel, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
-
-    from loopy.kernel.data import ValueArg, ArrayArg, ImageArg, ConstantArg
-
     from pymbolic import evaluate
+
+    from loopy.kernel.data import ArrayArg, ConstantArg, ImageArg, ValueArg
 
     args = {}
     for arg, arg_desc in zip(kernel.args, ref_arg_data):
@@ -364,7 +372,7 @@ def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors, need_image_support
     if not cpu_devs:
         warn("No CPU device found for running reference kernel. The reference "
                 "computation will either fail because of a timeout "
-                "or take a *very* long time.")
+                "or take a *very* long time.", stacklevel=1)
 
     for dev in cpu_devs:
         yield dev
@@ -405,12 +413,12 @@ def auto_test_vs_ref(
     if ref_entrypoint is None:
         if len(ref_prog.entrypoints) != 1:
             raise LoopyError("Unable to guess entrypoint for ref_prog.")
-        ref_entrypoint = list(ref_prog.entrypoints)[0]
+        ref_entrypoint = next(iter(ref_prog.entrypoints))
 
     if test_entrypoint is None:
         if len(test_prog.entrypoints) != 1:
             raise LoopyError("Unable to guess entrypoint for ref_prog.")
-        test_entrypoint = list(test_prog.entrypoints)[0]
+        test_entrypoint = next(iter(test_prog.entrypoints))
 
     ref_prog = lp.preprocess_kernel(ref_prog)
     test_prog = lp.preprocess_kernel(test_prog)

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -20,26 +23,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, cast
 from warnings import warn
 
-from dataclasses import dataclass, replace
-
-from typing import Optional, Tuple, Dict, cast
-
 import numpy as np
-from immutables import Map
-from islpy import dim_type
+from constantdict import constantdict
 
+from islpy import dim_type
 from pytools import MovedFunctionDeprecationWrapper
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel.data import AddressSpace, ImageArg, auto, TemporaryVariable
-
-from loopy.types import LoopyType
-from loopy.typing import ExpressionT
-from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.kernel import LoopKernel
+from loopy.kernel.data import AddressSpace, ImageArg, TemporaryVariable, auto
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.translation_unit import TranslationUnit, for_each_kernel
+from loopy.types import LoopyType
+
+
+if TYPE_CHECKING:
+    from loopy.typing import Expression
 
 
 # {{{ convenience: add_prefetch
@@ -106,8 +109,9 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
                     % str(fsub))
 
         for subst_map in kernel.applied_iname_rewrites:
-            from loopy.symbolic import SubstitutionMapper
             from pymbolic.mapper.substitutor import make_subst_func
+
+            from loopy.symbolic import SubstitutionMapper
             fsub = SubstitutionMapper(make_subst_func(subst_map))(fsub)
 
         from loopy.symbolic import get_dependencies
@@ -126,7 +130,7 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 
                 kernel = _add_kernel_axis(kernel, axis_name, 0, arg.shape[axis_nr],
                         frozenset(sweep_inames) | fsub_dependencies)
-                sweep_inames = sweep_inames + [axis_name]
+                sweep_inames = [*sweep_inames, axis_name]
 
                 inames_to_be_removed.append(axis_name)
                 new_fsub.append(Variable(axis_name))
@@ -170,7 +174,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     from loopy.symbolic import parse
     parsed_var_name = parse(var_name)
 
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Subscript, Variable
     if isinstance(parsed_var_name, Variable):
         # nothing to see
         pass
@@ -231,10 +235,10 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     from pymbolic import var
     uni_template = parsed_var_name
     if len(parameters) > 1:
-        uni_template = uni_template.index(
-                tuple(var(par_name) for par_name in parameters))
+        uni_template = uni_template[
+                tuple(var(par_name) for par_name in parameters)]
     elif len(parameters) == 1:
-        uni_template = uni_template.index(var(parameters[0]))
+        uni_template = uni_template[var(parameters[0])]
 
     # }}}
 
@@ -254,7 +258,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
                     footprint_subscripts, var_descr)
 
     # Our _not_provided is actually a different object from the one in the
-    # precompute module, but precompute acutally uses that to adjust its
+    # precompute module, but precompute actually uses that to adjust its
     # warning message.
 
     from loopy.transform.precompute import precompute_for_single_kernel
@@ -294,7 +298,13 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
         return new_kernel
 
 
-def add_prefetch(program, *args, **kwargs):
+def add_prefetch(t_unit,
+                 var_name, sweep_inames=None, dim_arg_names=None,
+                 default_tag=None,
+                 rule_name=None, temporary_name=None,
+                 temporary_address_space=None, temporary_scope=None,
+                 footprint_subscripts=None, fetch_bounding_box=False,
+                 fetch_outer_inames=None, prefetch_insn_id=None, within=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
@@ -381,7 +391,7 @@ def add_prefetch(program, *args, **kwargs):
     :arg fetch_outer_inames: The inames within which the fetch
         instruction is nested. If *None*, make an educated guess.
 
-    :arg fetch_insn_id: The ID of the instruction generated to perform the
+    :arg prefetch_insn_id: The ID of the instruction generated to perform the
         prefetch.
 
     :arg within: a stack match as understood by
@@ -390,14 +400,26 @@ def add_prefetch(program, *args, **kwargs):
 
     This function internally uses :func:`extract_subst` and :func:`precompute`.
     """
-    assert isinstance(program, TranslationUnit)
+    assert isinstance(t_unit, TranslationUnit)
 
     new_callables = {}
-    for func_id, in_knl_callable in program.callables_table.items():
+    for func_id, in_knl_callable in t_unit.callables_table.items():
         if isinstance(in_knl_callable, CallableKernel):
             new_subkernel = add_prefetch_for_single_kernel(
-                    in_knl_callable.subkernel, program.callables_table,
-                    *args, **kwargs)
+                    in_knl_callable.subkernel, t_unit.callables_table,
+                    var_name=var_name,
+                    sweep_inames=sweep_inames,
+                    dim_arg_names=dim_arg_names,
+                    default_tag=default_tag,
+                    rule_name=rule_name,
+                    temporary_name=temporary_name,
+                    temporary_address_space=temporary_address_space,
+                    temporary_scope=temporary_scope,
+                    footprint_subscripts=footprint_subscripts,
+                    fetch_bounding_box=fetch_bounding_box,
+                    fetch_outer_inames=fetch_outer_inames,
+                    prefetch_insn_id=prefetch_insn_id,
+                    within=within)
             in_knl_callable = in_knl_callable.copy(
                     subkernel=new_subkernel)
 
@@ -409,7 +431,7 @@ def add_prefetch(program, *args, **kwargs):
 
         new_callables[func_id] = in_knl_callable
 
-    return program.copy(callables_table=Map(new_callables))
+    return t_unit.copy(callables_table=constantdict(new_callables))
 
 # }}}
 
@@ -525,9 +547,10 @@ def remove_unused_arguments(kernel):
     for insn in exp_kernel.instructions:
         refd_vars.update(insn.dependency_names())
 
+    from itertools import chain
+
     from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
     from loopy.symbolic import get_dependencies
-    from itertools import chain
 
     def tolerant_get_deps(expr):
         if expr is None or expr is lp.auto:
@@ -654,7 +677,7 @@ def set_argument_order(kernel, arg_names):
     :arg arg_names: A list (or comma-separated string) or argument
         names. All arguments must be in this list.
     """
-    #FIXME: @inducer -- shoulld this only affect the root kernel, or should it
+    # FIXME: @inducer -- should this only affect the root kernel, or should it
     # take a within?
 
     if isinstance(arg_names, str):
@@ -666,9 +689,8 @@ def set_argument_order(kernel, arg_names):
     for arg_name in arg_names:
         try:
             arg = old_arg_dict.pop(arg_name)
-        except KeyError:
-            raise LoopyError("unknown argument '%s'"
-                    % arg_name)
+        except KeyError as err:
+            raise LoopyError("unknown argument '%s'" % arg_name) from err
 
         new_args.append(arg)
 
@@ -706,10 +728,12 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
     from pymbolic import var
     subst_dict = {old_name: var(new_name)}
 
-    from loopy.symbolic import (
-            RuleAwareSubstitutionMapper,
-            SubstitutionRuleMappingContext)
     from pymbolic.mapper.substitutor import make_subst_func
+
+    from loopy.symbolic import (
+        RuleAwareSubstitutionMapper,
+        SubstitutionRuleMappingContext,
+    )
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
     smap = RuleAwareSubstitutionMapper(rule_mapping_context,
@@ -775,8 +799,8 @@ def set_temporary_address_space(kernel, temp_var_names, address_space):
     if isinstance(address_space, str):
         try:
             address_space = getattr(AddressSpace, address_space.upper())
-        except AttributeError:
-            raise LoopyError("address_space '%s' unknown" % address_space)
+        except AttributeError as err:
+            raise LoopyError("address_space '%s' unknown" % address_space) from err
 
     if not isinstance(address_space, int) or address_space not in [
             AddressSpace.PRIVATE,
@@ -789,7 +813,7 @@ def set_temporary_address_space(kernel, temp_var_names, address_space):
         try:
             tv = new_temp_vars[tv_name]
         except KeyError:
-            raise LoopyError("temporary '%s' not found" % tv_name)
+            raise LoopyError("temporary '%s' not found" % tv_name) from None
 
         new_temp_vars[tv_name] = tv.copy(address_space=address_space)
 
@@ -797,7 +821,6 @@ def set_temporary_address_space(kernel, temp_var_names, address_space):
 
 
 def set_temporary_scope(kernel, temp_var_names, address_space):
-    from warnings import warn
     warn("set_temporary_scope is deprecated and will stop working in "
             "July 2022. Use set_temporary_address_space instead.",
             DeprecationWarning, stacklevel=2)
@@ -943,16 +966,14 @@ def add_padding_to_avoid_bank_conflicts(kernel, device):
                         good_incr = increment
 
             if min_mult != 1:
-                from warnings import warn
                 from loopy.diagnostic import LoopyAdvisory
                 warn("could not find a conflict-free mem layout "
                         "for local variable '%s' "
                         "(currently: %dx conflict, increment: %s, reason: %s)"
                         % (temp_var.name, min_mult, good_incr, min_why_not),
-                        LoopyAdvisory)
+                        LoopyAdvisory, stacklevel=4)
         else:
-            from warnings import warn
-            warn("unknown type of local memory")
+            warn("unknown type of local memory", stacklevel=4)
 
             new_storage_shape = storage_shape
 
@@ -969,15 +990,14 @@ def add_padding_to_avoid_bank_conflicts(kernel, device):
 @dataclass(frozen=True)
 class _BaseStorageInfo:
     name: str
-    next_offset: ExpressionT
-    approx_nbytes: Optional[int] = None
+    next_offset: Expression
+    approx_nbytes: int | None = None
 
 
-def _sym_max(a: ExpressionT, b: ExpressionT) -> ExpressionT:
+def _sym_max(a: Expression, b: Expression) -> Expression:
     from numbers import Number
     if isinstance(a, Number) and isinstance(b, Number):
-        # https://github.com/python/mypy/issues/3186
-        return max(a, b)  # type: ignore[call-overload]
+        return max(a, b)
     else:
         from pymbolic.primitives import Max
         return Max((a, b))
@@ -985,10 +1005,9 @@ def _sym_max(a: ExpressionT, b: ExpressionT) -> ExpressionT:
 
 @for_each_kernel
 def allocate_temporaries_for_base_storage(kernel: LoopKernel,
-        only_address_space: Optional[int] = None,
+        only_address_space: int | None = None,
         aliased=True,
-        max_nbytes: Optional[int] = None,
-        _implicitly_run=False,
+        max_nbytes: int | None = None,
         ) -> LoopKernel:
     from pytools import product
 
@@ -997,8 +1016,8 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
 
     vng = kernel.get_var_name_generator()
 
-    name_aspace_dtype_to_bsi: Dict[
-            Tuple[str, AddressSpace, LoopyType], _BaseStorageInfo] = {}
+    name_aspace_dtype_to_bsi: dict[
+            tuple[str, AddressSpace, LoopyType], _BaseStorageInfo] = {}
 
     for tv in sorted(
             kernel.temporary_variables.values(),
@@ -1011,6 +1030,11 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
             raise LoopyError(
                     f"Temporary '{tv.name}' has an offset and no base_storage. "
                     "That's not allowed.")
+        if not isinstance(tv.dtype, LoopyType):
+            raise LoopyError(
+                f"Dtype of temporary '{tv.name}' "
+                " is not inferred. Call lp.infer_unknown_types"
+                " first.")
 
         if (tv.base_storage
                 and tv.base_storage not in kernel.temporary_variables
@@ -1034,7 +1058,7 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
                 approx_array_nbytes = 0
 
             bs_key = (tv.base_storage,
-                      cast(AddressSpace, tv.address_space), tv.dtype)
+                      cast("AddressSpace", tv.address_space), tv.dtype)
             bsi = name_aspace_dtype_to_bsi.get(bs_key)
 
             if bsi is None or (
@@ -1077,12 +1101,6 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
             new_tvs[bsi.name] = new_tvs[bsi.name].copy(shape=(new_bs_size,))
 
     if made_changes:
-        if _implicitly_run:
-            warn("Base storage allocation was performed implicitly during "
-                    "preprocessing. This is deprecated and will stop working "
-                    "in 2023. Call loopy.allocate_temporaries_for_base_storage "
-                    "explicitly to avoid this warning.", DeprecationWarning)
-
         return kernel.copy(temporary_variables=new_tvs)
     else:
         return kernel

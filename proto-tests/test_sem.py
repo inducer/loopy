@@ -1,9 +1,12 @@
 import numpy as np
+
 import pyopencl as cl  # noqa
+from pyopencl.tools import (
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+)
+
 import loopy as lp
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests  # noqa
 
 1/0  # not ready
 
@@ -50,17 +53,17 @@ def test_laplacian(ctx_factory):
             [
             lp.GlobalArg("u", dtype, shape=field_shape, order=order),
             lp.GlobalArg("lap", dtype, shape=field_shape, order=order),
-            lp.GlobalArg("G", dtype, shape=(6,)+field_shape, order=order),
+            lp.GlobalArg("G", dtype, shape=(6, *field_shape), order=order),
             lp.GlobalArg("D", dtype, shape=(n, n), order=order),
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="semlap", assumptions="K>=1")
 
-    #print lp.preprocess_kernel(knl, cse_ok=True)
-    #1/0
+    # print lp.preprocess_kernel(knl, cse_ok=True)
+    # 1/0
     #
-    #print knl
-    #1/0
+    # print knl
+    # 1/0
     knl = lp.realize_cse(knl, "urf", np.float32, ["o1"])
     knl = lp.realize_cse(knl, "usf", np.float32, ["o2"])
     knl = lp.realize_cse(knl, "utf", np.float32, ["o3"])
@@ -76,7 +79,7 @@ def test_laplacian(ctx_factory):
     if 0:
         pass
         #seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]", default_tag="l.auto")  # noqa
-        #seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"], default_tag="l.auto")
+        # seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"], default_tag="l.auto")
         #seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")  # noqa
     else:
         seq_knl = knl
@@ -87,17 +90,17 @@ def test_laplacian(ctx_factory):
     knl = lp.add_prefetch(knl, "D", ["m", "j"], default_tag="l.auto")
     #knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")  # noqa
 
-    #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
+    # knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
-    #print seq_knl
-    #print lp.preprocess_kernel(knl)
-    #1/0
+    # print seq_knl
+    # print lp.preprocess_kernel(knl)
+    # 1/0
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     kernel_gen = lp.generate_loop_schedules(knl,
             loop_priority=["m_fetch_G", "i_fetch_u"])
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
@@ -136,7 +139,7 @@ def test_laplacian_lmem(ctx_factory):
             [
             lp.GlobalArg("u", dtype, shape=field_shape, order=order),
             lp.GlobalArg("lap", dtype, shape=field_shape, order=order),
-            lp.GlobalArg("G", dtype, shape=(6,)+field_shape, order=order),
+            lp.GlobalArg("G", dtype, shape=(6, *field_shape), order=order),
             lp.GlobalArg("D", dtype, shape=(n, n), order=order),
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
@@ -164,16 +167,16 @@ def test_laplacian_lmem(ctx_factory):
             default_tag="l.auto")
     knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]",
             default_tag="l.auto")
-    #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
+    # knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
-    #print seq_knl
-    #print lp.preprocess_kernel(knl)
-    #1/0
+    # print seq_knl
+    # print lp.preprocess_kernel(knl)
+    # 1/0
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
@@ -213,7 +216,7 @@ def test_laplacian_lmem_ilp(ctx_factory):
             [
             lp.GlobalArg("u", dtype, shape=field_shape, order=order),
             lp.GlobalArg("lap", dtype, shape=field_shape, order=order),
-            lp.GlobalArg("G", dtype, shape=(6,)+field_shape, order=order),
+            lp.GlobalArg("G", dtype, shape=(6, *field_shape), order=order),
             lp.GlobalArg("D", dtype, shape=(n, n), order=order),
             lp.ValueArg("K", np.int32, approximately=1000),
             ],
@@ -240,13 +243,13 @@ def test_laplacian_lmem_ilp(ctx_factory):
     knl = lp.add_prefetch(knl, "D", ["m", "j"],
             default_tag="l.auto")
 
-    #print seq_knl
-    #1/0
+    # print seq_knl
+    # 1/0
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
     for knl in kernel_gen:
         print(lp.generate_code(knl))
@@ -317,7 +320,7 @@ def test_advect(ctx_factory):
             lp.GlobalArg("Nu",  dtype, shape=field_shape, order=order),
             lp.GlobalArg("Nv",  dtype, shape=field_shape, order=order),
             lp.GlobalArg("Nw",  dtype, shape=field_shape, order=order),
-            lp.GlobalArg("G",   dtype, shape=(9,)+field_shape, order=order),
+            lp.GlobalArg("G",   dtype, shape=(9, *field_shape), order=order),
             lp.GlobalArg("D",   dtype, shape=(N, N),  order=order),
             lp.ValueArg("K",  np.int32, approximately=1000),
             ],
@@ -330,10 +333,10 @@ def test_advect(ctx_factory):
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")  # , slabs=(0, 1))
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
@@ -356,7 +359,6 @@ def test_advect_dealias(ctx_factory):
     K_sym = var("K")  # noqa
 
     field_shape = (N, N, N, K_sym)
-    interim_field_shape = (M, M, M, K_sym)  # noqa
 
     # 1. direction-by-direction similarity transform on u
     # 2. invert diagonal
@@ -444,13 +446,13 @@ def test_advect_dealias(ctx_factory):
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")  # , slabs=(0, 1))
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     print(knl)
-    #1/0
+    # 1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(knl, ctx, kernel_gen,
@@ -505,13 +507,13 @@ def test_interp_diff(ctx_factory):
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")  # , slabs=(0, 1))
 
-    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1"})
 
     print(knl)
-    #1/0
+    # 1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
     K = 1000  # noqa
     lp.auto_test_vs_ref(knl, ctx, kernel_gen,

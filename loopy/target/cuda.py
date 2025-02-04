@@ -1,4 +1,5 @@
 """CUDA target independent of PyCUDA."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -23,22 +24,32 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, Sequence
+from typing import TYPE_CHECKING, Sequence
 
 import numpy as np
+
+from cgen import Const, Declarator, Generable, Pointer
 from pymbolic import var
 from pytools import memoize_method
-from cgen import Declarator, Const, Generable
 
-from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.types import NumpyType
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
-from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg, ArrayArg
+from loopy.kernel.data import (
+    AddressSpace,
+    ArrayArg,
+    ConstantArg,
+    ImageArg,
+    TemporaryVariable,
+)
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.codegen.result import CodeGenerationResult
-from loopy.codegen import CodeGenerationState
+from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ vector types
@@ -179,7 +190,7 @@ class CudaCallable(ScalarCallable):
 
             input_dtype = arg_id_to_dtype[0]
 
-            scalar_dtype, offset, field_name = input_dtype.fields["x"]
+            scalar_dtype, _offset, _field_name = input_dtype.fields["x"]
             return_dtype = scalar_dtype
             return self.copy(arg_id_to_dtype={0: input_dtype, 1: input_dtype,
                                               -1: return_dtype})
@@ -234,8 +245,10 @@ class CudaTarget(CFamilyTarget):
 
     @memoize_method
     def get_dtype_registry(self):
-        from loopy.target.c.compyte.dtypes import (DTypeRegistry,
-                fill_registry_with_c_types)
+        from loopy.target.c.compyte.dtypes import (
+            DTypeRegistry,
+            fill_registry_with_c_types,
+        )
 
         result = DTypeRegistry()
         fill_registry_with_c_types(result, respect_windows=True)
@@ -323,7 +336,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
@@ -360,8 +373,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def preamble_generators(self):
 
         return (
-                super().preamble_generators() + [
-                    cuda_preamble_generator])
+                [*super().preamble_generators(), cuda_preamble_generator])
 
     # }}}
 
@@ -440,7 +452,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def get_array_arg_declarator(
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         from cgen.cuda import CudaRestrictPointer
-        arg_decl = CudaRestrictPointer(
+        arg_decl: Declarator = CudaRestrictPointer(
                     self.get_array_base_declarator(arg))
 
         if not is_written:
@@ -459,6 +471,39 @@ class CUDACASTBuilder(CFamilyASTBuilder):
             self, arg: ImageArg, is_written: bool) -> Declarator:
         raise NotImplementedError("not yet: texture arguments in CUDA")
 
+    def emit_temp_var_decl_for_tv_with_base_storage(self,
+                                                    codegen_state: CodeGenerationState,
+                                                    tv: TemporaryVariable) -> Generable:
+        from cgen import Initializer
+
+        from loopy.target.c import POD, _ConstPointer, _ConstRestrictPointer
+
+        assert tv.base_storage is not None
+        ecm = codegen_state.expression_to_code_mapper
+
+        cast_decl: Declarator = POD(self, tv.dtype, "")
+        temp_var_decl: Declarator = POD(self, tv.dtype, tv.name)
+
+        if tv._base_storage_access_may_be_aliasing:
+            ptrtype: type[Pointer] = _ConstPointer
+        else:
+            # The 'restrict' part of this is a complete lie--of course
+            # all these temporaries are aliased. But we're promising to
+            # not use them to shovel data from one representation to the
+            # other. That counts, right?
+            ptrtype = _ConstRestrictPointer
+
+        cast_decl = ptrtype(cast_decl)
+        temp_var_decl = ptrtype(temp_var_decl)
+
+        cast_tp, cast_d = cast_decl.get_decl_pair()
+        return Initializer(
+            temp_var_decl,
+            "({} {}) ({} + {})".format(
+                " ".join(cast_tp), cast_d, tv.base_storage, ecm(tv.offset)
+            ),
+        )
+
     # }}}
 
     # {{{ atomics
@@ -466,9 +511,9 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
 
-        from pymbolic.primitives import Sum
         from cgen import Statement
         from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.primitives import Sum
 
         if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
                 np.int32, np.int64, np.float32, np.float64]:
@@ -484,7 +529,8 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 return Statement("atomicAdd(&{}, {})".format(
                     lhs_expr_code, rhs_expr_code))
             else:
-                from cgen import Block, DoWhile, Assign
+                from cgen import Assign, Block, DoWhile
+
                 from loopy.target.c import POD
                 old_val_var = codegen_state.var_name_generator("loopy_old_val")
                 new_val_var = codegen_state.var_name_generator("loopy_new_val")
@@ -498,8 +544,9 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
                 lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
 
-                from pymbolic.mapper.substitutor import make_subst_func
                 from pymbolic import var
+                from pymbolic.mapper.substitutor import make_subst_func
+
                 from loopy.symbolic import SubstitutionMapper
 
                 subst = SubstitutionMapper(

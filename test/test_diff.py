@@ -20,14 +20,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
-import numpy as np  # noqa
-import numpy.linalg as la
-import loopy as lp
-import pyopencl as cl
-import pyopencl.clrandom  # noqa
-
 import logging
+import sys
+
+import numpy as np
+import numpy.linalg as la
+
+import pyopencl as cl
+import pyopencl.clrandom
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -37,13 +41,13 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
-        ]
+    "cl",  # 'cl.create_some_context'
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
@@ -63,9 +67,9 @@ def test_diff(ctx_factory):
     knl = lp.fix_parameters(knl, n=50)
 
     from loopy.transform.diff import diff_kernel
-    #FIXME Is this the correct interface. Does it make sense to take the entire
-    #translation unit?
-    dknl, diff_map = diff_kernel(knl["diff"], "z", "x")
+    # FIXME Is this the correct interface. Does it make sense to take the entire
+    # translation unit?
+    dknl, _diff_map = diff_kernel(knl["diff"], "z", "x")
     dknl = knl.with_kernel(dknl)
     dknl = lp.remove_unused_arguments(dknl)
 
@@ -83,12 +87,12 @@ def test_diff(ctx_factory):
     h1 = 1e-4
     h2 = h1 * fac
 
-    evt, (z0,) = knl(queue, x=x, y=y)
-    evt, (z1,) = knl(queue, x=(x + h1*dx), y=y)
-    evt, (z2,) = knl(queue, x=(x + h2*dx), y=y)
+    _evt, (z0,) = knl(queue, x=x, y=y)
+    _evt, (z1,) = knl(queue, x=(x + h1*dx), y=y)
+    _evt, (z2,) = knl(queue, x=(x + h2*dx), y=y)
 
     dknl = lp.set_options(dknl, write_code=True)
-    evt, (df,) = dknl(queue, x=x, y=y)
+    _evt, (df,) = dknl(queue, x=x, y=y)
 
     diff1 = (z1-z0)
     diff2 = (z2-z0)

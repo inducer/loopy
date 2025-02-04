@@ -1,4 +1,5 @@
 """OpenCL target independent of PyOpenCL."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
@@ -23,23 +24,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, Sequence
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
+from constantdict import constantdict
+
 from pymbolic import var
 from pytools import memoize_method
-from cgen import Declarator, Generable
 
-from loopy.target.c import CFamilyTarget, CFamilyASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError, LoopyTypeError
-from loopy.types import NumpyType
-from loopy.target.c import DTypeRegistryWrapper
-from loopy.kernel.array import VectorArrayDimTag, FixedStrideArrayDimTag, ArrayBase
-from loopy.kernel.data import AddressSpace, ImageArg, ConstantArg
+from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
+from loopy.kernel.data import AddressSpace, ConstantArg, ImageArg
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
+from loopy.target.c import CFamilyASTBuilder, CFamilyTarget, DTypeRegistryWrapper
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from cgen import Declarator, Generable
+
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ dtype registry wrappers
@@ -203,7 +209,7 @@ class OpenCLCallable(ScalarCallable):
 
             if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = arg_id_to_dtype[0].numpy_dtype
@@ -212,9 +218,10 @@ class OpenCLCallable(ScalarCallable):
                 # OpenCL C 2.2, Section 6.13.3: abs returns *u*gentype
                 from loopy.types import to_unsigned_dtype
                 return (self.copy(name_in_target=name,
-                            arg_id_to_dtype={
+                            arg_id_to_dtype=constantdict({
                                 0: NumpyType(dtype),
-                                -1: NumpyType(to_unsigned_dtype(dtype))}),
+                                -1: NumpyType(to_unsigned_dtype(dtype))
+                                })),
                         callables_table)
             elif dtype.kind == "f":
                 name = "fabs"
@@ -232,7 +239,7 @@ class OpenCLCallable(ScalarCallable):
 
             if 0 not in arg_id_to_dtype or arg_id_to_dtype[0] is None:
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = arg_id_to_dtype[0]
@@ -246,8 +253,10 @@ class OpenCLCallable(ScalarCallable):
 
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype={0: NumpyType(dtype), -1:
-                            NumpyType(dtype)}),
+                        arg_id_to_dtype=constantdict({
+                            0: NumpyType(dtype),
+                            -1: NumpyType(dtype)
+                            })),
                     callables_table)
 
         # }}}
@@ -257,7 +266,7 @@ class OpenCLCallable(ScalarCallable):
 
             for id in arg_id_to_dtype:
                 if not -1 <= id <= 1:
-                    #FIXME: Do we need to raise here?:
+                    # FIXME: Do we need to raise here?:
                     #   The pattern we generally follow is that if we don't find
                     #   a function, then we just return None
                     raise LoopyError("%s can take only two arguments." % name)
@@ -265,7 +274,7 @@ class OpenCLCallable(ScalarCallable):
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
                     arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = np.result_type(*[
@@ -278,7 +287,9 @@ class OpenCLCallable(ScalarCallable):
             dtype = NumpyType(dtype)
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                        arg_id_to_dtype=constantdict({
+                            -1: dtype, 0: dtype, 1: dtype
+                            })),
                     callables_table)
 
         elif name in ["max", "min"]:
@@ -287,7 +298,7 @@ class OpenCLCallable(ScalarCallable):
                     raise LoopyError("%s can take only 2 arguments." % name)
             if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype:
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
             common_dtype = np.result_type(*[
                     dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
@@ -300,7 +311,9 @@ class OpenCLCallable(ScalarCallable):
                 dtype = NumpyType(common_dtype)
                 return (
                         self.copy(name_in_target=name,
-                            arg_id_to_dtype={-1: dtype, 0: dtype, 1: dtype}),
+                            arg_id_to_dtype=constantdict({
+                                -1: dtype, 0: dtype, 1: dtype
+                                })),
                         callables_table)
             else:
                 # Unsupported type.
@@ -317,14 +330,15 @@ class OpenCLCallable(ScalarCallable):
                 # the types provided aren't mature enough to specialize the
                 # callable
                 return (
-                        self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                        self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                         callables_table)
 
             dtype = arg_id_to_dtype[0]
-            scalar_dtype, offset, field_name = dtype.numpy_dtype.fields["s0"]
+            scalar_dtype, _offset, _field_name = dtype.numpy_dtype.fields["s0"]
             return (
-                    self.copy(name_in_target=name, arg_id_to_dtype={-1:
-                        NumpyType(scalar_dtype), 0: dtype, 1: dtype}),
+                    self.copy(name_in_target=name, arg_id_to_dtype=constantdict({
+                        -1: NumpyType(scalar_dtype), 0: dtype, 1: dtype
+                        })),
                     callables_table)
 
         elif name == "pow":
@@ -347,8 +361,11 @@ class OpenCLCallable(ScalarCallable):
 
             return (
                     self.copy(name_in_target=name,
-                              arg_id_to_dtype={-1: result_dtype,
-                                               0: common_dtype, 1: common_dtype}),
+                              arg_id_to_dtype=constantdict({
+                                  -1: result_dtype,
+                                  0: common_dtype,
+                                  1: common_dtype
+                                  })),
                     callables_table)
 
         elif name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
@@ -363,7 +380,7 @@ class OpenCLCallable(ScalarCallable):
                     # the types provided aren't mature enough to specialize the
                     # callable
                     return (
-                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                             callables_table)
 
             dtype = np.result_type(*[
@@ -374,8 +391,9 @@ class OpenCLCallable(ScalarCallable):
                 raise LoopyError("%s does not support complex numbers"
                         % name)
 
-            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(-1,
-                num_args)}
+            updated_arg_id_to_dtype = constantdict({
+                id: NumpyType(dtype) for id in range(-1, num_args)
+                })
 
             return (
                     self.copy(name_in_target=name,
@@ -395,23 +413,23 @@ class OpenCLCallable(ScalarCallable):
                     # the types provided aren't mature enough to specialize the
                     # callable
                     return (
-                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                            self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                             callables_table)
 
-            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in
-                    range(count)}
+            updated_arg_id_to_dtype = {id: NumpyType(dtype) for id in range(count)}
             updated_arg_id_to_dtype[-1] = OpenCLTarget().vector_dtype(
                         NumpyType(dtype), count)
 
             return (
-                    self.copy(name_in_target="(%s%d) " % (base_tp_name, count),
-                        arg_id_to_dtype=updated_arg_id_to_dtype),
+                    self.copy(
+                        name_in_target="(%s%d) " % (base_tp_name, count),
+                        arg_id_to_dtype=constantdict(updated_arg_id_to_dtype)),
                     callables_table)
 
         # does not satisfy any of the conditions needed for specialization.
         # hence just returning a copy of the callable.
         return (
-                self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                 callables_table)
 
 
@@ -521,13 +539,13 @@ def opencl_preamble_generator(preamble_info):
 
 class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
-    def wrap_in_typecast_lazy(self, actual_dtype, needed_dtype, s):
-        if needed_dtype.dtype.kind == "b" and actual_dtype().dtype.kind == "f":
+    def wrap_in_typecast(self, actual_type, needed_dtype, s):
+        if needed_dtype.dtype.kind == "b" and actual_type.dtype.kind == "f":
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
 
-        return super().wrap_in_typecast_lazy(actual_dtype, needed_dtype, s)
+        return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
     def map_group_hw_index(self, expr, type_context):
         return var("gid")(expr.axis)
@@ -573,8 +591,10 @@ class OpenCLTarget(CFamilyTarget):
 
     @memoize_method
     def get_dtype_registry(self):
-        from loopy.target.c.compyte.dtypes import (DTypeRegistry,
-                fill_registry_with_opencl_c_types)
+        from loopy.target.c.compyte.dtypes import (
+            DTypeRegistry,
+            fill_registry_with_opencl_c_types,
+        )
 
         result = DTypeRegistry()
         fill_registry_with_opencl_c_types(result)
@@ -616,15 +636,12 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     def symbol_manglers(self):
         return (
-                super().symbol_manglers() + [
-                    opencl_symbol_mangler
-                    ])
+                [*super().symbol_manglers(), opencl_symbol_mangler])
 
     def preamble_generators(self):
 
         return (
-                super().preamble_generators() + [
-                    opencl_preamble_generator])
+                [*super().preamble_generators(), opencl_preamble_generator])
 
     # }}}
 
@@ -633,14 +650,14 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], Generable]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable]:
         preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
         from loopy.target.c import FunctionDeclarationWrapper
         assert isinstance(fdecl, FunctionDeclarationWrapper)
         if not codegen_state.is_entrypoint:
-            # auxiliary kernels need not mention opencl speicific qualifiers
+            # auxiliary kernels need not mention opencl specific qualifiers
             # for a functions signature
             return preambles, fdecl
 
@@ -672,7 +689,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
     def generate_top_of_body(self, codegen_state):
         from loopy.kernel.data import ImageArg
         if any(isinstance(arg, ImageArg) for arg in codegen_state.kernel.args):
-            from cgen import Value, Const, Initializer
+            from cgen import Const, Initializer, Value
             return [
                     Initializer(Const(Value("sampler_t", "loopy_sampler")),
                         "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
@@ -724,7 +741,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                     % address_space)
 
     def wrap_global_constant(self, decl: Declarator) -> Declarator:
-        from cgen.opencl import CLGlobal, CLConstant
+        from cgen.opencl import CLConstant, CLGlobal
         assert isinstance(decl, CLGlobal)
         decl = decl.subdecl
 
@@ -762,12 +779,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     def get_image_arg_declarator(
             self, arg: ImageArg, is_written: bool) -> Declarator:
-        if is_written:
-            mode = "w"
-        else:
-            mode = "r"
-
         from cgen.opencl import CLImage
+
+        mode: Literal["r", "w"] = "w" if is_written else "r"
         return CLImage(arg.num_target_axes(), mode, arg.name)
 
     # }}}
@@ -799,12 +813,13 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
         if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
                 np.int32, np.int64, np.float32, np.float64]:
-            from cgen import Block, DoWhile, Assign
+            from cgen import Assign, Block, DoWhile
+
             from loopy.target.c import POD
             old_val_var = codegen_state.var_name_generator("loopy_old_val")
             new_val_var = codegen_state.var_name_generator("loopy_new_val")
 
-            from loopy.kernel.data import TemporaryVariable, AddressSpace
+            from loopy.kernel.data import AddressSpace, TemporaryVariable
             ecm = codegen_state.expression_to_code_mapper.with_assignments(
                     {
                         old_val_var: TemporaryVariable(old_val_var, lhs_dtype,
@@ -815,8 +830,9 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
             lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
 
-            from pymbolic.mapper.substitutor import make_subst_func
             from pymbolic import var
+            from pymbolic.mapper.substitutor import make_subst_func
+
             from loopy.symbolic import SubstitutionMapper
 
             subst = SubstitutionMapper(
@@ -844,7 +860,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 else:
                     raise AssertionError()
 
-                from loopy.kernel.data import (TemporaryVariable, ArrayArg)
+                from loopy.kernel.data import ArrayArg, TemporaryVariable
                 if (
                         isinstance(lhs_var, ArrayArg)
                         and
@@ -904,7 +920,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 # }}}
 
 
-# {{{ volatile mem acccess target
+# {{{ volatile mem access target
 
 class VolatileMemExpressionToOpenCLCExpressionMapper(
         ExpressionToOpenCLCExpressionMapper):

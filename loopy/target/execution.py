@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-17 Andreas Kloeckner, Nick Curtis"
 
 __license__ = """
@@ -21,31 +24,42 @@ THE SOFTWARE.
 """
 
 
-from typing import (Callable, Tuple, Union, Set, FrozenSet, List, Dict,
-        Optional, Sequence, Any)
-from dataclasses import dataclass
-
-from immutables import Map
-
-from abc import ABC, abstractmethod
-from loopy.diagnostic import LoopyError
-from pytools.py_codegen import PythonFunctionGenerator
-from pytools.codegen import Indentation, CodeGenerator
-
-from pymbolic import var
-
 import logging
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Mapping,
+    Sequence,
+    cast,
+)
+
+from constantdict import constantdict
+
+from pymbolic import Variable, var
+from pytools.codegen import CodeGenerator, Indentation
+from pytools.py_codegen import PythonFunctionGenerator
+
+from loopy.diagnostic import LoopyError
+
+
 logger = logging.getLogger(__name__)
 
 from pytools.persistent_dict import WriteOncePersistentDict
-from loopy.tools import LoopyKeyBuilder, caches
-from loopy.typing import ExpressionT
-from loopy.types import LoopyType, NumpyType
+
 from loopy.kernel import KernelState, LoopKernel
-from loopy.kernel.data import _ArraySeparationInfo, ArrayArg, auto
-from loopy.translation_unit import TranslationUnit
-from loopy.schedule.tools import KernelArgInfo
+from loopy.kernel.data import ArrayArg, _ArraySeparationInfo, auto
+from loopy.tools import LoopyKeyBuilder, caches
+from loopy.types import LoopyType, NumpyType
+from loopy.typing import Expression, integer_expr_or_err
 from loopy.version import DATA_MODEL_VERSION
+
+
+if TYPE_CHECKING:
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.translation_unit import TranslationUnit
 
 
 # {{{ object array argument packing
@@ -60,10 +74,10 @@ class SeparateArrayPackingController:
     It also repacks outgoing arrays of this type back into an object array.
     """
 
-    def __init__(self, packing_info: Dict[str, _ArraySeparationInfo]) -> None:
+    def __init__(self, packing_info: dict[str, _ArraySeparationInfo]) -> None:
         # These must work to index tuples if 1D.
         def untuple_length_1_indices(
-                ind: Tuple[int, ...]) -> Union[int, Tuple[int, ...]]:
+                ind: tuple[int, ...]) -> int | tuple[int, ...]:
             if len(ind) == 1:
                 return ind[0]
             else:
@@ -77,7 +91,7 @@ class SeparateArrayPackingController:
                 for name, sep_info in packing_info.items()
                 }
 
-    def __call__(self, kernel_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    def __call__(self, kernel_kwargs: dict[str, Any]) -> dict[str, Any]:
         kernel_kwargs = kernel_kwargs.copy()
 
         for name, ind_to_subary_name in self.packing_info.items():
@@ -95,7 +109,7 @@ class SeparateArrayPackingController:
 
 # {{{ ExecutionWrapperGeneratorBase
 
-def _str_to_expr(name_or_expr: Union[str, ExpressionT]) -> ExpressionT:
+def _str_to_expr(name_or_expr: str | Expression) -> Expression:
     if isinstance(name_or_expr, str):
         return var(name_or_expr)
     else:
@@ -104,14 +118,14 @@ def _str_to_expr(name_or_expr: Union[str, ExpressionT]) -> ExpressionT:
 
 @dataclass(frozen=True)
 class _ArgFindingEquation:
-    lhs: ExpressionT
-    rhs: ExpressionT
+    lhs: Expression
+    rhs: Expression
 
     # Arg finding code is sorted by priority, all equations (across all unknowns)
     # of lowest priority first.
     order: int
 
-    based_on_names: FrozenSet[str]
+    based_on_names: frozenset[str]
 
 
 class ExecutionWrapperGeneratorBase(ABC):
@@ -154,15 +168,15 @@ class ExecutionWrapperGeneratorBase(ABC):
     def generate_integer_arg_finding_from_array_data(
             self, gen: CodeGenerator, kernel: LoopKernel, kai: KernelArgInfo
             ) -> None:
-        from loopy.kernel.data import ArrayArg
-        from loopy.kernel.array import get_strides
-        from loopy.symbolic import DependencyMapper, StringifyMapper
         from loopy.diagnostic import ParameterFinderWarning
-        dep_map = DependencyMapper()
+        from loopy.kernel.array import get_strides
+        from loopy.kernel.data import ArrayArg
+        from loopy.symbolic import DependencyMapper, StringifyMapper
+        dep_map: DependencyMapper[[]] = DependencyMapper()
 
         # {{{ find equations
 
-        equations: List[_ArgFindingEquation] = []
+        equations: list[_ArgFindingEquation] = []
 
         for arg_name in kai.passed_arg_names:
             arg = kernel.arg_dict[arg_name]
@@ -174,7 +188,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         if shape_i is not None:
                             equations.append(
                                 _ArgFindingEquation(
-                                    lhs=var(arg.name).attr("shape").index(axis_nr),
+                                    lhs=var(arg.name).attr("shape")[axis_nr],
                                     rhs=shape_i,
                                     order=0,
                                     based_on_names=frozenset({arg.name})))
@@ -185,7 +199,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         equations.append(
                                 _ArgFindingEquation(
                                     lhs=var("_lpy_even_div")(
-                                        var(arg.name).attr("strides").index(axis_nr),
+                                        var(arg.name).attr("strides")[axis_nr],
                                         arg.dtype.itemsize),
                                     rhs=_str_to_expr(stride_i),
                                     order=0,
@@ -198,8 +212,9 @@ class ExecutionWrapperGeneratorBase(ABC):
                             # arguments.
                             equations.append(
                                     _ArgFindingEquation(
-                                        lhs=(strides[axis_nr + 1]
-                                             * arg.shape[axis_nr + 1])
+                                        lhs=(integer_expr_or_err(strides[axis_nr + 1])
+                                             * integer_expr_or_err(
+                                                            arg.shape[axis_nr + 1]))
                                         if axis_nr + 1 < len(strides)
                                         else 1,
                                         rhs=_str_to_expr(stride_i),
@@ -237,7 +252,7 @@ class ExecutionWrapperGeneratorBase(ABC):
         # {{{ regroup equations by unknown
 
         order_to_unknown_to_equations: \
-                Dict[int, Dict[str, List[_ArgFindingEquation]]] = {}
+                dict[int, dict[str, list[_ArgFindingEquation]]] = {}
 
         for eqn in equations:
             deps = dep_map(eqn.rhs)
@@ -246,8 +261,8 @@ class ExecutionWrapperGeneratorBase(ABC):
                 unknown_var, = deps
                 order_to_unknown_to_equations \
                         .setdefault(eqn.order, {}) \
-                        .setdefault(unknown_var.name, []) \
-                        .append((eqn))
+                        .setdefault(cast("Variable", unknown_var).name, []) \
+                        .append(eqn)
             else:
                 # Zero deps: nothing to determine, forget about it.
                 # 2+ deps: not implemented
@@ -260,7 +275,6 @@ class ExecutionWrapperGeneratorBase(ABC):
         # {{{ generate arg finding code
 
         from pymbolic.algorithm import solve_affine_equations_for
-        from pymbolic.primitives import Variable
         from pytools.codegen import CodeGenerator
 
         gen("# {{{ find integer arguments from array data")
@@ -273,7 +287,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         key=lambda eqn: eqn.order)
                 subgen = CodeGenerator()
 
-                seen_based_on_names: Set[FrozenSet[str]] = set()
+                seen_based_on_names: set[frozenset[str]] = set()
 
                 if_or_elif = "if"
 
@@ -296,7 +310,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                             warn("Unable to generate code to automatically "
                                     f"find '{unknown_name}' "
                                     f"from '{', '.join(eqn.based_on_names)}':\n"
-                                    f"{e}", ParameterFinderWarning)
+                                    f"{e}", ParameterFinderWarning, stacklevel=1)
                             continue
 
                     # Do not use more than one bit of data from each of the
@@ -364,21 +378,21 @@ class ExecutionWrapperGeneratorBase(ABC):
 
     # }}}
 
-    # {{{ handle non numpy arguements
+    # {{{ handle non numpy arguments
 
     def handle_non_numpy_arg(self, gen: CodeGenerator, arg):
         raise NotImplementedError()
 
     # }}}
 
-    # {{{ handle allocation of unspecified arguements
+    # {{{ handle allocation of unspecified arguments
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[Expression | tuple[Expression]], str],
             skip_arg_checks: bool) -> None:
         """
-        Handle allocation of non-specified arguements for C-execution
+        Handle allocation of non-specified arguments for C-execution
         """
         raise NotImplementedError()
 
@@ -415,9 +429,8 @@ class ExecutionWrapperGeneratorBase(ABC):
             ) -> Sequence[str]:
         options = kernel.options
         import loopy as lp
-
-        from loopy.kernel.data import ImageArg
         from loopy.kernel.array import ArrayBase
+        from loopy.kernel.data import ImageArg
         from loopy.symbolic import StringifyMapper
         from loopy.types import NumpyType
 
@@ -521,7 +534,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                         else:
                             return strify(shape_axis)
 
-                    def strify_tuple(t: Optional[Tuple[ExpressionT, ...]]) -> str:
+                    def strify_tuple(t: tuple[Expression, ...] | None) -> str:
                         if t is None:
                             return "None"
                         if len(t) == 0:
@@ -635,7 +648,7 @@ class ExecutionWrapperGeneratorBase(ABC):
 
     def initialize_system_args(self, gen):
         """
-        Override to intialize any default system args
+        Override to initialize any default system args
         """
         raise NotImplementedError()
 
@@ -662,7 +675,7 @@ class ExecutionWrapperGeneratorBase(ABC):
         """
         Generates the wrapping python invoker for this execution target
 
-        :arg kernel: the loopy :class:`LoopKernel`(s) to be executued
+        :arg kernel: the loopy :class:`LoopKernel`(s) to be executed
         :codegen_result: the loopy :class:`CodeGenerationResult` created
         by code generation
 
@@ -695,7 +708,7 @@ class ExecutionWrapperGeneratorBase(ABC):
         self.generate_value_arg_check(gen, program[entrypoint], kai)
         args = self.generate_arg_setup(gen, program[entrypoint], kai)
 
-        #FIXME: should we make this as a dict as well.
+        # FIXME: should we make this as a dict as well.
         host_program_name = codegen_result.host_programs[entrypoint].name
 
         self.generate_invocation(gen, program[entrypoint], kai,
@@ -721,17 +734,25 @@ class ExecutionWrapperGeneratorBase(ABC):
 # }}}
 
 
-typed_and_scheduled_cache = WriteOncePersistentDict(
+typed_and_scheduled_cache: WriteOncePersistentDict[
+    tuple[str, TranslationUnit, Mapping[str, LoopyType] | None],
+    TranslationUnit
+] = WriteOncePersistentDict(
         "loopy-typed-and-scheduled-cache-v1-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder())
+        key_builder=LoopyKeyBuilder(),
+        safe_sync=False)
 
 
 caches.append(typed_and_scheduled_cache)
 
 
-invoker_cache = WriteOncePersistentDict(
+invoker_cache: WriteOncePersistentDict[
+    tuple[str, TranslationUnit, str],
+    str
+] = WriteOncePersistentDict(
         "loopy-invoker-cache-v10-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder())
+        key_builder=LoopyKeyBuilder(),
+        safe_sync=False)
 
 
 caches.append(invoker_cache)
@@ -746,7 +767,7 @@ class ExecutorBase:
 
     .. automethod:: __call__
     """
-    packing_controller: Optional[SeparateArrayPackingController]
+    packing_controller: SeparateArrayPackingController | None
 
     def __init__(self, t_unit: TranslationUnit, entrypoint: str):
         self.t_unit = t_unit
@@ -796,7 +817,7 @@ class ExecutorBase:
                 "your argument.")
 
     def get_typed_and_scheduled_translation_unit_uncached(
-            self, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: constantdict[str, LoopyType] | None
             ) -> TranslationUnit:
         t_unit = self.t_unit
 
@@ -806,15 +827,15 @@ class ExecutorBase:
             # FIXME: This is not so nice. This transfers types from the
             # subarrays of sep-tagged arrays to the 'main' array, because
             # type inference fails otherwise.
-            with arg_to_dtype.mutate() as mm:
-                for name, sep_info in self.sep_info.items():
-                    if entry_knl.arg_dict[name].dtype is None:
-                        for sep_name in sep_info.subarray_names.values():
-                            if sep_name in arg_to_dtype:
-                                mm.set(name, arg_to_dtype[sep_name])
-                                del mm[sep_name]
+            mm = arg_to_dtype.mutate()
+            for name, sep_info in self.sep_info.items():
+                if entry_knl.arg_dict[name].dtype is None:
+                    for sep_name in sep_info.subarray_names.values():
+                        if sep_name in arg_to_dtype:
+                            mm[name] = arg_to_dtype[sep_name]
+                            del mm[sep_name]
 
-                arg_to_dtype = mm.finish()
+            arg_to_dtype = mm.finish()
 
             from loopy.kernel.tools import add_dtypes
             t_unit = t_unit.with_kernel(add_dtypes(entry_knl, arg_to_dtype))
@@ -833,7 +854,7 @@ class ExecutorBase:
         return t_unit
 
     def get_typed_and_scheduled_translation_unit(
-            self, arg_to_dtype: Optional[Map[str, LoopyType]]
+            self, arg_to_dtype: constantdict[str, LoopyType] | None
             ) -> TranslationUnit:
         from loopy import CACHING_ENABLED
 
@@ -848,14 +869,14 @@ class ExecutorBase:
         logger.debug("%s: typed-and-scheduled cache miss" %
                 self.t_unit.entrypoints)
 
-        kernel = self.get_typed_and_scheduled_translation_unit_uncached(arg_to_dtype)
+        t_unit = self.get_typed_and_scheduled_translation_unit_uncached(arg_to_dtype)
 
         if CACHING_ENABLED:
-            typed_and_scheduled_cache.store_if_not_present(cache_key, kernel)
+            typed_and_scheduled_cache.store_if_not_present(cache_key, t_unit)
 
-        return kernel
+        return t_unit
 
-    def arg_to_dtype(self, kwargs) -> Optional[Map[str, LoopyType]]:
+    def arg_to_dtype(self, kwargs) -> constantdict[str, LoopyType] | None:
         if not self.has_runtime_typed_args:
             return None
 
@@ -872,7 +893,7 @@ class ExecutorBase:
                 else:
                     arg_to_dtype[arg_name] = NumpyType(dtype)
 
-        return Map(arg_to_dtype)
+        return constantdict(arg_to_dtype)
 
     # {{{ debugging aids
 
@@ -883,7 +904,7 @@ class ExecutorBase:
 
     def get_code(
             self, entrypoint: str,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> str:
+            arg_to_dtype: constantdict[str, LoopyType] | None = None) -> str:
         kernel = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2
@@ -924,7 +945,7 @@ class ExecutorBase:
 
 # }}}
 
-# {{{ code highlighers
+# {{{ code highlighters
 
 
 def get_highlighted_code(text, python=False):
@@ -933,8 +954,8 @@ def get_highlighted_code(text, python=False):
     except ImportError:
         return text
     else:
-        from pygments.lexers import CLexer, PythonLexer
         from pygments.formatters import TerminalFormatter
+        from pygments.lexers import CLexer, PythonLexer
 
         return highlight(text, CLexer() if not python else PythonLexer(),
                          TerminalFormatter())

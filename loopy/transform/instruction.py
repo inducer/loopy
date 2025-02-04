@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -20,13 +23,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence, Mapping, List, Tuple
+from typing import TYPE_CHECKING, Mapping, Sequence
+
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
-from loopy.kernel.function_interface import (ScalarCallable, CallableKernel)
-from loopy.kernel.instruction import InstructionBase
-from loopy.translation_unit import TranslationUnit, for_each_kernel
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.symbolic import RuleAwareIdentityMapper
+from loopy.translation_unit import TranslationUnit, for_each_kernel
+
+
+if TYPE_CHECKING:
+    from loopy.kernel.instruction import InstructionBase
 
 
 # {{{ find_instructions
@@ -262,10 +269,11 @@ def replace_instruction_ids_in_insn(
         ) -> InstructionBase:
     changed = False
     new_depends_on = list(insn.depends_on)
-    extra_depends_on: List[str] = []
-    new_no_sync_with: List[Tuple[str, str]] = []
+    extra_depends_on: list[str] = []
+    new_no_sync_with: list[tuple[str, str]] = []
 
     if insn.id in replacements:
+        assert isinstance(insn.id, str)
         insn = insn.copy(id=replacements[insn.id][0])
 
     new_depends_on = list(insn.depends_on)
@@ -424,7 +432,7 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
     if not nosync_to_add and not empty_ok:
         raise LoopyError("No nosync annotations were added as a result "
                 "of this call. add_nosync will (by default) only add them to "
-                "accompany existing depencies or group exclusions. Maybe you want "
+                "accompany existing dependencies or group exclusions. Maybe you want "
                 "to pass force=True?")
 
     new_instructions = list(kernel.instructions)
@@ -489,8 +497,9 @@ class IndexSimplifier(RuleAwareIdentityMapper):
         self.kernel = kernel
 
     def map_subscript(self, expr, expn_state):
-        from loopy.symbolic import simplify_using_aff
         from pymbolic.primitives import Subscript
+
+        from loopy.symbolic import simplify_using_aff
 
         new_indices = tuple(simplify_using_aff(self.kernel,
                                                self.rec(idx, expn_state))

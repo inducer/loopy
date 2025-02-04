@@ -1,4 +1,44 @@
-__copyright__ = "Copyright (C) 2016 Matt Wala"
+from __future__ import annotations
+
+
+__copyright__ = """
+Copyright (C) 2016 Matt Wala
+Copyright (C) 2020 University of Illinois Board of Trustees
+Copyright (C) 2022 Kaushik Kulkarni
+"""
+
+__doc__ = """
+.. autofunction:: get_block_boundaries
+.. autofunction:: temporaries_read_in_subkernel
+.. autofunction:: args_read_in_subkernel
+.. autofunction:: args_written_in_subkernel
+.. autofunction:: supporting_temporary_names
+
+.. autoclass:: KernelArgInfo
+.. autoclass:: SubKernelArgInfo
+
+.. autofunction:: get_kernel_arg_info
+.. autofunction:: get_subkernel_arg_info
+
+.. autofunction:: get_return_from_kernel_mapping
+
+.. autoclass:: AccessMapDescriptor
+.. autoclass:: WriteRaceChecker
+
+.. autoclass:: LoopNestTree
+.. autoclass:: LoopTree
+
+.. autofunction:: separate_loop_nest
+.. autofunction:: get_partial_loop_nest_tree
+.. autofunction:: get_loop_tree
+
+References
+^^^^^^^^^^
+
+.. class:: InameStrSet
+
+    See :class:`loopy.typing.InameStrSet`
+"""
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -20,27 +60,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from functools import cached_property
 import enum
-from typing import Sequence, FrozenSet, Tuple, List, Set, Dict
 from dataclasses import dataclass
+from functools import cached_property, reduce
+from typing import TYPE_CHECKING, AbstractSet, Sequence
 
-from pytools import memoize_method
+from constantdict import constantdict
+from typing_extensions import TypeAlias
+
 import islpy as isl
+from pytools import memoize_method, memoize_on_first_arg
 
-from loopy.kernel.data import AddressSpace, TemporaryVariable, ArrayArg
-from loopy.kernel import LoopKernel
+from loopy.diagnostic import LoopyError
+from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
+from loopy.schedule.tree import Tree
+from loopy.typing import InameStr, InameStrSet, not_none
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Collection, Mapping
+
+    from loopy.kernel import LoopKernel
+    from loopy.schedule import ScheduleItem
 
 
 # {{{ block boundary finder
 
-def get_block_boundaries(schedule):
-    """
+def get_block_boundaries(schedule: Sequence[ScheduleItem]) -> Mapping[int, int]:
+    r"""
     Return a dictionary mapping indices of
-    :class:`loopy.schedule.BlockBeginItem`s to
-    :class:`loopy.schedule.BlockEndItem`s and vice versa.
+    :class:`loopy.schedule.BeginBlockItem`\ s to
+    :class:`loopy.schedule.EndBlockItem`\ s and vice versa.
     """
-    from loopy.schedule import (BeginBlockItem, EndBlockItem)
+    from loopy.schedule import BeginBlockItem, EndBlockItem
     block_bounds = {}
     active_blocks = []
     for idx, sched_item in enumerate(schedule):
@@ -58,7 +110,7 @@ def get_block_boundaries(schedule):
 # {{{ subkernel tools
 
 def temporaries_read_in_subkernel(
-        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+        kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     inames = frozenset().union(*(kernel.insn_inames(insn_id)
@@ -76,7 +128,7 @@ def temporaries_read_in_subkernel(
 
 
 def temporaries_written_in_subkernel(
-        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+        kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     return frozenset(tv
@@ -86,7 +138,7 @@ def temporaries_written_in_subkernel(
 
 
 def args_read_in_subkernel(
-        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+        kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     inames = frozenset().union(*(kernel.insn_inames(insn_id)
@@ -103,7 +155,7 @@ def args_read_in_subkernel(
 
 
 def args_written_in_subkernel(
-        kernel: LoopKernel, subkernel_name: str) -> FrozenSet[str]:
+        kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
     return frozenset(arg
@@ -113,8 +165,8 @@ def args_written_in_subkernel(
 
 
 def supporting_temporary_names(
-        kernel: LoopKernel, tv_names: FrozenSet[str]) -> FrozenSet[str]:
-    result: Set[str] = set()
+        kernel: LoopKernel, tv_names: frozenset[str]) -> frozenset[str]:
+    result: set[str] = set()
 
     for name in tv_names:
         tv = kernel.temporary_variables[name]
@@ -131,9 +183,13 @@ def supporting_temporary_names(
 
 @dataclass(frozen=True)
 class KernelArgInfo:
-    passed_arg_names: Sequence[str]
+    """
+    .. autoattribute:: passed_arg_names
+    .. autoattribute:: written_names
+    """
 
-    written_names: FrozenSet[str]
+    passed_arg_names: Sequence[str]
+    written_names: frozenset[str]
 
     @property
     def passed_names(self) -> Sequence[str]:
@@ -142,6 +198,12 @@ class KernelArgInfo:
 
 @dataclass(frozen=True)
 class SubKernelArgInfo(KernelArgInfo):
+    """Inherits from :class:`KernelArgInfo`.
+
+    .. autoattribute:: passed_inames
+    .. autoattribute:: passed_temporaries
+    """
+
     passed_inames: Sequence[str]
     passed_temporaries: Sequence[str]
 
@@ -159,7 +221,7 @@ def _should_temp_var_be_passed(tv: TemporaryVariable) -> bool:
 class _SupportingNameTracker:
     def __init__(self, kernel: LoopKernel):
         self.kernel = kernel
-        self.name_to_main_name: Dict[str, str] = {}
+        self.name_to_main_name: dict[str, str] = {}
 
     def add_supporting_names_for(self, name):
         var_descr = self.kernel.get_var_descriptor(name)
@@ -169,8 +231,8 @@ class _SupportingNameTracker:
                     | {name})
 
     def get_additional_args_and_tvs(
-            self, already_passed: Set[str]
-            ) -> Tuple[List[str], List[str]]:
+            self, already_passed: set[str]
+            ) -> tuple[list[str], list[str]]:
         additional_args = []
         additional_temporaries = []
 
@@ -188,11 +250,11 @@ class _SupportingNameTracker:
 
 
 def _process_args_for_arg_info(
-        kernel: LoopKernel, args_read: Set[str], args_written: Set[str],
+        kernel: LoopKernel, args_read: set[str], args_written: set[str],
         supp_name_tracker: _SupportingNameTracker, used_only: bool,
-        ) -> List[str]:
+        ) -> list[str]:
 
-    args_expected: Set[str] = set()
+    args_expected: set[str] = set()
 
     passed_arg_names = []
     for arg in kernel.args:
@@ -270,7 +332,7 @@ def get_subkernel_arg_info(
             supp_name_tracker=supp_name_tracker,
             used_only=True)
 
-    passed_temporaries: List[str] = []
+    passed_temporaries: list[str] = []
     for tv_name in sorted(tvs_read | tvs_written):
         supp_name_tracker.add_supporting_names_for(tv_name)
         tv = kernel.temporary_variables[tv_name]
@@ -301,19 +363,25 @@ def get_subkernel_arg_info(
 
 # {{{ get_return_from_kernel_mapping
 
-def get_return_from_kernel_mapping(kernel):
+def get_return_from_kernel_mapping(kernel: LoopKernel) -> Mapping[int, int | None]:
     """
     Returns a mapping from schedule index of every schedule item (S) in
     *kernel* to the schedule index of :class:`loopy.schedule.ReturnFromKernel`
     of the active sub-kernel at 'S'.
     """
     from loopy.kernel import LoopKernel
-    from loopy.schedule import (RunInstruction, EnterLoop, LeaveLoop,
-                                CallKernel, ReturnFromKernel, Barrier)
+    from loopy.schedule import (
+        Barrier,
+        CallKernel,
+        EnterLoop,
+        LeaveLoop,
+        ReturnFromKernel,
+        RunInstruction,
+    )
     assert isinstance(kernel, LoopKernel)
     assert isinstance(kernel.linearization, list)
-    return_from_kernel_idxs = {}
-    current_return_from_kernel = None
+    return_from_kernel_idxs: dict[int, int | None] = {}
+    current_return_from_kernel: int | None = None
     for sched_idx, sched_item in list(enumerate(kernel.linearization))[::-1]:
         if isinstance(sched_item, CallKernel):
             return_from_kernel_idxs[sched_idx] = current_return_from_kernel
@@ -350,11 +418,14 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table,
         *unequal* global ids that access the same address.
     """
     import pymbolic.primitives as p
-    from loopy.symbolic import isl_set_from_expr, aff_from_expr, aff_to_expr
-    from loopy.kernel.data import (filter_iname_tags_by_type,
-                                   HardwareConcurrentTag,
-                                   AddressSpace)
+
+    from loopy.kernel.data import (
+        AddressSpace,
+        HardwareConcurrentTag,
+        filter_iname_tags_by_type,
+    )
     from loopy.kernel.tools import get_hw_axis_base_for_codegen
+    from loopy.symbolic import aff_from_expr, aff_to_expr, isl_set_from_expr
 
     assert address_space in [AddressSpace.LOCAL, AddressSpace.GLOBAL]
 
@@ -538,8 +609,9 @@ class WriteRaceChecker:
 
     @memoize_method
     def _get_access_maps(self, insn_id, access_dir):
-        from loopy.symbolic import BatchedAccessMapMapper
         from collections import defaultdict
+
+        from loopy.symbolic import BatchedAccessMapMapper
 
         insn = self.kernel.id_to_insn[insn_id]
 
@@ -611,4 +683,446 @@ class WriteRaceChecker:
 
 # }}}
 
-# vim: foldmethod=marker
+
+LoopNestTree: TypeAlias = Tree[InameStrSet]
+LoopTree: TypeAlias = Tree[InameStr]
+
+
+class V2SchedulerNotImplementedError(LoopyError):
+    pass
+
+
+def separate_loop_nest(
+            tree: LoopNestTree,
+            loop_nests: Collection[InameStrSet],
+            inames_to_separate: InameStrSet
+        ) -> tuple[LoopNestTree, InameStrSet, InameStrSet | None]:
+    """
+    Returns a copy of *tree* that has *inames_to_separate* occur in
+    nodes that are not shared with other inames.
+    Returns a version of the loop nest tree *tree* so that every node in the tree is
+    either a subset of *outermost_inames* or has an empty intersection with
+    *outermost_inames*.
+
+    This routine modifies at most one node of the tree.
+    All its ancestors must satisfy `ancestor <= outermost_inames`.
+    For the first node not  satisfying this relationship,
+    if `node & outermost_inames` is empty, no modification is made.
+    Otherwise, if ``node & outermost_inames < node``, that node is split
+    so as to separate *outermost_inames* in their own node.
+
+    :arg loop_nests: A collection of nodes in *tree* that cover
+        *inames_to_separate*.
+
+    :returns: a :class:`tuple` ``(new_tree, outer_loop_nest, inner_loop_nest)``,
+        where outer_loop_nest is the identifier for the new outer and inner
+        loop nests so that *inames_to_separate* is a valid nesting.
+
+    .. note::
+
+        We could compute *loop_nests* within this routine's implementation, but
+        computing would be expensive and hence we ask the caller for this info.
+
+    Example::
+       *tree*: frozenset()
+               └── frozenset({'j', 'i'})
+                   └── frozenset({'k', 'l'})
+
+       *inames_to_separate*: frozenset({'k', 'i', 'j'})
+       *loop_nests*: {frozenset({'j', 'i'}), frozenset({'k', 'l'})}
+
+       Returns:
+
+       *new_tree*: frozenset()
+                   └── frozenset({'j', 'i'})
+                       └── frozenset({'k'})
+                           └── frozenset({'l'})
+
+       *outer_loop_nest*: frozenset({'k'})
+       *inner_loop_nest*: frozenset({'l'})
+    """
+    assert all(isinstance(loop_nest, frozenset) for loop_nest in loop_nests)
+
+    # annotation to avoid https://github.com/python/mypy/issues/17693
+    emptyset: InameStrSet = frozenset()
+
+    assert inames_to_separate <= reduce(frozenset.union, loop_nests, emptyset)
+
+    # {{{ sanity check to ensure the loop nest *inames_to_separate* is possible
+
+    loop_nests = sorted(loop_nests, key=lambda nest: tree.depth(nest))
+
+    for outer, inner in zip(loop_nests[:-1], loop_nests[1:]):
+        if outer != tree.parent(inner):
+            raise LoopyError(f"Cannot schedule loop nest {inames_to_separate} "
+                             f" in the nesting tree:\n{tree}")
+
+    assert tree.depth(loop_nests[0]) == 0
+
+    # }}}
+
+    innermost_node = loop_nests[-1]
+    # separate variable to avoid https://github.com/python/mypy/issues/17694
+    outerer_loops = reduce(frozenset.union, loop_nests[:-1], emptyset)
+    new_outer_node = inames_to_separate - outerer_loops
+    new_inner_node = innermost_node - inames_to_separate
+
+    if new_outer_node == innermost_node:
+        # such a loop nesting already exists => do nothing
+        return tree, new_outer_node, None
+
+    # add the outer loop to our loop nest tree
+    tree = tree.add_node(new_outer_node,
+                         parent=not_none(tree.parent(innermost_node)))
+
+    # rename the old loop to the inner loop
+    tree = tree.replace_node(innermost_node,
+                            new_node=new_inner_node)
+
+    # set the parent of inner loop to be the outer loop
+    tree = tree.move_node(new_inner_node, new_parent=new_outer_node)
+
+    return tree, new_outer_node, new_inner_node
+
+
+def _add_inner_loops(tree, outer_loop_nest, inner_loop_nest):
+    """
+    Returns a copy of *tree* that nests *inner_loop_nest* inside *outer_loop_nest*.
+    """
+    # add the outer loop to our loop nest tree
+    return tree.add_node(inner_loop_nest, parent=outer_loop_nest)
+
+
+def _order_loop_nests(
+            loop_nest_tree: LoopNestTree,
+            strict_priorities: frozenset[tuple[InameStr, ...]],
+            relaxed_priorities: frozenset[tuple[InameStr, ...]],
+            iname_to_tree_node_id: Mapping[InameStr, InameStrSet],
+          ) -> LoopTree:
+    """
+    Returns a loop nest where all nodes in the tree are instances of
+    :class:`str` denoting inames. Unlike *loop_nest_tree* which corresponds to
+    multiple loop nesting, this routine returns a unique loop nest that is
+    obtained after constraining *loop_nest_tree* with the constraints enforced
+    by *priorities*.
+
+    :arg strict_priorities: Expresses strict nesting constraints using the same
+        data structure as :attr:`loopy.LoopKernel.loop_priority`.
+        These priorities are imposed strictly i.e. if these conditions cannot be met a
+        :class:`loopy.diagnostic.LoopyError` is raised.
+
+    :arg relaxed_priorities: Expresses strict nesting constraints using the same
+        data structure as :attr:`loopy.LoopKernel.loop_priority`.
+        These nesting constraints are treated as optional.
+
+    :arg iname_to_tree_node_id: A mapping from iname to the loop nesting its a
+        part of.
+    """
+    from warnings import warn
+
+    from pytools.graph import compute_topological_order as toposort
+
+    loop_nests = set(iname_to_tree_node_id.values())
+
+    # nesting_constraints: A mapping from the loop nest level to the nesting
+    # constraints applicable to it.
+    # Each nesting constraint is represented as a DAG. In the DAG, if there
+    # exists an edge from from iname 'i' -> iname 'j' => 'j' should be nested
+    # inside 'i'.
+    iname_to_nesting_constraints: dict[InameStrSet, dict[InameStr, InameStrSet]] = {
+        loop_nest: {iname: frozenset() for iname in loop_nest}
+        for loop_nest in loop_nests}
+
+    # The plan here is populate DAGs in *nesting_constraints* and then perform a
+    # toposort for each loop nest.
+
+    def _update_nesting_constraints(
+                priorities: frozenset[tuple[InameStr, ...]],
+                cannot_satisfy_callback: Callable[[str], None]
+            ) -> None:
+        """
+        Records *priorities* in *nesting_constraints* and calls
+        *cannot_satisfy_callback* with an appropriate error message if the
+        priorities cannot be met.
+        """
+        for priority in priorities:
+            for outer_iname, inner_iname in zip(priority[:-1], priority[1:]):
+                if inner_iname not in iname_to_tree_node_id:
+                    cannot_satisfy_callback(f"Cannot enforce the constraint:"
+                                            f" {inner_iname} to be nested within"
+                                            f" {outer_iname}, as {inner_iname}"
+                                            f" is either a parallel loop or"
+                                            f" not an iname.")
+                    continue
+
+                if outer_iname not in iname_to_tree_node_id:
+                    cannot_satisfy_callback(f"Cannot enforce the constraint:"
+                                            f" {inner_iname} to be nested within"
+                                            f" {outer_iname}, as {outer_iname}"
+                                            f" is either a parallel loop or"
+                                            f" not an iname.")
+                    continue
+
+                inner_iname_nest = iname_to_tree_node_id[inner_iname]
+                outer_iname_nest = iname_to_tree_node_id[outer_iname]
+
+                if inner_iname_nest == outer_iname_nest:
+                    iname_to_nesting_constraints[
+                        inner_iname_nest][outer_iname] |= {inner_iname}
+                else:
+                    ancestors_of_inner_iname = (loop_nest_tree
+                                                .ancestors(inner_iname_nest))
+                    ancestors_of_outer_iname = (loop_nest_tree
+                                                .ancestors(outer_iname_nest))
+                    if any(outer_iname in ancestor
+                           for ancestor in ancestors_of_inner_iname):
+                        # nesting constraint already satisfied => do nothing
+                        pass
+                    elif any(inner_iname in ancestor
+                             for ancestor in ancestors_of_outer_iname):
+                        cannot_satisfy_callback("Cannot satisfy constraint that"
+                                                f" iname '{inner_iname}' must be"
+                                                f" nested within '{outer_iname}''.")
+                    else:
+                        # inner iname and outer iname are indirect family members
+                        # => must be realized via dependencies in the linearization
+                        # phase, not implemented in v2-scheduler yet.
+                        raise V2SchedulerNotImplementedError("cannot"
+                                " schedule kernels with priority dependencies"
+                                " between sibling loop nests")
+
+    def _raise_loopy_err(x):
+        raise LoopyError(x)
+
+    # record strict priorities
+    _update_nesting_constraints(strict_priorities, _raise_loopy_err)
+    # record relaxed priorities
+    _update_nesting_constraints(relaxed_priorities, warn)
+
+    # ordered_loop_nests: A mapping from the unordered loop nests to their
+    # ordered counterparts. For example. If we had only one loop nest
+    # `frozenset({"i", "j", "k"})`, and the prioirities said added the
+    # constraint that "i" must be nested within "k", then `ordered_loop_nests`
+    # would be: `{frozenset({"i", "j", "k"}): ["j", "k", "i"]}` i.e. the loop
+    # nests would now have an order.
+    ordered_loop_nests = {
+        unordered_nest: toposort(flow, key=lambda x: x)
+        for unordered_nest, flow in iname_to_nesting_constraints.items()}
+
+    # {{{ combine 'loop_nest_tree' along with 'ordered_loop_nest_tree'
+
+    assert loop_nest_tree.root == frozenset()
+
+    new_tree = Tree.from_root("")
+
+    old_to_new_parent = {}
+
+    old_to_new_parent[loop_nest_tree.root] = ""
+
+    # traversing 'tree' in an BFS fashion to create 'new_tree'
+    queue = list(loop_nest_tree.children(loop_nest_tree.root))
+
+    while queue:
+        current_nest = queue.pop(0)
+
+        ordered_nest = ordered_loop_nests[current_nest]
+        new_tree = new_tree.add_node(ordered_nest[0],
+                                     parent=old_to_new_parent[not_none(loop_nest_tree
+                                                              .parent(current_nest))])
+        for new_parent, new_child in zip(ordered_nest[:-1], ordered_nest[1:]):
+            new_tree = new_tree.add_node(node=new_child, parent=new_parent)
+
+        old_to_new_parent[current_nest] = ordered_nest[-1]
+
+        queue.extend(loop_nest_tree.children(current_nest))
+
+    # }}}
+
+    return new_tree
+
+
+@memoize_on_first_arg
+def _get_parallel_inames(kernel: LoopKernel) -> AbstractSet[str]:
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
+
+    concurrent_inames = {iname for iname in kernel.all_inames()
+                         if kernel.iname_tags_of_type(iname, ConcurrentTag)}
+    ilp_inames = {iname for iname in kernel.all_inames()
+                  if kernel.iname_tags_of_type(iname, IlpBaseTag)}
+    vec_inames = {iname for iname in kernel.all_inames()
+                  if kernel.iname_tags_of_type(iname, VectorizeTag)}
+    return (concurrent_inames - ilp_inames - vec_inames)
+
+
+def get_partial_loop_nest_tree(kernel: LoopKernel) -> LoopNestTree:
+    """
+    Returns a tree representing the *kernel*'s loop nests.
+
+    Each node of the returned tree has a :class:`frozenset` of inames.
+    All the inames in the identifier of a parent node of a loop nest in the
+    tree must be nested outside all the iname in identifier of the loop nest.
+
+    .. note::
+
+        This routine only takes into account the nesting dependency
+        constraints of :attr:`loopy.InstructionBase.within_inames` of all the
+        *kernel*'s instructions and the iname tags. This routine does *NOT*
+        include the nesting constraints imposed by the dependencies between the
+        instructions and the dependencies imposed by the kernel's domain tree.
+    """
+    from loopy.kernel.data import IlpBaseTag
+
+    # figuring the possible loop nestings minus the concurrent_inames as they
+    # are never realized as actual loops
+    insn_iname_sets = {
+        insn.within_inames - _get_parallel_inames(kernel)
+        for insn in kernel.instructions}
+
+    root: InameStrSet = frozenset()
+    tree = Tree.from_root(root)
+
+    # mapping from iname to the innermost loop nest they are part of in *tree*.
+    iname_to_tree_node_id: dict[InameStr, InameStrSet] = {}
+
+    # if there were any loop with no inames, those have been already account
+    # for as the root.
+    insn_iname_sets = insn_iname_sets - {root}
+
+    for iname_set in insn_iname_sets:
+        not_seen_inames = frozenset(iname for iname in iname_set
+                                    if iname not in iname_to_tree_node_id)
+        seen_inames = iname_set - not_seen_inames
+
+        all_nests = {iname_to_tree_node_id[iname] for iname in seen_inames}
+
+        tree, outer_loop, inner_loop = separate_loop_nest(tree,
+                                                           (all_nests
+                                                            | {frozenset()}),
+                                                           seen_inames)
+        if not_seen_inames:
+            # make '_not_seen_inames' nest inside the seen ones.
+            # example: if there is already a loop nesting "i,j,k"
+            # and the current iname chain is "i,j,l". Only way this is possible
+            # is if "l" is nested within "i,j"-loops.
+            tree = _add_inner_loops(tree, outer_loop, not_seen_inames)
+
+        # {{{ update iname to node id
+
+        for iname in outer_loop:
+            iname_to_tree_node_id[iname] = outer_loop
+
+        if inner_loop is not None:
+            for iname in inner_loop:
+                iname_to_tree_node_id[iname] = inner_loop
+
+        for iname in not_seen_inames:
+            iname_to_tree_node_id[iname] = not_seen_inames
+
+        # }}}
+
+    # {{{ make ILP tagged inames innermost
+
+    ilp_inames = {iname for iname in kernel.all_inames()
+                  if kernel.iname_tags_of_type(iname, IlpBaseTag)}
+
+    for iname_set in insn_iname_sets:
+        for ilp_iname in (ilp_inames & insn_iname_sets):
+            # pull out other loops so that ilp_iname is the innermost
+            all_nests = {iname_to_tree_node_id[iname] for iname in seen_inames}
+            tree, outer_loop, inner_loop = separate_loop_nest(tree,
+                                                               (all_nests
+                                                                | {frozenset()}),
+                                                               (iname_set
+                                                                - {ilp_iname}))
+
+            for iname in outer_loop:
+                iname_to_tree_node_id[iname] = outer_loop
+
+            if inner_loop is not None:
+                for iname in inner_loop:
+                    iname_to_tree_node_id[iname] = inner_loop
+
+    # }}}
+
+    return tree
+
+
+def _get_iname_to_tree_node_id_from_partial_loop_nest_tree(
+            tree: LoopNestTree,
+        ) -> Mapping[str, frozenset[str]]:
+    """
+    Returns the mapping from the iname to the *tree*'s node that it was a part
+    of.
+
+    :arg tree: A partial loop nest tree.
+    """
+    iname_to_tree_node_id = {}
+    for node in tree.nodes():
+        assert isinstance(node, frozenset)
+        for iname in node:
+            iname_to_tree_node_id[iname] = node
+
+    return constantdict(iname_to_tree_node_id)
+
+
+def get_loop_tree(kernel: LoopKernel) -> LoopTree:
+    """
+    Returns a tree representing the loop nesting for *kernel*. A parent node in
+    the tree is always nested outside all its children.
+
+    .. note::
+
+        Multiple loop nestings might exist for *kernel*, but this routine returns
+        one valid loop nesting.
+    """
+    from islpy import dim_type
+
+    tree = get_partial_loop_nest_tree(kernel)
+    iname_to_tree_node_id = (
+        _get_iname_to_tree_node_id_from_partial_loop_nest_tree(tree))
+
+    strict_loop_priorities: frozenset[tuple[InameStr, ...]] = frozenset()
+
+    # {{{ impose constraints by the domain tree
+
+    # FIXME: These three could be one statement if it weren't for
+    # - https://github.com/python/mypy/issues/17693
+    # - https://github.com/python/mypy/issues/17694
+    emptyset: InameStrSet = frozenset()
+    loop_inames = reduce(frozenset.union,
+                          (insn.within_inames
+                           for insn in kernel.instructions),
+                          emptyset)
+    loop_inames = loop_inames - _get_parallel_inames(kernel)
+
+    for dom in kernel.domains:
+        for outer_iname in set(dom.get_var_names(dim_type.param)):
+            if outer_iname not in loop_inames:
+                continue
+
+            for inner_iname in dom.get_var_names(dim_type.set):
+                if inner_iname not in loop_inames:
+                    continue
+
+                # either outer_iname and inner_iname should belong to the same
+                # loop nest level or outer should be strictly outside inner
+                # iname
+                inner_iname_nest = iname_to_tree_node_id[inner_iname]
+                outer_iname_nest = iname_to_tree_node_id[outer_iname]
+
+                if inner_iname_nest == outer_iname_nest:
+                    strict_loop_priorities |= {(outer_iname, inner_iname)}
+                else:
+                    ancestors_of_inner_iname = tree.ancestors(inner_iname_nest)
+                    if outer_iname_nest not in ancestors_of_inner_iname:
+                        raise LoopyError(f"Loop '{outer_iname}' cannot be nested"
+                                         f" outside '{inner_iname}'.")
+
+    # }}}
+
+    return _order_loop_nests(tree,
+                             strict_loop_priorities,
+                             kernel.loop_priority,
+                             iname_to_tree_node_id)
+
+# vim: fdm=marker

@@ -1,4 +1,5 @@
 """Library integration with Random123."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
@@ -24,18 +25,36 @@ THE SOFTWARE.
 """
 
 
-from pytools import ImmutableRecord
-from mako.template import Template
-from loopy.kernel.function_interface import ScalarCallable
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
+
 import numpy as np
+from constantdict import constantdict
+from mako.template import Template
+
+from pymbolic.typing import not_none
+
+from loopy.kernel.function_interface import ScalarCallable
+
+
+if TYPE_CHECKING:
+    from loopy.target import TargetBase
 
 
 # {{{ rng metadata
 
-class RNGInfo(ImmutableRecord):
+@dataclass(frozen=True)
+class RNGInfo:
+    name: str
+    pyopencl_header: str
+    generic_header: str
+    key_width: int
+    width: int | None = None
+    bits: int | None = None
+
     @property
-    def full_name(self):
-        return "%s%dx%d" % (self.name, self.width, self.bits)
+    def full_name(self) -> str:
+        return "%s%dx%d" % (self.name, not_none(self.width), not_none(self.bits))
 
 
 _philox_base_info = RNGInfo(
@@ -51,15 +70,15 @@ _threefry_base_info = RNGInfo(
             key_width=4)
 
 RNG_VARIANTS = [
-        _philox_base_info.copy(width=2, bits=32),
-        _philox_base_info.copy(width=2, bits=64),
-        _philox_base_info.copy(width=4, bits=32),
-        _philox_base_info.copy(width=4, bits=64),
+        replace(_philox_base_info, width=2, bits=32),
+        replace(_philox_base_info, width=2, bits=64),
+        replace(_philox_base_info, width=4, bits=32),
+        replace(_philox_base_info, width=4, bits=64),
 
-        _threefry_base_info.copy(width=2, bits=32),
-        _threefry_base_info.copy(width=2, bits=64),
-        _threefry_base_info.copy(width=4, bits=32),
-        _threefry_base_info.copy(width=4, bits=64),
+        replace(_threefry_base_info, width=2, bits=32),
+        replace(_threefry_base_info, width=2, bits=64),
+        replace(_threefry_base_info, width=4, bits=32),
+        replace(_threefry_base_info, width=4, bits=64),
         ]
 
 FUNC_NAMES_TO_RNG = {
@@ -163,12 +182,12 @@ double${ width } ${ name }_f64(
 # }}}
 
 
+@dataclass(frozen=True, init=False)
 class Random123Callable(ScalarCallable):
     """
     Records information about for the random123 functions.
     """
-    fields = ScalarCallable.fields | {"target"}
-    hash_fields = ScalarCallable.hash_fields + ("target",)
+    target: TargetBase
 
     def __init__(self, name, arg_id_to_dtype=None,
                  arg_id_to_descr=None, name_in_target=None, target=None):
@@ -177,7 +196,7 @@ class Random123Callable(ScalarCallable):
                          arg_id_to_descr=arg_id_to_descr,
                          name_in_target=name_in_target)
 
-        self.target = target
+        object.__setattr__(self, "target", target)
 
     def with_types(self, arg_id_to_dtype, callables_table):
 
@@ -203,8 +222,8 @@ class Random123Callable(ScalarCallable):
             new_arg_id_to_dtype = {-1: ctr_dtype, -2: ctr_dtype, 0: ctr_dtype, 1:
                     key_dtype}
             return (
-                    self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                        name_in_target=fn+"_gen"),
+                    self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
+                              name_in_target=fn+"_gen"),
                     callables_table)
 
         elif name == fn + "_f32":
@@ -212,18 +231,22 @@ class Random123Callable(ScalarCallable):
                 rng_variant.width),
                     -2: ctr_dtype, 0: ctr_dtype, 1:
                     key_dtype}
-            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                    name_in_target=name), callables_table
+            return (
+                    self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
+                              name_in_target=name),
+                    callables_table)
 
         elif name == fn + "_f64":
             new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float64),
                 rng_variant.width),
                     -2: ctr_dtype, 0: ctr_dtype, 1:
                     key_dtype}
-            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-                    name_in_target=name), callables_table
+            return (
+                    self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
+                              name_in_target=name),
+                    callables_table)
 
-        return (self.copy(arg_id_to_dtype=arg_id_to_dtype),
+        return (self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                 callables_table)
 
     def generate_preambles(self, target):

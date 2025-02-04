@@ -158,7 +158,7 @@ In the meantime, you can generate code simply by saying::
     print(cg_result.host_code())
     print(cg_result.device_code())
 
-Additionally, for C-based languages, header defintions are available via::
+Additionally, for C-based languages, header definitions are available via::
 
     loopy.generate_header(knl)
 
@@ -338,8 +338,8 @@ This list is always growing, but here are a few pointers:
 
   Use :func:`loopy.join_inames`.
 
-In what sense does Loopy suport vectorization?
-----------------------------------------------
+In what sense does Loopy support vectorization?
+-----------------------------------------------
 
 There are really two ways in which the OpenCL/CUDA model of computation exposes
 vectorization:
@@ -352,7 +352,7 @@ vectorization:
   e.g. ``float4``, which support arithmetic with implicit vector semantics
   as well as a number of 'intrinsic' functions.
 
-Loopy suports both. The first one, SIMT, is accessible by tagging inames with,
+Loopy supports both. The first one, SIMT, is accessible by tagging inames with,
 e.g., ``l.0```. Accessing the second one requires using both execution- and
 data-reshaping capabilities in loopy. To start with, you need an array that
 has an axis with the length of the desired vector. If that's not yet available,

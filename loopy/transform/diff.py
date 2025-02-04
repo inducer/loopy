@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -21,17 +24,17 @@ THE SOFTWARE.
 """
 
 import islpy as isl
-
+import pymbolic.primitives as p
 from pymbolic.mapper.differentiator import DifferentiationMapper
 
-import pymbolic.primitives as p
+
 var = p.Variable
 
 import loopy as lp
-from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
-from loopy.isl_helpers import make_slab
 from loopy.diagnostic import LoopyError
+from loopy.isl_helpers import make_slab
 from loopy.kernel import LoopKernel
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
 
 # {{{ diff mapper
@@ -154,7 +157,7 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
         dc = self.diff_context
 
         if expr.function.name in dc.kernel.substitutions:
-            # FIXME: Deal with subsitution rules
+            # FIXME: Deal with substitution rules
             # Need to use chain rule here, too.
             raise NotImplementedError("substitution rules in differentiation")
         else:
@@ -382,8 +385,8 @@ def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
 
     assert isinstance(kernel, LoopKernel)
 
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=True)
+    from loopy.kernel.creation import apply_single_writer_dependency_heuristic
+    kernel = apply_single_writer_dependency_heuristic(kernel, warn_if_used=True)
 
     if isinstance(diff_outputs, str):
         diff_outputs = [

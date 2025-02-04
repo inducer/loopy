@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,6 +25,7 @@ THE SOFTWARE.
 
 
 import islpy as isl
+
 from loopy.translation_unit import for_each_kernel
 
 

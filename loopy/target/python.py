@@ -1,4 +1,5 @@
 """Python host AST builder for integration with PyOpenCL."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
@@ -23,18 +24,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Tuple, Sequence
+from typing import TYPE_CHECKING, Sequence
 
+import numpy as np
+
+from genpy import Collection, Generable, Suite
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
-from genpy import Generable, Suite, Collection
 
-from loopy.type_inference import TypeReader
+from loopy.diagnostic import LoopyError
 from loopy.kernel.data import ValueArg
-from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
-from loopy.codegen import CodeGenerationState
-from loopy.codegen.result import CodeGenerationResult
+from loopy.type_inference import TypeReader
+
+
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+    from loopy.codegen.result import CodeGenerationResult
 
 
 # {{{ expression to code
@@ -55,10 +61,14 @@ class ExpressionToPythonMapper(StringifyMapper):
     def rec(self, expr, prec, type_context=None, needed_dtype=None):
         return super().rec(expr, prec)
 
-    __call__ = rec
+    # FIXME: Fix once mappers are precisely typed
+    __call__ = rec  # type: ignore[assignment]
 
     def map_constant(self, expr, enclosing_prec):
-        return repr(expr)
+        if isinstance(expr, np.generic):
+            return repr(expr).replace("np.", "_lpy_np.")
+        else:
+            return repr(expr)
 
     def map_variable(self, expr, enclosing_prec):
         if expr.name in self.codegen_state.var_subst_map:
@@ -155,9 +165,7 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
 
     def preamble_generators(self):
         return (
-                super().preamble_generators() + [
-                    _base_python_preamble_generator
-                    ])
+                [*super().preamble_generators(), _base_python_preamble_generator])
 
     # {{{ code generation guts
 
@@ -169,7 +177,7 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], None]:
+            ) -> tuple[Sequence[tuple[str, str]], Generable | None]:
         return [], None
 
     def get_function_definition(self, codegen_state, codegen_result,
@@ -190,8 +198,8 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
 
         result = []
 
-        from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
+        from pymbolic.mapper.stringifier import PREC_NONE
 
         for tv in sorted(
                 kernel.temporary_variables.values(),
@@ -229,8 +237,8 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
             lbound, ubound, inner, hints):
         ecm = codegen_state.expression_to_code_mapper
 
-        from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
+        from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
 
         if hints:
             raise ValueError("hints for python loops not supported")
@@ -274,8 +282,8 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         if insn.atomicity:
             raise NotImplementedError("atomic ops in Python")
 
-        from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
+        from pymbolic.mapper.stringifier import PREC_NONE
 
         return Assign(
                 ecm(insn.assignee, prec=PREC_NONE, type_context=None),

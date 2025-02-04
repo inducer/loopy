@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -20,28 +23,28 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import List
 import collections.abc as abc
+import logging
 from functools import cached_property
-
-from immutables import Map
-import islpy as isl
-import numpy as np
-from pytools import memoize_method, ProcessLogger
-from pytools.persistent_dict import (
-        KeyBuilder as KeyBuilderBase, WriteOncePersistentDict)
-from loopy.symbolic import (UncachedWalkMapper as LoopyWalkMapper,
-                            RuleAwareIdentityMapper)
-from pymbolic.mapper.persistent_hash import (
-        PersistentHashWalkMapper as PersistentHashWalkMapperBase)
 from sys import intern
 
-import logging
+import numpy as np
+from constantdict import constantdict
+
+import islpy as isl
+from pytools import ProcessLogger, memoize_method
+from pytools.persistent_dict import (
+    KeyBuilder as KeyBuilderBase,
+    WriteOncePersistentDict,
+)
+
+from .symbolic import (
+    RuleAwareIdentityMapper,
+)
+from .typing import is_integer  # noqa: F401
+
+
 logger = logging.getLogger(__name__)
-
-
-def is_integer(obj):
-    return isinstance(obj, (int, np.integer))
 
 
 def update_persistent_hash(obj, key_hash, key_builder):
@@ -57,33 +60,6 @@ def update_persistent_hash(obj, key_hash, key_builder):
 
 # {{{ custom KeyBuilder subclass
 
-class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
-    """A subclass of :class:`loopy.symbolic.WalkMapper` for constructing
-    persistent hash keys for use with
-    :class:`pytools.persistent_dict.PersistentDict`.
-
-    See also :meth:`LoopyKeyBuilder.update_for_pymbolic_expression`.
-    """
-
-    def __init__(self, key_hash):
-        LoopyWalkMapper.__init__(self)
-        PersistentHashWalkMapperBase.__init__(self, key_hash)
-
-    def map_reduction(self, expr, *args):
-        if not self.visit(expr):
-            return
-
-        self.key_hash.update(type(expr.operation).__name__.encode("utf-8"))
-        self.rec(expr.expr, *args)
-
-    def map_foreign(self, expr, *args, **kwargs):
-        """Mapper method dispatch for non-:mod:`pymbolic` objects."""
-        if expr is None:
-            self.key_hash.update(b"<None>")
-        else:
-            PersistentHashWalkMapperBase.map_foreign(self, expr, *args, **kwargs)
-
-
 class LoopyKeyBuilder(KeyBuilderBase):
     """A custom :class:`pytools.persistent_dict.KeyBuilder` subclass
     for objects within :mod:`loopy`.
@@ -94,14 +70,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
     update_for_list = KeyBuilderBase.update_for_tuple
     update_for_set = KeyBuilderBase.update_for_frozenset
 
-    def update_for_dict(self, key_hash, key):
-        from pytools import unordered_hash
-        unordered_hash(
-            key_hash,
-            (self.rec(self.new_hash(), (k, v)).digest()
-                for k, v in key.items()))
-
-    update_for_defaultdict = update_for_dict
+    update_for_dict = KeyBuilderBase.update_for_constantdict
+    update_for_defaultdict = KeyBuilderBase.update_for_constantdict
 
     def update_for_BasicSet(self, key_hash, key):  # noqa
         from islpy import Printer
@@ -110,35 +80,10 @@ class LoopyKeyBuilder(KeyBuilderBase):
         key_hash.update(prn.get_str().encode("utf8"))
 
     def update_for_Map(self, key_hash, key):  # noqa
-        if isinstance(key, Map):
-            self.update_for_dict(key_hash, key)
-        elif isinstance(key, isl.Map):
+        if isinstance(key, isl.Map):
             self.update_for_BasicSet(key_hash, key)
         else:
             raise AssertionError()
-
-    def update_for_pymbolic_expression(self, key_hash, key):
-        if key is None:
-            self.update_for_NoneType(key_hash, key)
-        else:
-            PersistentHashWalkMapper(key_hash)(key)
-
-    update_for_PMap = update_for_dict  # noqa: N815
-
-
-class PymbolicExpressionHashWrapper:
-    def __init__(self, expression):
-        self.expression = expression
-
-    def __eq__(self, other):
-        return (type(self) is type(other)
-                and self.expression == other.expression)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        key_builder.update_for_pymbolic_expression(key_hash, self.expression)
 
 # }}}
 
@@ -175,11 +120,6 @@ class LoopyEqKeyBuilder:
     def update_for_field(self, field_name, value):
         self.field_dict[field_name] = value
 
-    def update_for_pymbolic_field(self, field_name, value):
-        from loopy.symbolic import EqualityPreservingStringifyMapper
-        self.field_dict[field_name] = \
-                EqualityPreservingStringifyMapper()(value).encode("utf-8")
-
     def key(self):
         """A key suitable for equality comparison."""
         return (self.class_.__name__.encode("utf-8"), self.field_dict)
@@ -194,8 +134,8 @@ class LoopyEqKeyBuilder:
         kb = LoopyKeyBuilder()
         # Build the key. For faster hashing, avoid hashing field names.
         key = (
-            (self.class_.__name__.encode("utf-8"),) +
-            tuple(self.field_dict[k] for k in sorted(self.field_dict.keys())))
+            (self.class_.__name__.encode("utf-8"),
+                *(self.field_dict[k] for k in sorted(self.field_dict.keys()))))
 
         return kb(key)
 
@@ -300,25 +240,14 @@ def build_ispc_shared_lib(
 
     from subprocess import check_call
 
-    ispc_cmd = ([ispc_bin,
-                "--pic",
-                "-o", "ispc.o"]
-            + ispc_options
-            + list(ispc_source_names))
+    ispc_cmd = ([ispc_bin, "--pic", "-o", "ispc.o", *ispc_options, *ispc_source_names])
     if not quiet:
         print(" ".join(ispc_cmd))
 
     check_call(ispc_cmd, cwd=cwd)
 
-    cxx_cmd = ([
-                cxx_bin,
-                "-shared", "-Wl,--export-dynamic",
-                "-fPIC",
-                "-oshared.so",
-                "ispc.o",
-                ]
-            + cxx_options
-            + list(cxx_source_names))
+    cxx_cmd = ([cxx_bin, "-shared", "-Wl,--export-dynamic", "-fPIC", "-oshared.so",
+        "ispc.o", *cxx_options, *cxx_source_names])
 
     check_call(cxx_cmd, cwd=cwd)
 
@@ -337,7 +266,7 @@ def address_from_numpy(obj):
     if ary_intf is None:
         raise RuntimeError("no array interface")
 
-    buf_base, is_read_only = ary_intf["data"]
+    buf_base, _is_read_only = ary_intf["data"]
     return buf_base + ary_intf.get("offset", 0)
 
 
@@ -374,10 +303,10 @@ def empty_aligned(shape, dtype, order="C", n=64):
 
     # We now need to know how to offset base_ary
     # so it is correctly aligned
-    _array_aligned_offset = (n-address_from_numpy(base_ary)) % n
+    array_aligned_offset = (n-address_from_numpy(base_ary)) % n
 
     array = np.frombuffer(
-            base_ary[_array_aligned_offset:_array_aligned_offset-n].data,
+            base_ary[array_aligned_offset:array_aligned_offset-n].data,
             dtype=dtype).reshape(shape, order=order)
 
     return array
@@ -405,6 +334,9 @@ class _PickledObject:
 
     def __getstate__(self):
         return {"objstring": self.objstring}
+
+    def __repr__(self) -> str:
+        return type(self).__name__ + "(" + repr(self.unpickle()) + ")"
 
 
 class _PickledObjectWithEqAndPersistentHashKeys(_PickledObject):
@@ -464,6 +396,9 @@ class LazilyUnpicklingDict(abc.MutableMapping):
             key: _PickledObject(val)
             for key, val in self._map.items()}}
 
+    def __repr__(self) -> str:
+        return type(self).__name__ + "(" + repr(self._map) + ")"
+
 # }}}
 
 
@@ -501,6 +436,9 @@ class LazilyUnpicklingList(abc.MutableSequence):
 
     def __mul__(self, other):
         return self._list * other
+
+    def __repr__(self) -> str:
+        return type(self).__name__ + "(" + repr(self._list) + ")"
 
 
 class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
@@ -584,7 +522,7 @@ class Optional:
         The value, if present.
     """
 
-    __slots__ = ("has_value", "_value")
+    __slots__ = ("_value", "has_value")
 
     def __init__(self, value=_no_value):
         self.has_value = value is not _no_value
@@ -645,7 +583,7 @@ class Optional:
 
 
 def unpickles_equally(obj):
-    from pickle import loads, dumps
+    from pickle import dumps, loads
     return loads(dumps(obj)) == obj
 
 
@@ -702,8 +640,8 @@ class _CallablesUnresolver(RuleAwareIdentityMapper):
 
 
 def _unresolve_callables(kernel, callables_table):
-    from loopy.symbolic import SubstitutionRuleMappingContext
     from loopy.kernel import KernelState
+    from loopy.symbolic import SubstitutionRuleMappingContext
 
     vng = kernel.get_var_name_generator()
     rule_mapping_context = SubstitutionRuleMappingContext(kernel.substitutions,
@@ -719,7 +657,8 @@ def _unresolve_callables(kernel, callables_table):
 
 def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
     from mako.template import Template
-    from loopy.kernel.instruction import MultiAssignmentBase, BarrierInstruction
+
+    from loopy.kernel.instruction import BarrierInstruction, MultiAssignmentBase
 
     options = {}  # options: mapping from insn_id to str of options
 
@@ -740,8 +679,6 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
                 option += "atomic, "
         elif isinstance(insn, BarrierInstruction):
             option += (f"mem_kind={insn.mem_kind}, ")
-        else:
-            pass
 
         options[insn.id] = option[:-2]  # get rid of the trailing ", "
 
@@ -859,7 +796,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
                                                                .callables_table))
                      for name, clbl in t_unit.callables_table.items()
                      if isinstance(clbl, CallableKernel)}
-    t_unit = t_unit.copy(callables_table=Map(new_callables))
+    t_unit = t_unit.copy(callables_table=constantdict(new_callables))
 
     knl_python_code_srcs = [_kernel_to_python(clbl.subkernel,
                                               name in t_unit.entrypoints,
@@ -874,9 +811,9 @@ def t_unit_to_python(t_unit, var_name="t_unit",
         "import loopy as lp",
         "import numpy as np",
         "from pymbolic.primitives import *",
-        "import immutables",
+        "from constantdict import constantdict",
         ])
-    body_str = "\n".join(knl_python_code_srcs + ["\n", merge_stmt])
+    body_str = "\n".join([*knl_python_code_srcs, "\n", merge_stmt])
 
     python_code = "\n".join([preamble_str, "\n", body_str])
     assert _is_generated_t_unit_the_same(python_code, var_name, t_unit)
@@ -891,7 +828,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
 
 # {{{ cache management
 
-caches: List[WriteOncePersistentDict] = []
+caches: list[WriteOncePersistentDict] = []
 
 
 def clear_in_mem_caches() -> None:
@@ -904,19 +841,21 @@ def clear_in_mem_caches() -> None:
 # {{{ memoize_on_disk
 
 def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
-    from loopy.version import DATA_MODEL_VERSION
     from functools import wraps
+
     from pytools.persistent_dict import WriteOncePersistentDict
-    from loopy.translation_unit import TranslationUnit
+
     from loopy.kernel import LoopKernel
-    import pymbolic.primitives as prim
+    from loopy.translation_unit import TranslationUnit
+    from loopy.version import DATA_MODEL_VERSION
 
     transform_cache = WriteOncePersistentDict(
         ("loopy-memoize-cache-"
             f"{func.__name__}-"
             f"{key_builder_t.__qualname__}.{key_builder_t.__name__}"
             f"-v0-{DATA_MODEL_VERSION}"),
-        key_builder=key_builder_t())
+        key_builder=key_builder_t(),
+        safe_sync=False)
 
     caches.append(transform_cache)
 
@@ -928,17 +867,7 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
                 or kwargs.pop("_no_memoize_on_disk", False)):
             return func(*args, **kwargs)
 
-        def _get_persistent_hashable_arg(arg):
-            if isinstance(arg, prim.Expression):
-                return PymbolicExpressionHashWrapper(arg)
-            else:
-                return arg
-
-        cache_key = (func.__qualname__, func.__name__,
-                     tuple(_get_persistent_hashable_arg(arg)
-                           for arg in args),
-                     {kw: _get_persistent_hashable_arg(arg)
-                      for kw, arg in kwargs.items()})
+        cache_key = (func.__qualname__, func.__name__, args, kwargs)
 
         try:
             result = transform_cache[cache_key]
@@ -965,5 +894,14 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     return wrapper
 
 # }}}
+
+
+def is_hashable(o: object) -> bool:
+    try:
+        hash(o)
+    except TypeError:
+        return False
+    return True
+
 
 # vim: fdm=marker

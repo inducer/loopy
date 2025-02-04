@@ -1,7 +1,4 @@
-from __future__ import annotations
-
-
-__copyright__ = "Copyright (C) 2009 Andreas Kloeckner"
+__copyright__ = "Copyright (C) 2022 University of Illinois Board of Trustees"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -23,10 +20,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
-class TranslatorWarning(UserWarning):
-    pass
+from loopy.schedule.tree import Tree
 
 
-class TranslationError(RuntimeError):
-    pass
+def test_tree_simple():
+    tree = Tree.from_root("")
+
+    tree = tree.add_node("bar", parent="")
+    tree = tree.add_node("baz", parent="bar")
+
+    assert tree.depth("") == 0
+    assert tree.depth("bar") == 1
+    assert tree.depth("baz") == 2
+
+    assert "" in tree
+    assert "bar" in tree
+    assert "baz" in tree
+    assert "foo" not in tree
+
+    tree = tree.replace_node("bar", "foo")
+    assert "bar" not in tree
+    assert "foo" in tree
+
+    tree = tree.move_node("baz", new_parent="")
+    assert tree.depth("baz") == 1

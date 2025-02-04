@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2016 Andreas Kloeckner"
 
 __license__ = """
@@ -20,18 +23,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import (Any, Sequence, Mapping, Tuple, Optional, TYPE_CHECKING, Union,
-                    Dict, List)
 from dataclasses import dataclass, replace
-
-import islpy as isl
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Mapping,
+    Sequence,
+)
 
 
 if TYPE_CHECKING:
+    import islpy
+
     from loopy.codegen import CodeGenerationState
 
 
-def process_preambles(preambles: Sequence[Tuple[int, str]]) -> Sequence[str]:
+def process_preambles(preambles: Sequence[tuple[int, str]]) -> Sequence[str]:
     seen_preamble_tags = set()
     dedup_preambles = []
 
@@ -50,8 +57,6 @@ def process_preambles(preambles: Sequence[Tuple[int, str]]) -> Sequence[str]:
 
 __doc__ = """
 .. currentmodule:: loopy.codegen.result
-
-.. autoclass:: GeneratedProgram
 
 .. autoclass:: CodeGenerationResult
 
@@ -85,9 +90,9 @@ class GeneratedProgram:
     name: str
     is_device_program: bool
     ast: Any
-    body_ast: Optional[Any] = None
+    body_ast: Any | None = None
 
-    def copy(self, **kwargs: Any) -> "GeneratedProgram":
+    def copy(self, **kwargs: Any) -> GeneratedProgram:
         return replace(self, **kwargs)
 
 
@@ -112,13 +117,13 @@ class CodeGenerationResult:
     .. automethod:: device_code
     .. automethod:: all_code
     """
-    host_program: Optional[GeneratedProgram]
+    host_program: GeneratedProgram | None
     device_programs: Sequence[GeneratedProgram]
-    implemented_domains: Mapping[str, isl.Set]
-    host_preambles: Sequence[Tuple[str, str]] = ()
-    device_preambles: Sequence[Tuple[str, str]] = ()
+    implemented_domains: Mapping[str, islpy.Set]
+    host_preambles: Sequence[tuple[str, str]] = ()
+    device_preambles: Sequence[tuple[str, str]] = ()
 
-    def copy(self, **kwargs: Any) -> "CodeGenerationResult":
+    def copy(self, **kwargs: Any) -> CodeGenerationResult:
         return replace(self, **kwargs)
 
     @staticmethod
@@ -176,7 +181,7 @@ class CodeGenerationResult:
                 + str(self.host_program.ast))
 
     def current_program(
-            self, codegen_state: "CodeGenerationState") -> GeneratedProgram:
+            self, codegen_state: CodeGenerationState) -> GeneratedProgram:
         if codegen_state.is_generating_device_code:
             if self.device_programs:
                 result = self.device_programs[-1]
@@ -201,9 +206,7 @@ class CodeGenerationResult:
             assert program.is_device_program
             return self.copy(
                     device_programs=(
-                        list(self.device_programs[:-1])
-                        +
-                        [program]))
+                        [*list(self.device_programs[:-1]), program]))
         else:
             assert program.name == codegen_state.gen_program_name
             assert not program.is_device_program
@@ -224,8 +227,8 @@ class CodeGenerationResult:
 # {{{ support code for AST merging
 
 def merge_codegen_results(
-        codegen_state: "CodeGenerationState",
-        elements: Sequence[Union[CodeGenerationResult, Any]], collapse=True
+        codegen_state: CodeGenerationState,
+        elements: Sequence[CodeGenerationResult | Any], collapse=True
         ) -> CodeGenerationResult:
     elements = [el for el in elements if el is not None]
 
@@ -242,9 +245,9 @@ def merge_codegen_results(
 
     ast_els = []
     new_device_programs = []
-    new_device_preambles: List[Tuple[str, str]] = []
+    new_device_preambles: list[tuple[str, str]] = []
     dev_program_names = set()
-    implemented_domains: Dict[str, isl.Set] = {}
+    implemented_domains: dict[str, islpy.Set] = {}
     codegen_result = None
 
     block_cls = codegen_state.ast_builder.ast_block_class
@@ -301,8 +304,8 @@ def merge_codegen_results(
 
 def wrap_in_if(codegen_state, condition_exprs, inner):
     if condition_exprs:
-        from pymbolic.primitives import LogicalAnd
         from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.primitives import LogicalAnd
         cur_ast = inner.current_ast(codegen_state)
         return inner.with_new_ast(
                 codegen_state,

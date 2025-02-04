@@ -1,6 +1,5 @@
-"""Implementation tagging of array axes."""
-
 from __future__ import annotations
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -24,39 +23,45 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
-from typing import (cast, Optional, Tuple, Union, FrozenSet, Type, Sequence,
-        List, Callable, ClassVar, TypeVar, TYPE_CHECKING)
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    ClassVar,
+    Sequence,
+    Tuple,
+    TypeVar,
+    cast,
+)
 from warnings import warn
 
-from pytools import ImmutableRecord
-from pytools.tag import Taggable, Tag
-
 import numpy as np  # noqa
+from typing_extensions import Self, TypeAlias
+
+from pymbolic.primitives import is_arithmetic_expression
+from pytools import ImmutableRecord
+from pytools.tag import Tag, Taggable
 
 from loopy.diagnostic import LoopyError
-from loopy.tools import is_integer
-from loopy.typing import ExpressionT, ShapeType
+from loopy.symbolic import flatten
 from loopy.types import LoopyType
+from loopy.typing import Expression, ShapeType, auto, is_integer
+
 
 if TYPE_CHECKING:
-    from loopy.target import TargetBase
-    from loopy.kernel import LoopKernel
-    from loopy.kernel.data import auto, TemporaryVariable, ArrayArg
+    from pymbolic import ArithmeticExpression
+
     from loopy.codegen import VectorizationInfo
-
-if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
-    from loopy.target import TargetBase  # noqa: F811
-
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.data import ArrayArg, TemporaryVariable
+    from loopy.target import TargetBase
 
 T = TypeVar("T")
 
 
 __doc__ = """
-.. currentmodule:: loopy.kernel.array
-
 .. autoclass:: ArrayDimImplementationTag
 
 .. autoclass:: _StrideArrayDimTagBase
@@ -70,6 +75,19 @@ __doc__ = """
 .. autoclass:: VectorArrayDimTag
 
 .. autofunction:: parse_array_dim_tags
+
+Cross-references
+----------------
+
+(This section shouldn't exist: Sphinx should be able to resolve these on its own.)
+
+.. class:: ShapeType
+
+    See :class:`loopy.typing.ShapeType`
+
+.. class:: Tag
+
+    See :class:`pytools.tag.Tag`
 """
 
 
@@ -120,7 +138,7 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
 
         May be one of the following:
 
-        - A :class:`pymbolic.primitives.Expression`, including an
+        - A :data:`~pymbolic.typing.Expression`, including an
           integer, indicating the stride in units of the underlying
           array's :attr:`ArrayBase.dtype`.
 
@@ -368,7 +386,8 @@ def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False
             try:
                 dim_idx = dim_names.index(dim_name)
             except ValueError:
-                raise LoopyError("'%s' does not name an array axis" % dim_name)
+                raise LoopyError(
+                        "'%s' does not name an array axis" % dim_name) from None
 
             dim_tags[dim_idx] = val
 
@@ -578,115 +597,63 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
 # {{{ array base class (for arguments and temporary arrays)
 
-def _pymbolic_parse_if_necessary(x):
-    if isinstance(x, str):
-        from pymbolic import parse
-        return parse(x)
-    else:
-        return x
+ToShapeLikeConvertible: TypeAlias = (Tuple[Expression | str, ...]
+                | Expression | type[auto] | str | tuple[str, ...])
 
 
-def _parse_shape_or_strides(x):
-    import loopy as lp
+def _parse_shape_or_strides(
+            x: ToShapeLikeConvertible,
+        ) -> ShapeType | type[auto]:
+    from pymbolic import parse
+
     if x == "auto":
-        warn("use of 'auto' as a shape or stride won't work "
-                "any more--use loopy.auto instead",
-                stacklevel=3)
-    x = _pymbolic_parse_if_necessary(x)
-    if isinstance(x, lp.auto):
-        return x
-    assert not isinstance(x, list)
-    if not isinstance(x, tuple):
-        assert x is not lp.auto
-        x = (x,)
+        raise ValueError("use of 'auto' as a shape or stride won't work "
+                "any more--use loopy.auto instead")
 
-    return tuple(_pymbolic_parse_if_necessary(xi) for xi in x)
+    if x is auto:
+        return auto
+
+    if not isinstance(x, str):
+        x_parsed = x
+    else:
+        x_parsed = parse(x)
+
+    if isinstance(x_parsed, list):
+        raise ValueError("shape can't be a list")
+
+    if isinstance(x_parsed, tuple):
+        x_tup: tuple[Expression | str, ...] = x_parsed
+    else:
+        assert x_parsed is not auto
+        x_tup = (cast("Expression", x_parsed),)
+
+    def parse_arith(x: Expression | str) -> ArithmeticExpression:
+        if isinstance(x, str):
+            res = parse(x)
+        else:
+            res = x
+
+        # The Fortran parser may do this, but this is (deliberately) outside
+        # the behavior allowed by types, because the hope is to phase it out.
+        if x is None:
+            return x
+
+        assert is_arithmetic_expression(res)
+        return res
+
+    return tuple(parse_arith(xi) for xi in x_tup)
 
 
 class ArrayBase(ImmutableRecord, Taggable):
     """
-    .. attribute :: name
-
-    .. attribute :: dtype
-
-        The :class:`loopy.types.LoopyType` of the array. If this is *None*,
-        :mod:`loopy` will try to continue without knowing the type of this
-        array, where the idea is that precise knowledge of the type will become
-        available at invocation time.  Calling the kernel
-        (via :meth:`loopy.LoopKernel.__call__`)
-        automatically adds this type information based on invocation arguments.
-
-        Note that some transformations, such as :func:`loopy.add_padding`
-        cannot be performed without knowledge of the exact *dtype*.
-
-    .. attribute :: shape
-
-        May be one of the following:
-
-        * *None*. In this case, no shape is intended to be specified,
-          only the strides will be used to access the array. Bounds checking
-          will not be performed.
-
-        * :class:`loopy.auto`. The shape will be determined by finding the
-          access footprint.
-
-        * a tuple like like :attr:`numpy.ndarray.shape`.
-
-          Each entry of the tuple is also allowed to be a :mod:`pymbolic`
-          expression involving kernel parameters, or a (potentially-comma
-          separated) or a string that can be parsed to such an expression.
-
-          Any element of the shape tuple not used to compute strides
-          may be *None*.
-
-    .. attribute:: dim_tags
-
-        See :ref:`data-dim-tags`.
-
-    .. attribute:: offset
-
-        Offset from the beginning of the buffer to the point from
-        which the strides are counted, in units of the :attr:`dtype`.
-        May be one of
-
-            * 0 or None
-            * a string (that is interpreted as an argument name).
-            * a pymbolic expression
-            * :class:`loopy.auto`, in which case an offset argument
-              is added automatically, immediately following this argument.
-
-    .. attribute:: dim_names
-
-        A tuple of strings providing names for the array axes, or *None*.
-        If given, must have the same number of entries as :attr:`dim_tags`
-        and :attr:`dim_tags`. These do not live in any particular namespace
-        (i.e. collide with no other names) and serve a purely
-        informational/documentational purpose. On occasion, they are used
-        to generate more informative names than could be achieved by
-        axis numbers.
-
-    .. attribute:: alignment
-
-        Memory alignment of the array in bytes. For temporary arrays,
-        this ensures they are allocated with this alignment. For arguments,
-        this entails a promise that the incoming array obeys this alignment
-        restriction.
-
-        Defaults to *None*.
-
-        If an integer N is given, the array would be declared
-        with ``__attribute__((aligned(N)))`` in code generation for
-        :class:`loopy.CFamilyTarget`.
-
-        .. versionadded:: 2018.1
-
-    .. attribute:: tags
-
-        A (possibly empty) frozenset of instances of
-        :class:`pytools.tag.Tag` intended for
-        consumption by an application.
-
-        .. versionadded:: 2020.2.2
+    .. autoattribute:: name
+    .. autoattribute:: dtype
+    .. autoattribute:: shape
+    .. autoattribute:: dim_tags
+    .. autoattribute:: offset
+    .. autoattribute:: dim_names
+    .. autoattribute:: alignment
+    .. autoattribute:: tags
 
     .. automethod:: __init__
     .. automethod:: __eq__
@@ -697,18 +664,93 @@ class ArrayBase(ImmutableRecord, Taggable):
     (supports persistent hashing)
     """
     name: str
-    dtype: Optional[LoopyType]
-    shape: Union[ShapeType, Type["auto"], None]
-    dim_tags: Optional[Sequence[ArrayDimImplementationTag]]
-    offset: Union[ExpressionT, str, None]
-    dim_names: Optional[Tuple[str, ...]]
-    alignment: Optional[int]
-    tags: FrozenSet[Tag]
+
+    dtype: LoopyType | None
+    """The :class:`loopy.types.LoopyType` of the array. If this is *None*,
+    :mod:`loopy` will try to continue without knowing the type of this
+    array, where the idea is that precise knowledge of the type will become
+    available at invocation time.  Calling the kernel
+    (via :meth:`loopy.LoopKernel.__call__`)
+    automatically adds this type information based on invocation arguments.
+
+    Note that some transformations, such as :func:`loopy.add_padding`
+    cannot be performed without knowledge of the exact *dtype*.
+    """
+
+    shape: ShapeType | type[auto] | None
+    """
+    May be one of the following:
+
+    * *None*. In this case, no shape is intended to be specified,
+      only the strides will be used to access the array. Bounds checking
+      will not be performed.
+
+    * :class:`loopy.auto`. The shape will be determined by finding the
+      access footprint.
+
+    * a tuple like like :attr:`numpy.ndarray.shape`.
+
+      Each entry of the tuple is also allowed to be a :mod:`pymbolic`
+      expression involving kernel parameters, or a (potentially-comma
+      separated) or a string that can be parsed to such an expression.
+
+      Any element of the shape tuple not used to compute strides
+      may be *None*.
+      """
+
+    dim_tags: Sequence[ArrayDimImplementationTag] | None
+    """See :ref:`data-dim-tags`.
+    """
+
+    offset: Expression | str | None
+    """Offset from the beginning of the buffer to the point from
+    which the strides are counted, in units of the :attr:`dtype`.
+    May be one of
+
+    * 0 or None
+    * a string (that is interpreted as an argument name).
+    * a pymbolic expression
+    * :class:`loopy.auto`, in which case an offset argument
+      is added automatically, immediately following this argument.
+    """
+
+    dim_names: tuple[str, ...] | None
+    """A tuple of strings providing names for the array axes, or *None*.
+    If given, must have the same number of entries as :attr:`dim_tags`
+    and :attr:`dim_tags`. These do not live in any particular namespace
+    (i.e. collide with no other names) and serve a purely
+    informational/documentational purpose. On occasion, they are used
+    to generate more informative names than could be achieved by
+    axis numbers.
+    """
+
+    alignment: int | None
+    """Memory alignment of the array in bytes. For temporary arrays,
+    this ensures they are allocated with this alignment. For arguments,
+    this entails a promise that the incoming array obeys this alignment
+    restriction.
+
+    Defaults to *None*.
+
+    If an integer N is given, the array would be declared
+    with ``__attribute__((aligned(N)))`` in code generation for
+    :class:`loopy.CFamilyTarget`.
+
+    .. versionadded:: 2018.1
+    """
+
+    tags: frozenset[Tag]
+    """A (possibly empty) frozenset of instances of
+    :class:`pytools.tag.Tag` intended for
+    consumption by an application.
+
+    .. versionadded:: 2020.2.2
+    """
 
     # Note that order may also wind up in attributes, if the
     # number of dimensions has not yet been determined.
 
-    allowed_extra_kwargs: ClassVar[Tuple[str, ...]] = ()
+    allowed_extra_kwargs: ClassVar[tuple[str, ...]] = ()
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
@@ -759,7 +801,6 @@ class ArrayBase(ImmutableRecord, Taggable):
                 raise TypeError("invalid kwarg: %s" % kwarg_name)
 
         import loopy as lp
-
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
                 for_atomic=for_atomic)
@@ -917,8 +958,9 @@ class ArrayBase(ImmutableRecord, Taggable):
 
     def __eq__(self, other):
         from loopy.symbolic import (
-                is_tuple_of_expressions_equal as istoee,
-                is_expression_equal as isee)
+            is_expression_equal as isee,
+            is_tuple_of_expressions_equal as istoee,
+        )
         return (
                 type(self) is type(other)
                 and self.name == other.name
@@ -990,16 +1032,6 @@ class ArrayBase(ImmutableRecord, Taggable):
     def __repr__(self):
         return "<%s>" % self.__str__()
 
-    def update_persistent_hash_for_shape(self, key_hash, key_builder, shape):
-        if isinstance(shape, tuple):
-            for shape_i in shape:
-                if shape_i is None:
-                    key_builder.rec(key_hash, shape_i)
-                else:
-                    key_builder.update_for_pymbolic_expression(key_hash, shape_i)
-        else:
-            key_builder.rec(key_hash, shape)
-
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
@@ -1008,7 +1040,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         key_builder.rec(key_hash, type(self).__name__)
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
-        self.update_persistent_hash_for_shape(key_hash, key_builder, self.shape)
+        key_builder.rec(key_hash, self.shape)
         key_builder.rec(key_hash, self.dim_tags)
         key_builder.rec(key_hash, self.offset)
         key_builder.rec(key_hash, self.dim_names)
@@ -1036,16 +1068,18 @@ class ArrayBase(ImmutableRecord, Taggable):
         else:
             return None
 
-    def map_exprs(self, mapper):
+    def map_exprs(self, mapper: Callable[[Expression], Expression]) -> Self:
         """Return a copy of self with all expressions replaced with what *mapper*
         transformed them into.
         """
         changed = False
-        kwargs = {}
+        kwargs: dict[str, Any] = {}
         import loopy as lp
 
         if self.shape is not None and self.shape is not lp.auto:
-            def none_pass_mapper(s):
+            assert isinstance(self.shape, tuple)
+
+            def none_pass_mapper(s: Expression | None) -> Expression | None:
                 if s is None:
                     return s
                 else:
@@ -1107,16 +1141,16 @@ class ArrayBase(ImmutableRecord, Taggable):
 # }}}
 
 def drop_vec_dims(
-        dim_tags: Tuple[ArrayDimImplementationTag, ...],
-        t: Tuple[T, ...]) -> Tuple[T, ...]:
+        dim_tags: tuple[ArrayDimImplementationTag, ...],
+        t: tuple[T, ...]) -> tuple[T, ...]:
     assert len(dim_tags) == len(t)
     return tuple(t_i for dim_tag, t_i in zip(dim_tags, t)
             if not isinstance(dim_tag, VectorArrayDimTag))
 
 
-def get_strides(array: ArrayBase) -> Tuple[ExpressionT, ...]:
+def get_strides(array: ArrayBase) -> tuple[Expression, ...]:
     from pymbolic import var
-    result: List[ExpressionT] = []
+    result: list[Expression] = []
 
     if array.dim_tags is None:
         return ()
@@ -1143,11 +1177,11 @@ def get_strides(array: ArrayBase) -> Tuple[ExpressionT, ...]:
 @dataclass(frozen=True)
 class AccessInfo(ImmutableRecord):
     array_name: str
-    vector_index: Optional[int]
-    subscripts: Tuple[ExpressionT, ...]
+    vector_index: int | None
+    subscripts: tuple[Expression, ...]
 
 
-def _apply_offset(sub: ExpressionT, ary: ArrayBase) -> ExpressionT:
+def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
     """
     Helper for :func:`get_access_info`.
     Augments *ary*'s subscript index expression (*sub*) with its offset info.
@@ -1155,8 +1189,9 @@ def _apply_offset(sub: ExpressionT, ary: ArrayBase) -> ExpressionT:
     :arg ary: An instance of :class:`ArrayBase`.
     :arg array_name: Name to reference *ary* by.
     """
-    import loopy as lp
     from pymbolic import var
+
+    import loopy as lp
 
     if ary.offset:
         from loopy.kernel.data import TemporaryVariable
@@ -1176,16 +1211,16 @@ def _apply_offset(sub: ExpressionT, ary: ArrayBase) -> ExpressionT:
         else:
             # assume it's an expression
             # FIXME: mypy can't figure out that ExpressionT + ExpressionT works
-            return ary.offset + sub  # type: ignore[call-overload, arg-type, operator]  # noqa: E501
+            return ary.offset + sub  # type: ignore[call-overload, arg-type, operator]
     else:
         return sub
 
 
-def get_access_info(kernel: "LoopKernel",
-        ary: Union["ArrayArg", "TemporaryVariable"],
-        index: Union[ExpressionT, Tuple[ExpressionT, ...]],
-        eval_expr: Callable[[ExpressionT], int],
-        vectorization_info: "VectorizationInfo") -> AccessInfo:
+def get_access_info(kernel: LoopKernel,
+        ary: ArrayArg | TemporaryVariable,
+        index: Expression | tuple[Expression, ...],
+        eval_expr: Callable[[Expression], int],
+        vectorization_info: VectorizationInfo) -> AccessInfo:
     """
     :arg ary: an object of type :class:`ArrayBase`
     :arg index: a tuple of indices representing a subscript into ary
@@ -1195,16 +1230,17 @@ def get_access_info(kernel: "LoopKernel",
 
     import loopy as lp
 
-    def eval_expr_assert_integer_constant(i, expr):
+    def eval_expr_assert_integer_constant(i, expr) -> int:
         from pymbolic.mapper.evaluator import UnknownVariableError
         try:
             result = eval_expr(expr)
         except UnknownVariableError as e:
+            assert ary.dim_tags is not None
             raise LoopyError("When trying to index the array '%s' along axis "
                     "%d (tagged '%s'), the index was not a compile-time "
                     "constant (but it has to be in order for code to be "
                     "generated). You likely want to unroll the iname(s) '%s'."
-                    % (ary.name, i, ary.dim_tags[i], str(e)))
+                    % (ary.name, i, ary.dim_tags[i], str(e))) from None
 
         if not is_integer(result):
             raise LoopyError("subscript '%s[%s]' has non-constant "
@@ -1237,7 +1273,7 @@ def get_access_info(kernel: "LoopKernel",
     num_target_axes = ary.num_target_axes()
 
     vector_index = None
-    subscripts: List[ExpressionT] = [0] * num_target_axes
+    subscripts: list[Expression] = [0] * num_target_axes
 
     vector_size = ary.vector_size(kernel.target)
 
@@ -1256,7 +1292,7 @@ def get_access_info(kernel: "LoopKernel",
 
         index = tuple(remaining_index)
         # only arguments (not temporaries) may be sep-tagged
-        ary = cast(ArrayArg,
+        ary = cast("ArrayArg",
             kernel.arg_dict[ary._separation_info.subarray_names[tuple(sep_index)]])
 
     # }}}
@@ -1283,7 +1319,7 @@ def get_access_info(kernel: "LoopKernel",
                         "make_temporaries_for_offsets_and_strides "
                         "during preprocessing.")
 
-            subscripts[dim_tag.target_axis] += (stride // vector_size)*idx
+            subscripts[dim_tag.target_axis] += flatten((stride // vector_size)*idx)
 
         elif isinstance(dim_tag, SeparateArrayArrayDimTag):
             raise AssertionError()

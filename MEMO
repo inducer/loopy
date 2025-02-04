@@ -7,7 +7,7 @@ Documentation Notes
 Things to consider
 ^^^^^^^^^^^^^^^^^^
 
-- Depedencies are pointwise for shared loop dimensions
+- Dependencies are pointwise for shared loop dimensions
   and global over non-shared ones (between dependent and ancestor)
 
 - multiple insns could fight over which iname gets local axis 0

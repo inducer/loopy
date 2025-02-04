@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -20,29 +23,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.kernel.function_interface import ScalarCallable
-from loopy.diagnostic import LoopyError
-from loopy.types import NumpyType
+from typing import TYPE_CHECKING
+
 import numpy as np
+from constantdict import constantdict
+
+from loopy.diagnostic import LoopyError
+from loopy.kernel.function_interface import ScalarCallable
+from loopy.types import NumpyType
+
+
+if TYPE_CHECKING:
+    from loopy.translation_unit import CallablesTable
 
 
 class MakeTupleCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, callables_table):
-        new_arg_id_to_dtype = arg_id_to_dtype.copy()
+        new_arg_id_to_dtype = constantdict(arg_id_to_dtype).mutate()
         for i in range(len(arg_id_to_dtype)):
             if i in arg_id_to_dtype and arg_id_to_dtype[i] is not None:
                 new_arg_id_to_dtype[-i-1] = new_arg_id_to_dtype[i]
 
-        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-            name_in_target="loopy_make_tuple"), callables_table)
+        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype.finish(),
+                          name_in_target="loopy_make_tuple"),
+                callables_table)
 
     def with_descrs(self, arg_id_to_descr, callables_table):
         from loopy.kernel.function_interface import ValueArgDescriptor
         new_arg_id_to_descr = {(id, ValueArgDescriptor()):
-            (-id-1, ValueArgDescriptor()) for id in arg_id_to_descr.keys()}
+            (-id-1, ValueArgDescriptor()) for id in arg_id_to_descr}
 
         return (
-                self.copy(arg_id_to_descr=new_arg_id_to_descr),
+                self.copy(arg_id_to_descr=constantdict(new_arg_id_to_descr)),
                 callables_table)
 
 
@@ -53,7 +65,7 @@ class IndexOfCallable(ScalarCallable):
                                if dtype is not None}
         new_arg_id_to_dtype[-1] = NumpyType(np.int32)
 
-        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
+        return (self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype)),
                 callables_table)
 
     def emit_call(self, expression_to_code_mapper, expression, target):
@@ -68,8 +80,9 @@ class IndexOfCallable(ScalarCallable):
 
         ary = expression_to_code_mapper.find_array(arg)
 
-        from loopy.kernel.array import get_access_info
         from pymbolic import evaluate
+
+        from loopy.kernel.array import get_access_info
         access_info = get_access_info(expression_to_code_mapper.kernel,
                 ary, arg.index, lambda expr: evaluate(expr,
                     expression_to_code_mapper.codegen_state.var_subst_map),
@@ -105,7 +118,7 @@ class IndexOfCallable(ScalarCallable):
                 target), True
 
 
-def get_loopy_callables():
+def get_loopy_callables() -> CallablesTable:
     """
     Returns a mapping from function ids to corresponding
     :class:`loopy.kernel.function_interface.InKernelCallable` for functions
@@ -116,13 +129,11 @@ def get_loopy_callables():
     - callables that have a predefined meaning in :mod:`loo.py` like
       ``make_tuple``, ``index_of``, ``indexof_vec``.
     """
-    known_callables = {
+    return {
             "make_tuple": MakeTupleCallable(name="make_tuple"),
             "indexof": IndexOfCallable(name="indexof"),
             "indexof_vec": IndexOfCallable(name="indexof_vec"),
             }
-
-    return known_callables
 
 
 # vim: foldmethod=marker

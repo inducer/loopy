@@ -1,3 +1,18 @@
+"""
+.. autoclass:: Expression
+.. autoclass:: ShapeType
+.. autodata:: InameStr
+.. autodata:: InameStrSet
+
+.. currentmodule:: loopy
+
+.. autoclass:: auto
+"""
+
+
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2022 University of Illinois Board of Trustees"
 
 __license__ = """
@@ -21,33 +36,52 @@ THE SOFTWARE.
 """
 
 
-from typing import Union, Tuple, TypeVar, Optional
+from typing import Tuple, TypeVar
 
 import numpy as np
+from typing_extensions import TypeAlias, TypeIs
 
-from pymbolic.primitives import Expression
-
-IntegralT = Union[int, np.int8, np.int16, np.int32, np.int64, np.uint8,
-                  np.uint16, np.uint32, np.uint64]
-FloatT = Union[float, complex, np.float32, np.float64, np.complex64,
-        np.complex128]
+from pymbolic.primitives import ExpressionNode
+from pymbolic.typing import ArithmeticExpression, Expression, Integer
 
 
-ExpressionT = Union[IntegralT, FloatT, Expression]
-ShapeType = Tuple[ExpressionT, ...]
-StridesType = ShapeType
+# The Fortran parser may insert dimensions of 'None', but I'd like to phase
+# that out, so we're not encoding that in the type.
+ShapeType: TypeAlias = Tuple[ArithmeticExpression, ...]
+StridesType: TypeAlias = ShapeType
+
+InameStr: TypeAlias = str
+InameStrSet: TypeAlias = frozenset[InameStr]
 
 
 class auto:  # noqa
     """A generic placeholder object for something that should be automatically
     determined.  See, for example, the *shape* or *strides* argument of
-    :class:`ArrayArg`.
+    :class:`~loopy.ArrayArg`.
     """
 
 
 T = TypeVar("T")
 
 
-def not_none(obj: Optional[T]) -> T:
+def not_none(obj: T | None) -> T:
     assert obj is not None
     return obj
+
+
+def is_integer(obj: object) -> TypeIs[int | np.integer]:
+    return isinstance(obj, (int, np.integer))
+
+
+def integer_or_err(expr: Expression) -> Integer:
+    if isinstance(expr, (int, np.integer)):
+        return expr
+    else:
+        raise ValueError(f"expected integer, got {type(expr)}")
+
+
+def integer_expr_or_err(expr: Expression) -> Integer | ExpressionNode:
+    if isinstance(expr, (int, np.integer, ExpressionNode)):
+        return expr
+    else:
+        raise ValueError(f"expected integer or expression, got {type(expr)}")

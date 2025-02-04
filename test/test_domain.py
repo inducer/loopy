@@ -20,15 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
-import numpy as np
-import loopy as lp
-import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
-import pytest  # noqa
-
 import logging
+import sys
+
+import numpy as np
+import pytest
+
+import pyopencl as cl
+import pyopencl.clmath
+import pyopencl.clrandom
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -38,13 +42,13 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
-        ]
+    "cl",  # 'cl.create_some_context'
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
@@ -264,7 +268,7 @@ def test_independent_multi_domain(ctx_factory):
     assert knl["loopy_kernel"].parents_per_domain() == 2*[None]
 
     n = 50
-    evt, (a, b) = knl(queue, n=n, out_host=True)
+    _evt, (a, b) = knl(queue, n=n, out_host=True)
 
     assert a.shape == (50,)
     assert b.shape == (50,)
@@ -301,11 +305,11 @@ def test_equality_constraints(ctx_factory):
 
     knl = lp.add_inames_to_insn(knl, "j_inner, j_outer", "id:set_b")
 
-    #print(knl)
-    #print(knl.domains[0].detect_equalities())
+    # print(knl)
+    # print(knl.domains[0].detect_equalities())
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n), print_ref_code=True)
+            parameters={"n": n}, print_ref_code=True)
 
 
 def test_stride(ctx_factory):
@@ -331,7 +335,7 @@ def test_stride(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n))
+            parameters={"n": n})
 
 
 def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
@@ -359,7 +363,7 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n))
+            parameters={"n": n})
 
 
 def test_triangle_domain():

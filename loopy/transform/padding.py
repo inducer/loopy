@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,13 +25,12 @@ THE SOFTWARE.
 
 
 from pytools import MovedFunctionDeprecationWrapper
-from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
-from loopy.translation_unit import (for_each_kernel,
-                                    TranslationUnit)
+from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
-from loopy.diagnostic import LoopyError
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
+from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 class SubscriptRewriter(RuleAwareIdentityMapper):
@@ -48,10 +50,9 @@ class SubscriptRewriter(RuleAwareIdentityMapper):
             # While subst rules are not allowed in assignees, the mapper
             # may perform tasks entirely unrelated to subst rules, so
             # we must map assignees, too.
-            insn if not kernel.substitutions and not within(kernel, insn, ()) \
-            and not any(name in self.arg_names for name in \
-                insn.dependency_names()) else
-            self.map_instruction(kernel,
+            insn if not kernel.substitutions and not within(kernel, insn, ())
+            and not any(name in self.arg_names for name in insn.dependency_names())
+            else self.map_instruction(kernel,
                 insn.with_transformed_expressions(
                     lambda expr: self(expr, kernel, insn)))  # noqa: B023
             for insn in kernel.instructions]

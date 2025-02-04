@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,30 +24,16 @@ THE SOFTWARE.
 """
 
 
-# {{{ find install- or run-time git revision
-
-import os
-if os.environ.get("AKPYTHON_EXEC_IMPORT_UNAVAILABLE") is not None:
-    # We're just being exec'd by setup.py. We can't import anything.
-    _git_rev = None
-
-else:
-    import loopy._git_rev as _git_rev_mod  # pylint: disable=no-name-in-module,import-error  # noqa: E501
-    _git_rev = _git_rev_mod.GIT_REVISION
-
-    # If we're running from a dev tree, the last install (and hence the most
-    # recent update of the above git rev) could have taken place very long ago.
-    from pytools import find_module_git_revision
-    _runtime_git_rev = find_module_git_revision(__file__, n_levels_up=1)
-    if _runtime_git_rev is not None:
-        _git_rev = _runtime_git_rev
-
-# }}}
+import re
+from importlib import metadata
 
 
-VERSION = (2024, 1)
-VERSION_STATUS = ""
-VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
+VERSION_TEXT = metadata.version("loopy")
+_match = re.match(r"^([0-9.]+)([a-z0-9]*?)$", VERSION_TEXT)
+assert _match is not None
+VERSION_STATUS = _match.group(2)
+VERSION = tuple(int(nr) for nr in _match.group(1).split("."))
+
 
 try:
     import islpy.version
@@ -60,8 +49,7 @@ except ImportError:
 else:
     _cgen_version = cgen.version.VERSION_TEXT
 
-DATA_MODEL_VERSION = "{}-islpy{}-cgen{}-{}-v1".format(
-        VERSION_TEXT, _islpy_version, _cgen_version, _git_rev)
+DATA_MODEL_VERSION = f"{VERSION_TEXT}-islpy{_islpy_version}-cgen{_cgen_version}-v2"
 
 
 FALLBACK_LANGUAGE_VERSION = (2018, 2)

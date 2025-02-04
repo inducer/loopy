@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -21,11 +24,14 @@ THE SOFTWARE.
 """
 
 
-from loopy.diagnostic import LoopyError
-from loopy.translation_unit import for_each_kernel
+import logging
+
 import pymbolic
 
-import logging
+from loopy.diagnostic import LoopyError
+from loopy.translation_unit import for_each_kernel
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +46,7 @@ __doc__ = """
 
 # {{{ privatize temporaries with iname
 
-from loopy.symbolic import IdentityMapper
+from loopy.symbolic import IdentityMapper, flatten
 
 
 class ExtraInameIndexInserter(IdentityMapper):
@@ -63,7 +69,7 @@ class ExtraInameIndexInserter(IdentityMapper):
 
             self.seen_priv_axis_inames.update(v.name for v in extra_idx)
 
-            new_idx = index + tuple(v - self.iname_to_lbound[v.name]
+            new_idx = index + tuple(flatten(v - self.iname_to_lbound[v.name])
                             for v in extra_idx)
 
             if len(new_idx) == 1:
@@ -78,7 +84,7 @@ class ExtraInameIndexInserter(IdentityMapper):
         else:
             self.seen_priv_axis_inames.update(v.name for v in new_idx)
 
-            new_idx = tuple(v - self.iname_to_lbound[v.name]
+            new_idx = tuple(flatten(v - self.iname_to_lbound[v.name])
                             for v in new_idx)
 
             if len(new_idx) == 1:
@@ -244,7 +250,7 @@ def privatize_temporaries_with_inames(
                     "Kernel '%s': Instruction '%s': touched variable that "
                     "(for privatization, e.g. as performed for ILP) "
                     "required iname(s) '%s', but that the instruction was not "
-                    "previously within the iname(s). To remedy this, first promote"
+                    "previously within the iname(s). To remedy this, first promote "
                     "the instruction into the iname."
                     % (kernel.name, insn.id, ", ".join(
                         eiii.seen_priv_axis_inames - insn.within_inames)))

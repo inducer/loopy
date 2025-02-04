@@ -26,7 +26,6 @@ import islpy as isl
 def test_aff_to_expr():
     s = isl.Space.create_from_names(isl.Context(), ["a", "b"])
     zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(s))
-    one = zero.set_constant_val(1)  # noqa
     a = zero.set_coefficient_val(isl.dim_type.in_, 0, 1)
     b = zero.set_coefficient_val(isl.dim_type.in_, 1, 1)
 
@@ -97,8 +96,9 @@ def test_simplify_via_aff_reproducibility():
 
 
 def test_qpolynomrial_to_expr():
-    from loopy.symbolic import qpolynomial_to_expr
     import pymbolic.primitives as p
+
+    from loopy.symbolic import qpolynomial_to_expr
 
     (_, qpoly), = isl.PwQPolynomial(
         "[i,j,k] -> { ((1/3)*i + (1/2)*j + (1/4)*k) : (4i+6j+3k) mod 12 = 0}"

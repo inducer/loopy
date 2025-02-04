@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2009 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +26,7 @@ THE SOFTWARE.
 import re
 
 from loopy.diagnostic import LoopyError
-from loopy.symbolic import IdentityMapper, FortranDivision
+from loopy.symbolic import FortranDivision, IdentityMapper
 
 
 class DivisionToFortranDivisionMapper(IdentityMapper):
@@ -62,7 +65,7 @@ class FTreeWalkerBase:
             r"^(?P<name>[_0-9a-zA-Z]+)\s*"
             r"(\((?P<shape>[-+*/0-9:a-zA-Z, \t]+)\))?"
             r"(\s*=\s*(?P<initializer>.+))?"
-            "$")
+            r"$")
 
     def parse_dimension_specs(self, node, dim_decls):
         def parse_bounds(bounds_str):
@@ -123,7 +126,7 @@ class FTreeWalkerBase:
         except Exception as e:
             raise LoopyError(
                     "Error parsing expression '%s' on line %d of '%s': %s"
-                    % (expr_str, node.item.span[0], self.filename, str(e)))
+                    % (expr_str, node.item.span[0], self.filename, str(e))) from e
 
     # }}}
 

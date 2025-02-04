@@ -1,5 +1,7 @@
-import loopy as lp
 import numpy as np
+from constantdict import constantdict
+
+import loopy as lp
 
 
 # {{{ test_barrier_in_overridden_get_grid_size_expanded_kernel
@@ -27,7 +29,7 @@ class Log2Callable(lp.ScalarCallable):
             # the types provided aren't mature enough to specialize the
             # callable
             return (
-                    self.copy(arg_id_to_dtype=arg_id_to_dtype),
+                    self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
                     callables_table)
 
         dtype = arg_id_to_dtype[0].numpy_dtype
@@ -47,8 +49,10 @@ class Log2Callable(lp.ScalarCallable):
         from loopy.types import NumpyType
         return (
                 self.copy(name_in_target=name_in_target,
-                    arg_id_to_dtype={0: NumpyType(dtype), -1:
-                        NumpyType(dtype)}),
+                    arg_id_to_dtype=constantdict({
+                        0: NumpyType(dtype),
+                        -1: NumpyType(dtype)
+                        })),
                 callables_table)
 
 

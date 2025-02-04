@@ -21,14 +21,18 @@ THE SOFTWARE.
 """
 
 
-import numpy as np
-import loopy as lp
-import pyopencl as cl  # noqa
-
-from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
-
 import logging
+
+import numpy as np
+
+import pyopencl as cl  # noqa
+from pyopencl.tools import (  # noqa
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +81,7 @@ def test_nbody(ctx_factory):
         knl = lp.add_prefetch(knl, "x[j,k]", ["j_inner", "k"],
                 ["x_fetch_j", "x_fetch_k"],
                 fetch_outer_inames="i_outer, j_outer", default_tag=None)
-        knl = lp.tag_inames(knl, dict(x_fetch_k="unr", x_fetch_j="l.0"))
+        knl = lp.tag_inames(knl, {"x_fetch_k": "unr", "x_fetch_j": "l.0"})
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
         knl = lp.prioritize_loops(knl, ["j_outer", "j_inner"])
         return knl
@@ -85,8 +89,8 @@ def test_nbody(ctx_factory):
     n = 3000
 
     for variant in [
-            #variant_1,
-            #variant_cpu,
+            # variant_1,
+            # variant_cpu,
             variant_gpu
             ]:
         variant_knl = variant(knl)

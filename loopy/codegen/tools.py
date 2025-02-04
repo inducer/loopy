@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2020 Kaushik Kulkarni"
 
 __license__ = """
@@ -20,22 +23,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass
 from functools import cached_property
+from typing import TYPE_CHECKING
+
 from pytools import memoize_method
 
-from loopy.schedule import (EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel,
-                            Barrier, BeginBlockItem, gather_schedule_block,
-                            ScheduleItem)
-from dataclasses import dataclass
-from typing import FrozenSet, List, Dict
-from loopy.kernel.instruction import InstructionBase
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import Iname
+from loopy.schedule import (
+    Barrier,
+    BeginBlockItem,
+    CallKernel,
+    EnterLoop,
+    LeaveLoop,
+    ReturnFromKernel,
+    ScheduleItem,
+    gather_schedule_block,
+)
+
+
+if TYPE_CHECKING:
+    import loopy.kernel.data
+    from loopy.kernel.instruction import InstructionBase
 
 
 __doc__ = """
-.. currentmodule:: loopy.codegen.tools
-
 .. autoclass:: KernelProxyForCodegenOperationCacheManager
 
 .. autoclass:: CodegenOperationCacheManager
@@ -48,9 +60,9 @@ class KernelProxyForCodegenOperationCacheManager:
     Proxy to :class:`loopy.LoopKernel` to be used by
     :class:`CodegenOperationCacheManager`.
     """
-    instructions: List[InstructionBase]
-    linearization: List[ScheduleItem]
-    inames: Dict[str, Iname]
+    instructions: list[InstructionBase]
+    linearization: list[ScheduleItem]
+    inames: dict[str, loopy.kernel.data.Iname]
 
     @cached_property
     def id_to_insn(self):
@@ -200,7 +212,7 @@ class CodegenOperationCacheManager:
 
     @memoize_method
     def get_concurrent_inames_in_a_callkernel(
-            self, callkernel_index: int) -> FrozenSet[str]:
+            self, callkernel_index: int) -> frozenset[str]:
         """
         Returns a :class:`frozenset` of concurrent inames in a callkernel
 

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Kaushik Kulkarni"
 
 __license__ = """
@@ -21,11 +24,12 @@ THE SOFTWARE.
 """
 
 
+from loopy.kernel import LoopKernel
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
 from loopy.translation_unit import for_each_kernel
-from loopy.kernel import LoopKernel
+
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -88,9 +92,9 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
                                         synchronization_kind=synchronization_kind,
                                         mem_kind=mem_kind)
 
-    new_kernel = kernel.copy(instructions=kernel.instructions + [barrier_to_add])
+    new_kernel = kernel.copy(instructions=[*kernel.instructions, barrier_to_add])
     if insn_after is not None:
-        new_kernel = add_dependency(kernel=new_kernel,
+        new_kernel = add_dependency(new_kernel,
                                  insn_match=insn_after,
                                  depends_on="id:"+id)
 

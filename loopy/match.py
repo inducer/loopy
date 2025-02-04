@@ -1,5 +1,33 @@
-"""Matching functionality for instruction ids and subsitution
-rule invocations stacks."""
+"""
+.. autoclass:: Matchable
+.. autoclass:: StackMatchComponent
+.. autoclass:: StackMatch
+
+.. autofunction:: parse_match
+
+.. autofunction:: parse_stack_match
+
+.. autodata:: ToStackMatchConvertible
+
+Match expressions
+^^^^^^^^^^^^^^^^^
+
+.. autoclass:: MatchExpressionBase
+.. autoclass:: All
+.. autoclass:: And
+.. autoclass:: Or
+.. autoclass:: Not
+.. autoclass:: Id
+.. autoclass:: ObjTagged
+.. autoclass:: Tagged
+.. autoclass:: Writes
+.. autoclass:: Reads
+.. autoclass:: InKernel
+.. autoclass:: Iname
+
+"""
+
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
@@ -24,49 +52,29 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from abc import abstractmethod, ABC
+import re
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import FrozenSet, List, Sequence, Tuple, Union, Protocol
 from sys import intern
+from typing import TYPE_CHECKING, Protocol, Sequence, Union
 
-from loopy.kernel import LoopKernel
+from typing_extensions import TypeAlias
+
 from loopy.kernel.instruction import InstructionBase
 
 
 NoneType = type(None)
 
 from pytools.lex import RE
-import pytools.tag
-
-__doc__ = """
-.. autoclass:: Matchable
-.. autoclass:: StackMatchComponent
-.. autoclass:: StackMatch
-
-.. autofunction:: parse_match
-
-.. autofunction:: parse_stack_match
-
-Match expressions
-^^^^^^^^^^^^^^^^^
-
-.. autoclass:: MatchExpressionBase
-.. autoclass:: All
-.. autoclass:: And
-.. autoclass:: Or
-.. autoclass:: Not
-.. autoclass:: Id
-.. autoclass:: ObjTagged
-.. autoclass:: Tagged
-.. autoclass:: Writes
-.. autoclass:: Reads
-.. autoclass:: InKernel
-.. autoclass:: Iname
-"""
 
 
-def re_from_glob(s):
-    import re
+if TYPE_CHECKING:
+    import pytools.tag
+
+    from loopy.kernel import LoopKernel
+
+
+def re_from_glob(s: str) -> re.Pattern:
     from fnmatch import translate
     return re.compile("^"+translate(s.strip())+"$")
 
@@ -132,7 +140,7 @@ class Matchable(Protocol):
     .. attribute:: tags
     """
     @property
-    def tags(self) -> FrozenSet[pytools.tag.Tag]:
+    def tags(self) -> frozenset[pytools.tag.Tag]:
         ...
 
 
@@ -393,7 +401,7 @@ def parse_match(expr):
     if isinstance(expr, MatchExpressionBase):
         return expr
 
-    from pytools.lex import LexIterator, lex, InvalidTokenError
+    from pytools.lex import InvalidTokenError, LexIterator, lex
     try:
         pstate = LexIterator(
             [(tag, s, idx, matchobj)
@@ -407,7 +415,7 @@ def parse_match(expr):
                 .format(
                     match_expr=expr,
                     err_type=type(e).__name__,
-                    err_str=str(e)))
+                    err_str=str(e))) from e
 
     if pstate.is_at_end():
         pstate.raise_parse_error("unexpected end of input")
@@ -493,7 +501,7 @@ class StackWildcardMatchComponent(StackMatchComponent):
 @dataclass(eq=True, frozen=True)
 class RuleInvocationMatchable:
     id: str
-    tags: FrozenSet[pytools.tag.Tag]
+    tags: frozenset[pytools.tag.Tag]
 
     def write_dependency_names(self):
         raise TypeError("writes: query may not be applied to rule invocations")
@@ -515,11 +523,11 @@ class StackMatch:
 
     def __call__(
             self, kernel: LoopKernel, insn: InstructionBase,
-            rule_stack: Sequence[Tuple[str, FrozenSet[pytools.tag.Tag]]]) -> bool:
+            rule_stack: Sequence[tuple[str, frozenset[pytools.tag.Tag]]]) -> bool:
         """
         :arg rule_stack: a tuple of (name, tags) rule invocation, outermost first
         """
-        stack_of_matchables: List[Matchable] = [insn]
+        stack_of_matchables: list[Matchable] = [insn]
         for id, tags in rule_stack:
             stack_of_matchables.append(RuleInvocationMatchable(id, tags))
 
@@ -530,10 +538,10 @@ class StackMatch:
 
 # {{{ stack match parsing
 
-ToStackMatchCovertible = Union[StackMatch, str, None]
+ToStackMatchConvertible: TypeAlias = Union[StackMatch, str, None]
 
 
-def parse_stack_match(smatch: ToStackMatchCovertible) -> StackMatch:
+def parse_stack_match(smatch: ToStackMatchConvertible) -> StackMatch:
     """Syntax example::
 
         ... > outer > ... > next > innermost $

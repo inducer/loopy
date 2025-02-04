@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,28 +24,32 @@ THE SOFTWARE.
 """
 
 
-from typing import Sequence, Tuple, Union, Callable, Any, Optional, TYPE_CHECKING
+import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
 import numpy as np
-from immutables import Map
 
 from pytools import memoize_method
-from pytools.codegen import Indentation, CodeGenerator
+from pytools.codegen import CodeGenerator, Indentation
 
-from loopy.types import LoopyType
-from loopy.typing import ExpressionT
-from loopy.kernel import LoopKernel
 from loopy.kernel.data import ArrayArg
-from loopy.schedule.tools import KernelArgInfo
-from loopy.target.execution import (
-    ExecutorBase, ExecutionWrapperGeneratorBase)
-import logging
+from loopy.target.execution import ExecutionWrapperGeneratorBase, ExecutorBase
+from loopy.typing import Expression, integer_expr_or_err
+
+
 logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
+    from constantdict import constantdict
+
     import pyopencl as cl
+
+    from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.types import LoopyType
 
 
 # {{{ invoker generation
@@ -57,7 +64,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     pyopencl execution
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         system_args = [
             "_lpy_cl_kernels", "queue", "allocator=None", "wait_for=None",
             # ignored if options.no_numpy
@@ -65,7 +72,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             ]
         super().__init__(system_args)
 
-    def python_dtype_str_inner(self, dtype):
+    def python_dtype_str_inner(self, dtype: np.dtype) -> str:
         import pyopencl.tools as cl_tools
         # Test for types built into numpy. dtype.isbuiltin does not work:
         # https://github.com/numpy/numpy/issues/4317
@@ -81,7 +88,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ handle non-numpy args
 
-    def handle_non_numpy_arg(self, gen, arg):
+    def handle_non_numpy_arg(self, gen: CodeGenerator, arg: ArrayArg) -> None:
         gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
         with Indentation(gen):
             gen("# retain originally passed array")
@@ -107,7 +114,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[Expression], str],
             skip_arg_checks: bool) -> None:
         """
         Handle allocation of non-specified arguments for pyopencl execution
@@ -135,9 +142,10 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 for i in range(num_axes))
         sym_shape = tuple(arg.shape[i] for i in range(num_axes))
 
-        size_expr = (sum(astrd*(alen-1)
-            for alen, astrd in zip(sym_shape, sym_ustrides))
-            + 1)
+        size_expr = 1 + sum(
+                integer_expr_or_err(astrd)*(integer_expr_or_err(alen)-1)
+                for alen, astrd in zip(sym_shape, sym_ustrides)
+            )
 
         gen("_lpy_size = %s" % strify(size_expr))
         sym_strides = tuple(itemsize*s_i for s_i in sym_ustrides)
@@ -157,7 +165,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # }}}
 
-    def target_specific_preamble(self, gen):
+    def target_specific_preamble(self, gen: CodeGenerator) -> None:
         """
         Add default pyopencl imports to preamble
         """
@@ -169,7 +177,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         from loopy.target.c.c_execution import DEF_EVEN_DIV_FUNCTION
         gen.add_to_preamble(DEF_EVEN_DIV_FUNCTION)
 
-    def initialize_system_args(self, gen):
+    def initialize_system_args(self, gen: CodeGenerator) -> None:
         """
         Initializes possibly empty system arguments
         """
@@ -198,9 +206,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
             gen("")
 
-        arg_list = (["_lpy_cl_kernels", "queue"]
-                + list(args)
-                + ["wait_for=wait_for", "allocator=allocator"])
+        arg_list = (["_lpy_cl_kernels", "queue", *args,
+            "wait_for=wait_for", "allocator=allocator"])
         gen(f"_lpy_evt = {host_program_name}({', '.join(arg_list)})")
 
         if kernel.options.cl_exec_manage_array_events:
@@ -258,7 +265,9 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # }}}
 
-    def generate_host_code(self, gen, codegen_result):
+    def generate_host_code(
+                self, gen: CodeGenerator, codegen_result: CodeGenerationResult
+            ) -> None:
         gen.add_to_preamble(codegen_result.host_code())
 
     def get_arg_pass(self, arg):
@@ -269,7 +278,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
 @dataclass(frozen=True)
 class _KernelInfo:
-    cl_kernels: "_Kernels"
+    cl_kernels: _Kernels
     invoker: Callable[..., Any]
 
 
@@ -287,7 +296,7 @@ class PyOpenCLExecutor(ExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, context: "cl.Context", t_unit, entrypoint):
+    def __init__(self, context: cl.Context, t_unit, entrypoint):
         super().__init__(t_unit, entrypoint)
 
         self.context = context
@@ -302,7 +311,7 @@ class PyOpenCLExecutor(ExecutorBase):
     @memoize_method
     def translation_unit_info(
             self,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: constantdict[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         # FIXME: now just need to add the types to the arguments
@@ -313,7 +322,7 @@ class PyOpenCLExecutor(ExecutorBase):
         dev_code = codegen_result.device_code()
 
         if t_unit[self.entrypoint].options.write_code:
-            #FIXME: redirect to "translation unit" level option as well.
+            # FIXME: redirect to "translation unit" level option as well.
             output = dev_code
             if self.t_unit[self.entrypoint].options.allow_terminal_colors:
                 output = get_highlighted_code(output)
@@ -327,13 +336,13 @@ class PyOpenCLExecutor(ExecutorBase):
                     outf.write(output)
 
         if t_unit[self.entrypoint].options.edit_code:
-            #FIXME: redirect to "translation unit" level option as well.
+            # FIXME: redirect to "translation unit" level option as well.
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
 
         import pyopencl as cl
 
-        #FIXME: redirect to "translation unit" level option as well.
+        # FIXME: redirect to "translation unit" level option as well.
         cl_program = (
                 cl.Program(self.context, dev_code)
                 .build(options=t_unit[self.entrypoint].options.build_options))

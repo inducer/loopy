@@ -1,5 +1,7 @@
-import loopy as lp
 import numpy as np
+from constantdict import constantdict
+
+import loopy as lp
 
 
 class NoRetFunction(lp.ScalarCallable):
@@ -7,7 +9,7 @@ class NoRetFunction(lp.ScalarCallable):
         if len(arg_id_to_dtype) != 0:
             raise RuntimeError("'f' cannot take any inputs.")
 
-        return (self.copy(arg_id_to_dtype=arg_id_to_dtype,
+        return (self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype),
                          name_in_target="f"),
                 callables)
 
@@ -15,7 +17,7 @@ class NoRetFunction(lp.ScalarCallable):
         if len(arg_id_to_descr) != 0:
             raise RuntimeError("'f' cannot take any inputs.")
 
-        return (self.copy(arg_id_to_descr=arg_id_to_descr),
+        return (self.copy(arg_id_to_descr=constantdict(arg_id_to_descr)),
                 callables)
 
     def generate_preambles(self, target):
@@ -38,7 +40,7 @@ class SingleArgNoRetFunction(lp.ScalarCallable):
         if input_dtype.numpy_dtype != np.float32:
             raise RuntimeError("'f' only supports f32.")
 
-        return (self.copy(arg_id_to_dtype=arg_id_to_dtype,
+        return (self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype),
                           name_in_target="f"),
                 callables)
 

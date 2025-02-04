@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Andreas Kloeckner, Kaushik Kulkarni"
 
 __license__ = """
@@ -19,94 +22,121 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, Callable, TypeVar
+from warnings import warn
 
-from typing import ClassVar, Tuple
+from constantdict import constantdict
+from typing_extensions import Self
 
-from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
-
-from loopy.tools import update_persistent_hash
-from loopy.kernel import LoopKernel
-from loopy.kernel.array import ArrayBase
-from loopy.kernel.data import ValueArg, ArrayArg
+from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
+from loopy.kernel.data import AddressSpace, ArrayArg, ValueArg
 from loopy.symbolic import DependencyMapper, WalkMapper
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from typing_extensions import Self
+
+    from loopy.kernel import LoopKernel
+    from loopy.translation_unit import CallablesTable, FunctionIdT
+    from loopy.types import LoopyType
+    from loopy.typing import ShapeType
 
 __doc__ = """
 .. currentmodule:: loopy.kernel.function_interface
 
+.. autoclass:: ArgDescriptor
 .. autoclass:: ValueArgDescriptor
-
 .. autoclass:: ArrayArgDescriptor
 
+.. currentmodule:: loopy
+
 .. autoclass:: InKernelCallable
-
 .. autoclass:: CallableKernel
-
 .. autoclass:: ScalarCallable
 """
 
 
 # {{{ argument descriptors
 
-class ValueArgDescriptor(ImmutableRecord):
-    hash_fields = ()
+ArgDescriptorT = TypeVar("ArgDescriptorT", bound="ArgDescriptor")
+
+
+class ArgDescriptor(ABC):
+    @abstractmethod
+    def map_expr(
+                self,
+                subst_mapper: Callable[[ArgDescriptorT], ArgDescriptorT]
+            ) -> Self:
+        ...
+
+    @abstractmethod
+    def depends_on(self) -> frozenset[str]:
+        ...
+
+    @abstractmethod
+    def copy(self, **kwargs: Any) -> Self:
+        ...
+
+
+@dataclass(frozen=True)
+class ValueArgDescriptor(ArgDescriptor):
 
     def map_expr(self, subst_mapper):
-        return self.copy()
+        return self
 
     def depends_on(self):
         return frozenset()
 
-    update_persistent_hash = update_persistent_hash
+    def copy(self, **kwargs: Any) -> Self:
+        return replace(self, **kwargs)
 
 
-class ArrayArgDescriptor(ImmutableRecord):
+@dataclass(frozen=True)
+class ArrayArgDescriptor(ArgDescriptor):
     """
     Records information about an array argument to an in-kernel callable. To be
     passed to and returned from
-    :meth:`InKernelCallable.with_descrs`, used for
+    :meth:`~loopy.InKernelCallable.with_descrs`, used for
     matching shape and address space of caller and callee kernels.
 
-    .. attribute:: shape
-
-        Shape of the array.
-
-    .. attribute:: address_space
-
-        An attribute of :class:`loopy.AddressSpace`.
-
-    .. attribute:: dim_tags
-
-        A tuple of instances of
-        :class:`loopy.kernel.array.ArrayDimImplementationTag`
+    .. autoattribute:: shape
+    .. autoattribute:: address_space
+    .. autoattribute:: dim_tags
 
     .. automethod:: map_expr
     .. automethod:: depends_on
     """
 
-    fields = {"shape", "address_space", "dim_tags"}
+    shape: ShapeType | None
+    address_space: AddressSpace
+    dim_tags: Sequence[ArrayDimImplementationTag] | None
+    """See :ref:`data-dim-tags`.
+    """
 
-    def __init__(self, shape, address_space, dim_tags):
+    if __debug__:
+        def __post_init__(self):
+            # {{{ sanity checks
 
-        # {{{ sanity checks
+            from loopy.kernel.array import ArrayDimImplementationTag
+            from loopy.kernel.data import auto
 
-        from loopy.kernel.array import ArrayDimImplementationTag
-        from loopy.kernel.data import auto
+            assert isinstance(self.shape, tuple) or self.shape in [None, auto]
+            assert isinstance(self.dim_tags, tuple) or self.dim_tags is None
 
-        assert isinstance(shape, tuple) or shape in [None, auto]
-        assert isinstance(dim_tags, tuple) or dim_tags is None
+            if self.dim_tags:
+                # FIXME at least vector dim tags should be supported
+                assert all(isinstance(dim_tag, ArrayDimImplementationTag) for dim_tag in
+                        self.dim_tags)
 
-        if dim_tags:
-            # FIXME at least vector dim tags should be supported
-            assert all(isinstance(dim_tag, ArrayDimImplementationTag) for dim_tag in
-                    dim_tags)
+            # }}}
 
-        # }}}
-
-        super().__init__(
-                shape=shape,
-                address_space=address_space,
-                dim_tags=dim_tags)
+    def copy(self, **kwargs: Any) -> Self:
+        return replace(self, **kwargs)
 
     def map_expr(self, f):
         """
@@ -145,11 +175,6 @@ class ArrayArgDescriptor(ImmutableRecord):
 
         return frozenset(var.name for var in result)
 
-    def update_persistent_hash(self, key_hash, key_builder):
-        key_builder.update_for_pymbolic_expression(key_hash, self.shape)
-        key_builder.rec(key_hash, self.address_space)
-        key_builder.rec(key_hash, self.dim_tags)
-
 
 class ExpressionIsScalarChecker(WalkMapper):
     def __init__(self, kernel):
@@ -168,7 +193,7 @@ class ExpressionIsScalarChecker(WalkMapper):
             self.rec(child)
 
     def map_variable(self, expr):
-        from loopy.kernel.data import TemporaryVariable, ArrayArg, auto
+        from loopy.kernel.data import ArrayArg, TemporaryVariable, auto
         if expr.name in self.kernel.all_inames():
             # inames are scalar
             return
@@ -195,9 +220,8 @@ def get_arg_descriptor_for_expression(kernel, expr):
         describing the argument expression *expr* which occurs
         in a call in the code of *kernel*.
     """
-    from loopy.symbolic import (SubArrayRef, pw_aff_to_expr,
-            SweptInameStrideCollector)
-    from loopy.kernel.data import TemporaryVariable, ArrayArg
+    from loopy.kernel.data import ArrayArg, TemporaryVariable
+    from loopy.symbolic import SubArrayRef, SweptInameStrideCollector, pw_aff_to_expr
 
     if isinstance(expr, SubArrayRef):
         name = expr.subscript.aggregate.name
@@ -281,25 +305,14 @@ def get_kw_pos_association(kernel):
 
 # {{{ template class
 
-class InKernelCallable(ImmutableRecord):
+@dataclass(frozen=True, init=False)
+class InKernelCallable(ABC):
     """
     An abstract interface to define a callable encountered in a kernel.
 
-    .. attribute:: name
-
-        The name of the callable which can be encountered within expressions in
-        a kernel.
-
-    .. attribute:: arg_id_to_dtype
-
-        A mapping which indicates the arguments types and result types of the
-        callable.
-
-    .. attribute:: arg_id_to_descr
-
-        A mapping which gives indicates the argument shape and ``dim_tags`` it
-        would be responsible for generating code.
-
+    .. autoattribute:: name
+    .. autoattribute:: arg_id_to_dtype
+    .. autoattribute:: arg_id_to_descr
 
     .. automethod:: __init__
     .. automethod:: with_types
@@ -325,17 +338,41 @@ class InKernelCallable(ImmutableRecord):
           return value with (0-based) index *i*.
 
     """
+    arg_id_to_dtype: Mapping[int | str, LoopyType] | None
+    arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None
 
-    hash_fields: ClassVar[Tuple[str, ...]] = (
-            "name", "arg_id_to_dtype", "arg_id_to_descr")
+    def __init__(self,
+                 arg_id_to_dtype: Mapping[int | str, LoopyType] | None = None,
+                 arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None = None,
+             ) -> None:
+        try:
+            hash(arg_id_to_dtype)
+        except TypeError:
+            assert arg_id_to_dtype is not None
+            arg_id_to_dtype = constantdict(arg_id_to_dtype)
+            warn("arg_id_to_dtype passed to InKernelCallable was not hashable. "
+                 "This usage is deprecated and will stop working in 2026.",
+                 DeprecationWarning, stacklevel=3)
 
-    def __init__(self, name, arg_id_to_dtype=None, arg_id_to_descr=None):
+        try:
+            hash(arg_id_to_descr)
+        except TypeError:
+            assert arg_id_to_descr is not None
+            arg_id_to_descr = constantdict(arg_id_to_descr)
+            warn("arg_id_to_descr passed to InKernelCallable was not hashable. "
+                 "This usage is deprecated and will stop working in 2026.",
+                 DeprecationWarning, stacklevel=3)
 
-        super().__init__(name=name,
-                         arg_id_to_dtype=arg_id_to_dtype,
-                         arg_id_to_descr=arg_id_to_descr)
+        object.__setattr__(self, "arg_id_to_dtype", arg_id_to_dtype)
+        object.__setattr__(self, "arg_id_to_descr", arg_id_to_descr)
 
-    update_persistent_hash = update_persistent_hash
+    if TYPE_CHECKING:
+        @property
+        def name(self) -> str:
+            raise NotImplementedError()
+
+    def copy(self, **kwargs: Any) -> Self:
+        return replace(self, **kwargs)
 
     def with_types(self, arg_id_to_dtype, clbl_inf_ctx):
         """
@@ -364,12 +401,14 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
+    @abstractmethod
     def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
         """
         :arg arg_id_to_descr: a mapping from argument identifiers (integers for
-            positional arguments) to instances of :class:`ArrayArgDescriptor`
-            or :class:`ValueArgDescriptor`. Unspecified/unknown descriptors are
-            not represented in *arg_id_to_type*.
+            positional arguments) to instances of
+            :class:`~loopy.kernel.function_interface.ArrayArgDescriptor`
+            or :class:`~loopy.kernel.function_interface.ValueArgDescriptor`.
+            Unspecified/unknown descriptors are not represented in *arg_id_to_type*.
 
             Return values are denoted by negative integers, with the first
             returned value identified as *-1*.
@@ -390,12 +429,11 @@ class InKernelCallable(ImmutableRecord):
             other callables within it, then *clbl_inf_ctx* is returned as is.
         """
 
-        raise NotImplementedError()
-
-    def is_ready_for_codegen(self):
+    def is_ready_for_codegen(self) -> bool:
         return (self.arg_id_to_dtype is not None and
                 self.arg_id_to_descr is not None)
 
+    @abstractmethod
     def get_hw_axes_sizes(self, arg_id_to_arg, space, callables_table):
         """
         Returns ``gsizes, lsizes``, where *gsizes* and *lsizes* are mappings
@@ -407,26 +445,28 @@ class InKernelCallable(ImmutableRecord):
             arguments at a call-site.
         :arg space: An instance of :class:`islpy.Space`.
         """
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def get_used_hw_axes(self, callables_table):
         """
         Returns a tuple ``group_axes_used, local_axes_used``, where
         ``(group|local)_axes_used`` are :class:`frozenset` of hardware axes
         indices used by the callable.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def generate_preambles(self, target):
         """
         Yields the target specific preamble.
         """
         raise NotImplementedError()
 
+    @abstractmethod
     def emit_call(self, expression_to_code_mapper, expression, target):
+        ...
 
-        raise NotImplementedError()
-
+    @abstractmethod
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
         """
         Returns a tuple of ``(call, assignee_is_returned)`` which is the target
@@ -441,19 +481,19 @@ class InKernelCallable(ImmutableRecord):
             in the target as the statement ``f(c, d, &a, &b)``.
         """
 
-        raise NotImplementedError()
-
-    def __hash__(self):
-        return hash(self.hash_fields)
-
+    @abstractmethod
     def with_added_arg(self, arg_dtype, arg_descr):
         """
         Registers a new argument to the callable and returns the name of the
         argument in the callable's namespace.
         """
-        raise NotImplementedError()
 
-    def get_called_callables(self, callables_table, recursive=True):
+    @abstractmethod
+    def get_called_callables(
+                             self,
+                             callables_table: CallablesTable,
+                             recursive: bool = True
+                         ) -> frozenset[FunctionIdT]:
         """
         Returns a :class:`frozenset` of callable ids called by *self* that are
         resolved via *callables_table*.
@@ -464,27 +504,27 @@ class InKernelCallable(ImmutableRecord):
             callables, else only returns the callables directly called by
             *self*.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def with_name(self, name):
         """
         Returns a copy of *self* so that it could be referred by *name*
         in a :attr:`loopy.TranslationUnit.callables_table`'s namespace.
         """
-        raise NotImplementedError
 
+    @abstractmethod
     def is_type_specialized(self):
         """
         Returns *True* iff *self*'s type signature is known, else returns
         *False*.
         """
-        raise NotImplementedError
 
 # }}}
 
 
 # {{{ scalar callable
 
+@dataclass(frozen=True, init=False)
 class ScalarCallable(InKernelCallable):
     """
     An abstract interface to a scalar callable encountered in a kernel.
@@ -505,24 +545,30 @@ class ScalarCallable(InKernelCallable):
         The :meth:`ScalarCallable.with_types` is intended to assist with type
         specialization of the function and sub-classes must define it.
     """
-    fields = {"name", "arg_id_to_dtype", "arg_id_to_descr", "name_in_target"}
-    hash_fields = InKernelCallable.hash_fields + ("name_in_target",)
+    name: str
+    name_in_target: str | None
 
-    def __init__(self, name, arg_id_to_dtype=None,
-                 arg_id_to_descr=None, name_in_target=None):
-        super().__init__(name=name,
-                         arg_id_to_dtype=arg_id_to_dtype,
-                         arg_id_to_descr=arg_id_to_descr)
-        self.name_in_target = name_in_target
+    def __init__(self,
+                 name: str,
+                 arg_id_to_dtype: Mapping[int | str, LoopyType] | None = None,
+                 arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None = None,
+                 name_in_target: str | None = None) -> None:
+        super().__init__(
+            arg_id_to_dtype=arg_id_to_dtype,
+            arg_id_to_descr=arg_id_to_descr,
+        )
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "name_in_target", name_in_target)
 
     def with_types(self, arg_id_to_dtype, callables_table):
         raise LoopyError("No type inference information present for "
                 "the function %s." % (self.name))
 
     def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
+        new_arg_id_to_descr = constantdict(arg_id_to_descr).mutate()
+        new_arg_id_to_descr[-1] = ValueArgDescriptor()
 
-        arg_id_to_descr[-1] = ValueArgDescriptor()
-        return (self.copy(arg_id_to_descr=arg_id_to_descr),
+        return (self.copy(arg_id_to_descr=new_arg_id_to_descr.finish()),
                 clbl_inf_ctx)
 
     def get_hw_axes_sizes(self, arg_id_to_arg, space, callables_table):
@@ -586,10 +632,11 @@ class ScalarCallable(InKernelCallable):
         if not isinstance(target, CFamilyTarget):
             raise NotImplementedError()
 
-        from loopy.kernel.instruction import CallInstruction
-        from loopy.expression import dtype_to_type_context
-        from pymbolic.mapper.stringifier import PREC_NONE
         from pymbolic import var
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        from loopy.expression import dtype_to_type_context
+        from loopy.kernel.instruction import CallInstruction
 
         assert isinstance(insn, CallInstruction)
         assert self.is_ready_for_codegen()
@@ -656,9 +703,10 @@ class ScalarCallable(InKernelCallable):
 
 # {{{ callable kernel
 
+@dataclass(frozen=True, init=False)
 class CallableKernel(InKernelCallable):
     """
-    Records informations about a callee kernel. Also provides interface through
+    Records information about a callee kernel. Also provides interface through
     member methods to make the callee kernel compatible to be called from a
     caller kernel.
 
@@ -669,35 +717,27 @@ class CallableKernel(InKernelCallable):
     :meth:`CallableKernel.with_descrs` should be called in order to match
     the arguments' shapes/strides across the caller and the callee kernel.
 
-    .. attribute:: subkernel
-
-        :class:`~loopy.LoopKernel` which is being called.
-
+    .. autoattribute:: subkernel
     .. automethod:: with_descrs
     .. automethod:: with_types
     """
 
-    fields = {"subkernel", "arg_id_to_dtype", "arg_id_to_descr"}
-    hash_fields = ("subkernel", "arg_id_to_dtype", "arg_id_to_descr")
+    subkernel: LoopKernel
 
-    def __init__(self, subkernel, arg_id_to_dtype=None,
-                 arg_id_to_descr=None):
-        assert isinstance(subkernel, LoopKernel)
-        super().__init__(name=subkernel.name,
+    def __init__(self,
+                 subkernel: LoopKernel,
+                 arg_id_to_dtype: Mapping[int | str, LoopyType] | None = None,
+                 arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None = None,
+             ) -> None:
+
+        super().__init__(
                          arg_id_to_dtype=arg_id_to_dtype,
                          arg_id_to_descr=arg_id_to_descr)
-        self.subkernel = subkernel
+        object.__setattr__(self, "subkernel", subkernel)
 
-    def copy(self, subkernel=None, arg_id_to_dtype=None,
-             arg_id_to_descr=None):
-        if subkernel is None:
-            subkernel = self.subkernel
-        if arg_id_to_descr is None:
-            arg_id_to_descr = self.arg_id_to_descr
-        if arg_id_to_dtype is None:
-            arg_id_to_dtype = self.arg_id_to_dtype
-
-        return CallableKernel(subkernel, arg_id_to_dtype, arg_id_to_descr)
+    @property
+    def name(self) -> str:
+        return self.subkernel.name
 
     def with_types(self, arg_id_to_dtype, callables_table):
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
@@ -715,8 +755,7 @@ class CallableKernel(InKernelCallable):
             else:
                 new_args.append(arg)
 
-        from loopy.type_inference import (
-                infer_unknown_types_for_a_single_kernel)
+        from loopy.type_inference import infer_unknown_types_for_a_single_kernel
         pre_specialized_subkernel = self.subkernel.copy(
                 args=new_args)
 
@@ -737,13 +776,14 @@ class CallableKernel(InKernelCallable):
         # Return the kernel call with specialized subkernel and the corresponding
         # new arg_id_to_dtype
         return self.copy(subkernel=specialized_kernel,
-                arg_id_to_dtype=new_arg_id_to_dtype), callables_table
+                arg_id_to_dtype=constantdict(new_arg_id_to_dtype)), callables_table
 
     def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
 
         # arg_id_to_descr expressions provided are from the caller's namespace,
         # need to register
 
+        new_arg_id_to_descr = constantdict(arg_id_to_descr).mutate()
         kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         kw_to_callee_idx = {arg.name: i
@@ -751,7 +791,7 @@ class CallableKernel(InKernelCallable):
 
         new_args = self.subkernel.args[:]
 
-        for arg_id, descr in arg_id_to_descr.items():
+        for arg_id, descr in new_arg_id_to_descr.items():
             if isinstance(arg_id, int):
                 arg_id = pos_to_kw[arg_id]
 
@@ -799,20 +839,20 @@ class CallableKernel(InKernelCallable):
         for arg in subkernel.args:
             kw = arg.name
             if isinstance(arg, ArrayBase):
-                arg_id_to_descr[kw] = (
+                new_arg_id_to_descr[kw] = (
                         ArrayArgDescriptor(shape=arg.shape,
                                            dim_tags=arg.dim_tags,
                                            address_space=arg.address_space))
             else:
                 assert isinstance(arg, ValueArg)
-                arg_id_to_descr[kw] = ValueArgDescriptor()
+                new_arg_id_to_descr[kw] = ValueArgDescriptor()
 
-            arg_id_to_descr[kw_to_pos[kw]] = arg_id_to_descr[kw]
+            new_arg_id_to_descr[kw_to_pos[kw]] = new_arg_id_to_descr[kw]
 
         # }}}
 
         return (self.copy(subkernel=subkernel,
-                          arg_id_to_descr=arg_id_to_descr),
+                          arg_id_to_descr=new_arg_id_to_descr.finish()),
                 clbl_inf_ctx)
 
     def with_added_arg(self, arg_dtype, arg_descr):
@@ -820,19 +860,21 @@ class CallableKernel(InKernelCallable):
 
         if isinstance(arg_descr, ValueArgDescriptor):
             subknl = self.subkernel.copy(
-                    args=self.subkernel.args+[
+                    args=[
+                        *self.subkernel.args,
                         ValueArg(var_name, arg_dtype, self.subkernel.target)])
 
-            kw_to_pos, pos_to_kw = get_kw_pos_association(subknl)
+            kw_to_pos, _pos_to_kw = get_kw_pos_association(subknl)
 
             if self.arg_id_to_dtype is None:
                 arg_id_to_dtype = {}
             else:
-                arg_id_to_dtype = self.arg_id_to_dtype.copy()
+                arg_id_to_dtype = dict(self.arg_id_to_dtype)
+
             if self.arg_id_to_descr is None:
                 arg_id_to_descr = {}
             else:
-                arg_id_to_descr = self.arg_id_to_descr.copy()
+                arg_id_to_descr = dict(self.arg_id_to_descr)
 
             arg_id_to_dtype[var_name] = arg_dtype
             arg_id_to_descr[var_name] = arg_descr
@@ -840,8 +882,8 @@ class CallableKernel(InKernelCallable):
             arg_id_to_descr[kw_to_pos[var_name]] = arg_descr
 
             return (self.copy(subkernel=subknl,
-                              arg_id_to_dtype=arg_id_to_dtype,
-                              arg_id_to_descr=arg_id_to_descr),
+                              arg_id_to_dtype=constantdict(arg_id_to_dtype),
+                              arg_id_to_descr=constantdict(arg_id_to_descr)),
                     var_name)
 
         else:
@@ -851,7 +893,7 @@ class CallableKernel(InKernelCallable):
 
     def with_packing_for_args(self):
         from loopy.kernel.data import AddressSpace
-        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+        _kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
 
         arg_id_to_descr = {}
 
@@ -863,7 +905,7 @@ class CallableKernel(InKernelCallable):
                     address_space=AddressSpace.GLOBAL)
 
         return self.copy(subkernel=self.subkernel,
-                arg_id_to_descr=arg_id_to_descr)
+                arg_id_to_descr=constantdict(arg_id_to_descr))
 
     def get_used_hw_axes(self, callables_table):
         gsize, lsize = self.subkernel.get_grid_size_upper_bounds(callables_table,
@@ -899,6 +941,10 @@ class CallableKernel(InKernelCallable):
         return
         yield
 
+    def emit_call(self, expression_to_code_mapper, expression, target):
+        raise LoopyError("Kernel '{self.name}' cannot be called "
+                         "from within an expression, use a call statement")
+
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
         from loopy.target.c import CFamilyTarget
         if not isinstance(target, CFamilyTarget):
@@ -915,7 +961,7 @@ class CallableKernel(InKernelCallable):
 
         parameters = list(parameters)
         par_dtypes = [self.arg_id_to_dtype[i] for i, _ in enumerate(parameters)]
-        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+        _kw_to_pos, _pos_to_kw = get_kw_pos_association(self.subkernel)
 
         # insert the assignees at the required positions
         assignee_write_count = -1
@@ -929,9 +975,10 @@ class CallableKernel(InKernelCallable):
                 assignee_write_count -= 1
 
         # no type casting in array calls
-        from loopy.expression import dtype_to_type_context
-        from pymbolic.mapper.stringifier import PREC_NONE
         from pymbolic import var
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        from loopy.expression import dtype_to_type_context
 
         tgt_parameters = [ecm(par, PREC_NONE, dtype_to_type_context(target,
                                                                     par_dtype),

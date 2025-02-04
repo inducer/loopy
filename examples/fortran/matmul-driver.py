@@ -1,8 +1,10 @@
 import numpy as np
 import numpy.linalg as la
+
 import pyopencl as cl
 import pyopencl.array
 import pyopencl.clrandom
+
 import loopy as lp
 
 

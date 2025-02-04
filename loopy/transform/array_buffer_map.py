@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
 __license__ = """
@@ -21,19 +24,23 @@ THE SOFTWARE.
 """
 
 
-from dataclasses import dataclass, replace
 from abc import ABC, abstractmethod
-from typing import Optional, Callable, Sequence, Tuple, Any
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, Callable, Sequence
+
 from typing_extensions import Self
+
 import islpy as isl
 from islpy import dim_type
-from loopy.symbolic import (get_dependencies, SubstitutionMapper)
+from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.substitutor import make_subst_func
-
 from pytools import memoize_method
-from pymbolic import var
 
-from loopy.typing import ExpressionT
+from loopy.symbolic import SubstitutionMapper, get_dependencies
+
+
+if TYPE_CHECKING:
+    from loopy.typing import Expression
 
 
 @dataclass(frozen=True)
@@ -46,7 +53,7 @@ class AccessDescriptor:
     """
 
     identifier: Any = None
-    storage_axis_exprs: Optional[Sequence[ExpressionT]] = None
+    storage_axis_exprs: Sequence[ArithmeticExpression] | None = None
 
     def copy(self, **kwargs) -> Self:
         return replace(self, **kwargs)
@@ -71,10 +78,10 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 # {{{ construct storage->sweep map
 
 def build_per_access_storage_to_domain_map(
-        storage_axis_exprs: Sequence[ExpressionT],
+        storage_axis_exprs: Sequence[Expression],
         domain: isl.BasicSet,
         storage_axis_names: Sequence[str],
-        prime_sweep_inames: Callable[[ExpressionT], ExpressionT]
+        prime_sweep_inames: Callable[[Expression], Expression]
         ) -> isl.BasicMap:
 
     map_space = domain.space
@@ -202,10 +209,10 @@ def compute_bounds(kernel, domain, stor2sweep,
 # {{{ array-to-buffer map
 
 class ArrayToBufferMapBase(ABC):
-    non1_storage_axis_names: Tuple[str, ...]
-    storage_base_indices: Tuple[ExpressionT, ...]
-    non1_storage_shape: Tuple[ExpressionT, ...]
-    non1_storage_axis_flags: Tuple[ExpressionT, ...]
+    non1_storage_axis_names: tuple[str, ...]
+    storage_base_indices: tuple[ArithmeticExpression, ...]
+    non1_storage_shape: tuple[ArithmeticExpression, ...]
+    non1_storage_axis_flags: tuple[ArithmeticExpression, ...]
 
     @abstractmethod
     def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
@@ -354,7 +361,7 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
 
         domain = domain & renamed_aug_domain
 
-        from loopy.isl_helpers import convexify, boxify
+        from loopy.isl_helpers import boxify, convexify
         if boxify_sweep:
             return boxify(self.kernel.cache_manager, domain,
                     new_non1_storage_axis_names, self.kernel.assumptions)
@@ -412,17 +419,17 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
                 except_inames=frozenset(self.primed_sweep_inames))
 
         s2s_domain = stor2sweep.domain()
-        s2s_domain, aligned_g_s2s_parm_dom = isl.align_two(
+        s2s_domain, aligned_g_s2s_param_dom = isl.align_two(
                 s2s_domain, global_s2s_par_dom)
 
         arg_restrictions = (
-                aligned_g_s2s_parm_dom
+                aligned_g_s2s_param_dom
                 .eliminate(dim_type.set, 0,
-                    aligned_g_s2s_parm_dom.dim(dim_type.set))
+                    aligned_g_s2s_param_dom.dim(dim_type.set))
                 .remove_divs())
 
         return (arg_restrictions & s2s_domain).is_subset(
-                aligned_g_s2s_parm_dom)
+                aligned_g_s2s_param_dom)
 
 
 class NoOpArrayToBufferMap(ArrayToBufferMapBase):

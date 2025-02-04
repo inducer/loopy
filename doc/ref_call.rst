@@ -26,8 +26,8 @@ call site. For example, a call to ``sin(x)`` in :mod:`loopy` is type-generic to
 begin with, but it later specialized to either ``sinf``, ``sin`` or ``sinl``
 depending on the type of its argument ``x``. A callable's behavior during type
 or shape specialization is encoded via
-:meth:`~loopy.kernel.function_interface.InKernelCallable.with_types` and
-:meth:`~loopy.kernel.function_interface.InKernelCallable.with_descrs`.
+:meth:`~loopy.InKernelCallable.with_types` and
+:meth:`~loopy.InKernelCallable.with_descrs`.
 
 
 Registering callables

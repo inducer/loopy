@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2013 Andreas Kloeckner"
 
 __license__ = """
@@ -21,10 +24,13 @@ THE SOFTWARE.
 """
 
 import logging
+
+
 logger = logging.getLogger(__name__)
 
-from loopy.diagnostic import LoopyError
 from pytools import ProcessLogger
+
+from loopy.diagnostic import LoopyError
 
 
 def c_preprocess(source, defines=None, filename=None, include_paths=None):
@@ -35,10 +41,11 @@ def c_preprocess(source, defines=None, filename=None, include_paths=None):
     :return: a string
     """
     try:
-        import ply.lex as lex
         import ply.cpp as cpp
-    except ImportError:
-        raise LoopyError("Using the C preprocessor requires PLY to be installed")
+        import ply.lex as lex
+    except ImportError as err:
+        raise LoopyError(
+             "Using the C preprocessor requires PLY to be installed") from err
 
     input_dirname = None
     if filename is None:
@@ -198,8 +205,9 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     else:
         proc_dict = transform_code_context.copy()
 
-    import loopy as lp
     import numpy as np
+
+    import loopy as lp
 
     proc_dict["lp"] = lp
     proc_dict["np"] = np
@@ -207,8 +215,8 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     proc_dict["SOURCE"] = source
     proc_dict["FILENAME"] = filename
 
-    from os.path import dirname, abspath
     from os import getcwd
+    from os.path import abspath, dirname
 
     infile_dirname = dirname(filename)
     if infile_dirname:
@@ -220,7 +228,7 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     prev_sys_path = sys.path
     try:
         if infile_dirname:
-            sys.path = prev_sys_path + [infile_dirname]
+            sys.path = [*prev_sys_path, infile_dirname]
 
         if pre_transform_code is not None:
             proc_dict["_MODULE_SOURCE_CODE"] = pre_transform_code
@@ -254,10 +262,15 @@ def _add_assignees_to_calls(knl, all_kernels):
     """
     new_insns = []
     subroutine_dict = {kernel.name: kernel for kernel in all_kernels}
-    from loopy.kernel.instruction import (Assignment, CallInstruction,
-            CInstruction, _DataObliviousInstruction,
-            modify_assignee_for_array_call)
     from pymbolic.primitives import Call, Variable
+
+    from loopy.kernel.instruction import (
+        Assignment,
+        CallInstruction,
+        CInstruction,
+        _DataObliviousInstruction,
+        modify_assignee_for_array_call,
+    )
 
     for insn in knl.instructions:
         if isinstance(insn, CallInstruction):

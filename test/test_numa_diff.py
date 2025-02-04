@@ -23,22 +23,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import pytest
-import loopy as lp
-import pyopencl as cl
-import sys
-import os
-
 import logging
+import os
+import sys
+
+import pytest
+
+import pyopencl as cl
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
-        ]
+    "cl",  # 'cl.create_some_context'
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
@@ -69,16 +73,18 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
     hsv_s = lp.tag_instructions(hsv_s, "sknl")
     hsv = lp.fuse_kernels([hsv_r, hsv_s], ["_r", "_s"])
-    #hsv = hsv_s
+    # hsv = hsv_s
     hsv = lp.add_nosync(hsv, "any", "writes:rhsQ", "writes:rhsQ", force=True)
 
     from gnuma_loopy_transforms import (
-          fix_euler_parameters,
-          set_q_storage_format, set_D_storage_format)
+        fix_euler_parameters,
+        set_D_storage_format,
+        set_q_storage_format,
+    )
 
     hsv = lp.fix_parameters(hsv, Nq=Nq)
     hsv = lp.prioritize_loops(hsv, "e,k,j,i")
-    hsv = lp.tag_inames(hsv, dict(e="g.0", j="l.1", i="l.0"))
+    hsv = lp.tag_inames(hsv, {"e": "g.0", "j": "l.1", "i": "l.0"})
     hsv = lp.assume(hsv, "elements >= 1")
 
     hsv = fix_euler_parameters(hsv, p_p0=1, p_Gamma=1.4, p_R=1)
@@ -89,7 +95,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         hsv = set_q_storage_format(hsv, name)
 
     hsv = set_D_storage_format(hsv)
-    #hsv = lp.add_prefetch(hsv, "volumeGeometricFactors")
+    # hsv = lp.add_prefetch(hsv, "volumeGeometricFactors")
 
     ref_hsv = hsv
 
@@ -162,7 +168,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
             hsv = lp.rename_iname(hsv, "n", n_iname, within="id:"+reader.id,
                   existing_ok=True)
 
-    hsv = lp.tag_inames(hsv, dict(ii="l.0", jj="l.1"))
+    hsv = lp.tag_inames(hsv, {"ii": "l.0", "jj": "l.1"})
     for iname in flux_ilp_inames:
         hsv = lp.tag_inames(hsv, {iname: "ilp"})
 
@@ -187,9 +193,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     if opt_level == 4:
         tap_hsv = hsv
-        tap_hsv = lp.tag_inames(tap_hsv, dict(
-              Q_dim_field_inner="unr",
-              Q_dim_field_outer="unr"))
+        tap_hsv = lp.tag_inames(tap_hsv, {
+              "Q_dim_field_inner": "unr",
+              "Q_dim_field_outer": "unr"})
 
     hsv = lp.buffer_array(hsv, "rhsQ", ilp_inames,
           fetch_bounding_box=True, default_tag="for",
@@ -197,11 +203,11 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     if opt_level == 5:
         tap_hsv = hsv
-        tap_hsv = lp.tag_inames(tap_hsv, dict(
-              rhsQ_init_field_inner="unr", rhsQ_store_field_inner="unr",
-              rhsQ_init_field_outer="unr", rhsQ_store_field_outer="unr",
-              Q_dim_field_inner="unr",
-              Q_dim_field_outer="unr"))
+        tap_hsv = lp.tag_inames(tap_hsv, {
+              "rhsQ_init_field_inner": "unr", "rhsQ_store_field_inner": "unr",
+              "rhsQ_init_field_outer": "unr", "rhsQ_store_field_outer": "unr",
+              "Q_dim_field_inner": "unr",
+              "Q_dim_field_outer": "unr"})
 
     # buffer axes need to be vectorized in order for this to work
     hsv = lp.tag_array_axes(hsv, "rhsQ_buf", "c?,vec,c")
@@ -213,17 +219,17 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     if opt_level == 6:
         tap_hsv = hsv
-        tap_hsv = lp.tag_inames(tap_hsv, dict(
-              rhsQ_init_field_inner="unr", rhsQ_store_field_inner="unr",
-              rhsQ_init_field_outer="unr", rhsQ_store_field_outer="unr",
-              Q_dim_field_inner="unr",
-              Q_dim_field_outer="unr"))
+        tap_hsv = lp.tag_inames(tap_hsv, {
+              "rhsQ_init_field_inner": "unr", "rhsQ_store_field_inner": "unr",
+              "rhsQ_init_field_outer": "unr", "rhsQ_store_field_outer": "unr",
+              "Q_dim_field_inner": "unr",
+              "Q_dim_field_outer": "unr"})
 
-    hsv = lp.tag_inames(hsv, dict(
-          rhsQ_init_field_inner="vec", rhsQ_store_field_inner="vec",
-          rhsQ_init_field_outer="unr", rhsQ_store_field_outer="unr",
-          Q_dim_field_inner="vec",
-          Q_dim_field_outer="unr"))
+    hsv = lp.tag_inames(hsv, {
+          "rhsQ_init_field_inner": "vec", "rhsQ_store_field_inner": "vec",
+          "rhsQ_init_field_outer": "unr", "rhsQ_store_field_outer": "unr",
+          "Q_dim_field_inner": "vec",
+          "Q_dim_field_outer": "unr"})
 
     if opt_level == 7:
         tap_hsv = hsv
@@ -235,6 +241,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
         tap_hsv = hsv
 
     hsv = tap_hsv
+
+    hsv = lp.preprocess_kernel(hsv)
+    hsv = lp.allocate_temporaries_for_base_storage(hsv)
 
     hsv = lp.set_options(hsv,
             build_options=[
@@ -257,7 +266,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     # add a simple transformation for it
     # hsv = hsv.copy(name="horizontalStrongVolumeKernel")
 
-    results = lp.auto_test_vs_ref(ref_hsv, ctx, hsv, parameters=dict(elements=300),
+    results = lp.auto_test_vs_ref(ref_hsv, ctx, hsv, parameters={"elements": 300},
             quiet=True)
 
     elapsed = results["elapsed_wall"]

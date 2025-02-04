@@ -20,15 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
-import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
 import pytest
 
-import logging
+import pyopencl as cl
+import pyopencl.clmath
+import pyopencl.clrandom
+import pyopencl.version
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -38,13 +43,13 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
+
 
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # 'cl.create_some_context'
-        ]
+    "cl",  # 'cl.create_some_context'
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
@@ -81,7 +86,7 @@ def test_empty_reduction(ctx_factory):
     print(knl)
 
     knl = lp.set_options(knl, write_code=True)
-    evt, (a,) = knl(queue)
+    _evt, (a,) = knl(queue)
 
     assert (a.get() == 0).all()
 
@@ -108,7 +113,7 @@ def test_nested_dependent_reduction(ctx_factory):
 
     n = 330
     ell = np.arange(n, dtype=np.int32)
-    evt, (a,) = knl(queue, ell=ell, n=n, out_host=True)
+    _evt, (a,) = knl(queue, ell=ell, n=n, out_host=True)
 
     tgt_result = (2*ell-1)*2*ell/2
     assert (a == tgt_result).all()
@@ -253,7 +258,6 @@ def test_global_parallel_reduction(ctx_factory, size):
 def test_global_mc_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
 
-    import pyopencl.version  # noqa
     if cl.version.VERSION < (2016, 2):
         pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
 
@@ -310,7 +314,7 @@ def test_argmax(ctx_factory):
     knl = lp.set_options(knl, write_code=True, allow_terminal_colors=True)
 
     a = np.random.randn(10000).astype(dtype)
-    evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
+    _evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
     assert max_val == np.max(np.abs(a))
     assert max_idx == np.where(np.abs(a) == max_val)[-1]
 
@@ -329,7 +333,7 @@ def test_simul_reduce(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    evt, (a, b) = knl(queue, n=n)
+    _evt, (a, b) = knl(queue, n=n)
 
     ref = sum(i*j for i in range(n) for j in range(n))
     assert a.get() == ref
@@ -354,7 +358,7 @@ def test_reduction_library(ctx_factory, op_name, np_op):
             assumptions="n>=1")
 
     a = np.random.randn(20, 10)
-    evt, (res,) = knl(queue, a=a)
+    _evt, (res,) = knl(queue, a=a)
 
     assert np.allclose(res, np_op(a, axis=1))
 
@@ -391,7 +395,7 @@ def test_double_sum_made_unique(ctx_factory):
     knl = lp.make_reduction_inames_unique(knl)
     print(knl)
 
-    evt, (a, b) = knl(queue, n=n)
+    _evt, (a, b) = knl(queue, n=n)
 
     ref = sum(i*j for i in range(n) for j in range(n))
     assert a.get() == ref
@@ -404,14 +408,14 @@ def test_parallel_multi_output_reduction(ctx_factory):
                 """
                 max_val, max_indices = argmax(i, abs(a[i]), i)
                 """)
-    knl = lp.tag_inames(knl, dict(i="l.0"))
-    knl = lp.add_dtypes(knl, dict(a=np.float64))
+    knl = lp.tag_inames(knl, {"i": "l.0"})
+    knl = lp.add_dtypes(knl, {"a": np.float64})
 
     ctx = ctx_factory()
 
     with cl.CommandQueue(ctx) as queue:
         a = np.random.rand(128)
-        out, (max_index, max_val) = knl(queue, a=a)
+        _out, (max_index, max_val) = knl(queue, a=a)
 
         assert max_val == np.max(a)
         assert max_index == np.argmax(np.abs(a))
@@ -493,7 +497,7 @@ def test_reduction_in_conditional(ctx_factory):
 
     knl = lp.preprocess_program(knl)
 
-    evt, (out,) = knl(cq)
+    _evt, (out,) = knl(cq)
 
     assert (out == 45).all()
 

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2022 Isuru Fernando"
 
 __license__ = """
@@ -25,22 +28,24 @@ __doc__ = """
 .. autofunction:: concatenate_arrays
 """
 
-from typing import Sequence, Optional, List
+from typing import Sequence
 
-from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, auto
-from loopy.symbolic import SubstitutionRuleMappingContext
-from loopy.kernel import LoopKernel
-from loopy.translation_unit import for_each_kernel
+import numpy as np
 
 import pymbolic.primitives as prim
 from pytools import all_equal
+
+from loopy.kernel import LoopKernel
+from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, auto
+from loopy.symbolic import SubstitutionRuleMappingContext
+from loopy.translation_unit import for_each_kernel
 
 
 @for_each_kernel
 def concatenate_arrays(
         kernel: LoopKernel,
         array_names: Sequence[str],
-        new_name: Optional[str] = None,
+        new_name: str | None = None,
         axis_nr: int = 0) -> LoopKernel:
     """Merges arrays (temporaries or arguments) into one array along the axis
     given by *axis_nr*.
@@ -82,9 +87,16 @@ def concatenate_arrays(
         offsets[array_name] = axis_length
         ary = kernel.temporary_variables[array_name]
         assert isinstance(ary.shape, tuple)
-        axis_length += ary.shape[axis_nr]
+        shape_ax = ary.shape[axis_nr]
+        if not isinstance(shape_ax, (int, np.integer)):
+            raise TypeError(f"array '{array_name}' axis {axis_nr+1} (1-based) has "
+                            "non-constant length.")
+        axis_length += shape_ax
 
     new_ary = arrays[0]
+    if not isinstance(new_ary.shape, tuple):
+        raise ValueError("one of the arrays has indeterminate shape")
+
     new_shape = list(new_ary.shape)
     new_shape[axis_nr] = axis_length
     new_ary = new_ary.copy(shape=tuple(new_shape))
@@ -116,7 +128,7 @@ def concatenate_arrays(
         new_tvs[new_name] = new_ary
         return kernel.copy(temporary_variables=new_tvs)
     elif isinstance(new_ary, ArrayArg):
-        new_args: List[KernelArgument] = []
+        new_args: list[KernelArgument] = []
         inserted = False
         for arg in kernel.args:
             if arg.name in array_names:

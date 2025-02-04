@@ -1,6 +1,11 @@
 Reference: Other Functionality
 ==============================
 
+Auxiliary Data Types
+--------------------
+
+.. automodule:: loopy.typing
+
 Obtaining Kernel Performance Statistics
 ---------------------------------------
 
@@ -8,6 +13,17 @@ Obtaining Kernel Performance Statistics
 
 Controlling caching
 -------------------
+
+.. envvar:: LOOPY_NO_CACHE
+.. envvar:: CG_NO_CACHE
+
+    By default, loopy will cache (on disk) the result of various stages
+    of code generation to speed up future code generation of the same kernel.
+    By setting the environment variables :envvar:`LOOPY_NO_CACHE` or
+    :envvar:`CG_NO_CACHE` to any
+    string that :func:`pytools.strtobool` evaluates as ``True``, this caching
+    is suppressed.
+
 
 .. autofunction:: set_caching_enabled
 

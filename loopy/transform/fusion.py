@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,24 +24,26 @@ THE SOFTWARE.
 """
 
 
+from constantdict import constantdict
+
 import islpy as isl
 from islpy import dim_type
-from immutables import Map
-
-from loopy.diagnostic import LoopyError
 from pymbolic import var
 
+from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
-from loopy.translation_unit import TranslationUnit
 from loopy.kernel.function_interface import CallableKernel
+from loopy.translation_unit import TranslationUnit
 
 
 def _apply_renames_in_exprs(kernel, var_renames):
-    from loopy.symbolic import (
-            SubstitutionRuleMappingContext,
-            RuleAwareSubstitutionMapper)
     from pymbolic.mapper.substitutor import make_subst_func
+
     from loopy.match import parse_stack_match
+    from loopy.symbolic import (
+        RuleAwareSubstitutionMapper,
+        SubstitutionRuleMappingContext,
+    )
 
     srmc = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
@@ -115,8 +120,8 @@ def _merge_dicts(item_name, dict_a, dict_b):
         else:
             result[k] = v
 
-    if isinstance(dict_a, Map):
-        return Map(result)
+    if isinstance(dict_a, constantdict):
+        return constantdict(result)
     else:
         return result
 
@@ -209,8 +214,7 @@ def _fuse_two_kernels(kernela, kernelb):
 
     kernelb = _apply_renames_in_exprs(kernelb, b_var_renames)
 
-    from pymbolic.imperative.transform import \
-            fuse_statement_streams_with_unique_ids
+    from pymbolic.imperative.transform import fuse_statement_streams_with_unique_ids
     new_instructions, old_b_id_to_new_b_id = \
             fuse_statement_streams_with_unique_ids(
                     kernela.instructions, kernelb.instructions)
@@ -386,7 +390,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
                 kernel.all_variable_names()
                 for kernel in kernels]
 
-        from functools import reduce, partial
+        from functools import partial, reduce
         from operator import or_
         merge_sets = partial(reduce, or_)
 
@@ -449,7 +453,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
     new_callables[result.name] = CallableKernel(result)
 
-    return TranslationUnit(callables_table=Map(new_callables),
+    return TranslationUnit(callables_table=constantdict(new_callables),
                            target=result.target,
                            entrypoints=frozenset([result.name]))
 

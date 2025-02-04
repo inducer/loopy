@@ -10,18 +10,10 @@
 .. autoclass:: OpenCLTarget
 .. autoclass:: PyOpenCLTarget
 .. autoclass:: ISPCTarget
-
-References to Canonical Names
------------------------------
-
-.. currentmodule:: loopy.target
-
-.. class:: TargetBase
-
-    See :class:`loopy.TargetBase`.
 """
 
 from __future__ import annotations
+
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -46,15 +38,22 @@ THE SOFTWARE.
 """
 
 
-from typing import (Any, Tuple, Generic, TypeVar, Sequence, ClassVar, Optional,
-        TYPE_CHECKING)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generic,
+    Sequence,
+    TypeVar,
+)
+
 
 if TYPE_CHECKING:
-    from loopy.typing import ExpressionT
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
     from loopy.target.execution import ExecutorBase
-    from loopy.translation_unit import TranslationUnit, FunctionIdT
+    from loopy.translation_unit import FunctionIdT, TranslationUnit
+    from loopy.typing import Expression
 
 
 ASTType = TypeVar("ASTType")
@@ -69,8 +68,8 @@ class TargetBase:
 
     # {{{ hashing/equality
 
-    hash_fields: ClassVar[Tuple[str, ...]] = ()
-    comparison_fields: ClassVar[Tuple[str, ...]] = ()
+    hash_fields: ClassVar[tuple[str, ...]] = ()
+    comparison_fields: ClassVar[tuple[str, ...]] = ()
 
     def __hash__(self):
         # NOTE: _hash_value may vanish during pickling
@@ -216,7 +215,7 @@ class ASTBuilderBase(Generic[ASTType]):
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
             codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> Tuple[Sequence[Tuple[str, str]], ASTType]:
+            ) -> tuple[Sequence[tuple[str, str]], ASTType | None]:
         """Returns preambles and the AST for the function declaration."""
         raise NotImplementedError
 
@@ -230,8 +229,8 @@ class ASTBuilderBase(Generic[ASTType]):
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
-            gsize: Tuple[ExpressionT, ...],
-            lsize: Tuple[ExpressionT, ...]) -> Optional[ASTType]:
+            gsize: tuple[Expression, ...],
+            lsize: tuple[Expression, ...]) -> ASTType | None:
         raise NotImplementedError()
 
     @property
@@ -321,7 +320,7 @@ class DummyHostASTBuilder(ASTBuilderBase[None]):
     def get_function_declaration(
             self, codegen_state, codegen_result,
             schedule_index,
-            ) -> Tuple[Sequence[Tuple[str, str]], None]:
+            ) -> tuple[Sequence[tuple[str, str]], None]:
         return [], None
 
     def get_temporary_decls(self, codegen_state, schedule_index):

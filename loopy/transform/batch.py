@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,10 +24,10 @@ THE SOFTWARE.
 """
 
 
-from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
-from loopy.kernel.data import ValueArg, ArrayArg
 import islpy as isl
 
+from loopy.kernel.data import ArrayArg, ValueArg
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 from loopy.translation_unit import for_each_kernel
 
 
@@ -83,7 +86,7 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
         if not isinstance(idx, tuple):
             idx = (idx,)
 
-        return type(expr)(expr.aggregate, (self.batch_iname_expr,) + idx)
+        return type(expr)(expr.aggregate, (self.batch_iname_expr, *idx))
 
     def map_variable(self, expr, expn_state):
         if not self.needs_batch_subscript(expr.name):
@@ -98,7 +101,7 @@ def _add_unique_dim_name(name, dim_names):
 
     from pytools import UniqueNameGenerator
     ng = UniqueNameGenerator(set(dim_names))
-    return (ng(name),) + tuple(dim_names)
+    return (ng(name), *tuple(dim_names))
 
 
 @for_each_kernel
@@ -143,7 +146,7 @@ def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch"
         nbatches_expr = nbatches
 
     batch_domain = isl.BasicSet(batch_dom_str)
-    new_domains = [batch_domain] + kernel.domains
+    new_domains = [batch_domain, *kernel.domains]
 
     for arg in kernel.args:
         if arg.name in batch_varying_args:
@@ -152,7 +155,7 @@ def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch"
                         dim_tags="c")
             else:
                 arg = arg.copy(
-                        shape=(nbatches_expr,) + arg.shape,
+                        shape=(nbatches_expr, *arg.shape),
                         dim_tags=("c",) * (len(arg.shape) + 1),
                         dim_names=_add_unique_dim_name("ibatch", arg.dim_names))
 
@@ -168,7 +171,7 @@ def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch"
         for temp in kernel.temporary_variables.values():
             if temp_needs_batching_if_not_sequential(temp, batch_varying_args):
                 new_temps[temp.name] = temp.copy(
-                        shape=(nbatches_expr,) + temp.shape,
+                        shape=(nbatches_expr, *temp.shape),
                         dim_tags=("c",) * (len(temp.shape) + 1),
                         dim_names=_add_unique_dim_name("ibatch", temp.dim_names))
             else:

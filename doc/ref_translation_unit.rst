@@ -1,11 +1,6 @@
 .. currentmodule:: loopy
 
-TranslationUnit
-===============
-
-.. autoclass:: TranslationUnit
-
-Reference
----------
+Translation Units
+=================
 
 .. automodule:: loopy.translation_unit

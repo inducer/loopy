@@ -4,9 +4,9 @@ Loopy: Transformation-Based Generation of High-Performance CPU/GPU Code
 .. image:: https://gitlab.tiker.net/inducer/loopy/badges/main/pipeline.svg
     :alt: Gitlab Build Status
     :target: https://gitlab.tiker.net/inducer/loopy/commits/main
-.. image:: https://github.com/inducer/loopy/workflows/CI/badge.svg?branch=main&event=push
+.. image:: https://github.com/inducer/loopy/workflows/CI/badge.svg?branch=main
     :alt: Github Build Status
-    :target: https://github.com/inducer/loopy/actions?query=branch%3Amain+workflow%3ACI+event%3Apush
+    :target: https://github.com/inducer/loopy/actions?query=branch%3Amain+workflow%3ACI
 .. image:: https://badge.fury.io/py/loopy.png
     :alt: Python Package Index Release Page
     :target: https://pypi.org/project/loopy/

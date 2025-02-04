@@ -1,4 +1,5 @@
 """Operations on the kernel object."""
+from __future__ import annotations
 
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
@@ -23,40 +24,55 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Sequence, Mapping, FrozenSet, Dict, AbstractSet, Set, List
-
+import logging
 import sys
-
+from functools import reduce
 from sys import intern
+from typing import TYPE_CHECKING, AbstractSet, Mapping, Sequence
 
 import numpy as np
+
 import islpy as isl
 from islpy import dim_type
-from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg, natsorted
+
+from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
-from loopy.translation_unit import (TranslationUnit,
-                                    for_each_kernel)
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (
-        MultiAssignmentBase, CInstruction, _DataObliviousInstruction)
+    CInstruction,
+    MultiAssignmentBase,
+    _DataObliviousInstruction,
+)
 from loopy.symbolic import CombineMapper
-from functools import reduce
-import logging
+from loopy.translation_unit import TranslationUnit, TUnitOrKernelT, for_each_kernel
+
+
+if TYPE_CHECKING:
+    from pytools.tag import Tag
+
+    from loopy.types import ToLoopyTypeConvertible
+
+
 logger = logging.getLogger(__name__)
 
 
 # {{{ add and infer argument dtypes
 
-def add_dtypes(prog_or_kernel, dtype_dict):
+def add_dtypes(
+            kernel: TUnitOrKernelT,
+            dtype_dict: Mapping[str, ToLoopyTypeConvertible],
+        ) -> TUnitOrKernelT:
     """Specify remaining unspecified argument/temporary variable types.
 
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
-    if isinstance(prog_or_kernel, TranslationUnit):
+    if isinstance(kernel, TranslationUnit):
+        t_unit = kernel
+        del kernel
         kernel_names = [clbl.subkernel.name for clbl in
-                prog_or_kernel.callables_table.values() if isinstance(clbl,
+                t_unit.callables_table.values() if isinstance(clbl,
                     CallableKernel)]
         if len(kernel_names) != 1:
             raise LoopyError("add_dtypes may not take a TranslationUnit with more"
@@ -65,10 +81,10 @@ def add_dtypes(prog_or_kernel, dtype_dict):
 
         kernel_name, = kernel_names
 
-        return prog_or_kernel.with_kernel(
-                add_dtypes(prog_or_kernel[kernel_name], dtype_dict))
+        return t_unit.with_kernel(
+                add_dtypes(t_unit[kernel_name], dtype_dict))
 
-    assert isinstance(prog_or_kernel, LoopKernel)
+    assert isinstance(kernel, LoopKernel)
 
     processed_dtype_dict = {}
 
@@ -79,17 +95,17 @@ def add_dtypes(prog_or_kernel, dtype_dict):
                 processed_dtype_dict[subkey] = v
 
     dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(
-            prog_or_kernel, processed_dtype_dict)
+            kernel, processed_dtype_dict)
 
     if dtype_dict_remainder:
         raise RuntimeError("unused argument dtypes: %s"
                 % ", ".join(dtype_dict_remainder))
 
-    return prog_or_kernel.copy(args=new_args, temporary_variables=new_temp_vars)
+    return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
 def _add_dtypes_overdetermined(kernel, dtype_dict):
-    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(kernel, dtype_dict)
+    _dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(kernel, dtype_dict)
     # do not throw error for unused args
     return kernel.copy(args=new_args, temporary_variables=new_temp_vars)
 
@@ -259,7 +275,7 @@ def find_all_insn_inames(kernel):
             if insn.within_inames_is_final:
                 continue
 
-            # {{{ depdency-based propagation
+            # {{{ dependency-based propagation
 
             inames_old = insn_id_to_inames[insn.id]
             inames_new = inames_old | guess_iname_deps_based_on_var_use(
@@ -394,10 +410,11 @@ class SetOperationCacheManager:
 
         from loopy.diagnostic import StaticValueFindingError
         from loopy.isl_helpers import (
-                static_max_of_pw_aff,
-                static_min_of_pw_aff,
-                static_value_of_pw_aff,
-                find_max_of_pwaff_with_params)
+            find_max_of_pwaff_with_params,
+            static_max_of_pw_aff,
+            static_min_of_pw_aff,
+            static_value_of_pw_aff,
+        )
         from loopy.symbolic import pw_aff_to_expr
 
         # {{{ first: try to find static lower bound value
@@ -508,8 +525,8 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
     """
 
     # make sure all automatically added stuff shows up
-    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-    kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=False)
+    from loopy.kernel.creation import apply_single_writer_dependency_heuristic
+    kernel = apply_single_writer_dependency_heuristic(kernel, warn_if_used=False)
 
     if iname_cluster and not kernel.linearization:
         try:
@@ -520,12 +537,12 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
             from warnings import warn
             warn("error encountered during scheduling for dep graph -- "
                     "cannot perform iname clustering: %s(%s)"
-                    % (type(e).__name__, e))
+                    % (type(e).__name__, e), stacklevel=1)
 
     dep_graph = {}
     lines = []
 
-    from loopy.kernel.data import MultiAssignmentBase, CInstruction
+    from loopy.kernel.data import CInstruction, MultiAssignmentBase
 
     for insn in kernel.instructions:
         if isinstance(insn, MultiAssignmentBase):
@@ -585,8 +602,13 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
 
     if iname_cluster:
         from loopy.schedule import (
-                EnterLoop, LeaveLoop, RunInstruction, Barrier,
-                CallKernel, ReturnFromKernel)
+            Barrier,
+            CallKernel,
+            EnterLoop,
+            LeaveLoop,
+            ReturnFromKernel,
+            RunInstruction,
+        )
 
         for sched_item in kernel.linearization:
             if isinstance(sched_item, EnterLoop):
@@ -735,8 +757,9 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     # maps inames to "aggregate stride"
     aggregate_strides = {}
 
-    from loopy.symbolic import CoefficientCollector
     from pymbolic.primitives import Variable
+
+    from loopy.symbolic import CoefficientCollector
 
     for aae in global_ary_acc_exprs:
         index_expr = aae.index
@@ -749,7 +772,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
         if arg.dim_tags is None:
             from warnings import warn
             warn("Strides for '%s' are not known. Local axis assignment "
-                    "is likely suboptimal." % arg.name)
+                    "is likely suboptimal." % arg.name, stacklevel=1)
             ary_strides = [1] * len(index_expr)
         else:
             ary_strides = []
@@ -802,8 +825,11 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
     # TODO: do the tag removal rigorously, might be easier after switching
     # to set() from tuple()
 
-    from loopy.kernel.data import (AutoLocalInameTagBase, LocalInameTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import (
+        AutoLocalInameTagBase,
+        LocalInameTag,
+        filter_iname_tags_by_type,
+    )
 
     # Realize that at this point in time, axis lengths are already
     # fixed. So we compute them once and pass them to our recursive
@@ -1026,7 +1052,7 @@ class ArrayChanger:
 # {{{ guess_var_shape
 
 def guess_var_shape(kernel, var_names):
-    from loopy.symbolic import SubstitutionRuleExpander, BatchedAccessMapMapper
+    from loopy.symbolic import BatchedAccessMapMapper, SubstitutionRuleExpander
 
     armap = BatchedAccessMapMapper(kernel, var_names)
 
@@ -1048,7 +1074,7 @@ def guess_var_shape(kernel, var_names):
                 "shape/strides for variables '%s'. "
                 "Specifying the shape manually should get rid of this. "
                 "The following error occurred: %s"
-                % (",".join(var_names), str(e)))
+                % (",".join(var_names), str(e))) from e
 
     result = []
     for var_name in var_names:
@@ -1238,9 +1264,9 @@ def find_recursive_dependencies(kernel, insn_ids):
 
         for insn_id in queue:
             insn = kernel.id_to_insn[insn_id]
-            additionals = insn.depends_on - result
-            result.update(additionals)
-            new_queue.extend(additionals)
+            additional = insn.depends_on - result
+            result.update(additional)
+            new_queue.extend(additional)
 
         queue = new_queue
 
@@ -1463,7 +1489,7 @@ def draw_dependencies_as_unicode_arrows(
 
 # {{{ stringify_instruction_list
 
-def stringify_instruction_tag(tag):
+def stringify_instruction_tag(tag: Tag) -> str:
     from loopy.kernel.instruction import LegacyStringInstructionTag
     if isinstance(tag, LegacyStringInstructionTag):
         return f"S({tag.value})"
@@ -1471,7 +1497,7 @@ def stringify_instruction_tag(tag):
         return str(tag)
 
 
-def stringify_instruction_list(kernel):
+def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
     # {{{ topological sort
 
     printed_insn_ids = set()
@@ -1505,7 +1531,7 @@ def stringify_instruction_list(kernel):
 
     leader = " " * uniform_arrow_length
     lines = []
-    current_inames = [set()]
+    current_inames: list[set[str]] = [set()]
 
     if uniform_arrow_length:
         indent_level = [1]
@@ -1516,13 +1542,13 @@ def stringify_instruction_list(kernel):
 
     iname_order = kernel._get_iname_order_for_printing()
 
-    def add_pre_line(s):
+    def add_pre_line(s: str) -> None:
         lines.append(leader + " " * indent_level[0] + s)
 
-    def add_main_line(s):
+    def add_main_line(s: str) -> None:
         lines.append(arrows + " " * indent_level[0] + s)
 
-    def add_post_line(s):
+    def add_post_line(s: str) -> None:
         lines.append(extender + " " * indent_level[0] + s)
 
     def adapt_to_new_inames_list(new_inames):
@@ -1721,7 +1747,7 @@ def get_global_barrier_order(kernel):
 
 @memoize_on_first_arg
 def find_most_recent_global_barrier(kernel, insn_id):
-    """Return the id of the latest occuring global barrier which the
+    """Return the id of the latest occurring global barrier which the
     given instruction (indirectly or directly) depends on, or *None* if this
     instruction does not depend on a global barrier.
 
@@ -1802,7 +1828,7 @@ def get_subkernels(kernel) -> Sequence[str]:
 
 
 @memoize_on_first_arg
-def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[str]]:
+def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, frozenset[str]]:
     """Return a :class:`dict` mapping subkernel names to a :class:`frozenset`
     consisting of the instruction ids scheduled within the subkernel. The
     kernel must be scheduled.
@@ -1813,11 +1839,10 @@ def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[s
 
     assert kernel.linearization is not None
 
-    from loopy.schedule import (
-            sched_item_to_insn_id, CallKernel, ReturnFromKernel)
+    from loopy.schedule import CallKernel, ReturnFromKernel, sched_item_to_insn_id
 
     subkernel = None
-    result: Dict[str, Set[str]] = {}
+    result: dict[str, set[str]] = {}
 
     for lin_item in kernel.linearization:
         if isinstance(lin_item, CallKernel):
@@ -1835,7 +1860,7 @@ def get_subkernel_to_insn_id_map(kernel: LoopKernel) -> Mapping[str, FrozenSet[s
 
 
 @memoize_on_first_arg
-def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, FrozenSet[str]]:
+def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, frozenset[str]]:
     from loopy.kernel import KernelState
     if kernel.state != KernelState.LINEARIZED:
         raise LoopyError("Kernel must be scheduled")
@@ -1843,7 +1868,7 @@ def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, FrozenSet[str
     assert kernel.linearization is not None
 
     result = {}
-    inames: List[str] = []
+    inames: list[str] = []
 
     from loopy.schedule import CallKernel, EnterLoop, LeaveLoop
 
@@ -1957,7 +1982,7 @@ def infer_args_are_input_output(kernel):
         then the array is inferred as an input argument if it is either read at
         some point in the kernel or it is neither read nor written.
     """
-    from loopy.kernel.data import ArrayArg, ValueArg, ConstantArg, ImageArg
+    from loopy.kernel.data import ArrayArg, ConstantArg, ImageArg, ValueArg
     new_args = []
 
     for arg in kernel.args:
@@ -1982,7 +2007,7 @@ def infer_args_are_input_output(kernel):
         elif isinstance(arg, (ConstantArg, ImageArg, ValueArg)):
             pass
         else:
-            raise NotImplementedError("Unkonwn argument type %s." % type(arg))
+            raise NotImplementedError("Unknown argument type %s." % type(arg))
 
         if not (arg.is_input or arg.is_output):
             raise LoopyError("Kernel argument must be either input or output."
@@ -2064,7 +2089,8 @@ def get_call_graph(t_unit, only_kernel_callables=False):
 
     :arg t_unit: An instance of :class:`TranslationUnit`.
     """
-    from pyrsistent import pmap
+    from constantdict import constantdict
+
     from loopy.kernel import KernelState
 
     if t_unit.state < KernelState.CALLS_RESOLVED:
@@ -2090,7 +2116,7 @@ def get_call_graph(t_unit, only_kernel_callables=False):
                 call_graph[name] = clbl.get_called_callables(t_unit.callables_table,
                                                              recursive=False)
 
-    return pmap(call_graph)
+    return constantdict(call_graph)
 
 # }}}
 
@@ -2121,8 +2147,8 @@ def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
     offsetting expression
     during the hardware ina
     """
-    from loopy.kernel.data import HardwareConcurrentTag
     from loopy.isl_helpers import static_min_of_pw_aff
+    from loopy.kernel.data import HardwareConcurrentTag
 
     assert kernel.iname_tags_of_type(iname, HardwareConcurrentTag)
     bounds = kernel.get_iname_bounds(iname)

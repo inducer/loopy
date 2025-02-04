@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -20,49 +23,47 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
-from immutables import Map
-from typing import (Set, Mapping, Sequence, Any, FrozenSet, Union,
-       Optional, Tuple, TYPE_CHECKING)
-from dataclasses import dataclass, replace
 import logging
+from dataclasses import dataclass, replace
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Mapping,
+    Sequence,
+)
+
+import constantdict
+
+
 logger = logging.getLogger(__name__)
 
-import islpy as isl
-
-from loopy.diagnostic import LoopyError, warn
-from pytools import UniqueNameGenerator
-
-from pytools.persistent_dict import WriteOncePersistentDict
-from loopy.tools import LoopyKeyBuilder, caches
-from loopy.version import DATA_MODEL_VERSION
-from loopy.types import LoopyType
-from loopy.typing import ExpressionT
-from loopy.kernel import LoopKernel
-from loopy.target import TargetBase
-from loopy.kernel.function_interface import InKernelCallable
-
-
-from loopy.symbolic import CombineMapper
 from functools import reduce
 
-from loopy.kernel.function_interface import CallableKernel
-
+import islpy  # to help out Sphinx
+import islpy as isl
+import pytools  # to help out Sphinx
 from pytools import ProcessLogger
+from pytools.persistent_dict import WriteOncePersistentDict
+
+from loopy.diagnostic import LoopyError, warn
+from loopy.kernel.function_interface import CallableKernel
+from loopy.symbolic import CombineMapper
+from loopy.tools import LoopyKeyBuilder, caches
+from loopy.version import DATA_MODEL_VERSION
+
 
 if TYPE_CHECKING:
+    from loopy.codegen.result import CodeGenerationResult, GeneratedProgram
     from loopy.codegen.tools import CodegenOperationCacheManager
-    from loopy.codegen.result import GeneratedProgram
-
-
-if getattr(sys, "_BUILDING_SPHINX_DOCS", False):
-    from loopy.codegen.tools import CodegenOperationCacheManager  # noqa: F811
-    from loopy.codegen.result import GeneratedProgram  # noqa: F811
+    from loopy.kernel import LoopKernel
+    from loopy.library.reduction import ReductionOpFunction
+    from loopy.target import TargetBase
+    from loopy.translation_unit import CallablesTable, TranslationUnit
+    from loopy.types import LoopyType
+    from loopy.typing import Expression
 
 
 __doc__ = """
-.. currentmodule:: loopy.codegen
-
 .. autoclass:: PreambleInfo
 
 .. autoclass:: VectorizationInfo
@@ -76,6 +77,12 @@ __doc__ = """
 .. automodule:: loopy.codegen.result
 
 .. automodule:: loopy.codegen.tools
+
+References
+^^^^^^^^^^
+.. class:: ExpressionNode
+
+    See :class:`pymbolic.primitives.ExpressionNode`.
 """
 
 
@@ -95,8 +102,6 @@ class VectorizationInfo:
 
     iname: str
     length: int
-    # FIXME why is this here?
-    space: isl.Space
 
 
 @dataclass(frozen=True)
@@ -117,108 +122,76 @@ class SeenFunction:
     """
     name: str
     c_name: str
-    arg_dtypes: Tuple[LoopyType, ...]
-    result_dtypes: Tuple[LoopyType, ...]
+    arg_dtypes: tuple[LoopyType, ...]
+    result_dtypes: tuple[LoopyType, ...]
 
 
 @dataclass(frozen=True)
 class CodeGenerationState:
     """
-    .. attribute:: kernel
-    .. attribute:: target
-    .. attribute:: implemented_domain
+    .. autoattribute:: kernel
+    .. autoattribute:: target
+    .. autoattribute:: implemented_domain
+    .. autoattribute:: implemented_predicates
 
-        The entire implemented domain (as an :class:`islpy.Set`)
-        i.e. all constraints that have been enforced so far.
-
-    .. attribute:: implemented_predicates
-
-        A :class:`frozenset` of predicates for which checks have been
-        implemented.
-
-    .. attribute:: seen_dtypes
-
-        set of dtypes that were encountered
-
-    .. attribute:: seen_functions
-
-        set of :class:`SeenFunction` instances
-
+    .. autoattribute:: seen_dtypes
+    .. autoattribute:: seen_functions
     .. attribute:: seen_atomic_dtypes
 
-    .. attribute:: var_subst_map
+    .. autoattribute:: var_subst_map
 
-    .. attribute:: allow_complex
-
-    .. attribute:: vectorization_info
-
-        *None* (to mean vectorization has not yet been applied),  or an instance of
-        :class:`VectorizationInfo`.
-
-    .. attribute:: is_generating_device_code
-
-    .. attribute:: gen_program_name
-
-        None (indicating that host code is being generated)
-        or the name of the device program currently being
-        generated.
-
-    .. attribute:: schedule_index_end
-
-    .. attribute:: callables_table
-
-        A mapping from callable names to instances of
-        :class:`loopy.kernel.function_interface.InKernelCallable`.
-
-    .. attribute:: is_entrypoint
-
-        A :class:`bool` to indicate if the code is being generated for an
-        entrypoint kernel
-
-    .. attribute:: codegen_cache_manager
-
-        An instance of :class:`loopy.codegen.tools.CodegenOperationCacheManager`.
+    .. autoattribute:: allow_complex
+    .. autoattribute:: vectorization_info
+    .. autoattribute:: is_generating_device_code
+    .. autoattribute:: gen_program_name
+    .. autoattribute:: schedule_index_end
+    .. autoattribute:: callables_table
+    .. autoattribute:: is_entrypoint
+    .. autoattribute:: codegen_cache_manager
     """
 
     kernel: LoopKernel
+
+    # LoopKernel should not have a target, should use this instead
     target: TargetBase
-    implemented_domain: isl.Set
-    implemented_predicates: FrozenSet[Union[str, ExpressionT]]
+
+    implemented_domain: islpy.Set
+    """
+    The entire implemented domain (as an :class:`islpy.Set`)
+    i.e. all constraints that have been enforced so far.
+    """
+
+    implemented_predicates: frozenset[str | Expression]
 
     # /!\ mutable
-    seen_dtypes: Set[LoopyType]
-    seen_functions: Set[SeenFunction]
-    seen_atomic_dtypes: Set[LoopyType]
+    seen_dtypes: set[LoopyType]
+    seen_functions: set[SeenFunction]
+    seen_atomic_dtypes: set[LoopyType]
 
-    var_subst_map: Map[str, ExpressionT]
+    var_subst_map: constantdict.constantdict[str, Expression]
     allow_complex: bool
-    callables_table: Mapping[str, InKernelCallable]
+    callables_table: CallablesTable
     is_entrypoint: bool
-    var_name_generator: UniqueNameGenerator
+    var_name_generator: pytools.UniqueNameGenerator
     is_generating_device_code: bool
+
     gen_program_name: str
+
     schedule_index_end: int
-    codegen_cachemanager: "CodegenOperationCacheManager"
-    vectorization_info: Optional[VectorizationInfo] = None
-
-    def __post_init__(self):
-        # FIXME: If this doesn't bomb during testing, we can get rid of target.
-        assert self.target == self.kernel.target
-
-        assert self.vectorization_info is None or isinstance(
-                self.vectorization_info, VectorizationInfo)
+    codegen_cache_manager: CodegenOperationCacheManager
+    vectorization_info: VectorizationInfo | None = None
 
     # {{{ copy helpers
 
-    def copy(self, **kwargs: Any) -> "CodeGenerationState":
+    def copy(self, **kwargs: Any) -> CodeGenerationState:
         return replace(self, **kwargs)
 
     def copy_and_assign(
-            self, name: str, value: ExpressionT) -> "CodeGenerationState":
+            self, name: str, value: Expression) -> CodeGenerationState:
         """Make a copy of self with variable *name* fixed to *value*."""
         return self.copy(var_subst_map=self.var_subst_map.set(name, value))
 
-    def copy_and_assign_many(self, assignments) -> "CodeGenerationState":
+    def copy_and_assign_many(self, assignments) -> CodeGenerationState:
         """Make a copy of self with *assignments* included."""
 
         return self.copy(var_subst_map=self.var_subst_map.update(assignments))
@@ -288,7 +261,8 @@ class CodeGenerationState:
         novec_self = self.copy(vectorization_info=None)
 
         for i in range(vinf.length):
-            idx_aff = isl.Aff.zero_on_domain(vinf.space.params()) + i
+            idx_aff = isl.Aff.zero_on_domain(
+                        isl.Space.params_alloc(self.kernel.isl_context, 0)) + i
             new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
             generated = func(new_codegen_state)
 
@@ -310,9 +284,13 @@ class CodeGenerationState:
 # }}}
 
 
-code_gen_cache = WriteOncePersistentDict(
+code_gen_cache: WriteOncePersistentDict[
+    TranslationUnit,
+    CodeGenerationResult
+] = WriteOncePersistentDict(
          "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
-         key_builder=LoopyKeyBuilder())
+         key_builder=LoopyKeyBuilder(),
+         safe_sync=False)
 
 
 caches.append(code_gen_cache)
@@ -346,10 +324,16 @@ class InKernelCallablesCollector(CombineMapper):
 
 @dataclass(frozen=True)
 class PreambleInfo:
+    """
+    .. autoattribute:: kernel
+    .. autoattribute:: seen_dtypes
+    .. autoattribute:: seen_functions
+    .. autoattribute:: seen_atomic_dtypes
+    """
     kernel: LoopKernel
-    seen_dtypes: Set[LoopyType]
-    seen_functions: Set[SeenFunction]
-    seen_atomic_dtypes: Set[LoopyType]
+    seen_dtypes: set[LoopyType]
+    seen_functions: set[SeenFunction]
+    seen_atomic_dtypes: set[LoopyType]
 
     # FIXME: This makes all the above redundant. It probably shouldn't be here.
     codegen_state: CodeGenerationState
@@ -397,7 +381,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
             seen_atomic_dtypes=seen_atomic_dtypes,
-            var_subst_map=Map(),
+            var_subst_map=constantdict.constantdict(),
             allow_complex=allow_complex,
             var_name_generator=kernel.get_var_name_generator(),
             is_generating_device_code=False,
@@ -408,7 +392,7 @@ def generate_code_for_a_single_kernel(kernel, callables_table, target,
             schedule_index_end=len(kernel.linearization),
             callables_table=callables_table,
             is_entrypoint=is_entrypoint,
-            codegen_cachemanager=CodegenOperationCacheManager.from_kernel(kernel),
+            codegen_cache_manager=CodegenOperationCacheManager.from_kernel(kernel),
             )
 
     from loopy.codegen.result import generate_host_or_device_program
@@ -470,9 +454,11 @@ def diverge_callee_entrypoints(program):
     If a :class:`loopy.kernel.function_interface.CallableKernel` is both an
     entrypoint and a callee, then rename the callee.
     """
-    from loopy.translation_unit import (get_reachable_resolved_callable_ids,
-                                        rename_resolved_functions_in_a_single_kernel,
-                                        make_callable_name_generator)
+    from loopy.translation_unit import (
+        get_reachable_resolved_callable_ids,
+        make_callable_name_generator,
+        rename_resolved_functions_in_a_single_kernel,
+    )
     callable_ids = get_reachable_resolved_callable_ids(program.callables_table,
                                                        program.entrypoints)
 
@@ -496,7 +482,7 @@ def diverge_callee_entrypoints(program):
 
         new_callables[name] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=constantdict.constantdict(new_callables))
 
 
 @dataclass(frozen=True)
@@ -520,10 +506,10 @@ class TranslationUnitCodeGenerationResult:
     .. automethod:: all_code
 
     """
-    host_programs: Mapping[str, "GeneratedProgram"]
-    device_programs: Sequence["GeneratedProgram"]
-    host_preambles: Sequence[Tuple[int, str]] = ()
-    device_preambles: Sequence[Tuple[int, str]] = ()
+    host_programs: Mapping[str, GeneratedProgram]
+    device_programs: Sequence[GeneratedProgram]
+    host_preambles: Sequence[tuple[int, str]] = ()
+    device_preambles: Sequence[tuple[int, str]] = ()
 
     def host_code(self):
         from loopy.codegen.result import process_preambles
@@ -561,64 +547,56 @@ class TranslationUnitCodeGenerationResult:
                     self.host_programs.values()))
 
 
-def generate_code_v2(program):
-    """
-    Returns an instance of :class:`CodeGenerationResult`.
-
-    :param program: An instance of :class:`loopy.TranslationUnit`.
-    """
-
-    from loopy.kernel import LoopKernel
-    from loopy.translation_unit import make_program
-
+def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
     # {{{ cache retrieval
 
     from loopy import CACHING_ENABLED, ABORT_ON_CACHE_MISS
+    from loopy.kernel import LoopKernel
+    from loopy.translation_unit import make_program
 
     if CACHING_ENABLED:
-        input_program = program
+        input_t_unit = t_unit
         try:
-            result = code_gen_cache[input_program]
-            logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
+            result = code_gen_cache[input_t_unit]
+            logger.debug(f"TranslationUnit with entrypoints {t_unit.entrypoints}:"
                           " code generation cache hit")
             return result
         except KeyError:
+            logger.debug(f"TranslationUnit with entrypoints {t_unit.entrypoints}:"
+                          " code generation cache miss")
             if ABORT_ON_CACHE_MISS:
                 raise
 
-            logger.debug(f"TranslationUnit with entrypoints {program.entrypoints}:"
-                          " code generation cache miss")
-
     # }}}
 
-    if isinstance(program, LoopKernel):
-        program = make_program(program)
+    if isinstance(t_unit, LoopKernel):
+        t_unit = make_program(t_unit)
 
     from loopy.kernel import KernelState
-    if program.state < KernelState.PREPROCESSED:
+    if t_unit.state < KernelState.PREPROCESSED:
         # Note that we cannot have preprocessing separately for everyone.
         # Since, now the preprocessing of each one depends on the other.
         # So we check if any one of the callable kernels are not preprocesses
         # then, we have to do the preprocessing of every other kernel.
         from loopy.preprocess import preprocess_program
-        program = preprocess_program(program)
+        t_unit = preprocess_program(t_unit)
 
     from loopy.type_inference import infer_unknown_types
-    program = infer_unknown_types(program, expect_completion=True)
+    t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
-    if program.state < KernelState.LINEARIZED:
+    if t_unit.state < KernelState.LINEARIZED:
         from loopy.schedule import linearize
-        program = linearize(program)
+        t_unit = linearize(t_unit)
 
     # Why diverge? Generated code for a non-entrypoint kernel and an entrypoint
     # kernel isn't same for a general loopy target. For example in OpenCL, a
     # kernel callable from host and the one supposed to be callable from device
     # have different function signatures. To generate correct code, each
     # callable should be exclusively an entrypoint or a non-entrypoint kernel.
-    program = diverge_callee_entrypoints(program)
+    t_unit = diverge_callee_entrypoints(t_unit)
 
     from loopy.check import pre_codegen_checks
-    pre_codegen_checks(program)
+    pre_codegen_checks(t_unit)
 
     host_programs = {}
     device_programs = []
@@ -627,13 +605,13 @@ def generate_code_v2(program):
 
     # {{{ collect host/device programs
 
-    for func_id in sorted(key for key, val in program.callables_table.items()
+    for func_id in sorted(key for key, val in t_unit.callables_table.items()
                           if isinstance(val, CallableKernel)):
-        cgr = generate_code_for_a_single_kernel(program[func_id],
-                                                program.callables_table,
-                                                program.target,
-                                                func_id in program.entrypoints)
-        if func_id in program.entrypoints:
+        cgr = generate_code_for_a_single_kernel(t_unit[func_id],
+                                                t_unit.callables_table,
+                                                t_unit.target,
+                                                func_id in t_unit.entrypoints)
+        if func_id in t_unit.entrypoints:
             host_programs[func_id] = cgr.host_program
         else:
             assert len(cgr.device_programs) == 1
@@ -646,23 +624,30 @@ def generate_code_v2(program):
 
     # {{{ collect preambles
 
-    for clbl in program.callables_table.values():
-        device_preambles.extend(list(clbl.generate_preambles(program.target)))
+    for clbl in t_unit.callables_table.values():
+        device_preambles.extend(list(clbl.generate_preambles(t_unit.target)))
 
     # }}}
 
     # adding the callee fdecls to the device_programs
     device_programs = ([device_programs[0].copy(
-            ast=program.target.get_device_ast_builder().ast_module.Collection(
-                callee_fdecls+[device_programs[0].ast]))] +
+            ast=t_unit.target.get_device_ast_builder().ast_module.Collection(
+                [*callee_fdecls, device_programs[0].ast]))] +
             device_programs[1:])
+
+    def not_reduction_op(name: str | ReductionOpFunction) -> str:
+        assert isinstance(name, str)
+        return name
+
     cgr = TranslationUnitCodeGenerationResult(
-            host_programs=host_programs,
+            host_programs={
+                not_reduction_op(name): prg
+                for name, prg in host_programs.items()},
             device_programs=device_programs,
             device_preambles=device_preambles)
 
     if CACHING_ENABLED:
-        code_gen_cache.store_if_not_present(input_program, cgr)
+        code_gen_cache.store_if_not_present(input_t_unit, cgr)
 
     return cgr
 

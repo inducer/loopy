@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2017 Nick Curtis"
 
 __license__ = """
@@ -20,33 +23,41 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Callable, Any, Union, Tuple, Sequence, Optional
-import tempfile
-import os
 import ctypes
+import logging
+import os
+import tempfile
 from dataclasses import dataclass
-
-from immutables import Map
-from pytools import memoize_method
-from pytools.codegen import Indentation, CodeGenerator
-from pytools.prefork import ExecError
-from codepy.toolchain import guess_toolchain, ToolchainGuessError, GCCToolchain
-from codepy.jit import compile_from_string
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Sequence
 
 import numpy as np
+from codepy.jit import compile_from_string
+from codepy.toolchain import GCCToolchain, ToolchainGuessError, guess_toolchain
 
-from loopy.typing import ExpressionT
-from loopy.types import LoopyType
-from loopy.kernel import LoopKernel
+from pytools import memoize_method
+from pytools.codegen import CodeGenerator, Indentation
+from pytools.prefork import ExecError
+
 from loopy.kernel.array import ArrayBase
-from loopy.kernel.data import ArrayArg
-from loopy.schedule.tools import KernelArgInfo
-from loopy.codegen.result import GeneratedProgram
-from loopy.translation_unit import TranslationUnit
-from loopy.target.execution import (ExecutorBase,
-                             ExecutionWrapperGeneratorBase, get_highlighted_code)
+from loopy.target.execution import (
+    ExecutionWrapperGeneratorBase,
+    ExecutorBase,
+    get_highlighted_code,
+)
+from loopy.types import LoopyType
 
-import logging
+
+if TYPE_CHECKING:
+    from constantdict import constantdict
+
+    from loopy.codegen.result import GeneratedProgram
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.data import ArrayArg
+    from loopy.schedule.tools import KernelArgInfo
+    from loopy.translation_unit import TranslationUnit
+    from loopy.typing import Expression
+
+
 logger = logging.getLogger(__name__)
 
 DEF_EVEN_DIV_FUNCTION = """
@@ -90,21 +101,21 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             return f"_lpy_np.dtype(_lpy_np.{name})"
         raise Exception(f"dtype: {dtype} not recognized")
 
-    # {{{ handle non numpy arguements
+    # {{{ handle non numpy arguments
 
     def handle_non_numpy_arg(self, gen, arg):
         pass
 
     # }}}
 
-    # {{{ handle allocation of unspecified arguements
+    # {{{ handle allocation of unspecified arguments
 
     def handle_alloc(
             self, gen: CodeGenerator, arg: ArrayArg,
-            strify: Callable[[Union[ExpressionT, Tuple[ExpressionT]]], str],
+            strify: Callable[[Expression | tuple[Expression]], str],
             skip_arg_checks: bool) -> None:
         """
-        Handle allocation of non-specified arguements for C-execution
+        Handle allocation of non-specified arguments for C-execution
         """
         from pymbolic import var
 
@@ -152,7 +163,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         gen("{} = {}.strides".format(strify(expected_strides), arg.name))
 
-        #check strides
+        # check strides
         if not skip_arg_checks:
             strides_check_expr = self.get_strides_check_expr(
                     [strify(s) for s in sym_shape],
@@ -177,7 +188,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def initialize_system_args(self, gen):
         """
-        Initializes possibly empty system arguements
+        Initializes possibly empty system arguments
         """
         pass
 
@@ -234,7 +245,7 @@ class CCompiler:
     The general strategy here is as follows:
 
     1.  A :class:`codepy.Toolchain` is guessed from distutils.
-        The user may override any flags obtained therein by passing in arguements
+        The user may override any flags obtained therein by passing in arguments
         to cc, cflags, etc.
 
     2.  The kernel source is built into and object first, then made into a shared
@@ -280,16 +291,17 @@ class CCompiler:
                 # default args
                 self.toolchain = GCCToolchain(
                     cc="gcc",
+                    ld="ld",
                     cflags="-std=c99 -O3 -fPIC".split(),
                     ldflags="-shared".split(),
                     libraries=[],
                     library_dirs=[],
                     defines=[],
                     undefines=[],
-                    source_suffix="c",
                     so_ext=".so",
                     o_ext=".o",
-                    include_dirs=[])
+                    include_dirs=[],
+                    features=set())
 
         if toolchain is None:
             # copy in all differing values
@@ -313,16 +325,19 @@ class CCompiler:
         return os.path.join(self.tempdir, name)
 
     def build(self, name, code, debug=False, wait_on_error=None,
-                     debug_recompile=True):
+              debug_recompile=True, extra_build_options: Sequence[str] = ()):
         """Compile code, build and load shared library."""
         logger.debug(code)
         c_fname = self._tempname("code." + self.source_suffix)
 
         # build object
-        _, mod_name, ext_file, recompiled = \
-            compile_from_string(self.toolchain, name, code, c_fname,
-                                self.tempdir, debug, wait_on_error,
-                                debug_recompile, False)
+        _, _mod_name, ext_file, recompiled = \
+            compile_from_string(
+                self.toolchain.copy(
+                    cflags=self.toolchain.cflags+list(extra_build_options)),
+                name, code, c_fname,
+                self.tempdir, debug, wait_on_error,
+                debug_recompile, False)
 
         if recompiled:
             logger.debug(f"Kernel {name} compiled from source")
@@ -357,15 +372,15 @@ class CPlusPlusCompiler(CCompiler):
 # {{{ placeholder till ctypes fixes: https://github.com/python/cpython/issues/61103
 
 class Complex64(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
+    _fields_: ClassVar = [("real", ctypes.c_float), ("imag", ctypes.c_float)]
 
 
 class Complex128(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_double), ("imag", ctypes.c_double)]
+    _fields_: ClassVar = [("real", ctypes.c_double), ("imag", ctypes.c_double)]
 
 
 class Complex256(ctypes.Structure):
-    _fields_ = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
+    _fields_: ClassVar = [("real", ctypes.c_longdouble), ("imag", ctypes.c_longdouble)]
 
 
 _NUMPY_COMPLEX_TYPE_TO_CTYPE = {
@@ -417,11 +432,12 @@ class CompiledCKernel:
 
     def __init__(self, kernel: LoopKernel, devprog: GeneratedProgram,
             passed_names: Sequence[str], dev_code: str,
-            comp: Optional["CCompiler"] = None):
+            comp: CCompiler | None = None):
         # get code and build
         self.code = dev_code
         self.comp = comp if comp is not None else CCompiler()
-        self.dll = self.comp.build(devprog.name, self.code)
+        self.dll = self.comp.build(devprog.name, self.code,
+                                   extra_build_options=kernel.options.build_options)
 
         # get the function declaration for interface with ctypes
         self._fn = getattr(self.dll, devprog.name)
@@ -464,7 +480,7 @@ class CExecutor(ExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, program, entrypoint, compiler: Optional["CCompiler"] = None):
+    def __init__(self, program, entrypoint, compiler: CCompiler | None = None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -484,7 +500,7 @@ class CExecutor(ExecutorBase):
 
     @memoize_method
     def translation_unit_info(self,
-            arg_to_dtype: Optional[Map[str, LoopyType]] = None) -> _KernelInfo:
+            arg_to_dtype: constantdict[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2

@@ -20,13 +20,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-import loopy as lp
+import logging
 import sys
+
+import numpy as np
 import pytest
+
+import loopy as lp
 from loopy import CACHING_ENABLED
 
-import logging
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -92,17 +95,17 @@ def test_c_target_strides_nonsquare():
     from loopy.target.c import ExecutableCTarget
 
     def __get_kernel(order="C"):
-        indicies = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
+        indices = ["i", "j", "k"]
+        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indicies, sizes):
+        for idx, size in zip(indices, sizes):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
         statement = "out[{indexed}] = 2 * a[{indexed}]".format(
-            indexed=", ".join(indicies))
+            indexed=", ".join(indices))
         return lp.make_kernel(
                 domains,
                 statement,
@@ -139,17 +142,17 @@ def test_c_optimizations():
     from loopy.target.c import ExecutableCTarget
 
     def __get_kernel(order="C"):
-        indicies = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
+        indices = ["i", "j", "k"]
+        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indicies, sizes):
+        for idx, size in zip(indices, sizes):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
         statement = "out[{indexed}] = 2 * a[{indexed}]".format(
-            indexed=", ".join(indicies))
+            indexed=", ".join(indices))
         return lp.make_kernel(
                 domains,
                 statement,
@@ -295,9 +298,10 @@ def test_c_execution_with_global_temporaries():
 
 
 def test_missing_compilers():
-    from loopy.target.c import ExecutableCTarget, CTarget
-    from loopy.target.c.c_execution import CCompiler
     from codepy.toolchain import GCCToolchain
+
+    from loopy.target.c import CTarget, ExecutableCTarget
+    from loopy.target.c.c_execution import CCompiler
 
     def __test(evalfunc, target, **targetargs):
         n = 10
@@ -336,11 +340,6 @@ def test_missing_compilers():
         # the default (non-guessed) toolchain!
         __test(eval_tester, ExecutableCTarget, compiler=ccomp)
 
-    # and test that we will fail if we remove a required attribute
-    del ccomp.toolchain.undefines
-    with pytest.raises(AttributeError):
-        __test(eval_tester, ExecutableCTarget, compiler=ccomp)
-
     # next test that some made up compiler can be specified
     ccomp = CCompiler(cc="foo")
     assert isinstance(ccomp.toolchain, GCCToolchain)
@@ -366,7 +365,7 @@ def test_one_length_loop():
 
 def test_scalar_global_args():
     n = np.random.default_rng().integers(30, 100)
-    evt, (out,) = lp.make_kernel(
+    _evt, (out,) = lp.make_kernel(
             "{[i]: 0<=i<n}",
             "res  = sum(i, i)",
             target=lp.ExecutableCTarget())(n=n)

@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-from os import system
 import ctypes
+from os import system
+
 
 C_SRC = """
 #include <stdlib.h>
@@ -94,8 +95,7 @@ def main():
         func.argtypes = [ctypes.c_longlong, ctypes.c_longlong]
         func.restype = ctypes.c_longlong
 
-    cdiv = int_exp.cdiv  # noqa
-    cmod = int_exp.cmod  # noqa
+    cmod = int_exp.cmod
     int_floor_div = int_exp.loopy_floor_div_int64
     int_floor_div_pos_b = int_exp.loopy_floor_div_pos_b_int64
     int_mod_pos_b = int_exp.loopy_mod_pos_b_int64
@@ -139,7 +139,7 @@ def main():
             if cresult != presult:
                 print(a, b, cresult, presult)
 
-    #print(int_mod(552, -918), 552 % -918)
+    # print(int_mod(552, -918), 552 % -918)
     print(cmod(23, -11), 23 % -11)
 
 

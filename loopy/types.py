@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -23,17 +24,24 @@ THE SOFTWARE.
 """
 
 from typing import Any, Mapping, Type, Union
-import numpy as np
 
-from loopy.typing import auto
+import numpy as np
+from typing_extensions import TypeAlias
+
 from loopy.diagnostic import LoopyError
+from loopy.typing import auto
+
 
 __doc__ = """
-.. currentmodule:: loopy.types
+.. currentmodule:: loopy
 
 .. autoclass:: LoopyType
 
+.. autoclass:: ToLoopyTypeConvertible
+
 .. autoclass:: NumpyType
+
+.. currentmodule:: loopy.types
 
 .. autoclass:: AtomicType
 
@@ -84,7 +92,7 @@ class NumpyType(LoopyType):
         if dtype is None:
             raise TypeError("may not pass None to construct NumpyType")
 
-        if dtype == object:
+        if dtype == object:  # noqa: E721
             raise TypeError("loopy does not directly support object arrays")
 
         self.dtype = np.dtype(dtype)
@@ -162,7 +170,7 @@ class AtomicNumpyType(NumpyType, AtomicType):
 class OpaqueType(LoopyType):
     """An opaque data type is truly opaque - it has no allocations, no
     temporaries of that type, etc. The only thing allowed is to be pass in
-    through one ValueArg and go out to another. It is introduced to accomodate
+    through one ValueArg and go out to another. It is introduced to accommodate
     functional calls to external libraries.
     """
     def __init__(self, name: str) -> None:
@@ -194,13 +202,13 @@ class OpaqueType(LoopyType):
 # }}}
 
 
-ToLoopyTypeConvertible = Union[Type[auto], None, np.dtype, LoopyType]
+ToLoopyTypeConvertible: TypeAlias = Union[Type[auto], np.dtype, LoopyType, None]
 
 
 def to_loopy_type(dtype: ToLoopyTypeConvertible,
                   allow_auto: bool = False, allow_none: bool = False,
                   for_atomic: bool = False
-                  ) -> Union[Type[auto], None, LoopyType]:
+                  ) -> type[auto] | LoopyType | None:
     if dtype is None:
         if allow_none:
             return None
@@ -253,7 +261,7 @@ _TO_UNSIGNED_MAPPING: Mapping[np.dtype[Any], np.dtype[Any]] = {
         }
 
 
-def to_unsigned_dtype(dtype: "np.dtype[Any]") -> "np.dtype[Any]":
+def to_unsigned_dtype(dtype: np.dtype[Any]) -> np.dtype[Any]:
     if dtype.kind == "u":
         return dtype
     if dtype.kind != "i":

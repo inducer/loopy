@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,34 +25,54 @@ THE SOFTWARE.
 
 
 from dataclasses import dataclass
-from typing import FrozenSet, List, Mapping, Optional, Sequence, Type, Union
-from immutables import Map
-import islpy as isl
-from pytools.tag import Tag
-from loopy.kernel import LoopKernel
-from loopy.typing import ExpressionT, auto, not_none
-from loopy.match import ToStackMatchCovertible
-from loopy.symbolic import (get_dependencies,
-        RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
-        SubstitutionRuleMappingContext, CombineMapper)
-from loopy.diagnostic import LoopyError
-from pymbolic.mapper.substitutor import make_subst_func
-from loopy.translation_unit import TranslationUnit
-from loopy.kernel.instruction import InstructionBase, MultiAssignmentBase
-from loopy.kernel.function_interface import (CallableKernel, InKernelCallable,
-                                             ScalarCallable)
-from loopy.kernel.tools import (kernel_has_global_barriers,
-                                find_most_recent_global_barrier)
-from loopy.kernel.data import AddressSpace
-from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
+from typing import TYPE_CHECKING, Sequence, cast
 
-from pymbolic import var
+import numpy as np
+from constantdict import constantdict
+
+import islpy as isl
+from pymbolic import ArithmeticExpression, var
+from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_on_first_arg
 
-from loopy.transform.array_buffer_map import (ArrayToBufferMap,
-                                              ArrayToBufferMapBase,
-                                              NoOpArrayToBufferMap,
-                                              AccessDescriptor)
+from loopy.diagnostic import LoopyError
+from loopy.kernel.data import AddressSpace
+from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.instruction import InstructionBase, MultiAssignmentBase
+from loopy.kernel.tools import (
+    find_most_recent_global_barrier,
+    kernel_has_global_barriers,
+)
+from loopy.symbolic import (
+    CombineMapper,
+    RuleAwareIdentityMapper,
+    RuleAwareSubstitutionMapper,
+    SubstitutionRuleMappingContext,
+    flatten,
+    get_dependencies,
+)
+from loopy.transform.array_buffer_map import (
+    AccessDescriptor,
+    ArrayToBufferMap,
+    ArrayToBufferMapBase,
+    NoOpArrayToBufferMap,
+)
+from loopy.translation_unit import CallablesTable, TranslationUnit
+from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
+from loopy.typing import (
+    Expression,
+    auto,
+    integer_expr_or_err,
+    integer_or_err,
+    not_none,
+)
+
+
+if TYPE_CHECKING:
+    from pytools.tag import Tag
+
+    from loopy.kernel import LoopKernel
+    from loopy.match import ToStackMatchConvertible
 
 
 # {{{ contains_subst_rule_invocation
@@ -83,10 +106,11 @@ def _get_calls_in_expr(expr):
 @memoize_on_first_arg
 def _get_called_names(insn):
     assert isinstance(insn, MultiAssignmentBase)
-    from pymbolic.primitives import Expression
     from functools import reduce
+
+    from pymbolic.primitives import ExpressionNode
     return ((_get_calls_in_expr(insn.expression)
-             if isinstance(insn.expression, Expression)
+             if isinstance(insn.expression, ExpressionNode)
              else frozenset())
             # indices of assignees might call the subst rules
             | reduce(frozenset.union,
@@ -96,7 +120,7 @@ def _get_called_names(insn):
             | reduce(frozenset.union,
                      (_get_calls_in_expr(pred)
                       for pred in insn.predicates
-                      if isinstance(pred, Expression)),
+                      if isinstance(pred, ExpressionNode)),
                      frozenset())
             )
 
@@ -116,14 +140,14 @@ def contains_a_subst_rule_invocation(kernel, insn):
 
 @dataclass(frozen=True)
 class RuleAccessDescriptor(AccessDescriptor):
-    args: Optional[Sequence[ExpressionT]] = None
+    args: Sequence[ArithmeticExpression] | None = None
 
 
 def access_descriptor_id(args, expansion_stack):
     return (args, expansion_stack)
 
 
-def storage_axis_exprs(storage_axis_sources, args) -> Sequence[ExpressionT]:
+def storage_axis_exprs(storage_axis_sources, args) -> Sequence[Expression]:
     result = []
 
     for saxis_source in storage_axis_sources:
@@ -138,7 +162,8 @@ def storage_axis_exprs(storage_axis_sources, args) -> Sequence[ExpressionT]:
 # {{{ gather rule invocations
 
 class RuleInvocationGatherer(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, kernel, subst_name, subst_tag, within):
+    def __init__(self, rule_mapping_context, kernel, subst_name, subst_tag, within) \
+            -> None:
         super().__init__(rule_mapping_context)
 
         from loopy.symbolic import SubstitutionRuleExpander
@@ -150,9 +175,9 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
         self.subst_tag = subst_tag
         self.within = within
 
-        self.access_descriptors: List[RuleAccessDescriptor] = []
+        self.access_descriptors: list[RuleAccessDescriptor] = []
 
-    def map_substitution(self, name, tag, arguments, expn_state):
+    def map_subst_rule(self, name, tag, arguments, expn_state):
         process_me = name == self.subst_name
 
         if self.subst_tag is not None and self.subst_tag != tag:
@@ -164,7 +189,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                 expn_state.stack)
 
         if not process_me:
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         rule = self.rule_mapping_context.old_subst_rules[name]
@@ -187,9 +212,9 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
                         name,
                         ", ".join(str(arg) for arg in arguments),
                         ", ".join(arg_deps - self.kernel.all_inames()),
-                        ))
+                        ), stacklevel=1)
 
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         args = [arg_context[arg_name] for arg_name in rule.arguments]
@@ -234,7 +259,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         self.compute_read_variables = compute_read_variables
         self.compute_insn_depends_on = set()
 
-    def map_substitution(self, name, tag, arguments, expn_state):
+    def map_subst_rule(self, name, tag, arguments, expn_state):
         if not (
                 name == self.subst_name
                 and self.within(
@@ -242,7 +267,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     expn_state.instruction,
                     expn_state.stack)
                 and (self.subst_tag is None or self.subst_tag == tag)):
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         # {{{ check if in footprint
@@ -257,7 +282,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     self.storage_axis_sources, args))
 
         if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
-            return super().map_substitution(
+            return super().map_subst_rule(
                     name, tag, arguments, expn_state)
 
         # }}}
@@ -287,7 +312,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
         new_outer_expr = var(self.temporary_name)
         if stor_subscript:
-            new_outer_expr = new_outer_expr.index(tuple(stor_subscript))
+            new_outer_expr = new_outer_expr[tuple(stor_subscript)]
 
         # Can't possibly be nested, and no need to traverse
         # further as compute expression has already been seen
@@ -359,22 +384,23 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
 def precompute_for_single_kernel(
         kernel: LoopKernel,
-        callables_table: Mapping[str, InKernelCallable], subst_use,
+        callables_table: CallablesTable,
+        subst_use,
         sweep_inames=None,
-        within: ToStackMatchCovertible = None,
+        within: ToStackMatchConvertible = None,
         *,
         storage_axes=None,
-        temporary_name: Optional[str] = None,
-        precompute_inames: Optional[Sequence[str]] = None,
-        precompute_outer_inames: Optional[FrozenSet[str]] = None,
+        temporary_name: str | None = None,
+        precompute_inames: Sequence[str] | None = None,
+        precompute_outer_inames: frozenset[str] | None = None,
         storage_axis_to_tag=None,
 
-        default_tag: Union[None, Tag, str] = None,
+        default_tag: Tag | str | None = None,
 
-        dtype: Optional[ToLoopyTypeConvertible] = None,
+        dtype: ToLoopyTypeConvertible | None = None,
         fetch_bounding_box: bool = False,
-        temporary_address_space: Union[AddressSpace, None, Type[auto]] = None,
-        compute_insn_id: Optional[str] = None,
+        temporary_address_space: AddressSpace | type[auto] | None = None,
+        compute_insn_id: str | None = None,
         _enable_mirgecom_workaround: bool = False,
         ) -> LoopKernel:
     """Precompute the expression described in the substitution rule determined by
@@ -495,11 +521,12 @@ def precompute_for_single_kernel(
 
     footprint_generators = None
 
-    subst_name: Optional[str] = None
+    subst_name: str | None = None
     subst_tag = None
 
-    from pymbolic.primitives import Variable, Call
-    from loopy.symbolic import parse, TaggedVariable
+    from pymbolic.primitives import Call, Variable
+
+    from loopy.symbolic import TaggedVariable, parse
 
     for use in subst_use:
         if isinstance(use, str):
@@ -516,7 +543,7 @@ def precompute_for_single_kernel(
 
         if isinstance(subst_name_as_expr, TaggedVariable):
             new_subst_name = subst_name_as_expr.name
-            new_subst_tag = subst_name_as_expr.tag
+            new_subst_tag, = subst_name_as_expr.tags
         elif isinstance(subst_name_as_expr, Variable):
             new_subst_name = subst_name_as_expr.name
             new_subst_tag = None
@@ -539,7 +566,7 @@ def precompute_for_single_kernel(
         subst = kernel.substitutions[subst_name]
     except KeyError:
         raise LoopyError("substitution rule '%s' not found"
-                % subst_name)
+                % subst_name) from None
 
     c_subst_name = subst_name.replace(".", "_")
 
@@ -551,15 +578,15 @@ def precompute_for_single_kernel(
     # {{{ process invocations in footprint generators, start access_descriptors
 
     if footprint_generators:
-        from pymbolic.primitives import Variable, Call
+        from pymbolic.primitives import Call, Variable
 
         access_descriptors = []
 
         for fpg in footprint_generators:
             if isinstance(fpg, Variable):
-                args = ()
+                args: tuple[ArithmeticExpression, ...] = ()
             elif isinstance(fpg, Call):
-                args = fpg.parameters
+                args = cast("tuple[ArithmeticExpression, ...]", fpg.parameters)
             else:
                 raise ValueError("footprint generator must "
                         "be substitution rule invocation")
@@ -654,8 +681,8 @@ def precompute_for_single_kernel(
 
     prior_storage_axis_name_dict = {}
 
-    storage_axis_names: List[str] = []
-    storage_axis_sources: List[Union[str, int]] = []  # number for arg#, or iname
+    storage_axis_names: list[str] = []
+    storage_axis_sources: list[str | int] = []  # number for arg#, or iname
 
     # {{{ check for pre-existing precompute_inames
 
@@ -752,8 +779,7 @@ def precompute_for_single_kernel(
             if abm.non1_storage_axis_flags[i]:
                 non1_storage_axis_names.append(saxis)
             else:
-                if saxis in new_iname_to_tag:
-                    del new_iname_to_tag[saxis]
+                new_iname_to_tag.pop(saxis, None)
 
                 if saxis in preexisting_precompute_inames:
                     raise LoopyError("precompute axis %d (1-based) was "
@@ -902,8 +928,8 @@ def precompute_for_single_kernel(
         # should.
 
         if _enable_mirgecom_workaround:
-            from pymbolic.primitives import Expression
-            if is_length_1 and not isinstance(base_index, Expression):
+            from pymbolic.primitives import ExpressionNode
+            if is_length_1 and not isinstance(base_index, ExpressionNode):
                 # I.e. base_index is an integer.
                 from pytools import is_single_valued
                 if is_single_valued(
@@ -917,7 +943,7 @@ def precompute_for_single_kernel(
 
         storage_axis_subst_dict[
                 prior_storage_axis_name_dict.get(arg_name, arg_name)] = \
-                        arg+base_index
+                        flatten(arg+integer_expr_or_err(base_index))
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
@@ -943,7 +969,7 @@ def precompute_for_single_kernel(
             # within_inames determined below
             )
     compute_dep_id = compute_insn_id
-    added_compute_insns: List[InstructionBase] = [compute_insn]
+    added_compute_insns: list[InstructionBase] = [compute_insn]
 
     if temporary_address_space == AddressSpace.GLOBAL:
         barrier_insn_id = kernel.make_unique_instruction_id(
@@ -1008,7 +1034,7 @@ def precompute_for_single_kernel(
                 and insn.within_inames & prior_storage_axis_names):
             insn = (insn
                     .with_transformed_expressions(
-                        lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023,E501
+                        lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023
                     .copy(within_inames=frozenset(
                         new_iname
                         for iname in insn.within_inames
@@ -1103,7 +1129,8 @@ def precompute_for_single_kernel(
                         len(temp_var.shape), len(new_temp_shape)))
 
         new_temp_shape = tuple(
-                max(i, ex_i)
+                # https://github.com/numpy/numpy/issues/27251
+                np.maximum(integer_or_err(i), integer_or_err(ex_i))
                 for i, ex_i in zip(new_temp_shape, temp_var.shape))
 
         temp_var = temp_var.copy(shape=new_temp_shape)
@@ -1160,6 +1187,6 @@ def precompute(program, *args, **kwargs):
 
         new_callables[func_id] = clbl
 
-    return program.copy(callables_table=Map(new_callables))
+    return program.copy(callables_table=constantdict(new_callables))
 
 # vim: foldmethod=marker

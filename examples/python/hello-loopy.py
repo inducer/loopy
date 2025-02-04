@@ -1,8 +1,11 @@
 import numpy as np
-import loopy as lp
+
 import pyopencl as cl
 import pyopencl.array
+
+import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+
 
 # setup
 # -----

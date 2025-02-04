@@ -22,13 +22,13 @@ THE SOFTWARE.
 
 
 import numpy as np
+
 import pyopencl as cl  # noqa
-import loopy as lp
-
 from pyopencl.tools import (  # noqa
-        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
-
+import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
@@ -51,7 +51,7 @@ def test_tim2d(ctx_factory):
                 "ur(a,b) := simul_reduce(sum, o, D[a,o]*u[e,o,b])",
                 "us(a,b) := simul_reduce(sum, o2, D[b,o2]*u[e,a,o2])",
 
-                #"Gu(mat_entry,a,b) := G[mat_entry,e,m,j]*ur(m,j)",
+                # "Gu(mat_entry,a,b) := G[mat_entry,e,m,j]*ur(m,j)",
 
                 "Gux(a,b) := G$x[0,e,a,b]*ur(a,b)+G$x[1,e,a,b]*us(a,b)",
                 "Guy(a,b) := G$y[1,e,a,b]*ur(a,b)+G$y[2,e,a,b]*us(a,b)",
@@ -63,7 +63,7 @@ def test_tim2d(ctx_factory):
             [
                 lp.GlobalArg("u", dtype, shape=field_shape, order=order),
                 lp.GlobalArg("lap", dtype, shape=field_shape, order=order),
-                lp.GlobalArg("G", dtype, shape=(3,)+field_shape, order=order),
+                lp.GlobalArg("G", dtype, shape=(3, *field_shape), order=order),
                 # lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
                 lp.GlobalArg("D", dtype, shape=(n, n), order=order),
                 # lp.ImageArg("D", dtype, shape=(n, n)),
@@ -78,7 +78,7 @@ def test_tim2d(ctx_factory):
     seq_knl = knl
 
     def variant_orig(knl):
-        knl = lp.tag_inames(knl, dict(i="l.0", j="l.1", e="g.0"))
+        knl = lp.tag_inames(knl, {"i": "l.0", "j": "l.1", "e": "g.0"})
 
         knl = lp.add_prefetch(knl, "D[:,:]", fetch_outer_inames="e",
                 default_tag="l.auto")
@@ -94,8 +94,8 @@ def test_tim2d(ctx_factory):
         knl = lp.add_prefetch(knl, "G$x[:,e,:,:]", default_tag="l.auto")
         knl = lp.add_prefetch(knl, "G$y[:,e,:,:]", default_tag="l.auto")
 
-        knl = lp.tag_inames(knl, dict(o="unr"))
-        knl = lp.tag_inames(knl, dict(m="unr"))
+        knl = lp.tag_inames(knl, {"o": "unr"})
+        knl = lp.tag_inames(knl, {"m": "unr"})
 
         knl = lp.set_instruction_priority(knl, "id:D_fetch", 5)
         print(knl)

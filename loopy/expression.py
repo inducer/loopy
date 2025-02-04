@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012-15 Andreas Kloeckner"
 
 __license__ = """
@@ -23,7 +26,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from pymbolic.mapper import RecursiveMapper
+from pymbolic.mapper import Mapper
 
 from loopy.codegen import UnvectorizableError
 from loopy.diagnostic import LoopyError
@@ -55,7 +58,7 @@ def dtype_to_type_context(target, dtype):
 
 # {{{ vectorizability checker
 
-class VectorizabilityChecker(RecursiveMapper):
+class VectorizabilityChecker(Mapper):
     """The return value from this mapper is a :class:`bool` indicating whether
     the result of the expression is vectorized along :attr:`vec_iname`.
     If the expression is not vectorizable, the mapper raises
@@ -115,9 +118,10 @@ class VectorizabilityChecker(RecursiveMapper):
 
         index = expr.index_tuple
 
-        from loopy.symbolic import get_dependencies
-        from loopy.kernel.array import VectorArrayDimTag
         from pymbolic.primitives import Variable
+
+        from loopy.kernel.array import VectorArrayDimTag
+        from loopy.symbolic import get_dependencies
 
         possible = None
         for i in range(len(var.shape)):

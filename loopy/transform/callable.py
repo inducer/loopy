@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2018 Kaushik Kulkarni"
 
 __license__ = """
@@ -20,22 +23,39 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import islpy as isl
-from immutables import Map
 
+from typing import TYPE_CHECKING
+
+from constantdict import constantdict
+
+import islpy as isl
 from pytools import UniqueNameGenerator
 
-from loopy.kernel import LoopKernel
 from loopy.diagnostic import LoopyError
-from loopy.kernel.instruction import (CallInstruction, MultiAssignmentBase,
-        Assignment, CInstruction, _DataObliviousInstruction)
-from loopy.symbolic import (
-        RuleAwareIdentityMapper,
-        RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext)
+from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import (
-        CallableKernel, ScalarCallable)
-from loopy.translation_unit import (TranslationUnit,
-                                    for_each_kernel)
+    CallableKernel,
+    InKernelCallable,
+    ScalarCallable,
+)
+from loopy.kernel.instruction import (
+    Assignment,
+    CallInstruction,
+    CInstruction,
+    MultiAssignmentBase,
+    _DataObliviousInstruction,
+)
+from loopy.symbolic import (
+    RuleAwareIdentityMapper,
+    RuleAwareSubstitutionMapper,
+    SubstitutionRuleMappingContext,
+)
+from loopy.translation_unit import FunctionIdT, TranslationUnit, for_each_kernel
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -74,10 +94,8 @@ def register_callable(translation_unit, function_identifier, callable_,
             callables_table=new_callables)
 
 
-def merge(translation_units):
+def merge(translation_units: Sequence[TranslationUnit]) -> TranslationUnit:
     """
-    :param translation_units: A sequence of :class:`loopy.TranslationUnit`.
-
     :returns: An instance of :class:`loopy.TranslationUnit` which contains all the
         callables from each of the *translation_units.
     """
@@ -96,7 +114,7 @@ def merge(translation_units):
                 if (prg_i.callables_table[clbl_name]
                         != prg_j.callables_table[clbl_name]):
                     # TODO: generate unique names + rename for the colliding
-                    # callables (if entrypoints are colliding that shuold still
+                    # callables (if entrypoints are colliding that should still
                     # be an error)
                     raise NotImplementedError("Translation units to be merged"
                                               " must have different callable names"
@@ -104,14 +122,14 @@ def merge(translation_units):
 
     # }}}
 
-    callables_table = {}
+    callables_table: dict[FunctionIdT, InKernelCallable] = {}
     for trans_unit in translation_units:
         callables_table.update(trans_unit.callables_table)
 
     return TranslationUnit(
             entrypoints=frozenset().union(*(
                 t.entrypoints or frozenset() for t in translation_units)),
-            callables_table=Map(callables_table),
+            callables_table=constantdict(callables_table),
             target=translation_units[0].target)
 
 
@@ -130,8 +148,8 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
     def map_subscript(self, expr, expn_state):
         if expr.aggregate.name in self.callee_knl.arg_dict:
-            from pymbolic.primitives import Subscript, Variable
             from pymbolic import substitute
+            from pymbolic.primitives import Subscript, Variable
 
             sar = self.callee_arg_to_call_param[expr.aggregate.name]  # SubArrayRef
 
@@ -179,6 +197,7 @@ def substitute_into_domain(domain, param_name, expr, allowed_param_dims):
     :arg allowed_deps: A :class:`list` of :class:`str` that are
     """
     import pymbolic.primitives as prim
+
     from loopy.symbolic import get_dependencies, isl_set_from_expr
     if param_name not in domain.get_var_dict():
         # param_name not in domain => domain will be unchanged
@@ -241,6 +260,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     """
     import pymbolic.primitives as prim
     from pymbolic.mapper.substitutor import make_subst_func
+
     from loopy.kernel.data import ValueArg
 
     # {{{ sanity checks
@@ -302,7 +322,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     parameters = call_insn.expression.parameters  # reads
 
     from loopy.kernel.function_interface import get_kw_pos_association
-    kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
+    _kw_to_pos, pos_to_kw = get_kw_pos_association(callee_knl)
 
     for i, par in enumerate(parameters):
         arg_map[pos_to_kw[i]] = par
@@ -505,7 +525,7 @@ def inline_callable_kernel(translation_unit, function_name):
     Returns a copy of *translation_unit* with the callable kernel
     named *function_name* inlined at all call-sites.
     """
-    from loopy.preprocess import infer_arg_descr, filter_reachable_callables
+    from loopy.preprocess import filter_reachable_callables, infer_arg_descr
     from loopy.translation_unit import resolve_callables
 
     # {{{ must have argument shape information at call sites to inline
@@ -526,33 +546,41 @@ def inline_callable_kernel(translation_unit, function_name):
 
 # {{{ rename_callable
 
-def rename_callable(program, old_name, new_name=None, existing_ok=False):
+def rename_callable(
+            t_unit: TranslationUnit,
+            old_name: str,
+            new_name: str | None = None,
+            existing_ok=False
+        ) -> TranslationUnit:
     """
     :arg program: An instance of :class:`loopy.TranslationUnit`
     :arg old_name: The callable to be renamed
     :arg new_name: New name for the callable to be renamed
     :arg existing_ok: An instance of :class:`bool`
     """
-    from loopy.symbolic import (
-            RuleAwareSubstitutionMapper,
-            SubstitutionRuleMappingContext)
     from pymbolic import var
 
-    assert isinstance(program, TranslationUnit)
+    from loopy.symbolic import (
+        RuleAwareSubstitutionMapper,
+        SubstitutionRuleMappingContext,
+    )
+
+    assert isinstance(t_unit, TranslationUnit)
     assert isinstance(old_name, str)
 
-    if (new_name in program.callables_table) and not existing_ok:
+    if (new_name in t_unit.callables_table) and not existing_ok:
         raise LoopyError(f"callables named '{new_name}' already exists")
 
     if new_name is None:
-        namegen = UniqueNameGenerator(program.callables_table.keys())
+        namegen = UniqueNameGenerator(
+                    {n for n in t_unit.callables_table if isinstance(n, str)})
         new_name = namegen(old_name)
 
     assert isinstance(new_name, str)
 
     new_callables_table = {}
 
-    for name, clbl in program.callables_table.items():
+    for name, clbl in t_unit.callables_table.items():
         if name == old_name:
             name = new_name
 
@@ -572,12 +600,12 @@ def rename_callable(program, old_name, new_name=None, existing_ok=False):
 
         new_callables_table[name] = clbl
 
-    new_entrypoints = program.entrypoints.copy()
+    new_entrypoints = t_unit.entrypoints.copy()
     if old_name in new_entrypoints:
         new_entrypoints = ((new_entrypoints | frozenset([new_name]))
                            - frozenset([old_name]))
 
-    return program.copy(callables_table=Map(new_callables_table),
+    return t_unit.copy(callables_table=constantdict(new_callables_table),
                         entrypoints=new_entrypoints)
 
 # }}}

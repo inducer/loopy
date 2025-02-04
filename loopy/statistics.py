@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = """
 Copyright (C) 2015 James Stevens
 Copyright (C) 2018 Kaushik Kulkarni
@@ -25,20 +28,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from functools import partial, cached_property
+from functools import cached_property, partial
+from typing import TYPE_CHECKING, ClassVar
 
-from islpy import dim_type
 import islpy as isl
+from islpy import dim_type
 from pymbolic.mapper import CombineMapper
+from pytools import ImmutableRecord, memoize_method
 
 import loopy as lp
-from loopy.kernel.data import (
-        MultiAssignmentBase, TemporaryVariable, AddressSpace)
-from loopy.diagnostic import warn_with_kernel, LoopyError
-from loopy.symbolic import CoefficientCollector
-from pytools import ImmutableRecord, memoize_method
+from loopy.diagnostic import LoopyError, warn_with_kernel
+from loopy.kernel.data import AddressSpace, MultiAssignmentBase, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel
+from loopy.symbolic import CoefficientCollector, flatten
 from loopy.translation_unit import TranslationUnit
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 __doc__ = """
@@ -392,7 +399,7 @@ class ToCountMap:
 
         # make sure all item keys have same type
         if self.count_map:
-            key_type = type(list(self.keys())[0])
+            key_type = type(next(iter(self.keys())))
             if not all(isinstance(x, key_type) for x in self.keys()):
                 raise ValueError("ToCountMap: group_by() function may only "
                                  "be used on ToCountMaps with uniform keys")
@@ -423,16 +430,16 @@ class ToCountMap:
             bytes_map = get_mem_access_map(knl).to_bytes()
             params = {"n": 512, "m": 256, "l": 128}
 
-            s1_g_ld_byt = bytes_map.filter_by(
+            s1_g_ld_bytes = bytes_map.filter_by(
                                 mtype=["global"], lid_strides={0: 1},
                                 direction=["load"]).eval_and_sum(params)
-            s2_g_ld_byt = bytes_map.filter_by(
+            s2_g_ld_bytes = bytes_map.filter_by(
                                 mtype=["global"], lid_strides={0: 2},
                                 direction=["load"]).eval_and_sum(params)
-            s1_g_st_byt = bytes_map.filter_by(
+            s1_g_st_bytes = bytes_map.filter_by(
                                 mtype=["global"], lid_strides={0: 1},
                                 direction=["store"]).eval_and_sum(params)
-            s2_g_st_byt = bytes_map.filter_by(
+            s2_g_st_bytes = bytes_map.filter_by(
                                 mtype=["global"], lid_strides={0: 2},
                                 direction=["store"]).eval_and_sum(params)
 
@@ -535,7 +542,7 @@ class ToCountPolynomialMap(ToCountMap):
 # {{{ subst_into_to_count_map
 
 def subst_into_guarded_pwqpolynomial(new_space, guarded_poly, subst_dict):
-    from loopy.isl_helpers import subst_into_pwqpolynomial, get_param_subst_domain
+    from loopy.isl_helpers import get_param_subst_domain, subst_into_pwqpolynomial
 
     poly = subst_into_pwqpolynomial(
             new_space, guarded_poly.pwqpolynomial, subst_dict)
@@ -599,7 +606,7 @@ class CountGranularity:
     WORKITEM = "workitem"
     SUBGROUP = "subgroup"
     WORKGROUP = "workgroup"
-    ALL = [WORKITEM, SUBGROUP, WORKGROUP]
+    ALL: ClassVar[Sequence[str]] = [WORKITEM, SUBGROUP, WORKGROUP]
 
 # }}}
 
@@ -630,7 +637,7 @@ class Op(ImmutableRecord):
        work-group executes on a single compute unit with all work-items within
        the work-group sharing local memory. A sub-group is an
        implementation-dependent grouping of work-items within a work-group,
-       analagous to an NVIDIA CUDA warp.
+       analogous to an NVIDIA CUDA warp.
 
     .. attribute:: kernel_name
 
@@ -640,10 +647,10 @@ class Op(ImmutableRecord):
 
     def __init__(self, dtype=None, name=None, count_granularity=None,
             kernel_name=None):
-        if count_granularity not in CountGranularity.ALL+[None]:
+        if count_granularity not in [*CountGranularity.ALL, None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
                     "not allowed. count_granularity options: %s"
-                    % (count_granularity, CountGranularity.ALL+[None]))
+                    % (count_granularity, [*CountGranularity.ALL, None]))
 
         if dtype is not None:
             from loopy.types import to_loopy_type
@@ -682,7 +689,7 @@ class MemAccess(ImmutableRecord):
     .. attribute:: lid_strides
 
        A :class:`dict` of **{** :class:`int` **:**
-       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
+       :data:`~pymbolic.typing.Expression` or :class:`int` **}** that
        specifies local strides for each local id in the memory access index.
        Local ids not found will not be present in ``lid_strides.keys()``.
        Uniform access (i.e. work-items within a sub-group access the same
@@ -693,7 +700,7 @@ class MemAccess(ImmutableRecord):
     .. attribute:: gid_strides
 
        A :class:`dict` of **{** :class:`int` **:**
-       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
+       :data:`~pymbolic.typing.Expression` or :class:`int` **}** that
        specifies global strides for each global id in the memory access index.
        global ids not found will not be present in ``gid_strides.keys()``.
 
@@ -710,7 +717,7 @@ class MemAccess(ImmutableRecord):
     .. attribute:: variable_tags
 
        A :class:`frozenset` of subclasses of :class:`~pytools.tag.Tag`
-       that reflects :attr:`~loopy.symbolic.TaggedVariable.tags` of
+       that reflects :attr:`~loopy.TaggedVariable.tags` of
        an accessed variable.
 
     .. attribute:: count_granularity
@@ -724,7 +731,7 @@ class MemAccess(ImmutableRecord):
        work-group executes on a single compute unit with all work-items within
        the work-group sharing local memory. A sub-group is an
        implementation-dependent grouping of work-items within a work-group,
-       analagous to an NVIDIA CUDA warp.
+       analogous to an NVIDIA CUDA warp.
 
     .. attribute:: kernel_name
 
@@ -736,10 +743,10 @@ class MemAccess(ImmutableRecord):
                  *, variable_tags=None,
                  count_granularity=None, kernel_name=None):
 
-        if count_granularity not in CountGranularity.ALL+[None]:
+        if count_granularity not in [*CountGranularity.ALL, None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
                     "not allowed. count_granularity options: %s"
-                    % (count_granularity, CountGranularity.ALL+[None]))
+                    % (count_granularity, [*CountGranularity.ALL, None]))
 
         if variable_tags is None:
             variable_tags = frozenset()
@@ -836,9 +843,11 @@ class CounterBase(CombineMapper):
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
 
-        from loopy.kernel.function_interface import (CallableKernel,
-                get_kw_pos_association)
         from loopy.kernel.data import ValueArg
+        from loopy.kernel.function_interface import (
+            CallableKernel,
+            get_kw_pos_association,
+        )
         if isinstance(clbl, CallableKernel):
             sub_result = self.kernel_rec(clbl.subkernel)
             _, pos_to_kw = get_kw_pos_association(clbl.subkernel)
@@ -890,7 +899,6 @@ class CounterBase(CombineMapper):
         raise RuntimeError("%s encountered %s--not supposed to happen"
                 % (type(self).__name__, type(expr).__name__))
 
-    map_substitution = map_common_subexpression
     map_derivative = map_common_subexpression
     map_slice = map_common_subexpression
 
@@ -995,6 +1003,10 @@ class ExpressionOpCounter(CounterBase):
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
+    def map_type_cast(self, expr):
+        # Treats type casting as free
+        return self.rec(expr.child)
+
     def map_left_shift(self, expr):
         return self.new_poly_map({Op(dtype=self.type_inf(expr),
                               name="shift",
@@ -1052,11 +1064,6 @@ class ExpressionOpCounter(CounterBase):
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
 
-    def map_substitution(self, expr):
-        raise NotImplementedError("ExpressionOpCounter encountered "
-                                  "substitution, "
-                                  "map_substitution not implemented.")
-
     def map_derivative(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "derivative, "
@@ -1076,7 +1083,7 @@ class _IndexStrideCoefficientCollector(CoefficientCollector):
     def map_floor_div(self, expr):
         from warnings import warn
         warn("_IndexStrideCoefficientCollector encountered FloorDiv, ignoring "
-             "denominator in expression %s" % (expr))
+             "denominator in expression %s" % (expr), stacklevel=1)
         return self.rec(expr.numerator)
 
 # }}}
@@ -1089,8 +1096,11 @@ def _get_lid_and_gid_strides(knl, array, index):
     from loopy.symbolic import get_dependencies
     my_inames = get_dependencies(index) & knl.all_inames()
 
-    from loopy.kernel.data import (LocalInameTag, GroupInameTag,
-                                   filter_iname_tags_by_type)
+    from loopy.kernel.data import (
+        GroupInameTag,
+        LocalInameTag,
+        filter_iname_tags_by_type,
+    )
     lid_to_iname = {}
     gid_to_iname = {}
     for iname in my_inames:
@@ -1105,16 +1115,17 @@ def _get_lid_and_gid_strides(knl, array, index):
 
     # create lid_strides and gid_strides dicts
 
-    # strides are coefficents in flattened index, i.e., we want
+    # strides are coefficients in flattened index, i.e., we want
     # lid_strides = {0:l0, 1:l1, 2:l2, ...} and
     # gid_strides = {0:g0, 1:g1, 2:g2, ...},
     # where l0, l1, l2, g0, g1, and g2 come from flattened index
     # [... + g2*gid2 + g1*gid1 + g0*gid0 + ... + l2*lid2 + l1*lid1 + l0*lid0]
 
-    from loopy.kernel.array import FixedStrideArrayDimTag
     from pymbolic.primitives import Variable
-    from loopy.symbolic import simplify_using_aff
+
     from loopy.diagnostic import ExpressionNotAffineError
+    from loopy.kernel.array import FixedStrideArrayDimTag
+    from loopy.symbolic import simplify_using_aff
 
     def get_iname_strides(tag_to_iname_dict):
         tag_to_stride_dict = {}
@@ -1162,7 +1173,7 @@ def _get_lid_and_gid_strides(knl, array, index):
 
                 total_iname_stride += axis_tag_stride*coeff
 
-            tag_to_stride_dict[tag] = total_iname_stride
+            tag_to_stride_dict[tag] = flatten(total_iname_stride)
 
         return tag_to_stride_dict
 
@@ -1375,19 +1386,19 @@ class AccessFootprintGatherer(CombineMapper):
         try:
             access_range = get_access_map(self.domain, subscript,
                     self.kernel.assumptions).range()
-        except isl.Error:
+        except isl.Error as err:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:
                 return {}
             else:
-                raise LoopyError("failed to gather footprint: %s" % expr)
+                raise LoopyError("failed to gather footprint: %s" % expr) from err
 
-        except TypeError:
+        except TypeError as err:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:
                 return {}
             else:
-                raise LoopyError("failed to gather footprint: %s" % expr)
+                raise LoopyError("failed to gather footprint: %s" % expr) from err
 
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)
@@ -1520,7 +1531,7 @@ def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
     g_used = set()
     l_used = set()
 
-    from loopy.kernel.data import LocalInameTag, GroupInameTag
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
     for iname in insn.within_inames:
         tags = knl.iname_tags_of_type(iname,
                               (LocalInameTag, GroupInameTag), max_num=1)
@@ -1647,7 +1658,7 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
         # this should not happen since this is enforced in Op/MemAccess
         raise ValueError("get_insn_count: count_granularity '%s' is"
                 "not allowed. count_granularity options: %s"
-                % (count_granularity, CountGranularity.ALL+[None]))
+                % (count_granularity, [*CountGranularity.ALL, None]))
 
 # }}}
 
@@ -1671,8 +1682,12 @@ def _get_op_map_for_single_kernel(knl, callables_table,
     op_map = op_counter.new_zero_poly_map()
 
     from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
-            NoOpInstruction, BarrierInstruction)
+        Assignment,
+        BarrierInstruction,
+        CallInstruction,
+        CInstruction,
+        NoOpInstruction,
+    )
 
     for insn in knl.instructions:
         if within(knl, insn):
@@ -1714,7 +1729,7 @@ def get_op_map(program, count_redundant_work=False,
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``"guess"``, or *None* that specifies the sub-group size. An OpenCL
         sub-group is an implementation-dependent grouping of work-items within
-        a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
+        a work-group, analogous to an NVIDIA CUDA warp. subgroup_size is used,
         e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         *None* an attempt to find the sub-group size using the device will be
@@ -1759,11 +1774,11 @@ def get_op_map(program, count_redundant_work=False,
         if len(program.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in program.entrypoints
 
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
     program = preprocess_program(program)
 
     from loopy.match import parse_match
@@ -1858,8 +1873,12 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
     access_map = access_counter_g.new_zero_poly_map()
 
     from loopy.kernel.instruction import (
-            CallInstruction, CInstruction, Assignment,
-            NoOpInstruction, BarrierInstruction)
+        Assignment,
+        BarrierInstruction,
+        CallInstruction,
+        CInstruction,
+        NoOpInstruction,
+    )
 
     for insn in knl.instructions:
         if within(knl, insn):
@@ -1908,7 +1927,7 @@ def get_mem_access_map(program, count_redundant_work=False,
     :arg subgroup_size: An :class:`int`, :class:`str` ``"guess"``, or
         *None* that specifies the sub-group size. An OpenCL sub-group is an
         implementation-dependent grouping of work-items within a work-group,
-        analagous to an NVIDIA CUDA warp. subgroup_size is used, e.g., when
+        analogous to an NVIDIA CUDA warp. subgroup_size is used, e.g., when
         counting a :class:`MemAccess` whose count_granularity specifies that it
         should only be counted once per sub-group. If set to *None* an attempt
         to find the sub-group size using the device will be made, if this fails
@@ -1982,11 +2001,11 @@ def get_mem_access_map(program, count_redundant_work=False,
         if len(program.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in program.entrypoints
 
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
 
     program = preprocess_program(program)
 
@@ -2013,8 +2032,14 @@ def _get_synchronization_map_for_single_kernel(knl, callables_table,
 
     knl = lp.get_one_linearized_kernel(knl, callables_table)
 
-    from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
-            CallKernel, ReturnFromKernel, RunInstruction)
+    from loopy.schedule import (
+        Barrier,
+        CallKernel,
+        EnterLoop,
+        LeaveLoop,
+        ReturnFromKernel,
+        RunInstruction,
+    )
 
     kernel_rec = partial(_get_synchronization_map_for_single_kernel,
             callables_table=callables_table,
@@ -2066,7 +2091,7 @@ def get_synchronization_map(program, subgroup_size=None, entrypoint=None):
     :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``"guess"``, or *None* that specifies the sub-group size. An OpenCL
         sub-group is an implementation-dependent grouping of work-items within
-        a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
+        a work-group, analogous to an NVIDIA CUDA warp. subgroup_size is used,
         e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         *None* an attempt to find the sub-group size using the device will be
@@ -2097,10 +2122,10 @@ def get_synchronization_map(program, subgroup_size=None, entrypoint=None):
         if len(program.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in program.entrypoints
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
 
     program = preprocess_program(program)
     # Ordering restriction: preprocess might insert arguments to
@@ -2156,7 +2181,7 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
         if len(program.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = list(program.entrypoints)[0]
+        entrypoint = next(iter(program.entrypoints))
 
     assert entrypoint in program.entrypoints
 
@@ -2167,7 +2192,7 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
         raise NotImplementedError("Currently only supported for program with "
             "only one CallableKernel.")
 
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
 
     program = preprocess_program(program)
     # Ordering restriction: preprocess might insert arguments to
@@ -2186,10 +2211,10 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
     result = {}
 
     for vname, footprint in write_footprints.items():
-        result[(vname, "write")] = footprint
+        result[vname, "write"] = footprint
 
     for vname, footprint in read_footprints.items():
-        result[(vname, "read")] = footprint
+        result[vname, "read"] = footprint
 
     return result
 
@@ -2205,7 +2230,7 @@ def gather_access_footprint_bytes(program, ignore_uncountable=False):
         nonlinear indices)
     """
 
-    from loopy.preprocess import preprocess_program, infer_unknown_types
+    from loopy.preprocess import infer_unknown_types, preprocess_program
     kernel = infer_unknown_types(program, expect_completion=True)
 
     from loopy.kernel import KernelState
@@ -2217,7 +2242,7 @@ def gather_access_footprint_bytes(program, ignore_uncountable=False):
                                   ignore_uncountable=ignore_uncountable)
 
     for key, var_fp in fp.items():
-        vname, direction = key
+        vname, _direction = key
 
         var_descr = kernel.get_var_descriptor(vname)
         bytes_transferred = (

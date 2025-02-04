@@ -1,5 +1,7 @@
 """Data used by the kernel object."""
 
+from __future__ import annotations
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -24,35 +26,49 @@ THE SOFTWARE.
 """
 
 
-from typing import (Type, Union, FrozenSet, Tuple, Optional, Sequence, Any, ClassVar,
-        cast)
-from sys import intern
 from dataclasses import dataclass, replace
 from enum import IntEnum
-from warnings import warn
+from sys import intern
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Sequence,
+    Tuple,
+    Union,
+    cast,
+)
 
-from immutables import Map
-import numpy as np  # noqa
+import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
+import numpy as np
+
 from pytools import ImmutableRecord
-from pytools.tag import Taggable
-from pytools.tag import UniqueTag as UniqueTagBase, Tag
+from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
 
-from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
 from loopy.diagnostic import LoopyError
-from loopy.typing import ExpressionT, ShapeType
-from loopy.types import LoopyType, auto
+from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
 from loopy.kernel.instruction import (  # noqa
-        InstructionBase,
-        MemoryOrdering,
-        MemoryScope,
-        VarAtomicity,
-        AtomicInit,
-        AtomicUpdate,
-        MultiAssignmentBase,
-        Assignment,
-        CallInstruction,
-        make_assignment,
-        CInstruction)
+    Assignment,
+    AtomicInit,
+    AtomicUpdate,
+    CallInstruction,
+    CInstruction,
+    InstructionBase,
+    MemoryOrdering,
+    MemoryScope,
+    MultiAssignmentBase,
+    VarAtomicity,
+    make_assignment,
+)
+from loopy.typing import Expression, ShapeType, auto
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from pymbolic import ArithmeticExpression, Variable
+
+    from loopy.types import LoopyType, ToLoopyTypeConvertible
 
 
 __doc__ = """
@@ -75,6 +91,13 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
+
+References
+^^^^^^^^^^
+
+.. class:: ToLoopyTypeConvertible
+
+    See :class:`loopy.ToLoopyTypeConvertible`.
 """
 
 # This docstring is included in ref_internals. Do not include parts of the public
@@ -83,16 +106,17 @@ __doc__ = """
 
 # {{{ utilities
 
-def _names_from_expr(expr: Union[None, ExpressionT, str]) -> FrozenSet[str]:
+def _names_from_expr(expr: Expression | str | None) -> frozenset[str]:
     from numbers import Number
-    from loopy.symbolic import DependencyMapper
-    dep_mapper = DependencyMapper()
 
-    from pymbolic.primitives import Expression
+    from loopy.symbolic import DependencyMapper
+    dep_mapper: DependencyMapper[[]] = DependencyMapper()
+
+    from pymbolic.primitives import ExpressionNode
     if isinstance(expr, str):
         return frozenset({expr})
-    elif isinstance(expr, Expression):
-        return frozenset(v.name for v in dep_mapper(expr))
+    elif isinstance(expr, ExpressionNode):
+        return frozenset(cast("Variable", v).name for v in dep_mapper(expr))
     elif expr is None:
         return frozenset()
     elif isinstance(expr, Number):
@@ -102,7 +126,7 @@ def _names_from_expr(expr: Union[None, ExpressionT, str]) -> FrozenSet[str]:
 
 
 def _names_from_dim_tags(
-        dim_tags: Optional[Sequence[ArrayDimImplementationTag]]) -> FrozenSet[str]:
+        dim_tags: Sequence[ArrayDimImplementationTag] | None) -> frozenset[str]:
     from loopy.kernel.array import FixedStrideArrayDimTag
     if dim_tags is not None:
         return frozenset({
@@ -150,7 +174,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
 
 
 class InameImplementationTag(ImmutableRecord, UniqueTagBase):
-    __slots__: ClassVar[Tuple[str, ...]] = ()
+    __slots__: ClassVar[tuple[str, ...]] = ()
 
     def __hash__(self):
         return hash(self.key)
@@ -282,10 +306,10 @@ class InOrderSequentialSequentialTag(InameImplementationTag):
         return "ord"
 
 
-ToInameTagConvertible = Union[str, None, Tag]
+ToInameTagConvertible = Union[str, Tag, None]
 
 
-def parse_tag(tag: ToInameTagConvertible) -> Optional[Tag]:
+def parse_tag(tag: ToInameTagConvertible) -> Tag | None:
     if tag is None:
         return tag
 
@@ -344,7 +368,7 @@ class AddressSpace(IntEnum):
     GLOBAL = 2
 
     @classmethod
-    def stringify(cls, val: Union["AddressSpace", Type[auto]]) -> str:
+    def stringify(cls, val: AddressSpace | type[auto]) -> str:
         if val == cls.PRIVATE:
             return "private"
         elif val == cls.LOCAL:
@@ -372,18 +396,12 @@ class KernelArgument(ImmutableRecord):
     .. automethod:: supporting_names
     """
     name: str
-    dtype: Optional[LoopyType]
+    dtype: LoopyType | None
     is_output: bool
     is_input: bool
 
     def __init__(self, **kwargs):
         kwargs["name"] = intern(kwargs.pop("name"))
-
-        target = kwargs.pop("target", None)
-        if target is not None:
-            warn("Passing 'target' is deprecated and will stop working in 2023. "
-                    "It is already being ignored.",
-                    DeprecationWarning, stacklevel=2)
 
         dtype = kwargs.pop("dtype", None)
 
@@ -403,7 +421,7 @@ class KernelArgument(ImmutableRecord):
 
         ImmutableRecord.__init__(self, **kwargs)
 
-    def supporting_names(self) -> FrozenSet[str]:
+    def supporting_names(self) -> frozenset[str]:
         """'Supporting' names are those that are likely to be required to be
         present for any use of the argument.
         """
@@ -418,12 +436,12 @@ class _ArraySeparationInfo:
     this records the names of the actually present sub-arrays that
     should be used to realize this array.
     """
-    sep_axis_indices_set: FrozenSet[int]
-    subarray_names: Map[Tuple[int, ...], str]
+    sep_axis_indices_set: frozenset[int]
+    subarray_names: Mapping[tuple[int, ...], str]
 
 
 class ArrayArg(ArrayBase, KernelArgument):
-    __doc__ = cast(str, ArrayBase.__doc__) + (
+    __doc__ = cast("str", ArrayBase.__doc__) + (
         """
         .. attribute:: address_space
 
@@ -446,7 +464,7 @@ class ArrayArg(ArrayBase, KernelArgument):
     address_space: AddressSpace
 
     # _separation_info is not user-facing and hence not documented.
-    _separation_info: Optional[_ArraySeparationInfo]
+    _separation_info: _ArraySeparationInfo | None
 
     allowed_extra_kwargs = (
             "address_space",
@@ -498,7 +516,7 @@ class ArrayArg(ArrayBase, KernelArgument):
         key_builder.rec(key_hash, self.is_input)
         key_builder.rec(key_hash, self._separation_info)
 
-    def supporting_names(self) -> FrozenSet[str]:
+    def supporting_names(self) -> frozenset[str]:
         # Do not consider separation info here: The subarrays don't support, they
         # replace this array.
         return (
@@ -510,7 +528,7 @@ class ArrayArg(ArrayBase, KernelArgument):
 # Making this a function prevents incorrect use in isinstance.
 # Note: This is *not* deprecated, as it is super-common and
 # incrementally more convenient to use than ArrayArg directly.
-def GlobalArg(*args, **kwargs):
+def GlobalArg(*args, **kwargs) -> ArrayArg:  # noqa: N802
     address_space = kwargs.pop("address_space", None)
     if address_space is not None:
         raise TypeError("may not pass 'address_space' to GlobalArg")
@@ -561,25 +579,22 @@ class ImageArg(ArrayBase, KernelArgument):
         return ast_builder.get_image_arg_decl(self.name + name_suffix, shape,
                 self.num_target_axes(), dtype, is_written)
 
-    def supporting_names(self) -> FrozenSet[str]:
+    def supporting_names(self) -> frozenset[str]:
         return (
                 _names_from_expr(self.offset)
                 | _names_from_dim_tags(self.dim_tags)
                 )
 
 
-"""
-    :attribute tags: A (possibly empty) frozenset of instances of
-        :class:`pytools.tag.Tag` intended for consumption by an
-        application.
-
-        ..versionadded: 2020.2.2
-"""
-
-
 class ValueArg(KernelArgument, Taggable):
-    def __init__(self, name, dtype=None, approximately=1000, target=None,
-            is_output=False, is_input=True, tags=None):
+    def __init__(self,
+                name: str,
+                dtype: ToLoopyTypeConvertible | None = None,
+                approximately: int = 1000,
+                is_output: bool = False,
+                is_input: bool = True,
+                tags: frozenset[Tag] | None = None,
+             ) -> None:
         """
         :arg tags: A an instance of or Iterable of instances of
             :class:`pytools.tag.Tag` intended for consumption by an
@@ -592,7 +607,6 @@ class ValueArg(KernelArgument, Taggable):
         KernelArgument.__init__(self, name=name,
                 dtype=dtype,
                 approximately=approximately,
-                target=target,
                 is_output=is_output,
                 is_input=is_input,
                 tags=tags)
@@ -629,49 +643,43 @@ class ValueArg(KernelArgument, Taggable):
 # {{{ temporary variable
 
 class TemporaryVariable(ArrayBase):
-    __doc__ = cast(str, ArrayBase.__doc__) + """
-    .. attribute:: storage_shape
-    .. attribute:: base_indices
-    .. attribute:: address_space
-
-        What memory this temporary variable lives in.
-        One of the values in :class:`AddressSpace`,
-        or :class:`loopy.auto` if this is
-        to be automatically determined.
-
-    .. attribute:: base_storage
-
-        The name of a storage array that is to be used to actually
-        hold the data in this temporary, or *None*. If not *None* or the name
-        of an existing variable, a variable of this name and appropriate size
-        will be created.
-
-    .. attribute:: initializer
-
-        *None* or a :class:`numpy.ndarray` of data to be used to initialize the
-        array.
-
-    .. attribute:: read_only
-
-        A :class:`bool` indicating whether the variable may be written during
-        its lifetime. If *True*, *initializer* must be given.
-
-    .. attribute:: _base_storage_access_may_be_aliasing
-
-        Whether the temporary is used to alias the underlying base storage.
-        Defaults to *False*. If *False*, C-based code generators will declare
-        the temporary as a ``restrict`` const pointer to the base storage
-        memory location. If *True*, the restrict part is omitted on this
-        declaration.
+    __doc__ = cast("str", ArrayBase.__doc__) + """
+    .. autoattribute:: storage_shape
+    .. autoattribute:: base_indices
+    .. autoattribute:: address_space
+    .. autoattribute:: base_storage
+    .. autoattribute:: initializer
+    .. autoattribute:: read_only
+    .. autoattribute:: _base_storage_access_may_be_aliasing
     """
 
-    storage_shape: Optional[ShapeType]
-    base_indices: Optional[Tuple[ExpressionT, ...]]
-    address_space: Union[AddressSpace, Type[auto]]
-    base_storage: Optional[str]
-    initializer: Optional[np.ndarray]
+    storage_shape: ShapeType | None
+    base_indices: tuple[Expression, ...] | None
+    address_space: AddressSpace | type[auto]
+    base_storage: str | None
+    """The name of a storage array that is to be used to actually
+    hold the data in this temporary, or *None*. If not *None* or the name
+    of an existing variable, a variable of this name and appropriate size
+    will be created.
+    """
+
+    initializer: numpy.ndarray | None
+    """*None* or a :class:`numpy.ndarray` of data to be used to initialize the
+    array.
+    """
+
     read_only: bool
+    """A :class:`bool` indicating whether the variable may be written during
+    its lifetime. If *True*, *initializer* must be given.
+    """
+
     _base_storage_access_may_be_aliasing: bool
+    """Whether the temporary is used to alias the underlying base storage.
+    Defaults to *False*. If *False*, C-based code generators will declare
+    the temporary as a ``restrict`` const pointer to the base storage
+    memory location. If *True*, the restrict part is omitted on this
+    declaration.
+    """
 
     min_target_axes: ClassVar[int] = 0
     max_target_axes: ClassVar[int] = 1
@@ -686,11 +694,28 @@ class TemporaryVariable(ArrayBase):
             "_base_storage_access_may_be_aliasing",
             )
 
-    def __init__(self, name, dtype=None, shape=auto, address_space=None,
-            dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
-            base_indices=None, storage_shape=None,
-            base_storage=None, initializer=None, read_only=False,
-            _base_storage_access_may_be_aliasing=False, **kwargs):
+    def __init__(
+                self,
+                name: str,
+                dtype: ToLoopyTypeConvertible = None,
+                shape: ShapeType | type[auto] | None = auto,
+                address_space: AddressSpace | type[auto] | None = None,
+                dim_tags: Sequence[ArrayDimImplementationTag] | None = None,
+                offset: Expression | str | None = 0,
+                dim_names: tuple[str, ...] | None = None,
+                strides: tuple[Expression, ...] | None = None,
+                order: str | None = None,
+
+                base_indices: tuple[Expression, ...] | None = None,
+                storage_shape: ShapeType | None = None,
+
+                base_storage: str | None = None,
+                initializer: np.ndarray | None = None,
+                read_only: bool = False,
+
+                _base_storage_access_may_be_aliasing: bool = False,
+                **kwargs: Any
+            ) -> None:
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -699,12 +724,6 @@ class TemporaryVariable(ArrayBase):
 
         if address_space is None:
             address_space = auto
-
-        if address_space is None:
-            raise LoopyError(
-                    "temporary variable '%s': "
-                    "address_space must not be None"
-                    % name)
 
         if initializer is None:
             pass
@@ -740,7 +759,12 @@ class TemporaryVariable(ArrayBase):
         if order is None:
             order = "C"
 
-        if base_indices is None and shape is not auto:
+        if shape is not None:
+            from loopy.kernel.array import _parse_shape_or_strides
+            shape = _parse_shape_or_strides(shape)
+
+        if base_indices is None and shape is not auto and shape is not None:
+            assert isinstance(shape, tuple)
             base_indices = (0,) * len(shape)
 
         if not read_only and initializer is not None:
@@ -779,7 +803,7 @@ class TemporaryVariable(ArrayBase):
                     _base_storage_access_may_be_aliasing),
                 **kwargs)
 
-    def copy(self, **kwargs):
+    def copy(self, **kwargs: Any) -> TemporaryVariable:
         address_space = kwargs.pop("address_space", None)
 
         if address_space is not None:
@@ -788,15 +812,23 @@ class TemporaryVariable(ArrayBase):
         return super().copy(**kwargs)
 
     @property
-    def nbytes(self):
-        shape = self.shape
+    def nbytes(self) -> Expression:
         if self.storage_shape is not None:
             shape = self.storage_shape
+        else:
+            if self.shape is None:
+                raise ValueError("shape is None")
+            if self.shape is auto:
+                raise ValueError("shape is auto")
+            shape = cast("Tuple[ArithmeticExpression]", self.shape)
+
+        if self.dtype is None:
+            raise ValueError("data type is indeterminate")
 
         from pytools import product
         return product(si for si in shape)*self.dtype.itemsize
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.address_space is auto:
             aspace_str = "auto"
         else:
@@ -832,8 +864,7 @@ class TemporaryVariable(ArrayBase):
         """
 
         super().update_persistent_hash(key_hash, key_builder)
-        self.update_persistent_hash_for_shape(key_hash, key_builder,
-                self.storage_shape)
+        key_builder.rec(key_hash, self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
         key_builder.rec(key_hash, self.address_space)
         key_builder.rec(key_hash, self.base_storage)
@@ -846,7 +877,7 @@ class TemporaryVariable(ArrayBase):
         key_builder.rec(key_hash, self.read_only)
         key_builder.rec(key_hash, self._base_storage_access_may_be_aliasing)
 
-    def supporting_names(self) -> FrozenSet[str]:
+    def supporting_names(self) -> frozenset[str]:
         return (
                 _names_from_expr(self.offset)
                 | _names_from_dim_tags(self.dim_tags)
@@ -860,34 +891,26 @@ class TemporaryVariable(ArrayBase):
 
 # {{{ substitution rule
 
-class SubstitutionRule(ImmutableRecord):
+@dataclass(frozen=True)
+class SubstitutionRule:
     """
-    .. attribute:: name
-    .. attribute:: arguments
-
-        A tuple of strings
-
-    .. attribute:: expression
+    .. autoattribute:: name
+    .. autoattribute:: arguments
+    .. autoattribute:: expression
     """
 
-    def __init__(self, name, arguments, expression):
-        assert isinstance(arguments, tuple)
+    name: str
+    arguments: Sequence[str]
+    expression: Expression
 
-        ImmutableRecord.__init__(self,
-                name=name, arguments=arguments, expression=expression)
-
-    def __str__(self):
-        return "{}({}) := {}".format(
-                self.name, ", ".join(self.arguments), self.expression)
+    def copy(self, **kwargs: Any) -> SubstitutionRule:
+        return replace(self, **kwargs)
 
     def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.arguments)
-        key_builder.update_for_pymbolic_expression(key_hash, self.expression)
+        key_builder.rec(key_hash, self.expression)
+
 
 # }}}
 
@@ -946,9 +969,9 @@ class Iname(Taggable):
         An instance of :class:`frozenset` of :class:`pytools.tag.Tag`.
     """
     name: str
-    tags: FrozenSet[Tag]
+    tags: frozenset[Tag]
 
-    def copy(self, **kwargs: Any) -> "Iname":
+    def copy(self, **kwargs: Any) -> Iname:
         return replace(self, **kwargs)
 
     def _with_new_tags(self, tags):

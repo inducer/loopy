@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -21,12 +24,15 @@ THE SOFTWARE.
 """
 
 
-from typing import FrozenSet
+from typing import TYPE_CHECKING
+
 import islpy as isl
 from islpy import dim_type
-from loopy.codegen.tools import CodegenOperationCacheManager
 
-from loopy.kernel import LoopKernel
+
+if TYPE_CHECKING:
+    from loopy.codegen.tools import CodegenOperationCacheManager
+    from loopy.kernel import LoopKernel
 
 
 # {{{ approximate, convex bounds check generator
@@ -61,7 +67,7 @@ def get_approximate_convex_bounds_checks(domain, check_inames,
 
 def get_usable_inames_for_conditional(
         kernel: LoopKernel, sched_index: int,
-        op_cache_manager: CodegenOperationCacheManager) -> FrozenSet[str]:
+        op_cache_manager: CodegenOperationCacheManager) -> frozenset[str]:
     active_inames = op_cache_manager.active_inames[sched_index]
     crosses_barrier = op_cache_manager.has_barrier_within[sched_index]
 
@@ -81,8 +87,8 @@ def get_usable_inames_for_conditional(
     #  - local indices may not be used in conditionals that cross barriers.
     #  - ILP indices and vector lane indices are not available in loop
     #    bounds, they only get defined at the innermost level of nesting.
+    from loopy.kernel.data import IlpBaseTag, LocalInameTagBase, VectorizeTag
     from loopy.schedule import find_used_inames_within
-    from loopy.kernel.data import VectorizeTag, LocalInameTagBase, IlpBaseTag
     usable_concurrent_inames_in_subkernel = frozenset(
             iname for iname in concurrent_inames_in_subkernel
             if (not (kernel.iname_tags_of_type(iname, LocalInameTagBase)

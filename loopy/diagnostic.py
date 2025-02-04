@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -82,15 +85,15 @@ class LoopyIndexError(LoopyError):
     pass
 
 
-class CannotBranchDomainTree(LoopyError):
+class CannotBranchDomainTree(LoopyError):  # noqa: N818
     pass
 
 
-class TypeInferenceFailure(LoopyError):
+class TypeInferenceFailure(LoopyError):  # noqa: N818
     pass
 
 
-class AutomaticTestFailure(LoopyError):
+class AutomaticTestFailure(LoopyError):  # noqa: N818
     pass
 
 
@@ -135,11 +138,11 @@ class ExpressionToAffineConversionError(LoopyError):
     pass
 
 
-class VariableAccessNotOrdered(LoopyError):
+class VariableAccessNotOrdered(LoopyError):  # noqa: N818
     pass
 
 
-class DependencyCycleFound(LoopyError):
+class DependencyCycleFound(LoopyError):  # noqa: N818
     pass
 
 

@@ -20,15 +20,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 import sys
+
 import numpy as np
-import loopy as lp
-import pyopencl as cl
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
 import pytest
 
-import logging
+import pyopencl as cl
+import pyopencl.clmath
+import pyopencl.clrandom  # noqa
+
+import loopy as lp
+
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -38,15 +42,15 @@ except ImportError:
 else:
     faulthandler.enable()
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
 
 from loopy.diagnostic import LoopyError
 
+
 __all__ = [
-        "pytest_generate_tests",
-        "cl"  # "cl.create_some_context"
-        ]
+    "cl",  # "cl.create_some_context"
+    "pytest_generate_tests"
+]
 
 
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
@@ -86,7 +90,7 @@ def test_convolution(ctx_factory):
     ref_knl = knl
 
     def variant_0(knl):
-        #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        # knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
         knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
         return knl
 
@@ -98,7 +102,7 @@ def test_convolution(ctx_factory):
     def variant_2(knl):
         knl = lp.split_iname(knl, "im_x", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.split_iname(knl, "im_y", 16, outer_tag="g.1", inner_tag="l.1")
-        knl = lp.tag_inames(knl, dict(ifeat="g.2"))
+        knl = lp.tag_inames(knl, {"ifeat": "g.2"})
         knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]",
                 fetch_outer_inames="im_x_outer, im_y_outer, ifeat",
                 default_tag="l.auto")
@@ -108,15 +112,15 @@ def test_convolution(ctx_factory):
         return knl
 
     for variant in [
-            #variant_0,
-            #variant_1,
+            # variant_0,
+            # variant_1,
             variant_2
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
-                parameters=dict(
-                    im_w=128, im_h=128, f_w=f_w,
-                    nfeats=3, nimgs=3
-                    ))
+                parameters={
+                    "im_w": 128, "im_h": 128, "f_w": f_w,
+                    "nfeats": 3, "nimgs": 3
+                    })
 
 
 def test_convolution_with_nonzero_base(ctx_factory):
@@ -157,7 +161,7 @@ def test_convolution_with_nonzero_base(ctx_factory):
     f_w = 3
 
     def variant_0(knl):
-        #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        # knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
         knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
         return knl
 
@@ -171,10 +175,10 @@ def test_convolution_with_nonzero_base(ctx_factory):
             variant_1,
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
-                parameters=dict(
-                    im_w=128, im_h=128, f_w=f_w,
-                    nfeats=12, nimgs=17
-                    ))
+                parameters={
+                    "im_w": 128, "im_h": 128, "f_w": f_w,
+                    "nfeats": 12, "nimgs": 17
+                    })
 
 # }}}
 
@@ -223,12 +227,12 @@ def test_rob_stroud_bernstein():
     knl = lp.split_iname(knl, "el", 16, inner_tag="l.0")
     knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0", inner_tag="ilp",
             slabs=(0, 1))
-    knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
-    knl = lp.add_dtypes(knl, dict(
-                qpts=np.float32,
-                coeffs=np.float32,
-                tmp=np.float32,
-                ))
+    knl = lp.tag_inames(knl, {"i2": "l.1", "alpha1": "unr", "alpha2": "unr"})
+    knl = lp.add_dtypes(knl, {
+                "qpts": np.float32,
+                "coeffs": np.float32,
+                "tmp": np.float32,
+                })
     print(lp.generate_code_v2(knl))
 
 
@@ -302,25 +306,25 @@ def test_rob_stroud_bernstein_full():
         knl = lp.split_iname(knl, "el", 16, inner_tag="l.0")
         knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0", inner_tag="ilp",
                 slabs=(0, 1))
-        knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
+        knl = lp.tag_inames(knl, {"i2": "l.1", "alpha1": "unr", "alpha2": "unr"})
 
     from pickle import dumps, loads
     knl = loads(dumps(knl))
 
     knl = lp.add_dtypes(knl,
-            dict(
-                qpts=np.float32,
-                tmp=np.float32,
-                coeffs=np.float32,
-                result=np.float32,
-                ))
+            {
+                "qpts": np.float32,
+                "tmp": np.float32,
+                "coeffs": np.float32,
+                "result": np.float32,
+                })
     print(lp.generate_code_v2(knl))
 
 
 def test_stencil(ctx_factory):
     ctx = ctx_factory()
 
-    # n=32 causes corner case behavior in size calculations for temprorary (a
+    # n=32 causes corner case behavior in size calculations for temporary (a
     # non-unifiable, two-constant-segments PwAff as the base index)
 
     n = 256
@@ -357,7 +361,7 @@ def test_stencil(ctx_factory):
         return knl
 
     for variant in [
-            #variant_1,
+            # variant_1,
             variant_2,
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
@@ -389,7 +393,7 @@ def test_stencil_with_overfetch(ctx_factory):
         # https://github.com/pocl/pocl/issues/205
         pytest.skip("takes very long to compile on pocl")
 
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
 
     ref_knl = knl
 
@@ -407,7 +411,7 @@ def test_stencil_with_overfetch(ctx_factory):
         n = 200
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
                 print_ref_code=False,
-                op_count=[n*n], parameters=dict(n=n), op_label=["cells"])
+                op_count=[n*n], parameters={"n": n}, op_label=["cells"])
 
 
 def test_sum_factorization():
@@ -492,7 +496,7 @@ def test_lbm(ctx_factory):
                 f_new[i, j, 11] =  + 0.25*m[8] - 0.125*m[10] - 0.25*m[11]
            end
         end
-        """)
+        """)  # noqa: E501
 
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
 
@@ -513,7 +517,7 @@ def test_fd_demo():
         "result[i+1,j+1] = u[i + 1, j + 1]**2 + -1 + (-4)*u[i + 1, j + 1] \
                 + u[i + 1 + 1, j + 1] + u[i + 1 + -1, j + 1] \
                 + u[i + 1, j + 1 + 1] + u[i + 1, j + 1 + -1]")
-    #assumptions="n mod 16=0")
+    # assumptions="n mod 16=0")
     knl = lp.split_iname(knl,
             "i", 16, outer_tag="g.1", inner_tag="l.1")
     knl = lp.split_iname(knl,
@@ -523,12 +527,12 @@ def test_fd_demo():
             fetch_bounding_box=True,
             default_tag="l.auto")
 
-    #n = 1000
-    #u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
+    # n = 1000
+    # u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
 
     knl = lp.set_options(knl, write_code=True)
-    knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
-    code, inf = lp.generate_code(knl)
+    knl = lp.add_and_infer_dtypes(knl, {"u": np.float32})
+    code, _inf = lp.generate_code(knl)
     print(code)
 
     assert "double" not in code
@@ -551,7 +555,7 @@ def test_fd_1d(ctx_factory):
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,
-            parameters=dict(n=2048))
+            parameters={"n": 2048})
 
 
 def test_poisson_fem(ctx_factory):
@@ -596,22 +600,22 @@ def test_poisson_fem(ctx_factory):
         return knl
 
     def add_types(knl):
-        return lp.add_and_infer_dtypes(knl, dict(
-            w=np.float32,
-            J=np.float32,
-            DPsi=np.float32,
-            DFinv=np.float32,
-            ))
+        return lp.add_and_infer_dtypes(knl, {
+            "w": np.float32,
+            "J": np.float32,
+            "DPsi": np.float32,
+            "DFinv": np.float32,
+            })
 
     for variant in [
-            #variant_1,
+            # variant_1,
             variant_2
             ]:
         knl = variant(knl)
 
         lp.auto_test_vs_ref(
                 add_types(ref_knl), ctx, add_types(knl),
-                parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
+                parameters={"n": 5, "nels": 15, "nbf": 5, "sdim": 2, "nqp": 7})
 
 
 def test_domain_tree_nesting():

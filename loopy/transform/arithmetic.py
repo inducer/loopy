@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
 __license__ = """
@@ -22,9 +25,8 @@ THE SOFTWARE.
 
 
 from loopy.diagnostic import LoopyError
-
-from loopy.translation_unit import for_each_kernel
 from loopy.kernel import LoopKernel
+from loopy.translation_unit import for_each_kernel
 
 
 # {{{ fold constants
@@ -87,7 +89,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
                 try:
                     return name_to_index[ax]
                 except KeyError:
-                    raise LoopyError("axis name '%s' not understood " % ax)
+                    raise LoopyError("axis name '%s' not understood " % ax) from None
             else:
                 return ax
 
@@ -104,10 +106,21 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
     # }}}
 
     from pymbolic.mapper.substitutor import make_subst_func
-    from pymbolic.primitives import (Sum, Product, is_zero,
-            flattened_sum, flattened_product, Subscript, Variable)
-    from loopy.symbolic import (get_dependencies, SubstitutionMapper,
-            UnidirectionalUnifier)
+    from pymbolic.primitives import (
+        Product,
+        Subscript,
+        Sum,
+        Variable,
+        flattened_product,
+        flattened_sum,
+        is_zero,
+    )
+
+    from loopy.symbolic import (
+        SubstitutionMapper,
+        UnidirectionalUnifier,
+        get_dependencies,
+    )
 
     # {{{ common factor key list maintenance
 
