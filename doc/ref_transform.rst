@@ -143,4 +143,10 @@ TODO: Matching instruction tags
 
 .. automodule:: loopy.match
 
+
+Fusing Loops
+------------
+
+.. automodule:: loopy.transform.loop_fusion
+
 .. vim: tw=75:spell
