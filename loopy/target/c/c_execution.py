@@ -334,10 +334,13 @@ class CCompiler:
         _, _mod_name, ext_file, recompiled = \
             compile_from_string(
                 self.toolchain.copy(
-                    cflags=self.toolchain.cflags+list(extra_build_options)),
-                name, code, c_fname,
-                self.tempdir, debug, wait_on_error,
-                debug_recompile, False)
+                    cflags=[*self.toolchain.cflags, *extra_build_options]),
+                name, code,
+                source_name=c_fname,
+                cache_dir=self.tempdir,
+                debug=debug,
+                debug_recompile=debug_recompile,
+                object=False)
 
         if recompiled:
             logger.debug(f"Kernel {name} compiled from source")
