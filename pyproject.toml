@@ -202,3 +202,5 @@ extend-exclude = [
   "notes/*/*.eps",
 ]
 
+[tool.pytest.ini_options]
+addopts = "--ignore=proto-tests"
