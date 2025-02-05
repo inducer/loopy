@@ -111,6 +111,7 @@ jobs:
                 . ./ci-support-v0
                 build_py_project_in_conda_env
                 ( test_py_project )
+                export LOOPY_ABORT_ON_CACHE_MISS=1
                 ( test_py_project )
 
     examples:
