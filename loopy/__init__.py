@@ -90,10 +90,13 @@ from loopy.schedule import (
     linearize,
 )
 from loopy.statistics import (
+    AccessDirection,
     CountGranularity,
     MemAccess,
     Op,
+    OpType,
     Sync,
+    SynchronizationKind,
     ToCountMap,
     ToCountPolynomialMap,
     gather_access_footprint_bytes,
@@ -102,7 +105,13 @@ from loopy.statistics import (
     get_op_map,
     get_synchronization_map,
 )
-from loopy.symbolic import LinearSubscript, Reduction, TaggedVariable, TypeCast
+from loopy.symbolic import (
+    LinearSubscript,
+    Reduction,
+    TaggedExpression,
+    TaggedVariable,
+    TypeCast,
+)
 from loopy.target import ASTBuilderBase, TargetBase
 from loopy.target.c import (
     CFamilyTarget,
@@ -217,6 +226,7 @@ __all__ = [
     "MOST_RECENT_LANGUAGE_VERSION",
     "VERSION",
     "ASTBuilderBase",
+    "AccessDirection",
     "AddressSpace",
     "ArrayArg",
     "Assignment",
@@ -260,6 +270,7 @@ __all__ = [
     "NoOpInstruction",
     "NumpyType",
     "Op",
+    "OpType",
     "OpenCLTarget",
     "Optional",
     "Options",
@@ -270,6 +281,8 @@ __all__ = [
     "ScalarCallable",
     "SubstitutionRule",
     "Sync",
+    "SynchronizationKind",
+    "TaggedExpression",
     "TaggedVariable",
     "TargetBase",
     "TemporaryVariable",
