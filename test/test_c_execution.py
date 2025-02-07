@@ -93,10 +93,11 @@ def test_c_target_strides():
 
 def test_c_target_strides_nonsquare():
     from loopy.target.c import ExecutableCTarget
+    rng = np.random.default_rng(seed=42)
 
     def __get_kernel(order="C"):
         indices = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
+        sizes = tuple(rng.integers(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
@@ -141,9 +142,11 @@ def test_c_target_strides_nonsquare():
 def test_c_optimizations():
     from loopy.target.c import ExecutableCTarget
 
+    rng = np.random.default_rng(seed=42)
+
     def __get_kernel(order="C"):
         indices = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
+        sizes = tuple(rng.integers(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []

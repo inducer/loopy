@@ -25,6 +25,13 @@ Controlling caching
     is suppressed.
 
 
+.. envvar:: LOOPY_ABORT_ON_CACHE_MISS
+
+    If set to a string that :func:`pytools.strtobool` evaluates as ``True``,
+    loopy will raise an exception if a cache miss occurs. This can be useful
+    for debugging cache-related issues. For example, it can be used to automatically test whether caching is successful for a particular code, by setting this variable to ``True`` and re-running the code.
+
+
 .. autofunction:: set_caching_enabled
 
 .. autoclass:: CacheMode

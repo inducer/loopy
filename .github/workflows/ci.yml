@@ -107,10 +107,15 @@ jobs:
         -   uses: actions/checkout@v4
         -   name: "Main Script"
             run: |
+                # This test makes sure that loopy can run with kernels loaded from disk cache.
                 curl -L -O https://tiker.net/ci-support-v0
                 . ./ci-support-v0
                 build_py_project_in_conda_env
                 ( test_py_project )
+
+                # See https://github.com/inducer/loopy/pull/828 why this is disabled.
+                # export LOOPY_ABORT_ON_CACHE_MISS=1
+
                 ( test_py_project )
 
     examples:
