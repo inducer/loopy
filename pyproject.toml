@@ -41,9 +41,7 @@ dependencies = [
     "codepy>=2017.1",
     "colorama",
     "Mako",
-    "pyrsistent",
-    "immutables",
-    "immutabledict",
+    "constantdict",
 
     "typing-extensions>=4",
 ]
@@ -204,3 +202,5 @@ extend-exclude = [
   "notes/*/*.eps",
 ]
 
+[tool.pytest.ini_options]
+addopts = "--ignore=proto-tests"

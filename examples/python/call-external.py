@@ -1,4 +1,5 @@
 import numpy as np
+from constantdict import constantdict
 
 import loopy as lp
 from loopy.diagnostic import LoopyError
@@ -30,9 +31,10 @@ class CBLASGEMV(lp.ScalarCallable):
                              "types")
 
         return (self.copy(name_in_target=name_in_target,
-                          arg_id_to_dtype={0: vec_dtype,
-                                           1: vec_dtype,
-                                           -1: vec_dtype}),
+                          arg_id_to_dtype=constantdict({
+                              0: vec_dtype,
+                              1: vec_dtype,
+                              -1: vec_dtype})),
                 callables_table)
 
     def with_descrs(self, arg_id_to_descr, callables_table):

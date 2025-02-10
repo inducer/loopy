@@ -48,7 +48,7 @@ from loopy.types import LoopyType
 
 
 if TYPE_CHECKING:
-    from immutables import Map
+    from constantdict import constantdict
 
     from loopy.codegen.result import GeneratedProgram
     from loopy.kernel import LoopKernel
@@ -334,10 +334,13 @@ class CCompiler:
         _, _mod_name, ext_file, recompiled = \
             compile_from_string(
                 self.toolchain.copy(
-                    cflags=self.toolchain.cflags+list(extra_build_options)),
-                name, code, c_fname,
-                self.tempdir, debug, wait_on_error,
-                debug_recompile, False)
+                    cflags=[*self.toolchain.cflags, *extra_build_options]),
+                name, code,
+                source_name=c_fname,
+                cache_dir=self.tempdir,
+                debug=debug,
+                debug_recompile=debug_recompile,
+                object=False)
 
         if recompiled:
             logger.debug(f"Kernel {name} compiled from source")
@@ -500,7 +503,7 @@ class CExecutor(ExecutorBase):
 
     @memoize_method
     def translation_unit_info(self,
-            arg_to_dtype: Map[str, LoopyType] | None = None) -> _KernelInfo:
+            arg_to_dtype: constantdict[str, LoopyType] | None = None) -> _KernelInfo:
         t_unit = self.get_typed_and_scheduled_translation_unit(arg_to_dtype)
 
         from loopy.codegen import generate_code_v2

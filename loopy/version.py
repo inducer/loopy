@@ -49,7 +49,7 @@ except ImportError:
 else:
     _cgen_version = cgen.version.VERSION_TEXT
 
-DATA_MODEL_VERSION = f"{VERSION_TEXT}-islpy{_islpy_version}-cgen{_cgen_version}-v1"
+DATA_MODEL_VERSION = f"{VERSION_TEXT}-islpy{_islpy_version}-cgen{_cgen_version}-v2"
 
 
 FALLBACK_LANGUAGE_VERSION = (2018, 2)

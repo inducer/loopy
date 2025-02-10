@@ -26,6 +26,7 @@ THE SOFTWARE.
 from typing import TYPE_CHECKING
 
 import numpy as np
+from constantdict import constantdict
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import ScalarCallable
@@ -38,21 +39,22 @@ if TYPE_CHECKING:
 
 class MakeTupleCallable(ScalarCallable):
     def with_types(self, arg_id_to_dtype, callables_table):
-        new_arg_id_to_dtype = arg_id_to_dtype.copy()
+        new_arg_id_to_dtype = constantdict(arg_id_to_dtype).mutate()
         for i in range(len(arg_id_to_dtype)):
             if i in arg_id_to_dtype and arg_id_to_dtype[i] is not None:
                 new_arg_id_to_dtype[-i-1] = new_arg_id_to_dtype[i]
 
-        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype,
-            name_in_target="loopy_make_tuple"), callables_table)
+        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype.finish(),
+                          name_in_target="loopy_make_tuple"),
+                callables_table)
 
     def with_descrs(self, arg_id_to_descr, callables_table):
         from loopy.kernel.function_interface import ValueArgDescriptor
         new_arg_id_to_descr = {(id, ValueArgDescriptor()):
-            (-id-1, ValueArgDescriptor()) for id in arg_id_to_descr.keys()}
+            (-id-1, ValueArgDescriptor()) for id in arg_id_to_descr}
 
         return (
-                self.copy(arg_id_to_descr=new_arg_id_to_descr),
+                self.copy(arg_id_to_descr=constantdict(new_arg_id_to_descr)),
                 callables_table)
 
 
@@ -63,7 +65,7 @@ class IndexOfCallable(ScalarCallable):
                                if dtype is not None}
         new_arg_id_to_dtype[-1] = NumpyType(np.int32)
 
-        return (self.copy(arg_id_to_dtype=new_arg_id_to_dtype),
+        return (self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype)),
                 callables_table)
 
     def emit_call(self, expression_to_code_mapper, expression, target):
