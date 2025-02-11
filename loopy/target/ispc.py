@@ -317,10 +317,10 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ declarators
 
-    def get_value_arg_declaraotor(
+    def get_value_arg_declarator(
             self, name: str, dtype: LoopyType, is_written: bool) -> Declarator:
         from cgen.ispc import ISPCUniform
-        return ISPCUniform(super().get_value_arg_declaraotor(
+        return ISPCUniform(super().get_value_arg_declarator(
                 name, dtype, is_written))
 
     def get_array_arg_declarator(

@@ -1036,7 +1036,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         from cgen import Static
         return Static(decl)
 
-    def get_value_arg_declaraotor(
+    def get_value_arg_declarator(
             self, name: str, dtype: LoopyType, is_written: bool) -> Declarator:
         result: Declarator = POD(self, dtype, name)
 
@@ -1111,12 +1111,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             ) -> Declarator:
         if passed_name in kernel.all_inames():
             assert not is_written
-            return self.get_value_arg_declaraotor(
+            return self.get_value_arg_declarator(
                     passed_name, kernel.index_dtype, is_written)
         var_descr = kernel.get_var_descriptor(passed_name)
         if isinstance(var_descr, ValueArg):
             assert var_descr.dtype is not None
-            return self.get_value_arg_declaraotor(
+            return self.get_value_arg_declarator(
                     var_descr.name, var_descr.dtype, is_written)
         elif isinstance(var_descr, ArrayArg):
             return self.get_array_arg_declarator(var_descr, is_written)
