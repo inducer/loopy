@@ -24,8 +24,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from typing import TYPE_CHECKING, Sequence, cast
+import operator
+from functools import reduce
+from typing import TYPE_CHECKING, Iterable, Sequence, cast
 
 import numpy as np
 
@@ -37,7 +38,7 @@ from pytools import memoize_method
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
-from loopy.symbolic import Literal
+from loopy.symbolic import CombineMapper, Literal
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 
@@ -48,6 +49,26 @@ if TYPE_CHECKING:
     from loopy.schedule import CallKernel
     from loopy.types import LoopyType
     from loopy.typing import Expression
+
+
+class IsVaryingMapper(CombineMapper[bool, []]):
+    def combine(self, values: Iterable[bool]) -> bool:
+        return reduce(operator.or_, values, False)
+
+    def map_constant(self, expr):
+        return False
+
+    def map_group_hw_index(self, expr):
+        return False
+
+    def map_local_hw_index(self, expr):
+        if expr.axis == 0:
+            return True
+        else:
+            raise LoopyError("ISPC only supports one local axis")
+
+    def map_variable(self, expr):
+        return False
 
 
 # {{{ expression mapper
@@ -141,6 +162,29 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
         return super().map_subscript(
                 expr, type_context)
+
+    def wrap_in_typecast(self, actual_type: LoopyType, needed_type: LoopyType, s):
+        raise NotImplementedError("wrap_in_typecast needs uniform-ness information "
+                                  "for ispc")
+
+    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
+        result = super().rec(expr, type_context)
+
+        if needed_type is None:
+            return result
+        else:
+            actual_type = self.infer_type(expr)
+            if actual_type != needed_type:
+                # FIXME: problematic: quadratic complexity
+                is_varying = IsVaryingMapper()(expr)
+                registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+                cast = var("("
+                           f"{'varying' if is_varying else 'uniform'} "
+                           f"{registry.dtype_to_ctype(needed_type)}"
+                           ") ")
+                return cast(result)
+
+            return result
 
 # }}}
 
@@ -317,10 +361,10 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ declarators
 
-    def get_value_arg_declaraotor(
+    def get_value_arg_declarator(
             self, name: str, dtype: LoopyType, is_written: bool) -> Declarator:
         from cgen.ispc import ISPCUniform
-        return ISPCUniform(super().get_value_arg_declaraotor(
+        return ISPCUniform(super().get_value_arg_declarator(
                 name, dtype, is_written))
 
     def get_array_arg_declarator(
