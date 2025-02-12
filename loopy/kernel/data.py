@@ -43,7 +43,7 @@ import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
 
 from pytools import ImmutableRecord
-from pytools.tag import Tag, Taggable, UniqueTag as UniqueTagBase
+from pytools.tag import Tag, Taggable, TagT, UniqueTag as UniqueTagBase
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
@@ -64,7 +64,7 @@ from loopy.typing import Expression, ShapeType, auto
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
     from pymbolic import ArithmeticExpression, Variable
 
@@ -98,6 +98,10 @@ References
 .. class:: ToLoopyTypeConvertible
 
     See :class:`loopy.ToLoopyTypeConvertible`.
+
+.. class:: TagT
+
+    A type variable with a lower bound of :class:`pytools.tag.Tag`.
 """
 
 # This docstring is included in ref_internals. Do not include parts of the public
@@ -143,7 +147,12 @@ def _names_from_dim_tags(
 
 # {{{ iname tags
 
-def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
+def filter_iname_tags_by_type(
+            tags: Iterable[Tag],
+            tag_type: type[TagT] | tuple[type[TagT], ...],
+            max_num: int | None = None,
+            min_num: int | None = None,
+        ) -> set[TagT]:
     """Return a subset of *tags* that matches type *tag_type*. Raises exception
     if the number of tags found were greater than *max_num* or less than
     *min_num*.
@@ -154,7 +163,9 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
     :arg min_num: the minimum number of tags expected to be found.
     """
 
-    result = {tag for tag in tags if isinstance(tag, tag_type)}
+    result: set[TagT] = cast(
+        "set[TagT]",
+        {tag for tag in tags if isinstance(tag, tag_type)})
 
     def strify_tag_type():
         if isinstance(tag_type, tuple):
@@ -170,6 +181,7 @@ def filter_iname_tags_by_type(tags, tag_type, max_num=None, min_num=None):
         if len(result) < min_num:
             raise LoopyError("must have more than {} tags "
                     "of type(s): {}".format(max_num, strify_tag_type()))
+
     return result
 
 
