@@ -57,6 +57,11 @@ fortran = [
     "f2py @ git+https://github.com/pearu/f2py.git",
     "ply>=3.6",
 ]
+dev = [
+    "mypy",
+    "types-colorama",
+    "types-Pygments",
+]
 
 [tool.hatch.metadata]
 allow-direct-references = true
