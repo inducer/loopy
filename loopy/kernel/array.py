@@ -1217,10 +1217,11 @@ def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
 
 
 def get_access_info(kernel: LoopKernel,
-        ary: ArrayArg | TemporaryVariable,
-        index: Expression | tuple[Expression, ...],
-        eval_expr: Callable[[Expression], int],
-        vectorization_info: VectorizationInfo) -> AccessInfo:
+            ary: ArrayArg | TemporaryVariable,
+            index: Expression | tuple[Expression, ...],
+            eval_expr: Callable[[Expression], int],
+            vectorization_info: VectorizationInfo | None
+        ) -> AccessInfo:
     """
     :arg ary: an object of type :class:`ArrayBase`
     :arg index: a tuple of indices representing a subscript into ary
