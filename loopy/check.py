@@ -50,6 +50,7 @@ from loopy.kernel.data import (
     AddressSpace,
     ArrayArg,
     ArrayDimImplementationTag,
+    AxisTag,
     InameImplementationTag,
     TemporaryVariable,
     auto,
@@ -1426,6 +1427,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(
                         iname, AutoLocalInameTagBase, max_num=1)
 
                 if ltags:
+                    tag: AxisTag
                     tag, = ltags
                     local_axes_used.add(tag.axis)
                 elif gtags:

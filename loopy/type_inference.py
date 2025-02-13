@@ -1,3 +1,7 @@
+"""
+.. autoclass:: TypeInferenceMapper
+"""
+
 from __future__ import annotations
 
 

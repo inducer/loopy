@@ -549,7 +549,8 @@ class TranslationUnitCodeGenerationResult:
 
 def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
     # {{{ cache retrieval
-    from loopy import CACHING_ENABLED
+
+    from loopy import ABORT_ON_CACHE_MISS, CACHING_ENABLED
     from loopy.kernel import LoopKernel
     from loopy.translation_unit import make_program
 
@@ -563,6 +564,8 @@ def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
         except KeyError:
             logger.debug(f"TranslationUnit with entrypoints {t_unit.entrypoints}:"
                           " code generation cache miss")
+            if ABORT_ON_CACHE_MISS:
+                raise
 
     # }}}
 
