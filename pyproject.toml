@@ -190,16 +190,12 @@ extend-ignore-re = [
 arange = "arange"
 # N-Dimensional
 ND = "ND"
-# used for 'diff_output'
-dout = "dout"
 # an element-wise slice of array u
 ue = "ue"
 # used in an ordering context, "ab" / "ba"
 ba = "ba"
 # Fortran Loopy
 floopy = "floopy"
-
-"dependees" = "dependees"
 
 [tool.typos.files]
 extend-exclude = [
