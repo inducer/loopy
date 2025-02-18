@@ -684,15 +684,16 @@ def test_empty_array_output(ctx_factory):
 def test_empty_array_stride_check(ctx_factory):
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     einsum = lp.make_einsum("mij,j->mi", ["a", "x"])
-    einsum(cq, a=np.random.randn(3, 0, 5), x=np.random.randn(5))
+    einsum(cq, a=rng.normal(size=(3, 0, 5)), x=rng.normal(size=5))
 
     if einsum.default_entrypoint.options.skip_arg_checks:
         pytest.skip("args checks disabled, cannot check")
 
     with pytest.raises(ValueError):
-        einsum(cq, a=np.random.randn(3, 2, 5).copy(order="F"), x=np.random.randn(5))
+        einsum(cq, a=rng.normal(size=(3, 2, 5)).copy(order="F"), x=rng.normal(size=5))
 
 
 def test_no_op_with_predicate(ctx_factory):

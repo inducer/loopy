@@ -56,6 +56,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 def test_diff(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_kernel(
          """{ [i,j]: 0<=i,j<n }""",
@@ -78,10 +79,10 @@ def test_diff(ctx_factory):
     print(dknl)
 
     n = 50
-    x = np.random.randn(n)
-    y = np.random.randn(n)
+    x = rng.normal(size=n)
+    y = rng.normal(size=n)
 
-    dx = np.random.randn(n)
+    dx = rng.normal(size=n)
 
     fac = 1e-1
     h1 = 1e-4

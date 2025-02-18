@@ -557,9 +557,10 @@ def test_complex_support(ctx_factory, target):
     knl = lp.set_options(knl, return_dict=True)
 
     n = 10
+    rng = np.random.default_rng(seed=42)
 
-    in1 = np.random.rand(n)
-    in2 = np.random.rand(n)
+    in1 = rng.random(n)
+    in2 = rng.random(n)
 
     kwargs = {"in1": in1, "in2": in2}
 

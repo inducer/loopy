@@ -58,9 +58,11 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 def test_globals_decl_once_with_multi_subprogram(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    np.random.seed(17)
-    a = np.random.randn(16)
-    cnst = np.random.randn(16)
+
+    rng = np.random.default_rng(seed=17)
+
+    a = rng.normal(size=16)
+    cnst = rng.normal(size=16)
     knl = lp.make_kernel(
             "{[i, ii]: 0<=i, ii<n}",
             """
@@ -781,7 +783,8 @@ def test_make_copy_kernel(ctx_factory):
 
     intermediate_format = "f,f,sep"
 
-    a1 = np.random.randn(1024, 4, 3)
+    rng = np.random.default_rng(seed=42)
+    a1 = rng.normal(size=(1024, 4, 3))
 
     cknl1 = lp.make_copy_kernel(intermediate_format)
 
@@ -802,7 +805,8 @@ def test_make_copy_kernel_with_offsets(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    a1 = np.random.randn(3, 1024, 4)
+    rng = np.random.default_rng(seed=42)
+    a1 = rng.normal(size=(3, 1024, 4))
     a1_dev = cl.array.to_device(queue, a1)
 
     cknl1 = lp.make_copy_kernel("c,c,c", "sep,c,c")
@@ -1821,7 +1825,8 @@ def test_constant_array_args(ctx_factory):
 @pytest.mark.parametrize("src_order", ["C"])
 @pytest.mark.parametrize("tmp_order", ["C", "F"])
 def test_temp_initializer(ctx_factory, src_order, tmp_order):
-    a = np.random.randn(3, 3).copy(order=src_order)
+    rng = np.random.default_rng(seed=42)
+    a = rng.normal(size=(3, 3)).copy(order=src_order)
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -2091,12 +2096,13 @@ def test_unscheduled_insn_detection():
 def test_integer_reduction(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     from loopy.types import to_loopy_type
 
     n = 200
     for vtype in [np.int32, np.int64]:
-        var_int = np.random.randint(1000, size=n).astype(vtype)
+        var_int = rng.integers(1000, size=n, dtype=vtype)
         var_lp = lp.TemporaryVariable("var", initializer=var_int,
                                    read_only=True,
                                    address_space=lp.AddressSpace.PRIVATE,
@@ -2753,14 +2759,15 @@ def test_temp_var_type_deprecated_usage():
 def test_shape_mismatch_check(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     t_unit = lp.make_kernel(
             "{[i,j]: 0 <= i < n and 0 <= j < m}",
             "c[i] = sum(j, a[i,j]*b[j])",
             default_order="F")
 
-    a = np.random.rand(10, 10).astype(np.float32)
-    b = np.random.rand(10).astype(np.float32)
+    a = rng.random((10, 10), dtype=np.float32)
+    b = rng.random(10, dtype=np.float32)
 
     if t_unit["loopy_kernel"].options.skip_arg_checks:
         pytest.skip("args checks disabled, cannot check")
