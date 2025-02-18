@@ -189,6 +189,9 @@ class VectorizabilityChecker(Mapper[bool, []]):
         # FIXME: Do this more carefully
         raise UnvectorizableError()
 
+    def map_if(self, expr: p.If) -> bool:
+        return any(self.rec(child) for child in [expr.condition, expr.then, expr.else_])
+
 # }}}
 
 # vim: fdm=marker
