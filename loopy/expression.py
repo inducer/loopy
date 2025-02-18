@@ -176,11 +176,8 @@ class VectorizabilityChecker(Mapper[bool, []]):
 
         return False
 
-    def map_comparison(self, expr):
-        # FIXME: These actually can be vectorized:
-        # https://www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/relationalFunctions.html
-
-        raise UnvectorizableError()
+    def map_comparison(self, expr: p.Comparison) -> bool:
+        return any(self.rec(child) for child in [expr.left, expr.right])
 
     def map_logical_not(self, expr: object) -> bool:
         raise UnvectorizableError()
