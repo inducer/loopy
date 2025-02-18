@@ -297,9 +297,9 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
 def test_argmax(ctx_factory):
     logging.basicConfig(level=logging.INFO)
 
-    dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     n = 10000
 
@@ -313,7 +313,7 @@ def test_argmax(ctx_factory):
     print(lp.preprocess_kernel(knl))
     knl = lp.set_options(knl, write_code=True, allow_terminal_colors=True)
 
-    a = np.random.randn(10000).astype(dtype)
+    a = rng.normal(size=10000).astype(np.float32)
     _evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
     assert max_val == np.max(np.abs(a))
     assert max_idx == np.where(np.abs(a) == max_val)[-1]
@@ -349,6 +349,7 @@ def test_simul_reduce(ctx_factory):
 def test_reduction_library(ctx_factory, op_name, np_op):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_kernel(
             "{[i,j]: 0<=i<n and 0<=j<m }",
@@ -357,7 +358,7 @@ def test_reduction_library(ctx_factory, op_name, np_op):
                 ],
             assumptions="n>=1")
 
-    a = np.random.randn(20, 10)
+    a = rng.normal(size=(20, 10))
     _evt, (res,) = knl(queue, a=a)
 
     assert np.allclose(res, np_op(a, axis=1))
@@ -412,9 +413,10 @@ def test_parallel_multi_output_reduction(ctx_factory):
     knl = lp.add_dtypes(knl, {"a": np.float64})
 
     ctx = ctx_factory()
+    rng = np.random.default_rng(seed=42)
 
     with cl.CommandQueue(ctx) as queue:
-        a = np.random.rand(128)
+        a = rng.random(128)
         _out, (max_index, max_val) = knl(queue, a=a)
 
         assert max_val == np.max(a)

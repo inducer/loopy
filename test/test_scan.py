@@ -293,13 +293,14 @@ def test_scan_with_outer_parallel_iname(ctx_factory, sweep_iname_tag):
 def test_scan_data_types(ctx_factory, dtype):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_kernel(
             "{[i,j]: 0<=i<n and 0<=j<=i }",
             "res[i] = reduce(sum, j, a[j])",
             assumptions="n>=1")
 
-    a = np.random.randn(20).astype(dtype)
+    a = rng.normal(size=20).astype(dtype)
     knl = lp.add_dtypes(knl, {"a": dtype})
     knl = lp.realize_reduction(knl, force_scan=True)
     _evt, (res,) = knl(queue, a=a)
@@ -316,13 +317,14 @@ def test_scan_data_types(ctx_factory, dtype):
 def test_scan_library(ctx_factory, op_name, np_op):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_kernel(
             "{[i,j]: 0<=i<n and 0<=j<=i }",
             "res[i] = reduce(%s, j, a[j])" % op_name,
             assumptions="n>=1")
 
-    a = np.random.randn(20)
+    a = rng.normal(size=20)
     knl = lp.add_dtypes(knl, {"a": np.float64})
     knl = lp.realize_reduction(knl, force_scan=True)
     _evt, (res,) = knl(queue, a=a)
@@ -337,14 +339,11 @@ def test_scan_unsupported_tags():
 
 @pytest.mark.parametrize("i_tag", ["for", "l.0"])
 def test_argmax(ctx_factory, i_tag):
-    logging.basicConfig(level=logging.INFO)
-
-    dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     n = 128
-
     knl = lp.make_kernel(
             "{[i,j]: 0<=i<%d and 0<=j<=i}" % n,
             """
@@ -355,7 +354,7 @@ def test_argmax(ctx_factory, i_tag):
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    a = np.random.randn(n).astype(dtype)
+    a = rng.normal(size=n).astype(np.float32)
     _evt, (max_indices, max_vals) = knl(queue, a=a, out_host=True)
 
     assert (max_vals == [np.max(np.abs(a)[0:i+1]) for i in range(n)]).all()

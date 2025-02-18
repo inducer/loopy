@@ -114,7 +114,6 @@ extend-ignore = [
     "N817", # CamelCase `SubstitutionRuleMappingContext` imported as acronym `SRMC`
 
     # FIXME
-    "NPY002", # numpy rng
     "UP031", # .format instead of %s
     "UP032", # .format instead of %s
 ]
