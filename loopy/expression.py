@@ -122,6 +122,8 @@ class VectorizabilityChecker(Mapper[bool, []]):
 
         index = expr.index_tuple
 
+        index = tuple(simplify_using_aff(self.kernel, idx_i) for idx_i in index)
+
         from pymbolic.primitives import Variable
 
         from loopy.kernel.array import VectorArrayDimTag
