@@ -842,6 +842,30 @@ def test_to_complex_casts(ctx_factory):
     cl.Program(ctx, code).build()
 
 
+def test_cl_vectorize_ternary(ctx_factory):
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            b[i] = a[i]*3 if a[i] < 0 else sin(a[i])
+            """)
+
+    knl = lp.split_array_axis(knl, "a,b", 0, 4)
+    knl = lp.split_iname(knl, "i", 4)
+    knl = lp.tag_inames(knl, {"i_inner": "vec"})
+    knl = lp.tag_array_axes(knl, "a,b", "c,vec")
+    knl = lp.set_options(knl, write_code=True)
+    knl = lp.assume(knl, "n % 4 = 0 and n>0")
+
+    rng = np.random.default_rng(seed=12)
+    a = rng.normal(size=(16, 4))
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    _evt, (result,) = knl(queue, a=a, n=a.size)
+
+    result_ref = np.where(a < 0, a*3, np.sin(a))
+    assert np.allclose(result, result_ref)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
