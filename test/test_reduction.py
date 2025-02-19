@@ -281,8 +281,6 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
 
 
 def test_argmax(ctx_factory):
-    logging.basicConfig(level=logging.INFO)
-
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)

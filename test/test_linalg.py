@@ -38,6 +38,9 @@ import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
+
+
 DEBUG_PREAMBLE = r"""
     #pragma OPENCL EXTENSION cl_amd_printf: enable
     #define MY_J (j_outer*64+j_inner_outer*16+j_inner_inner)
@@ -64,7 +67,6 @@ def check_float4(result, ref_result):
 
 
 def test_axpy(ctx_factory):
-    logging.basicConfig(level="INFO")
     ctx = ctx_factory()
 
     n = 3145182

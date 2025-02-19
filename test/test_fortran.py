@@ -373,8 +373,6 @@ def test_matmul(ctx_factory, buffer_inames):
             ctx.devices[0].platform.name == "Portable Computing Language"):
         pytest.skip("crashes on pocl")
 
-    logging.basicConfig(level=logging.INFO)
-
     fortran_src = """
         subroutine dgemm(m,n,ell,a,b,c)
           implicit none
