@@ -20,31 +20,22 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import logging
-import sys
 
 import numpy as np
 import pytest
 
 import pyopencl as cl
 import pyopencl.clrandom
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
 
 
-logger = logging.getLogger(__name__)
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # "cl.create_some_context"
-    "pytest_generate_tests"
-]
-
-
 pytest.importorskip("fparser")
+logger = logging.getLogger(__name__)
 
 
 def test_fp_prec_comparison():
@@ -684,6 +675,7 @@ def test_division_in_shapes(ctx_factory):
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

@@ -21,26 +21,16 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
 
 import loopy as lp
 from loopy import CACHING_ENABLED
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_c_target():
@@ -377,6 +367,7 @@ def test_scalar_global_args():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
