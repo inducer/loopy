@@ -1,6 +1,5 @@
 """gNUMA differentiation kernel, wrapped up as a test."""
 
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner, Lucas Wilcox"
 
 __license__ = """
@@ -51,7 +50,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 @pytest.mark.parametrize("ilp_multiple", [1, 2])
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("opt_level", [11])
-def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
+def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa: N803
     pytest.importorskip("fparser")
     ctx = ctx_factory()
 

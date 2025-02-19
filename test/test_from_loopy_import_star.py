@@ -1,1 +1,1 @@
-from loopy import *  # noqa
+from loopy import *  # noqa: F403

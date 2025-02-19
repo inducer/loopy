@@ -249,7 +249,7 @@ def test_lazily_unpickling_list_eq_and_persistent_hashing():
     # }}}
 
 
-def test_Optional():  # noqa
+def test_optional():
     from loopy import Optional
 
     # {{{ test API
