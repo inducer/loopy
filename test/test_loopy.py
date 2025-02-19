@@ -81,8 +81,7 @@ def test_complicated_subst(ctx_factory):
                 """)
 
     knl = lp.expand_subst(knl, "... > id:h and tag:two > id:g and tag:two")
-
-    print(knl)
+    logger.info("%s", knl)
 
     sr_keys = list(knl["loopy_kernel"].substitutions.keys())
     for letter, how_many in [
@@ -173,8 +172,8 @@ def test_simple_side_effect():
             target=lp.PyOpenCLTarget()
             )
 
-    print(knl)
-    print(lp.generate_code_v2(knl))
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl))
 
 
 def test_owed_barriers():
@@ -189,8 +188,8 @@ def test_owed_barriers():
 
     knl = lp.tag_inames(knl, {"i": "l.0"})
 
-    print(knl)
-    print(lp.generate_code_v2(knl))
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl))
 
 
 def test_multi_cse():
@@ -205,8 +204,8 @@ def test_multi_cse():
     knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", [])
 
-    print(knl)
-    print(lp.generate_code_v2(knl))
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl))
 
 
 def test_bare_data_dependency(ctx_factory):
@@ -340,8 +339,8 @@ def test_arg_shape_guessing():
             assumptions="n>=1",
             target=lp.PyOpenCLTarget())
 
-    print(knl)
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_arg_guessing():
@@ -355,8 +354,8 @@ def test_arg_guessing():
             assumptions="n>=1",
             target=lp.PyOpenCLTarget())
 
-    print(knl)
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_arg_guessing_with_reduction():
@@ -371,8 +370,8 @@ def test_arg_guessing_with_reduction():
             assumptions="n>=1",
             target=lp.PyOpenCLTarget())
 
-    print(knl)
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_unknown_arg_shape():
@@ -395,7 +394,7 @@ def test_unknown_arg_shape():
         assumptions="m<=%d and m>=1 and n mod %d = 0" % (bsize[0], bsize[0]))
 
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 # }}}
 
@@ -413,8 +412,8 @@ def test_nonlinear_index():
             assumptions="n>=1",
             target=lp.PyOpenCLTarget())
 
-    print(knl)
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_offsets_and_slicing(ctx_factory):
@@ -448,7 +447,7 @@ def test_offsets_and_slicing(ctx_factory):
 
     knl = lp.add_dtypes(knl, {"a": a.dtype})
 
-    print(lp.generate_code_v2(knl))
+    logger.info("%s", lp.generate_code_v2(knl))
     knl(queue, a=a, b=b)
 
     import numpy.linalg as la
@@ -496,8 +495,8 @@ def test_c_instruction():
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
-    print(knl)
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_dependent_domain_insn_iname_finding():
@@ -519,8 +518,8 @@ def test_dependent_domain_insn_iname_finding():
                 "..."],
             target=lp.PyOpenCLTarget(),
             name="loopy_kernel")
+    logger.info("%s", prog)
 
-    print(prog)
     assert "isrc_box" in prog["loopy_kernel"].insn_inames("set_strength")
 
     prog = lp.add_dtypes(prog,
@@ -530,7 +529,7 @@ def test_dependent_domain_insn_iname_finding():
             "box_source_counts_nonchild": np.int32,
             "strengths": np.float64,
             "nsources": np.int32})
-    print(lp.generate_code_v2(prog).device_code())
+    logger.info("%s", lp.generate_code_v2(prog).device_code())
 
 
 def test_inames_deps_from_write_subscript(ctx_factory):
@@ -546,8 +545,8 @@ def test_inames_deps_from_write_subscript(ctx_factory):
                     None, shape=None),
                 "..."],
             name="loopy_kernel")
+    logger.info("%s", prog)
 
-    print(prog)
     assert "i" in prog["loopy_kernel"].insn_inames("myred")
 
 
@@ -562,10 +561,10 @@ def test_modulo_indexing():
                 "..."
                 ], target=lp.PyOpenCLTarget()
             )
+    logger.info("%s", knl)
 
-    print(knl)
     knl = lp.add_dtypes(knl, {"a": np.float32})
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 @pytest.mark.parametrize("vec_len", [2, 3, 4, 8, 16])
@@ -731,17 +730,17 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         a_knl = a.copy()
 
         knl = lp.set_options(knl, write_code=True)
-        print("TEST-----------------------------------------")
+        logger.info("TEST-----------------------------------------")
         knl(queue, a=a_knl)
-        print("REF-----------------------------------------")
+        logger.info("REF------------------------------------------")
         ref_knl(queue, a=a_ref)
-        print("DONE-----------------------------------------")
+        logger.info("DONE-----------------------------------------")
 
-        print("REF", a_ref)
-        print("KNL", a_knl)
+        logger.info("REF: %s", a_ref)
+        logger.info("KNL: %s", a_knl)
         assert (a_ref == a_knl).get().all()
 
-        print("_________________________________")
+        logger.info("_____________________________________________")
 
 
 def test_multiple_writes_to_local_temporary():
@@ -756,7 +755,7 @@ def test_multiple_writes_to_local_temporary():
         temp[i, 1] = 15
         """)
     knl = lp.tag_inames(knl, {"i": "l.0"})
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_make_copy_kernel(ctx_factory):
@@ -932,8 +931,8 @@ def test_atomic_init(dtype):
                 ],
             silenced_warnings=["write_race(init)"])
     knl = lp.split_iname(knl, "i", vec_width, inner_tag="l.0")
-    print(knl)
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_within_inames_and_reduction():
@@ -969,7 +968,7 @@ def test_within_inames_and_reduction():
     prog = lp.preprocess_kernel(prog)
 
     assert "i" not in prog["loopy_kernel"].insn_inames("insn_0_j_update")
-    print(prog["loopy_kernel"].stringify(with_dependencies=True))
+    logger.info("%s", prog["loopy_kernel"].stringify(with_dependencies=True))
 
 
 def test_literal_local_barrier(ctx_factory):
@@ -1033,14 +1032,14 @@ def test_kernel_splitting(ctx_factory):
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     # map schedule onto host or device
-    print(knl)
+    logger.info("%s", knl)
 
     cgr = lp.generate_code_v2(knl)
 
     assert len(cgr.device_programs) == 2
 
-    print(cgr.device_code())
-    print(cgr.host_code())
+    logger.info("%s", cgr.device_code())
+    logger.info("%s", cgr.host_code())
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 5})
 
@@ -1067,14 +1066,14 @@ def test_kernel_splitting_with_loop(ctx_factory):
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     # map schedule onto host or device
-    print(knl)
+    logger.info("%s", knl)
 
     cgr = lp.generate_code_v2(knl)
 
     assert len(cgr.device_programs) == 2
 
-    print(cgr.device_code())
-    print(cgr.host_code())
+    logger.info("%s", cgr.device_code())
+    logger.info("%s", cgr.host_code())
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 5})
 
@@ -1087,10 +1086,10 @@ def save_and_reload_temporaries_test(queue, prog, out_expect, debug=False):
         prog.callables_table))
 
     if debug:
-        print(prog)
+        logger.info("%s", prog)
         cgr = lp.generate_code_v2(prog)
-        print(cgr.device_code())
-        print(cgr.host_code())
+        logger.info("%s", cgr.device_code())
+        logger.info("%s", cgr.host_code())
 
     _, (out,) = prog(queue, out_host=True)
     assert (out == out_expect).all(), (out, out_expect)
@@ -1436,8 +1435,8 @@ def test_global_temporary(ctx_factory):
 
     assert len(cgr.device_programs) == 2
 
-    print(cgr.device_code())
-    # print(cgr.host_code())
+    logger.info("%s", cgr.device_code())
+    # logger.info("%s", cgr.host_code())
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 5})
 
@@ -1551,7 +1550,7 @@ def test_call_with_options():
     from library_for_test import NoRetFunction
     knl = lp.register_callable(knl, "f", NoRetFunction("f"))
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 # }}}
 
@@ -1628,7 +1627,7 @@ def test_sequential_dependencies(ctx_factory):
             end
             """, seq_dependencies=True)
 
-    print(prog["loopy_kernel"].stringify(with_dependencies=True))
+    logger.info("%s", prog["loopy_kernel"].stringify(with_dependencies=True))
 
     lp.auto_test_vs_ref(prog, ctx, prog, parameters={"n": 5})
 
@@ -1647,7 +1646,7 @@ def test_nop(ctx_factory):
             end
             """)
 
-    print(knl)
+    logger.info("%s", knl)
 
     knl = lp.fix_parameters(knl, n=15)
     knl = lp.add_and_infer_dtypes(knl, {"z": np.float64})
@@ -1682,7 +1681,7 @@ def test_global_barrier(ctx_factory):
     ref_knl = lp.set_temporary_address_space(ref_knl, "v", "global")
 
     knl = lp.split_iname(knl, "i", 256, outer_tag="g.0", inner_tag="l.0")
-    print(knl)
+    logger.info("%s", knl)
 
     knl = lp.preprocess_kernel(knl)
     assert (
@@ -1692,7 +1691,7 @@ def test_global_barrier(ctx_factory):
             knl["loopy_kernel"].temporary_variables["v"].address_space ==
             lp.AddressSpace.GLOBAL)
 
-    print(knl)
+    logger.info("%s", knl)
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"ntrips": 5, "n": 10})
 
@@ -1734,7 +1733,7 @@ def test_index_cse(ctx_factory):
     knl = lp.prioritize_loops(knl, "i,j,k,l")
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
     knl = lp.fix_parameters(knl, n=5)
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_ilp_and_conditionals(ctx_factory):
@@ -2045,8 +2044,6 @@ def test_tight_loop_bounds_codegen():
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
 
     cgr = lp.generate_code_v2(knl)
-    # print(cgr.device_code())
-
     for_loop = \
         "for (int j = " \
         "((gid(0) == 0 && lid(0) == 0) ? 0 : -2 + 2 * lid(0) + 10 * gid(0)); " \
@@ -2177,7 +2174,8 @@ def test_nosync_option_parsing():
         """,
         options=lp.Options(allow_terminal_colors=False))
     kernel_str = str(knl)
-    print(kernel_str)
+    logger.info("%s", kernel_str)
+
     assert "id=insn1, no_sync_with=insn1@any" in kernel_str
     assert "id=insn2, no_sync_with=insn1@any:insn2@any" in kernel_str
     assert "id=insn3, no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
@@ -2241,7 +2239,7 @@ def test_barrier_insertion_near_top_of_loop():
     prog = lp.preprocess_kernel(prog)
     knl = lp.get_one_linearized_kernel(prog["loopy_kernel"], prog.callables_table)
 
-    print(knl)
+    logger.info("%s", knl)
 
     assert barrier_between(knl, "ainit", "tcomp")
 
@@ -2267,7 +2265,7 @@ def test_barrier_insertion_near_bottom_of_loop():
     prog = lp.preprocess_kernel(prog)
     knl = lp.get_one_linearized_kernel(prog["loopy_kernel"], prog.callables_table)
 
-    print(knl)
+    logger.info("%s", knl)
 
     assert barrier_between(knl, "bcomp1", "bcomp2")
     assert barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
@@ -2662,7 +2660,7 @@ def test_dep_cycle_printing_and_error():
 
     from loopy.diagnostic import DependencyCycleFound
     with pytest.raises(DependencyCycleFound):
-        print(lp.generate_code_v2(knl).device_code())
+        logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_backwards_dep_printing_and_error():
@@ -2681,7 +2679,7 @@ def test_backwards_dep_printing_and_error():
             ])
 
     # Used to crash with KeyError
-    print(knl)
+    logger.info("%s", knl)
 
 
 def test_dump_binary(ctx_factory):
@@ -2810,7 +2808,7 @@ def test_type_inference_walks_fn_in_comparison():
             ],
         target=lp.CTarget())
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_non_integral_array_idx_raises():
@@ -2823,7 +2821,7 @@ def test_non_integral_array_idx_raises():
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
-        print(lp.generate_code_v2(knl).device_code())
+        logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 @pytest.mark.parametrize("tag", ["for", "l.0", "g.0", "fixed"])
@@ -2901,7 +2899,7 @@ def test_access_check_with_insn_predicates():
             end
             """, [lp.GlobalArg("x", dtype=float, shape=(4,)), ...])
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_conditional_access_range_with_parameters(ctx_factory):
@@ -3040,7 +3038,7 @@ def test_deps_from_conditionals():
 
     # Ensure valid linearization exists: No valid linearization unless the
     # accumulator initializers can move out of the loop.
-    print(lp.generate_code_v2(ppknl).device_code())
+    logger.info("%s", lp.generate_code_v2(ppknl).device_code())
 
 
 def test_scalar_temporary(ctx_factory):
@@ -3488,7 +3486,7 @@ def test_global_temps_with_multiple_base_storages(ctx_factory):
 
     prg = lp.infer_unknown_types(prg)
     prg = lp.allocate_temporaries_for_base_storage(prg)
-    print(prg)
+    logger.info("%s", prg)
 
     _, (out,) = prg(cq)
 

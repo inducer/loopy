@@ -94,7 +94,7 @@ def test_eq_constraint():
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
     knl = lp.split_iname(knl, "i_inner", 16, outer_tag=None, inner_tag="l.0")
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_dependent_loop_bounds():
@@ -119,7 +119,7 @@ def test_dependent_loop_bounds():
             assumptions="n>=1 and row_len>=1",
             target=lp.PyOpenCLTarget())
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_dependent_loop_bounds_2():
@@ -148,7 +148,7 @@ def test_dependent_loop_bounds_2():
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_dependent_loop_bounds_3():
@@ -181,7 +181,7 @@ def test_dependent_loop_bounds_3():
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
     knl_bad = lp.split_iname(knl, "jj", 128, outer_tag="g.1",
             inner_tag="l.1")
@@ -290,9 +290,6 @@ def test_equality_constraints(ctx_factory):
 
     knl = lp.add_inames_to_insn(knl, "j_inner, j_outer", "id:set_b")
 
-    # print(knl)
-    # print(knl.domains[0].detect_equalities())
-
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             parameters={"n": n}, print_ref_code=True)
 
@@ -358,8 +355,8 @@ def test_triangle_domain():
             assumptions="n>=1",
             target=lp.PyOpenCLTarget())
 
-    print(knl)
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", knl)
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 if __name__ == "__main__":

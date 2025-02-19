@@ -223,11 +223,15 @@ def generate_random_fuzz_examples(expr_type):
 
 def assert_parse_roundtrip(expr):
     from pymbolic.mapper.stringifier import StringifyMapper
+
     strified = StringifyMapper()(expr)
+
     from pymbolic import parse
+
     parsed_expr = parse(strified)
-    print(expr)
-    print(parsed_expr)
+    logger.info("expr:   %s", expr)
+    logger.info("parsed: %s", parsed_expr)
+
     assert expr == parsed_expr
 
 
@@ -279,21 +283,17 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
 
         var_name = "expr%d" % i
 
-        # print(expr)
-        # assert_parse_roundtrip(expr)
-
         if expr_type in ["int", "int_nonneg"]:
             result_type_iinfo = np.iinfo(np.int32)
             bceval_mapper = BoundsCheckingEvaluationMapper(
                     var_values,
                     lbound=result_type_iinfo.min,
                     ubound=result_type_iinfo.max)
-            # print(expr)
             try:
                 ref_values[var_name] = bceval_mapper(expr)
             except BoundsCheckError:
-                print(expr)
-                print("BOUNDS CHECK FAILED")
+                logger.info("expr: %s", expr)
+                logger.error("BOUNDS CHECK FAILED")
                 continue
         else:
             try:
@@ -350,7 +350,6 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
                 " and ".join("%s >= 0" % name for name in var_names))))
 
     knl = lp.set_options(knl, return_dict=True)
-    # print(knl)
 
     if type(target) is lp.PyOpenCLTarget:
         cl_ctx = ctx_factory()
@@ -372,18 +371,17 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
             raise AssertionError()
 
         if abs(err) > 1e-10:
-            print(80*"-")
-            print(knl)
-            print(80*"-")
-            print(lp.generate_code_v2(knl).device_code())
-            print(80*"-")
-            print(f"WRONG: {name} rel error={err:g}")
-            print("reference=%r" % ref_value)
-            print("loopy=%r" % lp_value)
-            print(80*"-")
-            1/0  # noqa: B018
+            logger.info(80*"-")
+            logger.info("%s", knl)
+            logger.info(80*"-")
+            logger.info("%s", lp.generate_code_v2(knl).device_code())
+            logger.info(80*"-")
+            logger.info("WRONG: %s rel error=%g", name, err)
+            logger.info("reference=%r", ref_value)
+            logger.info("loopy=%r", lp_value)
+            logger.info(80*"-")
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 # }}}
 
@@ -467,14 +465,16 @@ def test_integer_associativity():
             s := (i % elemsize)
             v[i] = u[ncomp * indices[(s) + elemsize*(e)] + (d)]
             """)
-
     knl = lp.add_and_infer_dtypes(
             knl, {"u": np.float64, "elemsize, ncomp, indices": np.int32})
+
     import islpy as isl
+
     knl = lp.assume(
             knl, isl.BasicSet("[elemsize, ncomp] -> "
             "{ : elemsize>= 0 and ncomp >= 0}"))
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
+
     assert (
             "u[ncomp * indices[i % elemsize + elemsize "
             "* (i / (ncomp * elemsize))] "
@@ -506,7 +506,7 @@ def test_divide_precedence(ctx_factory):
             """,
             [lp.ValueArg("a, b, c", np.int32),
                 lp.GlobalArg("x, y", np.int32, shape=lp.auto)])
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
     evt, (x_out, y_out) = knl(queue, c=2, b=2, a=5)
     evt.wait()
