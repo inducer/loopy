@@ -390,8 +390,8 @@ def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
 
     if isinstance(diff_outputs, str):
         diff_outputs = [
-                dout.strip() for dout in diff_outputs.split(",")
-                if dout.strip()]
+                d_out.strip() for d_out in diff_outputs.split(",")
+                if d_out.strip()]
 
     by_arg = kernel.arg_dict[by]
     additional_shape = by_arg.shape
@@ -405,8 +405,8 @@ def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
             additional_shape=additional_shape)
 
     result = {}
-    for dout in diff_outputs:
-        result = diff_context.get_diff_var(dout)
+    for d_out in diff_outputs:
+        result = diff_context.get_diff_var(d_out)
 
     for cout in copy_outputs:
         diff_context.import_output_var(cout)

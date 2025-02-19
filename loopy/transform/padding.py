@@ -379,7 +379,7 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
         else:
             raise RuntimeError("order '%s' not understood" % order)
 
-        return expr.aggregate.index(tuple(idx))
+        return expr.aggregate[tuple(idx)]
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)

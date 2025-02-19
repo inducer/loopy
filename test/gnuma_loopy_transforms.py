@@ -14,7 +14,7 @@ def pick_apart_float_cast(value):
     return float(fval_match.group(2))
 
 
-def fix_euler_parameters(kernel, p_p0, p_Gamma, p_R):  # noqa
+def fix_euler_parameters(kernel, p_p0, p_Gamma, p_R):  # noqa: N803
     return lp.fix_parameters(
         kernel,
         p_p0=pick_apart_float_cast(p_p0),
@@ -36,7 +36,7 @@ def set_D_storage_format(kernel):  # noqa: N802
     return lp.tag_array_axes(kernel, "D", "f,f")
 
 
-def set_up_volume_loop(kernel, Nq):  # noqa
+def set_up_volume_loop(kernel, Nq):  # noqa: N803
     kernel = lp.fix_parameters(kernel, Nq=Nq)
     kernel = lp.prioritize_loops(kernel, "e,k,j,i")
     kernel = lp.tag_inames(kernel, {"e": "g.0", "j": "l.1", "i": "l.0"})

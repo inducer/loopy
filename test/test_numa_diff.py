@@ -1,6 +1,5 @@
 """gNUMA differentiation kernel, wrapped up as a test."""
 
-
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner, Lucas Wilcox"
 
 __license__ = """
@@ -24,34 +23,25 @@ THE SOFTWARE.
 """
 
 import logging
-import os
-import sys
 
 import pytest
 
-import pyopencl as cl
+import pyopencl as cl  # noqa: F401
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # 'cl.create_some_context'
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 @pytest.mark.parametrize("ilp_multiple", [1, 2])
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("opt_level", [11])
-def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
+def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa: N803
     pytest.importorskip("fparser")
     ctx = ctx_factory()
 
@@ -59,6 +49,8 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
             and ilp_multiple > 1):
         # about 400s, cf. https://gitlab.tiker.net/inducer/loopy/-/jobs/421250#L937
         pytest.skip("takes a very long time to compile on pocl")
+
+    import os
 
     filename = os.path.join(os.path.dirname(__file__), "strongVolumeKernels.f90")
     with open(filename) as sourcef:
@@ -275,6 +267,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

@@ -20,19 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import sys
+import logging
 
 import numpy as np
 import pytest
 
 import pyopencl as cl
 import pyopencl.array
-from pyopencl.tools import (
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
+
+
+logger = logging.getLogger(__name__)
 
 
 def test_make_einsum_error_handling():
@@ -51,9 +53,10 @@ def test_make_einsum_error_handling():
 def test_einsum_array_manipulation(ctx_factory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     n = 4
-    a = np.random.rand(n, n)
+    a = rng.random(size=(n, n))
     arg_names = ("a",)
 
     knl = lp.make_einsum(spec, arg_names)
@@ -69,10 +72,11 @@ def test_einsum_array_manipulation(ctx_factory, spec):
 def test_einsum_array_matvec(ctx_factory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     n = 4
-    a = np.random.rand(n, n)
-    b = np.random.rand(n)
+    a = rng.random(size=(n, n))
+    b = rng.random(size=n)
     arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
@@ -90,10 +94,11 @@ def test_einsum_array_matvec(ctx_factory, spec):
 def test_einsum_array_ops_same_dims(ctx_factory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     n = 4
-    a = np.random.rand(n, n)
-    b = np.random.rand(n, n)
+    a = rng.random(size=(n, n))
+    b = rng.random(size=(n, n))
     arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
@@ -109,12 +114,13 @@ def test_einsum_array_ops_same_dims(ctx_factory, spec):
 def test_einsum_array_ops_diff_dims(ctx_factory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     n = 4
     m = 3
     o = 5
-    a = np.random.rand(n, m)
-    b = np.random.rand(m, o)
+    a = rng.random(size=(n, m))
+    b = rng.random(size=(m, o))
     arg_names = ("a", "b")
 
     knl = lp.make_einsum(spec, arg_names)
@@ -130,11 +136,12 @@ def test_einsum_array_ops_diff_dims(ctx_factory, spec):
 def test_einsum_array_ops_triple_prod(ctx_factory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     n = 3
-    a = np.random.rand(n, n)
-    b = np.random.rand(n, n)
-    c = np.random.rand(n, n)
+    a = rng.random(size=(n, n))
+    b = rng.random(size=(n, n))
+    c = rng.random(size=(n, n))
     arg_names = ("a", "b", "c")
 
     knl = lp.make_einsum(spec, arg_names)
@@ -147,13 +154,14 @@ def test_einsum_array_ops_triple_prod(ctx_factory, spec):
 def test_einsum_with_variable_strides(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     spec = "ijk,jl->il"
     knl = lp.make_einsum(spec, ("a", "b"),
                          default_order=lp.auto, default_offset=lp.auto)
 
-    a_untransposed = np.random.randn(3, 5, 4)
-    b = np.random.randn(4, 5)
+    a_untransposed = rng.normal(size=(3, 5, 4))
+    b = rng.normal(size=(4, 5))
 
     a = a_untransposed.transpose((0, 2, 1))
     a_dev = cl.array.to_device(queue, a_untransposed).transpose((0, 2, 1))
@@ -167,6 +175,7 @@ def test_einsum_with_variable_strides(ctx_factory):
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

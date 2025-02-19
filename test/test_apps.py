@@ -21,39 +21,23 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
 
-import pyopencl as cl
+import pyopencl as cl  # noqa: F401
 import pyopencl.clmath
-import pyopencl.clrandom  # noqa
+import pyopencl.clrandom  # noqa: F401
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
+from loopy.diagnostic import LoopyError
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-from loopy.diagnostic import LoopyError
-
-
-__all__ = [
-    "cl",  # "cl.create_some_context"
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 # {{{ convolutions
@@ -450,7 +434,7 @@ def test_lbm(ctx_factory):
     # Example by Loic Gouarin <loic.gouarin@math.u-psud.fr>
     knl = lp.make_kernel(
         "{[ii,jj]:0<=ii<nx-2 and 0<=jj<ny-2}",
-        """  # noqa (silences flake8 line length warning)
+        """
         i := ii + 1
         j := jj + 1
         for ii, jj
@@ -621,7 +605,7 @@ def test_poisson_fem(ctx_factory):
 def test_domain_tree_nesting():
     # From https://github.com/inducer/loopy/issues/78
 
-    AS = lp.AddressSpace        # noqa
+    AS = lp.AddressSpace        # noqa: N806
 
     out_map = np.array([1, 2], dtype=np.int32)
     if_val = np.array([-1, 0], dtype=np.int32)
@@ -629,7 +613,7 @@ def test_domain_tree_nesting():
     num_vals = np.array([2, 4], dtype=np.int32)
     num_vals_offset = np.array(np.cumsum(num_vals) - num_vals, dtype=np.int32)
 
-    TV = lp.TemporaryVariable  # noqa
+    TV = lp.TemporaryVariable  # noqa: N806
 
     knl = lp.make_kernel(["{[i]: 0 <= i < 12}",
                     "{[j]: 0 <= j < 100}",
@@ -750,6 +734,7 @@ def test_sumpy_p2p_reduced():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

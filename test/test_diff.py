@@ -21,41 +21,27 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
 import pyopencl.clrandom
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # 'cl.create_some_context'
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_diff(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_kernel(
          """{ [i,j]: 0<=i,j<n }""",
@@ -78,10 +64,10 @@ def test_diff(ctx_factory):
     print(dknl)
 
     n = 50
-    x = np.random.randn(n)
-    y = np.random.randn(n)
+    x = rng.normal(size=n)
+    y = rng.normal(size=n)
 
-    dx = np.random.randn(n)
+    dx = rng.normal(size=n)
 
     fac = 1e-1
     h1 = 1e-4
@@ -108,6 +94,7 @@ def test_diff(ctx_factory):
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
