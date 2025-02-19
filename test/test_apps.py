@@ -21,39 +21,23 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
 
-import pyopencl as cl
+import pyopencl as cl  # noqa: F401
 import pyopencl.clmath
-import pyopencl.clrandom  # noqa
+import pyopencl.clrandom  # noqa: F401
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
+from loopy.diagnostic import LoopyError
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-from loopy.diagnostic import LoopyError
-
-
-__all__ = [
-    "cl",  # "cl.create_some_context"
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 # {{{ convolutions
@@ -750,6 +734,7 @@ def test_sumpy_p2p_reduced():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

@@ -74,9 +74,9 @@ def test_axpy(ctx_factory):
 
     for dtype, check, a, b in [
             (np.complex64, None, 5, 7),
-            (cltypes.float4, check_float4,  # pylint:disable=no-member
-                cltypes.make_float4(1, 2, 3, 4),  # pylint:disable=no-member
-                cltypes.make_float4(6, 7, 8, 9)),  # pylint:disable=no-member
+            (cl.cltypes.float4, check_float4,  # pylint:disable=no-member
+                cl.cltypes.make_float4(1, 2, 3, 4),  # pylint:disable=no-member
+                cl.cltypes.make_float4(6, 7, 8, 9)),  # pylint:disable=no-member
             (np.float32, None, 5, 7),
             ]:
         knl = lp.make_kernel(
@@ -162,7 +162,7 @@ def test_plain_matrix_mul(ctx_factory):
     n = get_suitable_size(ctx)
 
     for dtype, check, vec_size in [
-            (cltypes.float4, check_float4, 4),  # pylint:disable=no-member
+            (cl.cltypes.float4, check_float4, 4),  # pylint:disable=no-member
             (np.float32, None, 1),
             ]:
         knl = lp.make_kernel(

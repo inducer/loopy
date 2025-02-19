@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
@@ -30,29 +29,15 @@ import pyopencl as cl
 import pyopencl.array
 import pyopencl.clmath
 import pyopencl.clrandom
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # "cl.create_some_context"
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_globals_decl_once_with_multi_subprogram(ctx_factory):
@@ -3725,6 +3710,7 @@ def test_loop_imperfect_nest_priorities_in_v2_scheduler():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

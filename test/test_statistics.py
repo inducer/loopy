@@ -1570,6 +1570,7 @@ def test_within_stats():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

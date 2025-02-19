@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
@@ -32,32 +31,18 @@ import pyopencl.clmath
 import pyopencl.clrandom
 import pyopencl.tools
 import pyopencl.version
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
 from loopy.diagnostic import LoopyError
 from loopy.target.c import CTarget
 from loopy.target.opencl import OpenCLTarget
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # "cl.create_some_context"
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_ispc_target():
@@ -868,6 +853,7 @@ def test_cl_vectorize_ternary(ctx_factory):
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
+import logging
 
 import numpy as np
 import pytest
@@ -34,6 +34,9 @@ from pytools import ImmutableRecord
 
 import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+
+
+logger = logging.getLogger(__name__)
 
 
 def test_register_function_lookup(ctx_factory):
@@ -1529,6 +1532,7 @@ def test_inline_constant_access():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

@@ -20,19 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import sys
+import logging
 
 import numpy as np
 import pytest
 
 import pyopencl as cl
 import pyopencl.array
-from pyopencl.tools import (
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
+
+
+logger = logging.getLogger(__name__)
 
 
 def test_make_einsum_error_handling():
@@ -173,6 +175,7 @@ def test_einsum_with_variable_strides(ctx_factory):
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

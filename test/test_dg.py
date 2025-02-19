@@ -38,8 +38,6 @@ logger = logging.getLogger(__name__)
 
 
 def test_dg_volume(ctx_factory):
-    # logging.basicConfig(level=logging.DEBUG)
-
     dtype = np.float32
     dtype4 = cl.array.vec.float4
     ctx = ctx_factory()
