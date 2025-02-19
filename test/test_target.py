@@ -107,18 +107,19 @@ def test_cuda_target():
 
 def test_generate_c_snippet():
     from pymbolic import var
-    I = var("I")  # noqa
+
+    I = var("I")  # noqa: N806,E741
     f = var("f")
     df = var("df")
     q_v = var("q_v")
-    eN = var("eN")  # noqa
     k = var("k")
     u = var("u")
 
     from functools import partial
+
     l_sum = partial(lp.Reduction, "sum", allow_simultaneous=True)
 
-    Instr = lp.Assignment  # noqa
+    Instr = lp.Assignment  # noqa: N806
 
     knl = lp.make_kernel(
         "{[I, k]: 0<=I<nSpace and 0<=k<nQuad}",

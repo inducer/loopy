@@ -24,8 +24,8 @@ THE SOFTWARE.
 import numpy as np
 
 import pyopencl as cl
-from pyopencl.tools import (
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp

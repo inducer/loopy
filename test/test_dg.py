@@ -20,18 +20,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-import logging  # noqa
+import logging
 
 import numpy as np
+
 import pyopencl as cl
 import pyopencl.array
-from pyopencl.tools import (  # noqa
+from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+
+
+logger = logging.getLogger(__name__)
 
 
 def test_dg_volume(ctx_factory):
@@ -43,10 +46,10 @@ def test_dg_volume(ctx_factory):
 
     order = "F"
 
-    N = 3  # noqa
-    Np = (N+1)*(N+2)*(N+3)//6  # noqa
+    N = 3  # noqa: N806
+    Np = (N+1)*(N+2)*(N+3)//6  # noqa: N806
 
-    K = 10000  # noqa
+    K = 10000  # noqa: N806
 
     knl = lp.make_kernel([
             "{[n,m,k]: 0<= n,m < Np and 0<= k < K}",
@@ -178,12 +181,12 @@ def no_test_dg_surface(ctx_factory):
 
     order = "F"
 
-    N = 3  # noqa
-    Np = (N+1)*(N+2)*(N+3)//6  # noqa
-    Nfp = (N+1)*(N+2)//2  # noqa
-    Nfaces = 4  # noqa
+    N = 3  # noqa: N806
+    Np = (N+1)*(N+2)*(N+3)//6  # noqa: N806
+    Nfp = (N+1)*(N+2)//2  # noqa: N806
+    Nfaces = 4  # noqa: N806
 
-    K = 10000  # noqa
+    K = 10000  # noqa: N806
 
     knl = lp.make_kernel(
             [

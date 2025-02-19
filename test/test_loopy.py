@@ -85,8 +85,6 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
 
 
 def test_complicated_subst(ctx_factory):
-    # ctx = ctx_factory()
-
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
@@ -2199,7 +2197,7 @@ def test_nosync_option_parsing():
     assert "id=insn1, no_sync_with=insn1@any" in kernel_str
     assert "id=insn2, no_sync_with=insn1@any:insn2@any" in kernel_str
     assert "id=insn3, no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
-    assert "id=insn4, no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa
+    assert "id=insn4, no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa: E501
     assert "id=insn5, no_sync_with=insn1@any" in kernel_str
 
 

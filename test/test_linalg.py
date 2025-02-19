@@ -28,13 +28,14 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.array as cl_array  # noqa: F401
-import pyopencl.cltypes as cltypes
-from pyopencl.tools import (  # noqa
+import pyopencl.array
+import pyopencl.cltypes
+from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 DEBUG_PREAMBLE = r"""
@@ -60,9 +61,6 @@ def check_float4(result, ref_result):
     for comp in ["x", "y", "z", "w"]:
         return np.allclose(
                 ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_axpy(ctx_factory):
@@ -653,8 +651,8 @@ def test_small_batched_matvec(ctx_factory):
 
     order = "C"
 
-    K = 9997  # noqa
-    Np = 36  # noqa
+    K = 9997  # noqa: N806
+    Np = 36  # noqa: N806
 
     knl = lp.make_kernel(
             "{[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,

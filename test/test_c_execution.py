@@ -280,7 +280,7 @@ def test_c_execution_with_global_temporaries():
     # global constant temporaries is None
 
     from loopy.target.c import ExecutableCTarget
-    AS = lp.AddressSpace        # noqa
+    AS = lp.AddressSpace        # noqa: N806
     n = 10
 
     knl = lp.make_kernel("{[i]: 0 <= i < n}",
