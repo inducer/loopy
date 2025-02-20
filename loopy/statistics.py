@@ -866,7 +866,7 @@ class MemAccess:
     @property
     def mtype(self) -> str:
         from warnings import warn
-        warn("MemAccess.mtype is deprecated and will stop working in 2024. "
+        warn("MemAccess.mtype is deprecated and will stop working in 2026. "
              "Use MemAccess.address_space instead.",
              DeprecationWarning, stacklevel=2)
 
@@ -881,7 +881,7 @@ class MemAccess:
     def direction(self) -> str:
         from warnings import warn
         warn("MemAccess.access_direction is deprecated "
-             "and will stop working in 2024. "
+             "and will stop working in 2026. "
              "Use MemAccess.read_write instead.",
              DeprecationWarning, stacklevel=2)
 
