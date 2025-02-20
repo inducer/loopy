@@ -537,8 +537,7 @@ class DependencyMapper(DependencyMapperBase[P]):
 
     def map_tagged_expression(self, expr: TaggedExpression, *args: P.args,
                               **kwargs: P.kwargs) -> DependenciesT:
-        deps = self.rec(expr.expr, *args, **kwargs)
-        return deps
+        return self.rec(expr.expr, *args, **kwargs)
 
     def map_sub_array_ref(self, expr, *args: P.args, **kwargs: P.kwargs):
         deps = self.rec(expr.subscript, *args, **kwargs)
