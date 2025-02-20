@@ -207,6 +207,15 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             _, c_name = result
             return postproc(var(c_name))
 
+        if self.codegen_state.vectorization_info:
+            if self.codegen_state.vectorization_info.iname == expr.name:
+                # This needs to be converted into a vector literal.
+                from loopy.symbolic import Literal
+                vector_length = self.codegen_state.vectorization_info.length
+                vector_literal = f"(long{vector_length})" + " (" + \
+                        ",".join([f"{i}" for i in range(vector_length)]) + ")"
+                return Literal(vector_literal)
+
         return postproc(var(expr.name))
 
     def map_tagged_variable(self, expr, type_context):
@@ -283,12 +292,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 if (
                         isinstance(ary, (ConstantArg, ArrayArg)) or
                         (isinstance(ary, TemporaryVariable) and ary.base_storage)):
-                    # unsubscripted global args are pointers
-                    result = self.make_subscript(
-                            ary,
-                            make_var(access_info.array_name),
-                            (0,))
-
+                    # unsubscripted global args are pointers if they are inputs
+                    result = self.make_subscript(ary,
+                                                 make_var(access_info.array_name),
+                                                 0)
                 else:
                     # unsubscripted temp vars are scalars
                     # (unless they use base_storage)
