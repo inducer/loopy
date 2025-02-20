@@ -1337,14 +1337,11 @@ class LoopKernel(Taggable):
             "linearization",
             "iname_slab_increments",
             "loop_priority",
-            # applied_iname_rewrites
+            "applied_iname_rewrites",
             "index_dtype",
             "silenced_warnings",
 
             # missing:
-            # - applied_iname_rewrites
-            #   Contains pymbolic expressions, hence a (small) headache to hash.
-            #   Likely not needed for hash uniqueness => headache avoided.
 
             # - preamble_generators
             # - symbol_manglers
@@ -1355,7 +1352,7 @@ class LoopKernel(Taggable):
             #   resolve hash conflicts.
             ]
 
-    update_persistent_hash = update_persistent_hash
+    update_persistent_hash = update_persistent_hash  # noqa: RUF045
 
     @memoize_method
     def __hash__(self):
