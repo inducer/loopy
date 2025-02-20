@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
@@ -29,30 +28,16 @@ import pytest
 import pyopencl as cl
 import pyopencl.clmath
 import pyopencl.clrandom
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 from pytools.tag import Tag
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # "cl.create_some_context"
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 # {{{ ContainsFloorDiv
@@ -124,6 +109,7 @@ def test_collect_common_factors(ctx_factory):
 def test_to_batched(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<n } """,
@@ -141,8 +127,8 @@ def test_to_batched(ctx_factory):
                                                     "x": np.float32,
                                                     "a": np.float32})
 
-    a = np.random.randn(5, 5).astype(np.float32)
-    x = np.random.randn(7, 5).astype(np.float32)
+    a = rng.normal(size=(5, 5)).astype(np.float32)
+    x = rng.normal(size=(7, 5)).astype(np.float32)
 
     # Running both the kernels
     _evt, (out1, ) = bknl(queue, a=a, x=x, n=5, nbatches=7)
@@ -154,6 +140,7 @@ def test_to_batched(ctx_factory):
 
 def test_to_batched_temp(ctx_factory):
     ctx = ctx_factory()
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<n } """,
@@ -180,8 +167,8 @@ def test_to_batched_temp(ctx_factory):
     # checking that cnst is not being bathced
     assert bknl["loopy_kernel"].temporary_variables["cnst"].shape == ()
 
-    a = np.random.randn(5, 5)
-    x = np.random.randn(7, 5)
+    a = rng.normal(size=(5, 5))
+    x = rng.normal(size=(7, 5))
 
     # Checking that the program compiles and the logic is correct
     lp.auto_test_vs_ref(
@@ -192,6 +179,8 @@ def test_to_batched_temp(ctx_factory):
 def test_add_barrier(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
+
     knl = lp.make_kernel(
             "{[i, j, ii, jj]: 0<=i,j, ii, jj<n}",
             """
@@ -203,7 +192,8 @@ def test_add_barrier(ctx_factory):
                 ...
             ]
     )
-    a = np.random.randn(16, 16)
+
+    a = rng.normal(size=(16, 16))
     knl = lp.add_barrier(knl, "id:transpose", "id:double", "gb1")
 
     knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
@@ -1139,6 +1129,7 @@ def test_rename_argument_with_auto_stride(ctx_factory):
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<10}",
@@ -1154,7 +1145,7 @@ def test_rename_argument_with_auto_stride(ctx_factory):
     assert code_str.find("double const *__restrict__ x_new,") != -1
     assert code_str.find("double const *__restrict__ x,") == -1
 
-    _evt, (_out, ) = knl(queue, x_new=np.random.rand(10))
+    _evt, (_out, ) = knl(queue, x_new=rng.random(10))
 
 
 def test_rename_argument_with_assumptions():
@@ -1754,6 +1745,7 @@ def test_duplicate_iname_not_read_only_nested(ctx_factory):
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

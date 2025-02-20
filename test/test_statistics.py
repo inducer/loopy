@@ -20,12 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
+import logging
 
 import numpy as np
 
 from pymbolic.primitives import Variable
-from pyopencl.tools import (  # noqa
+from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 from pytools import div_ceil
@@ -39,8 +39,10 @@ from loopy.statistics import (
     SynchronizationKind,
 )
 from loopy.types import to_loopy_type
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
+
+logger = logging.getLogger(__name__)
 
 SGS = 32  # Subgroup size
 
@@ -1663,6 +1665,7 @@ def test_within_stats():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

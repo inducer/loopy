@@ -20,16 +20,20 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
 
 import numpy as np
 
-import pyopencl as cl  # noqa
-from pyopencl.tools import (  # noqa
+import pyopencl as cl  # noqa: F401
+from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+
+
+logger = logging.getLogger(__name__)
 
 
 def test_tim2d(ctx_factory):
@@ -40,7 +44,7 @@ def test_tim2d(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (K_sym, n, n)
 
@@ -103,7 +107,7 @@ def test_tim2d(ctx_factory):
         return knl
 
     for variant in [variant_orig]:
-        K = 1000  # noqa
+        K = 1000  # noqa: N806
         lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[K*(n*n*n*2*2 + n*n*2*3 + n**3 * 2*2)/1e9],
                 op_label=["GFlops"],

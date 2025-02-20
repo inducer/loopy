@@ -24,6 +24,11 @@ the codegen pipeline user-provided types are converted to
 
 .. automodule:: loopy.types
 
+Type inference
+^^^^^^^^^^^^^^
+
+.. automodule:: loopy.type_inference
+
 Codegen
 -------
 

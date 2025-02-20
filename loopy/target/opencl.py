@@ -751,7 +751,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
     def get_array_base_declarator(self, ary: ArrayBase) -> Declarator:
         dtype = ary.dtype
 
-        vec_size = ary.vector_size(self.target)
+        vec_size = ary.vector_length()
         if vec_size > 1:
             dtype = self.target.vector_dtype(dtype, vec_size)
 

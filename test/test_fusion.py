@@ -24,8 +24,8 @@ THE SOFTWARE.
 import numpy as np
 
 import pyopencl as cl
-from pyopencl.tools import (
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
@@ -67,6 +67,7 @@ def test_write_block_matrix_fusion(ctx_factory):
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     def init_global_mat_prg():
         return lp.make_kernel(
@@ -124,8 +125,8 @@ def test_write_block_matrix_fusion(ctx_factory):
     # and zeros elsewhere
     n = 10
     block_n = 5
-    mat1 = np.random.randn(block_n, block_n)
-    mat2 = np.random.randn(block_n, block_n)
+    mat1 = rng.normal(size=(block_n, block_n))
+    mat2 = rng.normal(size=(block_n, block_n))
     answer = np.block([[mat1, np.zeros((block_n, block_n))],
                       [np.zeros((block_n, block_n)), mat2]])
     kwargs = {"n": n, "m": n}

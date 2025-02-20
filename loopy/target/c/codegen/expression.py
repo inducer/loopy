@@ -48,12 +48,13 @@ from pymbolic.mapper.stringifier import (
 from loopy.diagnostic import LoopyError
 from loopy.expression import dtype_to_type_context
 from loopy.target.c import CExpression
-from loopy.type_inference import TypeReader
+from loopy.type_inference import TypeInferenceMapper, TypeReader
 from loopy.types import LoopyType
 from loopy.typing import Expression, is_integer
 
 
 if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
     from loopy.symbolic import TypeCast
 
 
@@ -79,7 +80,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
           expected type for untyped expressions such as python scalars. The
           type of the expressions takes precedence over *type_context*.
     """
-    def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
+    def __init__(self,
+                 codegen_state: CodeGenerationState,
+                 fortran_abi: bool = False,
+                 type_inf_mapper: TypeInferenceMapper | None = None
+             ) -> None:
         self.kernel = codegen_state.kernel
         self.codegen_state = codegen_state
 

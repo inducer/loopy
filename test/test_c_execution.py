@@ -21,26 +21,16 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
 
 import loopy as lp
 from loopy import CACHING_ENABLED
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_c_target():
@@ -93,10 +83,11 @@ def test_c_target_strides():
 
 def test_c_target_strides_nonsquare():
     from loopy.target.c import ExecutableCTarget
+    rng = np.random.default_rng(seed=42)
 
     def __get_kernel(order="C"):
         indices = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
+        sizes = tuple(rng.integers(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
@@ -141,9 +132,11 @@ def test_c_target_strides_nonsquare():
 def test_c_optimizations():
     from loopy.target.c import ExecutableCTarget
 
+    rng = np.random.default_rng(seed=42)
+
     def __get_kernel(order="C"):
         indices = ["i", "j", "k"]
-        sizes = tuple(np.random.randint(1, 11, size=len(indices)))
+        sizes = tuple(rng.integers(1, 11, size=len(indices)))
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
@@ -277,7 +270,7 @@ def test_c_execution_with_global_temporaries():
     # global constant temporaries is None
 
     from loopy.target.c import ExecutableCTarget
-    AS = lp.AddressSpace        # noqa
+    AS = lp.AddressSpace        # noqa: N806
     n = 10
 
     knl = lp.make_kernel("{[i]: 0 <= i < n}",
@@ -374,6 +367,7 @@ def test_scalar_global_args():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

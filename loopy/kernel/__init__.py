@@ -38,6 +38,7 @@ from functools import cached_property
 from sys import intern
 from typing import (
     TYPE_CHECKING,
+    AbstractSet,
     Any,
     Callable,
     ClassVar,
@@ -59,7 +60,7 @@ from pytools import (
     memoize_method,
     natsorted,
 )
-from pytools.tag import Tag, Taggable
+from pytools.tag import Tag, Taggable, TagT
 
 import loopy.codegen
 import loopy.kernel.data  # to help out Sphinx
@@ -539,14 +540,16 @@ class LoopKernel(Taggable):
     def iname_tags(self, iname):
         return self.inames[iname].tags
 
-    def iname_tags_of_type(self, iname, tag_type_or_types,
-            max_num=None, min_num=None):
+    def iname_tags_of_type(
+                self, iname: str,
+                tag_type_or_types: type[TagT] | tuple[type[TagT], ...],
+                max_num: int | None = None,
+                min_num: int | None = None
+            ) -> AbstractSet[TagT]:
         """Return a subset of *tags* that matches type *tag_type*. Raises exception
         if the number of tags found were greater than *max_num* or less than
         *min_num*.
 
-        :arg tags: An iterable of tags.
-        :arg tag_type_or_types: a subclass of :class:`loopy.kernel.data.InameTag`.
         :arg max_num: the maximum number of tags expected to be found.
         :arg min_num: the minimum number of tags expected to be found.
         """
@@ -1334,14 +1337,11 @@ class LoopKernel(Taggable):
             "linearization",
             "iname_slab_increments",
             "loop_priority",
-            # applied_iname_rewrites
+            "applied_iname_rewrites",
             "index_dtype",
             "silenced_warnings",
 
             # missing:
-            # - applied_iname_rewrites
-            #   Contains pymbolic expressions, hence a (small) headache to hash.
-            #   Likely not needed for hash uniqueness => headache avoided.
 
             # - preamble_generators
             # - symbol_manglers
@@ -1352,7 +1352,7 @@ class LoopKernel(Taggable):
             #   resolve hash conflicts.
             ]
 
-    update_persistent_hash = update_persistent_hash
+    update_persistent_hash = update_persistent_hash  # noqa: RUF045
 
     @memoize_method
     def __hash__(self):
