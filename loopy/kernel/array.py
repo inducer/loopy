@@ -52,6 +52,7 @@ from loopy.typing import Expression, ShapeType, auto, is_integer
 
 if TYPE_CHECKING:
     from pymbolic import ArithmeticExpression
+    from pymbolic.typing import Integer
 
     from loopy.codegen import VectorizationInfo
     from loopy.kernel import LoopKernel
@@ -1103,42 +1104,66 @@ class ArrayBase(ImmutableRecord, Taggable):
         else:
             return self
 
+    def _vector_axis_index(self) -> int | None:
+        if self.dim_tags is None or self.shape is None:
+            return None
+
+        vec_axes = [
+            i for i, dim_tag in enumerate(self.dim_tags)
+            if isinstance(dim_tag, VectorArrayDimTag)
+        ]
+        if len(vec_axes) > 1:
+            raise LoopyError("more than one axis of '{self.name}' is tagged 'vec'")
+
+        if not vec_axes:
+            return None
+
+        iaxis, = vec_axes
+        return iaxis
+
+    def vector_length(self) -> Integer:
+        iaxis = self._vector_axis_index()
+        if iaxis is None:
+            return 1
+
+        assert isinstance(self.shape, tuple)
+
+        shape_i = self.shape[iaxis]
+        if not is_integer(shape_i):
+            raise LoopyError("shape of '%s' has non-constant-integer "
+                    "length for vector axis %d (0-based)" % (
+                        self.name, iaxis))
+
+        return shape_i
+
     def vector_size(self, target: TargetBase) -> int:
         """Return the size of the vector type used for the array
         divided by the basic data type.
 
         Note: For 3-vectors, this will be 4.
         """
-
-        if self.dim_tags is None or self.shape is None:
+        iaxis = self._vector_axis_index()
+        if iaxis is None:
             return 1
 
         assert isinstance(self.shape, tuple)
         assert isinstance(self.dtype, LoopyType)
 
-        saw_vec_tag = False
+        shape_i = self.shape[iaxis]
+        if not is_integer(shape_i):
+            raise LoopyError("shape of '%s' has non-constant-integer "
+                    "length for vector axis %d (0-based)" % (
+                        self.name, iaxis))
 
-        for i, dim_tag in enumerate(self.dim_tags):
-            if isinstance(dim_tag, VectorArrayDimTag):
-                if saw_vec_tag:
-                    raise LoopyError("more than one axis of '{self.name}' "
-                            "is tagged 'vec'")
-                saw_vec_tag = True
+        if self.dim_tags is None or self.shape is None:
+            return 1
 
-                shape_i = self.shape[i]
-                if not is_integer(shape_i):
-                    raise LoopyError("shape of '%s' has non-constant-integer "
-                            "length for vector axis %d (0-based)" % (
-                                self.name, i))
+        vec_dtype = target.vector_dtype(self.dtype, shape_i)
 
-                vec_dtype = target.vector_dtype(self.dtype, shape_i)
-
-                return int(vec_dtype.itemsize) // int(self.dtype.itemsize)
-
-        return 1
-
+        return int(vec_dtype.itemsize) // int(self.dtype.itemsize)
 
 # }}}
+
 
 def drop_vec_dims(
         dim_tags: tuple[ArrayDimImplementationTag, ...],
