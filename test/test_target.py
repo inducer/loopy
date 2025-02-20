@@ -852,6 +852,29 @@ def test_cl_vectorize_ternary(ctx_factory):
     assert np.allclose(result, result_ref)
 
 
+def test_float3():
+    # https://github.com/inducer/loopy/issues/922
+    knl = lp.make_kernel(
+         "{ [i]: 0<=i<n }",
+         """
+         out[i] = a if i == 0 else b
+         """
+    )
+    vec_size = 3
+    knl = lp.split_array_axis(knl, "out", 0, vec_size)
+    knl = lp.split_iname(knl, "i", vec_size)
+    knl = lp.tag_inames(knl, {"i_inner": "vec"})
+    knl = lp.tag_array_axes(knl, "out", "c,vec")
+    knl = lp.assume(knl, f"n % {vec_size} = 0 and n>0")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                    {"a": np.dtype(np.float32), "b": np.dtype(np.float32)})
+
+    device_code = lp.generate_code_v2(knl).device_code()
+
+    assert "float3" in device_code
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
