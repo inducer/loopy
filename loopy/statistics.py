@@ -42,7 +42,7 @@ from typing import (
     cast,
 )
 
-from immutabledict import immutabledict
+from constantdict import constantdict
 
 import islpy as isl
 from islpy import PwQPolynomial, dim_type
@@ -840,10 +840,10 @@ class MemAccess:
             object.__setattr__(self, "dtype", to_loopy_type(self.dtype))
 
         if isinstance(self.lid_strides, dict):
-            object.__setattr__(self, "lid_strides", immutabledict(self.lid_strides))
+            object.__setattr__(self, "lid_strides", constantdict(self.lid_strides))
 
         if isinstance(self.gid_strides, dict):
-            object.__setattr__(self, "gid_strides", immutabledict(self.gid_strides))
+            object.__setattr__(self, "gid_strides", constantdict(self.gid_strides))
 
         if self.variable_tags is None:
             object.__setattr__(self, "variable_tags", frozenset())
@@ -1400,8 +1400,8 @@ class MemAccessCounter(CounterBase):
                 address_space=array.address_space,
                 dtype=dtype,
                 tags=tags,
-                lid_strides=immutabledict(lid_strides),
-                gid_strides=immutabledict(gid_strides),
+                lid_strides=constantdict(lid_strides),
+                gid_strides=constantdict(gid_strides),
                 variable=name,
                 count_granularity=local_mem_count_granularity,
                 kernel_name=self.knl.name): self.one})
@@ -1413,8 +1413,8 @@ class MemAccessCounter(CounterBase):
                 return self.new_poly_map({MemAccess(
                     address_space=AddressSpace.GLOBAL,
                     dtype=dtype,
-                    lid_strides=immutabledict({}),
-                    gid_strides=immutabledict({}),
+                    lid_strides=constantdict({}),
+                    gid_strides=constantdict({}),
                     variable=name,
                     tags=tags,
                     count_granularity=CountGranularity.WORKITEM,
@@ -1439,8 +1439,8 @@ class MemAccessCounter(CounterBase):
             return self.new_poly_map({MemAccess(
                             address_space=AddressSpace.GLOBAL,
                             dtype=dtype,
-                            lid_strides=immutabledict(lid_strides),
-                            gid_strides=immutabledict(gid_strides),
+                            lid_strides=constantdict(lid_strides),
+                            gid_strides=constantdict(gid_strides),
                             variable=name,
                             tags=tags,
                             variable_tags=var_tags,
