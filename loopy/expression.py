@@ -22,10 +22,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-from typing import TYPE_CHECKING
-
 from typing import (
-    Iterable,
+    TYPE_CHECKING,
 )
 
 import numpy as np
@@ -88,13 +86,6 @@ class VectorizabilityChecker(Mapper[bool, []]):
         self.kernel = kernel
         self.vec_iname = vec_iname
         self.vec_iname_length = vec_iname_length
-
-    @staticmethod
-    def combine(vectorizabilities: Iterable[bool]):
-        from functools import reduce
-        from operator import and_
-        return reduce(and_, vectorizabilities)
-
 
     def map_sum(self, expr: p.Sum) -> bool:
         return any(self.rec(child) for child in expr.children)
@@ -175,37 +166,7 @@ class VectorizabilityChecker(Mapper[bool, []]):
     def map_variable(self, expr: p.Variable) -> bool:
         if expr.name == self.vec_iname:
             return True
-
-        name = expr.name
-        var = self.kernel.arg_dict.get(name)
-        if var is None:
-            var = self.kernel.temporary_variables.get(name)
-
-        if var is None:
-            raise LoopyError("unknown array variable in subscript: %s"
-                    % name)
-
-        from loopy.kernel.array import ArrayBase
-        from loopy.kernel.data import ValueArg
-        if isinstance(var, ValueArg):
-            # Just a simple scalar argument which will get broadcast as necessary.
-            return True
-
-        if not isinstance(var, ArrayBase):
-            raise LoopyError("non-array variable '%s'" % expr)
-
-        from loopy.kernel.array import VectorArrayDimTag
-
-        possible = None
-        for i in range(len(var.shape)):
-            if (isinstance(var.dim_tags[i], VectorArrayDimTag)):
-                if var.shape[i] != self.vec_iname_length:
-                    raise UnvectorizableError("vector length was mismatched")
-                elif self.vec_iname_length in [2, 3, 4, 8, 16]:
-                    possible = True
-                else:
-                    raise UnvectorizableError("Vector length not supported.")
-        return possible
+        return False
 
     map_tagged_variable = map_variable
 

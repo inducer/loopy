@@ -211,11 +211,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             if self.codegen_state.vectorization_info.iname == expr.name:
                 # This needs to be converted into a vector literal.
                 from loopy.symbolic import Literal
-                tmp = "(int8) (" + \
-                        ",".join([f"{i}" for i in
-                        range(self.codegen_state.vectorization_info.length)])\
-                              + ")"
-                return Literal(tmp)
+                vector_length = self.codegen_state.vectorization_info.length
+                vector_literal = f"(long{vector_length})" + " (" + \
+                        ",".join([f"{i}" for i in range(vector_length)]) + ")"
+                return Literal(vector_literal)
 
         return postproc(var(expr.name))
 
