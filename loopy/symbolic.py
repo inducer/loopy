@@ -786,20 +786,18 @@ class TaggedVariable(LoopyExpressionBase, Variable, Taggable):
 @p.expr_dataclass()
 class TaggedExpression(LoopyExpressionBase):
     """
-    Represents a frozenset of tags attached to an :attr:`expr`.
+    Represents a :class:`frozenset` of tags attached to an :attr:`expr`.
 
-    .. attribute:: tags
-
-        A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
-        provide metadata on this expression.
-
-    .. attribute:: expr
-
-        An expression to which :attr:`tags` are attached.
+    .. autoattribute:: tags
+    .. autoattribute:: expr
     """
 
     tags: frozenset[Tag]
+    """A :class:`frozenset` of subclasses of :class:`pytools.tag.Tag` used to
+        provide metadata on this expression."""
+
     expr: Expression
+    """An expression to which :attr:`tags` are attached."""
 
 
 @p.expr_dataclass(init=False)
