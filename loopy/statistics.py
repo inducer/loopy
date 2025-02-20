@@ -1960,7 +1960,6 @@ def get_op_map(
     t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
     kernel = t_unit[entrypoint]
-    assert isinstance(kernel, LoopKernel)
 
     return _get_op_map_for_single_kernel(
             kernel, t_unit.callables_table,
