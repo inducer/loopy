@@ -766,82 +766,71 @@ class AccessDirection(Enum):
 class MemAccess:
     """A descriptor for a type of memory access.
 
-    .. attribute:: address_space
-
-       A :class:`AddressSpace` that specifies the memory type accessed as **global**
-       or **local**.
-
-    .. attribute:: dtype
-
-       A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
-       data type accessed.
-
-    .. attribute:: lid_strides
-
-       A :class:`dict` of **{** :class:`int` **:**
-       :data:`~pymbolic.typing.Expression` or :class:`int` **}** that
-       specifies local strides for each local id in the memory access index.
-       Local ids not found will not be present in ``lid_strides.keys()``.
-       Uniform access (i.e. work-items within a sub-group access the same
-       item) is indicated by setting ``lid_strides[0]=0``, but may also occur
-       when no local id 0 is found, in which case the 0 key will not be
-       present in lid_strides.
-
-    .. attribute:: gid_strides
-
-       A :class:`dict` of **{** :class:`int` **:**
-       :data:`~pymbolic.typing.Expression` or :class:`int` **}** that
-       specifies global strides for each global id in the memory access index.
-       global ids not found will not be present in ``gid_strides.keys()``.
-
-    .. attribute:: read_write
-
-       An :class:`AccessDirection` or *None*.
-
-    .. attribute:: variable
-
-       A :class:`str` that specifies the variable name of the data
-       accessed.
-
-    .. attribute:: variable_tags
-
-       A :class:`frozenset` of subclasses of :class:`~pytools.tag.Tag`
-       that reflects :attr:`~loopy.TaggedVariable.tags` of
-       an accessed variable.
-
-    .. attribute:: count_granularity
-
-       A :class:`CountGranularity` that specifies whether this operation should be
-       counted once per *work-item*, *sub-group*, or *work-group*. The granularities
-       allowed can be found in :class:`CountGranularity`, and may be accessed,
-       e.g., as ``CountGranularity.WORKITEM``. A work-item is a single instance
-       of computation executing on a single processor (think "thread"), a
-       collection of which may be grouped together into a work-group. Each
-       work-group executes on a single compute unit with all work-items within
-       the work-group sharing local memory. A sub-group is an
-       implementation-dependent grouping of work-items within a work-group,
-       analogous to an NVIDIA CUDA warp.
-
-    .. attribute:: kernel_name
-
-        A :class:`str` representing the kernel name where the operation occurred.
-
-    .. attribute:: tags
-
-        A :class:`frozenset` of tags to the operation.
+    .. autoattribute:: address_space
+    .. autoattribute:: dtype
+    .. autoattribute:: lid_strides
+    .. autoattribute:: gid_strides
+    .. autoattribute:: read_write
+    .. autoattribute:: variable
+    .. autoattribute:: variable_tags
+    .. autoattribute:: count_granularity
+    .. autoattribute:: kernel_name
+    .. autoattribute:: tags
     """
 
     address_space: AddressSpace | type[auto] | None = None
+    """A :class:`AddressSpace` that specifies the memory type accessed as **global**
+    or **local**."""
+
     dtype: LoopyType | None = None
+    """A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
+    data type accessed."""
+
     lid_strides: Mapping[int, Expression] | None = None
+    """A :class:`dict` of **{** :class:`int` **:**
+    :data:`~pymbolic.typing.Expression` or :class:`int` **}** that
+    specifies local strides for each local id in the memory access index.
+    Local ids not found will not be present in ``lid_strides.keys()``.
+    Uniform access (i.e. work-items within a sub-group access the same
+    item) is indicated by setting ``lid_strides[0]=0``, but may also occur
+    when no local id 0 is found, in which case the 0 key will not be
+    present in lid_strides."""
+
     gid_strides: Mapping[int, Expression] | None = None
+    """A :class:`dict` of **{** :class:`int` **:**
+    :data:`~pymbolic.typing.Expression` or :class:`int` **}** that
+    specifies global strides for each global id in the memory access index.
+    global ids not found will not be present in ``gid_strides.keys()``."""
+
     read_write: AccessDirection | None = None
+    """An :class:`AccessDirection` or *None*."""
+
     variable: str | None = None
+    """A :class:`str` that specifies the variable name of the data
+    accessed."""
 
     variable_tags: frozenset[Tag] = frozenset()
+    """A :class:`frozenset` of subclasses of :class:`~pytools.tag.Tag`
+    that reflects :attr:`~loopy.TaggedVariable.tags` of
+    an accessed variable."""
+
     count_granularity: CountGranularity | None = None
+    """A :class:`CountGranularity` that specifies whether this operation should be
+    counted once per *work-item*, *sub-group*, or *work-group*. The granularities
+    allowed can be found in :class:`CountGranularity`, and may be accessed,
+    e.g., as ``CountGranularity.WORKITEM``. A work-item is a single instance
+    of computation executing on a single processor (think "thread"), a
+    collection of which may be grouped together into a work-group. Each
+    work-group executes on a single compute unit with all work-items within
+    the work-group sharing local memory. A sub-group is an
+    implementation-dependent grouping of work-items within a work-group,
+    analogous to an NVIDIA CUDA warp."""
+
     kernel_name: str | None = None
+    """A :class:`str` representing the kernel name where the operation occurred."""
+
     tags: frozenset[Tag] = frozenset()
+    """A :class:`frozenset` of tags to the operation."""
 
     def __post_init__(self):
         assert isinstance(self.address_space, (AddressSpace, type(None)))
