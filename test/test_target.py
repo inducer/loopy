@@ -875,6 +875,36 @@ def test_float3():
     assert "float3" in device_code
 
 
+def test_cl_vectorize_index_variable(ctx_factory):
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            b[i] = a[i]*3 if i < 32 else sin(a[i])
+            """)
+
+    knl = lp.split_array_axis(knl, "a,b", 0, 4)
+    knl = lp.split_iname(knl, "i", 4)
+    knl = lp.tag_inames(knl, {"i_inner": "vec"})
+    knl = lp.tag_array_axes(knl, "a,b", "c,vec")
+    knl = lp.set_options(knl, write_code=True)
+    knl = lp.assume(knl, "n % 4 = 0 and n>0")
+
+    rng = np.random.default_rng(seed=12)
+    a = rng.normal(size=(16, 4))
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float64, "n": np.int64})
+    _evt, (result,) = knl(queue, a=a, n=a.size)
+
+    result_ref = np.zeros(a.shape, dtype=np.float64)
+    for i in range(16):
+        for j in range(4):
+            ind = i*4 + j
+            result_ref[i, j] = a[i, j] * 3 if ind < 32 else np.sin(a[i, j])
+
+    assert np.allclose(result, result_ref)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:

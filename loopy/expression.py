@@ -22,7 +22,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-from typing import TYPE_CHECKING
+from typing import (
+    TYPE_CHECKING,
+)
 
 import numpy as np
 
@@ -162,10 +164,7 @@ class VectorizabilityChecker(Mapper[bool, []]):
 
     def map_variable(self, expr: p.Variable) -> bool:
         if expr.name == self.vec_iname:
-            # Technically, this is doable. But we're not going there.
-            raise UnvectorizableError()
-
-        # A single variable is always a scalar.
+            return True
         return False
 
     map_tagged_variable = map_variable
