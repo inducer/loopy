@@ -116,7 +116,6 @@ def reduce_strict_ordering(knl) -> LoopKernel:
     def narrow_dependencies(
             source: InstructionBase,
             after_insn: InstructionBase,
-            access_mapper: AccessMapFinder,
             happens_afters: dict,
             dependency_map: isl.Map | None = None,  # type: ignore
         ) -> dict:
@@ -154,7 +153,6 @@ def reduce_strict_ordering(knl) -> LoopKernel:
                 narrow_dependencies(
                     source,
                     knl.id_to_insn[insn],
-                    access_mapper,
                     happens_afters,
                     dependency_map,
                 )
@@ -176,11 +174,7 @@ def reduce_strict_ordering(knl) -> LoopKernel:
     new_insns = []
     for insn in knl.instructions[::-1]:
         new_insns.append(
-            insn.copy(
-                happens_after=narrow_dependencies(
-                    insn, insn, access_mapper, {}
-                )
-            )
+            insn.copy(happens_after=narrow_dependencies(insn, insn, {}))
         )
 
     return knl.copy(instructions=new_insns[::-1])
