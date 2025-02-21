@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
@@ -32,32 +31,18 @@ import pyopencl.clmath
 import pyopencl.clrandom
 import pyopencl.tools
 import pyopencl.version
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
 from loopy.diagnostic import LoopyError
 from loopy.target.c import CTarget
 from loopy.target.opencl import OpenCLTarget
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # "cl.create_some_context"
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_ispc_target():
@@ -107,18 +92,19 @@ def test_cuda_target():
 
 def test_generate_c_snippet():
     from pymbolic import var
-    I = var("I")  # noqa
+
+    I = var("I")  # noqa: N806,E741
     f = var("f")
     df = var("df")
     q_v = var("q_v")
-    eN = var("eN")  # noqa
     k = var("k")
     u = var("u")
 
     from functools import partial
+
     l_sum = partial(lp.Reduction, "sum", allow_simultaneous=True)
 
-    Instr = lp.Assignment  # noqa
+    Instr = lp.Assignment  # noqa: N806
 
     knl = lp.make_kernel(
         "{[I, k]: 0<=I<nSpace and 0<=k<nQuad}",
@@ -866,7 +852,31 @@ def test_cl_vectorize_ternary(ctx_factory):
     assert np.allclose(result, result_ref)
 
 
+def test_float3():
+    # https://github.com/inducer/loopy/issues/922
+    knl = lp.make_kernel(
+         "{ [i]: 0<=i<n }",
+         """
+         out[i] = a if i == 0 else b
+         """
+    )
+    vec_size = 3
+    knl = lp.split_array_axis(knl, "out", 0, vec_size)
+    knl = lp.split_iname(knl, "i", vec_size)
+    knl = lp.tag_inames(knl, {"i_inner": "vec"})
+    knl = lp.tag_array_axes(knl, "out", "c,vec")
+    knl = lp.assume(knl, f"n % {vec_size} = 0 and n>0")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                    {"a": np.dtype(np.float32), "b": np.dtype(np.float32)})
+
+    device_code = lp.generate_code_v2(knl).device_code()
+
+    assert "float3" in device_code
+
+
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

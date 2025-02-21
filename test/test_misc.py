@@ -21,18 +21,15 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 from pickle import dumps, loads
 
 import pytest
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_kernel_pickling_and_hashing():
@@ -249,7 +246,7 @@ def test_lazily_unpickling_list_eq_and_persistent_hashing():
     # }}}
 
 
-def test_Optional():  # noqa
+def test_optional():
     from loopy import Optional
 
     # {{{ test API
@@ -342,6 +339,7 @@ def test_memoize_on_disk_with_pym_expr():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

@@ -20,28 +20,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import logging
 
 import numpy as np
 
-import pyopencl as cl  # noqa
-from pyopencl.tools import (  # noqa
+import pyopencl as cl  # noqa: F401
+from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
 
 
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
-
-
 def test_nbody(ctx_factory):
-    logging.basicConfig(level=logging.INFO)
-
     dtype = np.float32
     ctx = ctx_factory()
 

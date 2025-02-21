@@ -30,29 +30,15 @@ import pyopencl as cl
 import pyopencl.clmath
 import pyopencl.clrandom
 import pyopencl.version
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # 'cl.create_some_context'
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 def test_nonsense_reduction(ctx_factory):
@@ -295,8 +281,6 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
 
 
 def test_argmax(ctx_factory):
-    logging.basicConfig(level=logging.INFO)
-
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
