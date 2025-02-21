@@ -61,7 +61,7 @@ def test_diff(ctx_factory):
 
     dknl = lp.add_inames_to_insn(dknl, "diff_i0", "writes:a_dx or writes:a")
 
-    print(dknl)
+    logger.info("%s", dknl)
 
     n = 50
     x = rng.normal(size=n)
@@ -88,7 +88,7 @@ def test_diff(ctx_factory):
 
     err1 = la.norm(diff1 - diff1_predicted) / la.norm(diff1)
     err2 = la.norm(diff2 - diff2_predicted) / la.norm(diff2)
-    print(err1, err2)
+    logger.info("error %.16e %.16e", err1, err2)
 
     assert (err2 < err1 * fac * 1.1).all()
 
