@@ -58,7 +58,6 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
                 happens_after.get_dim_name(dim_type.out, idim) + "'"
             )
 
-        # NOTE: using this in place of what's in the fold breaks stuff bc sets
         shared_inames = before_insn.within_inames & after_insn.within_inames
 
         # {{{ removes non-determinism from 'bad' ordering of inames
@@ -121,7 +120,7 @@ def reduce_strict_ordering(knl) -> LoopKernel:
         if dependency_map is not None and dependency_map.is_empty():
             return happens_afters
 
-        new_happens_after = {}
+        new_happens_after: dict[str, VariableSpecificHappensAfter] = {}
         for insn, happens_after in after_insn.happens_after.items():
             if dependency_map is None:
                 dependency_map = happens_after.instances_rel
@@ -131,7 +130,7 @@ def reduce_strict_ordering(knl) -> LoopKernel:
                 )
 
             common_vars = \
-                wmap_r[insn] & access_mapper.get_accessed_variables(source.id)
+                wmap_r[insn] & access_mapper.get_accessed_variables(source.id)  # type: ignore
             for var in common_vars:
                 write_map = access_mapper.get_map(insn, var)
                 source_map = access_mapper.get_map(source.id, var)
