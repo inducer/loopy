@@ -431,7 +431,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     def get_array_base_declarator(self, ary: ArrayBase) -> Declarator:
         dtype = ary.dtype
 
-        vec_size = ary.vector_length()
+        vec_size = ary.vector_size(self.target)
         if vec_size > 1:
             dtype = self.target.vector_dtype(dtype, vec_size)
 
