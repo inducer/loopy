@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 """
 .. autoclass:: AccessMapFinder
 """
@@ -25,31 +26,31 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from pyrsistent import PMap, pmap
+
 import islpy as isl
+import pymbolic.primitives as p
 
 from loopy.kernel import LoopKernel
 from loopy.symbolic import (
-        WalkMapper,
-        get_access_map, \
-        UnableToDetermineAccessRangeError,
+    UnableToDetermineAccessRangeError,
+    WalkMapper,
+    get_access_map,
 )
 from loopy.typing import Expression
-
-import pymbolic.primitives as p
-from typing import List, Dict
-from pyrsistent import pmap, PMap
 
 
 class AccessMapFinder(WalkMapper):
     def __init__(self, knl: LoopKernel) -> None:
         self.kernel = knl
-        self._access_maps: PMap[str, PMap[str, isl.Map]] = pmap({})
+        self._access_maps: PMap[str, PMap[str, isl.Map]] = pmap({})  # type: ignore
         from collections import defaultdict
-        self.bad_subscripts: Dict[str, List[Expression]] = defaultdict(list)
+
+        self.bad_subscripts: dict[str, list[Expression]] = defaultdict(list)
 
         super().__init__()
 
-    def get_map(self, insn_id: str, variable_name: str) -> isl.Map | None:
+    def get_map(self, insn_id: str, variable_name: str) -> isl.Map | None:  # type: ignore
         """Retrieve an access map indexed by an instruction ID and variable
         name.
         """
@@ -66,7 +67,7 @@ class AccessMapFinder(WalkMapper):
 
     def map_subscript(self, expr, insn_id):
         domain = self.kernel.get_inames_domain(
-                self.kernel.id_to_insn[insn_id].within_inames
+            self.kernel.id_to_insn[insn_id].within_inames
         )
         WalkMapper.map_subscript(self, expr, insn_id)
 
@@ -76,8 +77,7 @@ class AccessMapFinder(WalkMapper):
         subscript = expr.index_tuple
 
         try:
-            access_map = get_access_map(
-                    domain, subscript, self.kernel.assumptions)
+            access_map = get_access_map(domain, subscript, self.kernel.assumptions)
         except UnableToDetermineAccessRangeError:
             # may not have enough info to generate access map at current point
             self.bad_subscripts[arg_name].append(expr)
@@ -92,18 +92,21 @@ class AccessMapFinder(WalkMapper):
                 access_map |= existing_relation
 
             self._access_maps = self._access_maps.set(
-                    insn_id, self._access_maps[insn_id].set(
-                        arg_name, access_map))
+                insn_id, self._access_maps[insn_id].set(arg_name, access_map)
+            )
 
         else:
             self._access_maps = self._access_maps.set(
-                    insn_id, pmap({arg_name: access_map}))
+                insn_id, pmap({arg_name: access_map})
+            )
 
     def map_linear_subscript(self, expr, insn_id):
-        raise NotImplementedError("linear subscripts cannot be used with "
-                                  "precise dependency finding. Use "
-                                  "multidimensional accesses to take advantage "
-                                  "of this feature.")
+        raise NotImplementedError(
+            "linear subscripts cannot be used with "
+            "precise dependency finding. Use "
+            "multidimensional accesses to take advantage "
+            "of this feature."
+        )
 
     def map_reduction(self, expr, insn_id):
         return WalkMapper.map_reduction(self, expr, insn_id)

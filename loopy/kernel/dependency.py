@@ -23,10 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from typing import Mapping
-
-from immutabledict import immutabledict
 import islpy as isl
 from islpy import dim_type
 
@@ -165,7 +161,7 @@ def reduce_strict_ordering(knl) -> LoopKernel:
         access_mapper(insn.expression, insn.id)
         access_mapper(insn.assignee, insn.id)
 
-    wmap_r = {}
+    wmap_r: dict[str, set[str]] = {}
     for var, insns in knl.writer_map().items():
         for insn in insns:
             wmap_r.setdefault(insn, set())
