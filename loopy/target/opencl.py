@@ -550,14 +550,15 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
             return s
 
         registry = self.codegen_state.ast_builder.target.get_dtype_registry()
-        if self.codegen_state.target.is_vector_dtype(needed_dtype) and \
-            self.codegen_state.target.is_vector_dtype(actual_type):
+        if self.codegen_state.target.is_vector_dtype(needed_dtype):
             # OpenCL does not let you do explicit vector type casts between vector
             # types. Instead you need to call their function which is of the form
             # <desttype> convert_<desttype><n>(src) where n
             # is the number of elements in the vector which is the same as in src.
-            cast = var("convert_%s" % registry.dtype_to_ctype(needed_dtype))
-            return cast(s)
+            if self.codegen_state.target.is_vector_dtype(actual_type) or \
+                actual_type.dtype.kind == "b":
+                cast = var("convert_%s" % registry.dtype_to_ctype(needed_dtype))
+                return cast(s)
 
         return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
