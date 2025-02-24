@@ -130,6 +130,12 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if actual_type != needed_type:
             registry = self.codegen_state.ast_builder.target.get_dtype_registry()
             cast = var("(%s) " % registry.dtype_to_ctype(needed_type))
+            if self.codegen_state.target.is_vector_dtype(needed_type):
+                # OpenCL does not let you do explicit vector type casts.
+                # Instead you need to call their function which is of the form
+                # convert_<desttype><n>(src) where desttype is the type you want and n
+                # is the number of elements in the vector which is the same as in src.
+                cast = var("convert_%s" % registry.dtype_to_ctype(needed_type))
             return cast(s)
 
         return s
@@ -414,9 +420,37 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     def map_if(self, expr, type_context):
         from loopy.types import to_loopy_type
         result_type = self.infer_type(expr)
+        conditional_needed_loopy_type = to_loopy_type(np.bool_)
+        if self.codegen_state.vectorization_info:
+            from loopy.expression import VectorizabilityChecker
+            from loopy.codegen import UnvectorizableError
+            checker = VectorizabilityChecker(self.codegen_state.kernel,
+                                     self.codegen_state.vectorization_info.iname,
+                                     self.codegen_state.vectorization_info.length)
+
+            try:
+                is_vector = checker(expr)
+
+                if is_vector:
+                    """
+                    We could have a vector literal here.
+                    So we may need to type cast the condition.
+                    OpenCL specification states that for ( c ? a : b)
+                    to be vectorized appropriately c must have the same
+                    number of elements in the vector as that of a and b.
+                    Also each element must have the same number of bits,
+                    and c must be an integral type.
+                    """
+                    index_type = to_loopy_type(np.int64)
+                    if type_context == "f":
+                        index_type = to_loopy_type(np.int32)
+                    conditional_needed_loopy_type = to_loopy_type(self.codegen_state.target.vector_dtype(index_type,
+                                                    self.codegen_state.vectorization_info.length))
+            except UnvectorizableError:
+                pass
         return type(expr)(
                 self.rec(expr.condition, type_context,
-                         to_loopy_type(np.bool_)),
+                         conditional_needed_loopy_type),
                 self.rec(expr.then, type_context, result_type),
                 self.rec(expr.else_, type_context, result_type),
                 )
@@ -712,8 +746,13 @@ class CExpressionToCodeMapper(Mapper):
 
     map_max = map_min
 
+    def map_type_cast(self, expr, enclosing_prec):
+        breakpoint()
+        return super().map_type_cast(expr, enclosing_prec)
+
     def map_if(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
+        breakpoint()
         return "({} ? {} : {})".format(
                 # Force parentheses around the condition to prevent compiler
                 # warnings regarding precedence (e.g. with POCL 1.8/LLVM 12):

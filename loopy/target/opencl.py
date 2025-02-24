@@ -545,6 +545,15 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
 
+        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+        if self.codegen_state.target.is_vector_dtype(needed_dtype):
+            # OpenCL does not let you do explicit vector type casts.
+            # Instead you need to call their function which is of the form
+            # convert_<desttype><n>(src) where desttype is the type you want and n
+            # is the number of elements in the vector which is the same as in src.
+            cast = var("convert_%s" % registry.dtype_to_ctype(needed_dtype))
+            return cast(s)
+
         return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
     def map_group_hw_index(self, expr, type_context):
@@ -553,6 +562,21 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
     def map_local_hw_index(self, expr, type_context):
         return var("lid")(expr.axis)
 
+    def map_variable(self, expr, type_context):
+
+        if self.codegen_state.vectorization_info:
+            if self.codegen_state.vectorization_info.iname == expr.name:
+                # This needs to be converted into a vector literal.
+                from loopy.symbolic import Literal
+                vector_length = self.codegen_state.vectorization_info.length
+                index_type = self.codegen_state.kernel.index_dtype
+                vector_type = self.codegen_state.target.vector_dtype(index_type,
+                                                                     vector_length)
+                typecast = self.codegen_state.target.dtype_to_typename(vector_type)
+                vector_literal = f"(({typecast})" + " (" + \
+                        ",".join([f"{i}" for i in range(vector_length)]) + "))"
+                return Literal(vector_literal)
+        return super().map_variable(expr, type_context)
 # }}}
 
 
