@@ -130,14 +130,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         if actual_type != needed_type:
             registry = self.codegen_state.ast_builder.target.get_dtype_registry()
             cast = var("(%s) " % registry.dtype_to_ctype(needed_type))
-            if self.codegen_state.target.is_vector_dtype(needed_type):
-                # OpenCL does not let you do explicit vector type casts.
-                # Instead you need to call their function which is of the form
-                # convert_<desttype><n>(src) where desttype is the type you want and n
-                # is the number of elements in the vector which is the same as in src.
-                cast = var("convert_%s" % registry.dtype_to_ctype(needed_type))
-            return cast(s)
 
+            return cast(s)
         return s
 
     def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
@@ -422,8 +416,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         result_type = self.infer_type(expr)
         conditional_needed_loopy_type = to_loopy_type(np.bool_)
         if self.codegen_state.vectorization_info:
-            from loopy.expression import VectorizabilityChecker
             from loopy.codegen import UnvectorizableError
+            from loopy.expression import VectorizabilityChecker
             checker = VectorizabilityChecker(self.codegen_state.kernel,
                                      self.codegen_state.vectorization_info.iname,
                                      self.codegen_state.vectorization_info.length)
@@ -746,13 +740,8 @@ class CExpressionToCodeMapper(Mapper):
 
     map_max = map_min
 
-    def map_type_cast(self, expr, enclosing_prec):
-        breakpoint()
-        return super().map_type_cast(expr, enclosing_prec)
-
     def map_if(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
-        breakpoint()
         return "({} ? {} : {})".format(
                 # Force parentheses around the condition to prevent compiler
                 # warnings regarding precedence (e.g. with POCL 1.8/LLVM 12):
