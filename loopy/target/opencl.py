@@ -577,6 +577,47 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
                         ",".join([f"{i}" for i in range(vector_length)]) + "))"
                 return Literal(vector_literal)
         return super().map_variable(expr, type_context)
+
+    def map_if(self, expr, type_context):
+        from loopy.types import to_loopy_type
+        result_type = self.infer_type(expr)
+        conditional_needed_loopy_type = to_loopy_type(np.bool_)
+        if self.codegen_state.vectorization_info:
+            from loopy.codegen import UnvectorizableError
+            from loopy.expression import VectorizabilityChecker
+            checker = VectorizabilityChecker(self.codegen_state.kernel,
+                                     self.codegen_state.vectorization_info.iname,
+                                     self.codegen_state.vectorization_info.length)
+
+            try:
+                is_vector = checker(expr)
+
+                if is_vector:
+                    """
+                    We could have a vector literal here.
+                    So we may need to type cast the condition.
+                    OpenCL specification states that for ( c ? a : b)
+                    to be vectorized appropriately c must have the same
+                    number of elements in the vector as that of a and b.
+                    Also each element must have the same number of bits,
+                    and c must be an integral type.
+                    """
+                    index_type = to_loopy_type(np.int64)
+                    if type_context == "f":
+                        index_type = to_loopy_type(np.int32)
+                    length = self.codegen_state.vectorization_info.length
+                    vector_type = self.codegen_state.target.vector_dtype(index_type,
+                                                                         length)
+                    conditional_needed_loopy_type = to_loopy_type(vector_type)
+            except UnvectorizableError:
+                pass
+
+        return type(expr)(
+                self.rec(expr.condition, type_context,
+                         conditional_needed_loopy_type),
+                self.rec(expr.then, type_context, result_type),
+                self.rec(expr.else_, type_context, result_type),
+                )
 # }}}
 
 
