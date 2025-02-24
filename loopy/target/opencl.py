@@ -545,7 +545,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
-        
+
         if needed_dtype == actual_type:
             return s
 
