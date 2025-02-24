@@ -562,13 +562,13 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
         return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
-    def map_group_hw_index(self, expr, type_context: str):
+    def map_group_hw_index(self, expr, type_context):
         return var("gid")(expr.axis)
 
-    def map_local_hw_index(self, expr, type_context: str):
+    def map_local_hw_index(self, expr, type_context):
         return var("lid")(expr.axis)
 
-    def map_variable(self, expr, type_context: str):
+    def map_variable(self, expr, type_context):
 
         if self.codegen_state.vectorization_info:
             if self.codegen_state.vectorization_info.iname == expr.name:
@@ -584,7 +584,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
                 return Literal(vector_literal)
         return super().map_variable(expr, type_context)
 
-    def map_if(self, expr, type_context: str):
+    def map_if(self, expr, type_context):
         from loopy.types import to_loopy_type
         result_type = self.infer_type(expr)
         conditional_needed_loopy_type = to_loopy_type(np.bool_)
