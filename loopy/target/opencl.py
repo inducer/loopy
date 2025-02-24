@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
 
 
 # {{{ dtype registry wrappers
@@ -456,7 +457,7 @@ def get_opencl_callables():
 
 # {{{ symbol mangler
 
-def opencl_symbol_mangler(kernel, name):
+def opencl_symbol_mangler(kernel: LoopKernel, name: str):
     # FIXME: should be more picky about exact names
     if name.startswith("FLT_"):
         return NumpyType(np.dtype(np.float32)), name
@@ -544,25 +545,29 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
             return Comparison(s, "!=", 0)
+        
+        if needed_dtype == actual_type:
+            return s
 
         registry = self.codegen_state.ast_builder.target.get_dtype_registry()
-        if self.codegen_state.target.is_vector_dtype(needed_dtype):
-            # OpenCL does not let you do explicit vector type casts.
-            # Instead you need to call their function which is of the form
-            # convert_<desttype><n>(src) where desttype is the type you want and n
+        if self.codegen_state.target.is_vector_dtype(needed_dtype) and \
+            self.codegen_state.target.is_vector_dtype(actual_type):
+            # OpenCL does not let you do explicit vector type casts between vector
+            # types. Instead you need to call their function which is of the form
+            # <desttype> convert_<desttype><n>(src) where n
             # is the number of elements in the vector which is the same as in src.
             cast = var("convert_%s" % registry.dtype_to_ctype(needed_dtype))
             return cast(s)
 
         return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
-    def map_group_hw_index(self, expr, type_context):
+    def map_group_hw_index(self, expr, type_context: str):
         return var("gid")(expr.axis)
 
-    def map_local_hw_index(self, expr, type_context):
+    def map_local_hw_index(self, expr, type_context: str):
         return var("lid")(expr.axis)
 
-    def map_variable(self, expr, type_context):
+    def map_variable(self, expr, type_context: str):
 
         if self.codegen_state.vectorization_info:
             if self.codegen_state.vectorization_info.iname == expr.name:
@@ -578,7 +583,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
                 return Literal(vector_literal)
         return super().map_variable(expr, type_context)
 
-    def map_if(self, expr, type_context):
+    def map_if(self, expr, type_context: str):
         from loopy.types import to_loopy_type
         result_type = self.infer_type(expr)
         conditional_needed_loopy_type = to_loopy_type(np.bool_)
