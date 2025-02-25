@@ -457,7 +457,8 @@ def get_opencl_callables():
 
 # {{{ symbol mangler
 
-def opencl_symbol_mangler(kernel: LoopKernel, name: str):
+def opencl_symbol_mangler(kernel: LoopKernel,
+                          name: str) -> tuple[NumpyType, str] | None:
     # FIXME: should be more picky about exact names
     if name.startswith("FLT_"):
         return NumpyType(np.dtype(np.float32)), name
@@ -555,6 +556,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
             # types. Instead you need to call their function which is of the form
             # <desttype> convert_<desttype><n>(src) where n
             # is the number of elements in the vector which is the same as in src.
+            # https://registry.khronos.org/OpenCL/specs/3.0-unified/html/OpenCL_C.html#explicit-casts
             if self.codegen_state.target.is_vector_dtype(actual_type) or \
                 actual_type.dtype.kind == "b":
                 cast = var("convert_%s" % registry.dtype_to_ctype(needed_dtype))
@@ -600,18 +602,25 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
                 if is_vector:
                     """
-                    We could have a vector literal here.
-                    So we may need to type cast the condition.
-                    OpenCL specification states that for ( c ? a : b)
-                    to be vectorized appropriately c must have the same
-                    number of elements in the vector as that of a and b.
-                    Also each element must have the same number of bits,
-                    and c must be an integral type.
+                    We could have a vector literal here which may need to be
+                    converted to an appropriate size. The OpenCL specification states
+                    that for ( c ? a : b) a, b, and c must have the same
+                    number of elements and bits and that c must be an integral type.
+                    https://registry.khronos.org/OpenCL/specs/3.0-unified/html/OpenCL_C.html#table-builtin-relational
                     """
-                    index_type = to_loopy_type(np.int64)
-                    if type_context == "f":
-                        index_type = to_loopy_type(np.int32)
+                    index_type = to_loopy_type(self.codegen_state.kernel.index_dtype)
+                    types = {8: to_loopy_type(np.int64), 4: to_loopy_type(np.int32),
+                             2: to_loopy_type(np.int16), 1: to_loopy_type(np.int8)}
                     length = self.codegen_state.vectorization_info.length
+                    if index_type.itemsize != result_type.itemsize and \
+                        result_type.itemsize in types.keys():
+                        # Need to convert index type into result type size.
+                        # Item size is measured in bytes.
+                        index_type = types[result_type.itemsize]
+                    elif index_type.itemsize * length != result_type.itemsize and \
+                        (result_type.itemsize // length) in types.keys():
+
+                        index_type = types[result_type.itemsize // length]
                     vector_type = self.codegen_state.target.vector_dtype(index_type,
                                                                          length)
                     conditional_needed_loopy_type = to_loopy_type(vector_type)
