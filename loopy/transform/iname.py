@@ -1326,7 +1326,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
         but have their values established in terms of *old_inames* by
         *equations*.
         May also be a string of comma-separated inames.
-    :arg equations: A list of equations estabilishing a relationship
+    :arg equations: A list of equations establishing a relationship
         between *old_inames* and *new_inames*. Each equation may be
         a tuple ``(lhs, rhs)`` of expressions or a string, with left and
         right hand side of the equation separated by ``=``.
