@@ -21,7 +21,6 @@ THE SOFTWARE.
 """
 
 import logging
-import sys
 
 import numpy as np
 import pytest
@@ -30,29 +29,15 @@ import pyopencl as cl
 import pyopencl.clmath
 import pyopencl.clrandom
 from pymbolic.mapper.evaluator import EvaluationMapper
+from pyopencl.tools import (  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
 logger = logging.getLogger(__name__)
-
-try:
-    import faulthandler
-except ImportError:
-    pass
-else:
-    faulthandler.enable()
-
-from pyopencl.tools import pytest_generate_tests_for_pyopencl as pytest_generate_tests
-
-
-__all__ = [
-    "cl",  # "cl.create_some_context"
-    "pytest_generate_tests"
-]
-
-
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
 
 
 # {{{ code generator fuzzing
@@ -557,9 +542,10 @@ def test_complex_support(ctx_factory, target):
     knl = lp.set_options(knl, return_dict=True)
 
     n = 10
+    rng = np.random.default_rng(seed=42)
 
-    in1 = np.random.rand(n)
-    in2 = np.random.rand(n)
+    in1 = rng.random(n)
+    in2 = rng.random(n)
 
     kwargs = {"in1": in1, "in2": in2}
 
@@ -718,6 +704,7 @@ def test_complex_functions_with_real_args(ctx_factory, target):
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

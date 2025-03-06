@@ -28,13 +28,17 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.array as cl_array  # noqa: F401
-import pyopencl.cltypes as cltypes
-from pyopencl.tools import (  # noqa
+import pyopencl.array
+import pyopencl.cltypes
+from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+
+
+logger = logging.getLogger(__name__)
 
 
 DEBUG_PREAMBLE = r"""
@@ -62,11 +66,7 @@ def check_float4(result, ref_result):
                 ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
 
 
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa
-
-
 def test_axpy(ctx_factory):
-    logging.basicConfig(level="INFO")
     ctx = ctx_factory()
 
     n = 3145182
@@ -76,9 +76,9 @@ def test_axpy(ctx_factory):
 
     for dtype, check, a, b in [
             (np.complex64, None, 5, 7),
-            (cltypes.float4, check_float4,  # pylint:disable=no-member
-                cltypes.make_float4(1, 2, 3, 4),  # pylint:disable=no-member
-                cltypes.make_float4(6, 7, 8, 9)),  # pylint:disable=no-member
+            (cl.cltypes.float4, check_float4,  # pylint:disable=no-member
+                cl.cltypes.make_float4(1, 2, 3, 4),  # pylint:disable=no-member
+                cl.cltypes.make_float4(6, 7, 8, 9)),  # pylint:disable=no-member
             (np.float32, None, 5, 7),
             ]:
         knl = lp.make_kernel(
@@ -164,7 +164,7 @@ def test_plain_matrix_mul(ctx_factory):
     n = get_suitable_size(ctx)
 
     for dtype, check, vec_size in [
-            (cltypes.float4, check_float4, 4),  # pylint:disable=no-member
+            (cl.cltypes.float4, check_float4, 4),  # pylint:disable=no-member
             (np.float32, None, 1),
             ]:
         knl = lp.make_kernel(
@@ -653,8 +653,8 @@ def test_small_batched_matvec(ctx_factory):
 
     order = "C"
 
-    K = 9997  # noqa
-    Np = 36  # noqa
+    K = 9997  # noqa: N806
+    Np = 36  # noqa: N806
 
     knl = lp.make_kernel(
             "{[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,

@@ -20,7 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
+import logging
 
 import numpy as np
 import pytest
@@ -36,13 +36,17 @@ import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
+logger = logging.getLogger(__name__)
+
+
 def test_register_function_lookup(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
     from testlib import Log2Callable
 
-    x = np.random.rand(10)
+    x = rng.random(size=10)
     queue = cl.CommandQueue(ctx)
 
     prog = lp.make_kernel(
@@ -61,10 +65,11 @@ def test_register_function_lookup(ctx_factory):
 def test_register_knl(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    n = 4
+    rng = np.random.default_rng(seed=42)
 
-    x = np.random.rand(n, n, n, n, n)
-    y = np.random.rand(n, n, n, n, n)
+    n = 4
+    x = rng.random(size=(n, n, n, n, n))
+    y = rng.random(size=(n, n, n, n, n))
 
     grandchild_knl = lp.make_function(
             "{[i, j]:0<= i, j< 4}",
@@ -108,10 +113,11 @@ def test_register_knl(ctx_factory, inline):
 def test_slices_with_negative_step(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    n = 4
+    rng = np.random.default_rng(seed=42)
 
-    x = np.random.rand(n, n, n, n, n)
-    y = np.random.rand(n, n, n, n, n)
+    n = 4
+    x = rng.random(size=(n, n, n, n, n))
+    y = rng.random(size=(n, n, n, n, n))
 
     child_knl = lp.make_function(
             "{[i, j]:0<=i, j < 4}",
@@ -245,12 +251,16 @@ def test_shape_translation_through_sub_array_ref(ctx_factory, inline):
 def test_multi_arg_array_call(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
+
     import pymbolic.primitives as p
+
     n = 10
     acc_i = p.Variable("acc_i")
     i = p.Variable("i")
     index = p.Variable("index")
     a_i = p.Subscript(p.Variable("a"), p.Variable("i"))
+
     argmin_kernel = lp.make_function(
             "{[i]: 0 <= i < n}",
             [
@@ -281,9 +291,9 @@ def test_multi_arg_array_call(ctx_factory):
 
     knl = lp.fix_parameters(knl, n=n)
     knl = lp.set_options(knl, return_dict=True)
-
     knl = lp.merge([knl, argmin_kernel])
-    b = np.random.randn(n)
+
+    b = rng.normal(size=n)
     _evt, out_dict = knl(queue, b=b)
     tol = 1e-15
     from numpy.linalg import norm
@@ -346,9 +356,10 @@ def test_empty_sub_array_refs(ctx_factory, inline):
     # See: https://github.com/OP2/PyOP2/pull/559#discussion_r272208618
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
 
-    x = np.random.randn(10)
-    y = np.random.randn(10)
+    x = rng.normal(size=10)
+    y = rng.normal(size=10)
 
     callee = lp.make_function(
             "{[d]:0<=d<1}",
@@ -375,10 +386,11 @@ def test_empty_sub_array_refs(ctx_factory, inline):
 def test_array_inputs_to_callee_kernels(ctx_factory, inline):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    n = 2 ** 3
+    rng = np.random.default_rng(seed=42)
 
-    x = np.random.rand(n, n)
-    y = np.random.rand(n, n)
+    n = 2 ** 3
+    x = rng.normal(size=(n, n))
+    y = rng.normal(size=(n, n))
 
     child_knl = lp.make_function(
             "{[i, j]:0<=i, j < 8}",
@@ -469,6 +481,8 @@ def test_unknown_stride_to_callee(ctx_factory):
 def test_argument_matching_for_inplace_update(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
+
     twice = lp.make_function(
             "{[i]: 0<=i<10}",
             """
@@ -483,7 +497,7 @@ def test_argument_matching_for_inplace_update(ctx_factory):
 
     knl = lp.merge([knl, twice])
 
-    x = np.random.randn(10)
+    x = rng.normal(size=10)
     _evt, (out, ) = knl(queue, x=np.copy(x))
 
     assert np.allclose(2*x, out)
@@ -492,6 +506,8 @@ def test_argument_matching_for_inplace_update(ctx_factory):
 def test_non_zero_start_in_subarray_ref(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    rng = np.random.default_rng(seed=42)
+
     twice = lp.make_function(
             "{[i]: 0<=i<10}",
             """
@@ -503,10 +519,9 @@ def test_non_zero_start_in_subarray_ref(ctx_factory):
             """
             [i]:y[i+5] = twice([j]: x[j])
             """, [lp.GlobalArg("x, y", shape=(10,), dtype=np.float64)])
-
     knl = lp.merge([knl, twice])
 
-    x = np.random.randn(10)
+    x = rng.normal(size=10)
     _evt, (out, ) = knl(queue, x=np.copy(x))
 
     assert np.allclose(2*x, out)
@@ -710,7 +725,7 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory, inline):
 def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
     ctx = cl.create_some_context()
     cq = cl.CommandQueue(ctx)
-    x_in = np.random.rand()
+    rng = np.random.default_rng(seed=42)
 
     twice = lp.make_function(
         "{ : }",
@@ -731,6 +746,7 @@ def test_passing_scalar_as_indexed_subcript_in_clbl_knl(ctx_factory, inline):
     if inline:
         knl = lp.inline_callable_kernel(knl, "twice")
 
+    x_in = rng.random()
     _evt, (out,) = knl(cq, X=x_in)
 
     np.testing.assert_allclose(out.get(), 2*x_in)
@@ -1312,8 +1328,7 @@ def test_c_instruction_in_callee(ctx_factory, inline):
 
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
-
-    n = np.random.randint(3, 8)
+    rng = np.random.default_rng(seed=42)
 
     knl = lp.make_function(
         "{[i]: 0<=i<10}",
@@ -1338,6 +1353,7 @@ def test_c_instruction_in_callee(ctx_factory, inline):
     if inline:
         t_unit = lp.inline_callable_kernel(t_unit, "circuit_breaker")
 
+    n = rng.integers(3, 8)
     _, (out,) = t_unit(cq, N=n)
 
     assert out.get() == (n-1)
@@ -1516,6 +1532,7 @@ def test_inline_constant_access():
 
 
 if __name__ == "__main__":
+    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
