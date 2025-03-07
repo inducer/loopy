@@ -1215,7 +1215,7 @@ def test_inlining_does_not_require_barrier(inline):
         t_unit = lp.inline_callable_kernel(t_unit, "fft")
 
     # generate code to ensure that we don't emit spurious missing barrier
-    print(lp.generate_code_v2(t_unit).device_code())
+    logger.info("%s", lp.generate_code_v2(t_unit).device_code())
 
 
 def test_inlining_w_zero_stride_callee_args(ctx_factory):
