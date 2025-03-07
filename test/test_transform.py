@@ -1482,6 +1482,22 @@ def test_rename_inames(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, ref_knl)
 
 
+def test_rename_inames_with_params(ctx_factory):
+    # https://github.com/inducer/loopy/issues/726
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        [
+            "{ [i]: 0<=i<10 }",
+            "{ [k]: 0<=k<i }",
+        ],
+        "out[i, k] = 2"
+    )
+    ref_knl = knl
+    knl = lp.rename_inames(knl, ["i"], "j")
+    lp.auto_test_vs_ref(knl, ctx, ref_knl)
+
+
 def test_buffer_array_preserves_rev_deps(ctx_factory):
     # See https://github.com/inducer/loopy/issues/546
     ctx = ctx_factory()
