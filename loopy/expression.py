@@ -162,9 +162,8 @@ class VectorizabilityChecker(Mapper[bool, []]):
 
     def map_variable(self, expr: p.Variable) -> bool:
         if expr.name == self.vec_iname:
-            # Technically, this is doable. But we're not going there.
-            raise UnvectorizableError()
-
+            # Technically, this is doable.
+            return True
         # A single variable is always a scalar.
         return False
 
