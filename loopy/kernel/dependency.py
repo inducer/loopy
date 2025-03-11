@@ -26,6 +26,8 @@ THE SOFTWARE.
 import islpy as isl
 from islpy import dim_type
 
+from typing import Mapping
+
 from loopy import HappensAfter, LoopKernel, for_each_kernel
 from loopy.kernel.instruction import (
     InstructionBase,
@@ -49,8 +51,8 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
         domain_before = knl.get_inames_domain(before_insn.within_inames)
         domain_after = knl.get_inames_domain(after_insn.within_inames)
 
-        happens_after = isl.Map.from_domain_and_range(domain_before,
-                                                      domain_after)
+        happens_after = isl.Map.from_domain_and_range(domain_after,
+                                                      domain_before)
         for idim in range(happens_after.dim(dim_type.out)):
             happens_after = happens_after.set_dim_name(
                 dim_type.out,
@@ -60,7 +62,7 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
 
         shared_inames = before_insn.within_inames & after_insn.within_inames
 
-        # {{{ removes non-determinism from 'bad' ordering of inames
+        # {{{ use whatever iname ordering exists at this point
 
         shared_inames_order_before = [
             domain_before.get_dim_name(dim_type.out, idim)
@@ -86,7 +88,7 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
 
         lex_map = isl.Map.empty(happens_after.space)
         for iinnermost, innermost_iname in enumerate(shared_inames_order):
-            innermost_map = affs_in[innermost_iname].lt_map(
+            innermost_map = affs_in[innermost_iname].gt_map(
                 affs_out[innermost_iname + "'"]
             )
 
@@ -109,35 +111,37 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
 @for_each_kernel
 def reduce_strict_ordering(knl) -> LoopKernel:
     def narrow_dependencies(
-            source: InstructionBase,
-            after_insn: InstructionBase,
-            happens_afters: dict,
-            dependency_map: isl.Map | None = None,  # type: ignore
-        ) -> dict:
-        assert isinstance(source.id, str)
-        assert isinstance(after_insn.id, str)
+            after: InstructionBase,
+            before: InstructionBase,
+            happens_afters: Mapping,
+            remaining: isl.Map | None = None,  # type: ignore
+        ) -> Mapping:
+        assert isinstance(after.id, str)
+        assert isinstance(before.id, str)
 
-        if dependency_map is not None and dependency_map.is_empty():
+        if remaining is not None and remaining.is_empty():
             return happens_afters
 
         new_happens_after: dict[str, VariableSpecificHappensAfter] = {}
-        for insn, happens_after in after_insn.happens_after.items():
-            if dependency_map is None:
-                dependency_map = happens_after.instances_rel
+        for insn, happens_after in before.happens_after.items():
+            if remaining is None:
+                remaining = happens_after.instances_rel
             else:
-                dependency_map = dependency_map.apply_range(
-                    happens_after.instances_rel
-                )
+                assert happens_after.instances_rel is not None
+                if remaining.space != happens_after.instances_rel.space:
+                    remaining = remaining.apply_range(happens_after.instances_rel)
 
-            common_vars = \
-                wmap_r[insn] & access_mapper.get_accessed_variables(source.id)  # type: ignore
+            source_vars = access_mapper.get_accessed_variables(after.id)
+            common_vars = wmap_r[insn] & source_vars  # type: ignore
             for var in common_vars:
                 write_map = access_mapper.get_map(insn, var)
-                source_map = access_mapper.get_map(source.id, var)
+                source_map = access_mapper.get_map(after.id, var)
                 assert write_map is not None
                 assert source_map is not None
 
-                dependency_map &= write_map.apply_range(source_map.reverse())
+                source_to_writer = source_map.apply_range(write_map.reverse())
+                dependency_map = source_to_writer & remaining
+                remaining = remaining - dependency_map
                 if dependency_map is not None and not dependency_map.is_empty():
                     new_happens_after[insn] = VariableSpecificHappensAfter(
                         instances_rel=dependency_map, variable_name=var
@@ -146,10 +150,10 @@ def reduce_strict_ordering(knl) -> LoopKernel:
 
             happens_afters.update(
                 narrow_dependencies(
-                    source,
+                    after,
                     knl.id_to_insn[insn],
                     happens_afters,
-                    dependency_map,
+                    remaining,
                 )
             )
 

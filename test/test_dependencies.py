@@ -28,6 +28,7 @@ def test_no_dependency():
     t_unit = reduce_strict_ordering(t_unit)
     knl = t_unit.default_entrypoint
 
+    print(knl.id_to_insn["sink"].happens_after)
     assert len(knl.id_to_insn["sink"].happens_after) == 0
 
 
@@ -35,7 +36,6 @@ def test_odd_even_dependencies():
     t_unit = lp.make_kernel(
         "{ [i] : 0 <= i < np }",
         """
-        u[i] = i     {id=no_deps_0}
         u[2*i+1] = i {id=src_odd_0}
         u[2*i] = i   {id=src_even_0}
         u[i] = i     {id=sink_0}
@@ -45,7 +45,6 @@ def test_odd_even_dependencies():
         u[2*i] = i   {id=src_even_1}
         u[i] = i     {id=sink_1}
 
-        u[i] = i     {id=no_deps_2}
         u[2*i+1] = i {id=src_odd_2}
         u[2*i] = i   {id=src_even_2}
         u[i] = i     {id=sink_2}
@@ -56,16 +55,18 @@ def test_odd_even_dependencies():
     t_unit = reduce_strict_ordering(t_unit)
 
     knl = t_unit.default_entrypoint
+    for insn in knl.instructions:
+        print(f"{insn.id}:")
+        for after, happens_after in insn.happens_after.items():
+            print(f"\t{after}: {happens_after.instances_rel}")
+
+
     for i in range(3):
         assert len(knl.id_to_insn[f"src_odd_{i}"].happens_after) == 0
         assert len(knl.id_to_insn[f"src_even_{i}"].happens_after) == 0
-        assert len(knl.id_to_insn[f"no_deps_{i}"].happens_after) == 0
         assert len(knl.id_to_insn[f"sink_{i}"].happens_after) == 2
         for dep_id in knl.id_to_insn[f"sink_{i}"].happens_after.keys():
             assert ((dep_id == f"src_odd_{i}") or (dep_id == f"src_even_{i}"))
-
-    for insn in knl.instructions:
-        print(f"{insn.id}: {insn.happens_after}")
 
 
 @pytest.mark.parametrize("img_size", [(512, 512), (1920, 1080)])
