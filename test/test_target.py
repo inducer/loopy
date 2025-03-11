@@ -896,11 +896,10 @@ def test_cl_vectorize_index_variable(ctx_factory):
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float64, "n": np.int64})
     _evt, (result,) = knl(queue, a=a, n=a.size)
 
-    result_ref = np.zeros(a.shape, dtype=np.float64)
-    for i in range(16):
-        for j in range(4):
-            ind = i*4 + j
-            result_ref[i, j] = a[i, j] * 3 if ind < 32 else np.sin(a[i, j])
+    i = np.arange(16)
+    j = np.arange(4)
+    ind = 4*i[:,None] + j
+    result_ref = np.where(ind < 32, a*3, np.sin(a))
 
     assert np.allclose(result, result_ref)
 
