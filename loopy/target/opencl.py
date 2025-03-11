@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from contextlib import suppress
 from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
@@ -557,8 +558,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
             # <desttype> convert_<desttype><n>(src) where n
             # is the number of elements in the vector which is the same as in src.
             # https://registry.khronos.org/OpenCL/specs/3.0-unified/html/OpenCL_C.html#explicit-casts
-            if self.codegen_state.target.is_vector_dtype(actual_type) or \
-                actual_type.dtype.kind == "b":
+            if self.codegen_state.target.is_vector_dtype(actual_type):
                 cast = var("convert_%s" % registry.dtype_to_ctype(needed_dtype))
                 return cast(s)
 
@@ -580,8 +580,8 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
                 index_type = self.codegen_state.kernel.index_dtype
                 vector_type = self.codegen_state.target.vector_dtype(index_type,
                                                                      vector_length)
-                typecast = self.codegen_state.target.dtype_to_typename(vector_type)
-                vector_literal = f"(({typecast})" + " (" + \
+                typename = self.codegen_state.target.dtype_to_typename(vector_type)
+                vector_literal = f"(({typename})" + " (" + \
                         ",".join([f"{i}" for i in range(vector_length)]) + "))"
                 return Literal(vector_literal)
         return super().map_variable(expr, type_context)
@@ -597,7 +597,10 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
                                      self.codegen_state.vectorization_info.iname,
                                      self.codegen_state.vectorization_info.length)
 
-            try:
+            with suppress(UnvectorizableError):
+                # We know there is an expression in codegen which can be vectorized.
+                # We are checking if this is one of the them. If it is not, then we can
+                # just continue with scalar code generation for this expression.
                 is_vector = checker(expr)
 
                 if is_vector:
@@ -612,20 +615,18 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
                     types = {8: to_loopy_type(np.int64), 4: to_loopy_type(np.int32),
                              2: to_loopy_type(np.int16), 1: to_loopy_type(np.int8)}
                     length = self.codegen_state.vectorization_info.length
-                    if index_type.itemsize != result_type.itemsize and \
-                        result_type.itemsize in types.keys():
+                    if (index_type.itemsize != result_type.itemsize and
+                        result_type.itemsize in types):
                         # Need to convert index type into result type size.
                         # Item size is measured in bytes.
                         index_type = types[result_type.itemsize]
-                    elif index_type.itemsize * length != result_type.itemsize and \
-                        (result_type.itemsize // length) in types.keys():
+                    elif (index_type.itemsize * length != result_type.itemsize and
+                        (result_type.itemsize // length) in types):
 
                         index_type = types[result_type.itemsize // length]
                     vector_type = self.codegen_state.target.vector_dtype(index_type,
                                                                          length)
                     conditional_needed_loopy_type = to_loopy_type(vector_type)
-            except UnvectorizableError:
-                pass
 
         return type(expr)(
                 self.rec(expr.condition, type_context,
