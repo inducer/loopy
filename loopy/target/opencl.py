@@ -543,6 +543,7 @@ def opencl_preamble_generator(preamble_info):
 class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
     def wrap_in_typecast(self, actual_type, needed_dtype, s):
+
         if needed_dtype.dtype.kind == "b" and actual_type.dtype.kind == "f":
             # CL does not perform implicit conversion from float-type to a bool.
             from pymbolic.primitives import Comparison
@@ -558,7 +559,13 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
             # <desttype> convert_<desttype><n>(src) where n
             # is the number of elements in the vector which is the same as in src.
             # https://registry.khronos.org/OpenCL/specs/3.0-unified/html/OpenCL_C.html#explicit-casts
-            if self.codegen_state.target.is_vector_dtype(actual_type):
+
+            # We infer the data type of (s) before we recurse down into (s) to convert
+            # to a CExpression. With vectorization, we can change the actual type of (s)
+            # from a scalar type to a vector type. So we are going to recompute the
+            # actual type.
+            type_of_s = self.infer_type(s)
+            if self.codegen_state.target.is_vector_dtype(type_of_s):
                 cast = var("convert_%s" % registry.dtype_to_ctype(needed_dtype))
                 return cast(s)
 
@@ -575,7 +582,7 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
         if self.codegen_state.vectorization_info:
             if self.codegen_state.vectorization_info.iname == expr.name:
                 # This needs to be converted into a vector literal.
-                from loopy.symbolic import Literal
+                from loopy.symbolic import TypedLiteral
                 vector_length = self.codegen_state.vectorization_info.length
                 index_type = self.codegen_state.kernel.index_dtype
                 vector_type = self.codegen_state.target.vector_dtype(index_type,
@@ -583,7 +590,9 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
                 typename = self.codegen_state.target.dtype_to_typename(vector_type)
                 vector_literal = f"(({typename})" + " (" + \
                         ",".join([f"{i}" for i in range(vector_length)]) + "))"
-                return Literal(vector_literal)
+                return TypedLiteral(vector_literal, vector_type)
+
+                # return Literal(vector_literal)
         return super().map_variable(expr, type_context)
 
     def map_if(self, expr, type_context):
@@ -615,15 +624,17 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
                     types = {8: to_loopy_type(np.int64), 4: to_loopy_type(np.int32),
                              2: to_loopy_type(np.int16), 1: to_loopy_type(np.int8)}
                     length = self.codegen_state.vectorization_info.length
-                    if (index_type.itemsize != result_type.itemsize and
-                        result_type.itemsize in types):
-                        # Need to convert index type into result type size.
-                        # Item size is measured in bytes.
-                        index_type = types[result_type.itemsize]
-                    elif (index_type.itemsize * length != result_type.itemsize and
-                        (result_type.itemsize // length) in types):
-
-                        index_type = types[result_type.itemsize // length]
+                    if self.codegen_state.target.is_vector_dtype(result_type):
+                        if (index_type.itemsize != result_type.itemsize and
+                            (result_type.itemsize // length) in types):
+                            index_type = types[result_type.itemsize]
+                        else:
+                            raise ValueError("Types incompatible")
+                    else:
+                        # We know result is going to be a vector.
+                        if (index_type.itemsize != result_type.itemsize and
+                            result_type.itemsize in types):
+                            index_type = types[result_type.itemsize]
                     vector_type = self.codegen_state.target.vector_dtype(index_type,
                                                                          length)
                     conditional_needed_loopy_type = to_loopy_type(vector_type)
