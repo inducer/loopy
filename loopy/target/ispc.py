@@ -44,14 +44,15 @@ from loopy.symbolic import (
     CoefficientCollector,
     CombineMapper,
     GroupHardwareAxisIndex,
-    TypedLiteral,
     LocalHardwareAxisIndex,
     SubstitutionMapper,
+    TypedLiteral,
     flatten,
 )
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.types import to_loopy_type
+
 
 if TYPE_CHECKING:
     from loopy.codegen import CodeGenerationState
