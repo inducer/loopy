@@ -898,7 +898,7 @@ def test_cl_vectorize_index_variable(ctx_factory):
 
     i = np.arange(16)
     j = np.arange(4)
-    ind = 4*i[:,None] + j
+    ind = 4*i[:, None] + j
     result_ref = np.where(ind < 32, a*3, np.sin(a))
 
     assert np.allclose(result, result_ref)
