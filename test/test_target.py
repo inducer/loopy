@@ -884,7 +884,7 @@ def test_cl_vectorize_index_variable(ctx_factory):
 
     knl = lp.split_array_axis(knl, "a,b", 0, 4)
     knl = lp.split_iname(knl, "i", 4)
-    knl = lp.tag_inames(knl, {"i_inner": "vec"})
+    knl = lp.tag_inames(knl, {"i_inner": "vec", "i_outer": "for"})
     knl = lp.tag_array_axes(knl, "a,b", "c,vec")
     knl = lp.set_options(knl, write_code=True)
     knl = lp.assume(knl, "n % 4 = 0 and n>0")
