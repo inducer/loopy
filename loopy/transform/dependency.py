@@ -26,18 +26,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import TYPE_CHECKING
+
 from pyrsistent import PMap, pmap
 
-import islpy as isl
 import pymbolic.primitives as p
 
-from loopy.kernel import LoopKernel
 from loopy.symbolic import (
     UnableToDetermineAccessRangeError,
     WalkMapper,
     get_access_map,
 )
-from loopy.typing import Expression
+
+
+if TYPE_CHECKING:
+    import islpy as isl
+
+    from loopy.kernel import LoopKernel
+    from loopy.typing import Expression
 
 
 class AccessMapFinder(WalkMapper):

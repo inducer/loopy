@@ -23,11 +23,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing import Mapping
+
 from constantdict import constantdict
+
 import islpy as isl
 from islpy import dim_type
-
-from typing import Mapping
 
 from loopy import HappensAfter, LoopKernel, for_each_kernel
 from loopy.kernel.instruction import (
