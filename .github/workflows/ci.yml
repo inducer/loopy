@@ -178,6 +178,8 @@ jobs:
         -   name: "Main script"
             run: |
                 cd /home/firedrake
+                python3 -m venv --system-site-packages myvenv
+
                 export HOME="$(pwd)"
                 mkdir loopy
                 cd loopy
@@ -189,7 +191,7 @@ jobs:
 
                 git submodule update --init
 
-                . /home/firedrake/firedrake/bin/activate
+                . /home/firedrake/myvenv/bin/activate
 
                 pip install --editable .
                 pip uninstall -y pytools
@@ -197,12 +199,13 @@ jobs:
                 pip install "git+https://github.com/inducer/pytools.git#egg=pytools"
                 pip install "git+https://github.com/inducer/pymbolic.git#egg=pymbolic"
 
-                cd /home/firedrake/firedrake/src/firedrake
+                cd /home/firedrake/firedrake
 
                 # patch so exception messages get shown
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/ec5470a7d8587b6e1f336f3ef1d0ece5e26f236a/firedrake-debug-patch.diff | patch -p1
 
-                pytest --tb=native -rsxw --durations=10 tests/firedrake/regression -k "poisson_strong or stokes_mini or dg_advection"
+                sed -i 's/@mpiexec/@mpiexec --oversubscribe/' Makefile
+                make check
 
     validate_cff:
             name: Validate CITATION.cff
