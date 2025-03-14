@@ -19,8 +19,8 @@ def test_no_dependency():
     t_unit = lp.make_kernel(
         "{ [i,j] : 0 <= i, j < n}",
         """
-        a[i,j] = 2*i {id=source}
-        b[i,j] = a[i,j] {id=sink}
+        a[i,j] = 2*i    {id=S}
+        b[i,j] = a[i,j] {id=T}
         """,
     )
 
@@ -28,8 +28,8 @@ def test_no_dependency():
     t_unit = reduce_strict_ordering(t_unit)
     knl = t_unit.default_entrypoint
 
-    print(knl.id_to_insn["sink"].happens_after)
-    assert len(knl.id_to_insn["sink"].happens_after) == 0
+    assert len(knl.id_to_insn["S"].happens_after) == 0
+    assert len(knl.id_to_insn["T"].happens_after) == 0
 
 
 def test_odd_even_dependencies():
@@ -40,7 +40,6 @@ def test_odd_even_dependencies():
         u[2*i] = i   {id=src_even_0}
         u[i] = i     {id=sink_0}
 
-        u[i] = i     {id=no_deps_1}
         u[2*i+1] = i {id=src_odd_1}
         u[2*i] = i   {id=src_even_1}
         u[i] = i     {id=sink_1}
@@ -55,12 +54,6 @@ def test_odd_even_dependencies():
     t_unit = reduce_strict_ordering(t_unit)
 
     knl = t_unit.default_entrypoint
-    for insn in knl.instructions:
-        print(f"{insn.id}:")
-        for after, happens_after in insn.happens_after.items():
-            print(f"\t{after}: {happens_after.instances_rel}")
-
-
     for i in range(3):
         assert len(knl.id_to_insn[f"src_odd_{i}"].happens_after) == 0
         assert len(knl.id_to_insn[f"src_even_{i}"].happens_after) == 0
@@ -125,6 +118,21 @@ def test_3x3_blur(ctx_factory, img_size):
 
     import numpy.linalg as la
     assert (la.norm(out[0] - out_np) / la.norm(out_np)) <= 1e-14
+
+
+def test_self_dependence():
+    t_unit = lp.make_kernel(
+        "[nt, nx] -> { [t, x]: 0 <= t < nt and 0 <= x < nx }",
+        """
+        u[t+2,x+1] = 2*u[t+1,x+1] {id=self}
+        """
+    )
+
+    t_unit = add_lexicographic_happens_after(t_unit)
+    t_unit = reduce_strict_ordering(t_unit)
+
+    knl = t_unit.default_entrypoint
+    assert "self" in knl.instructions[0].happens_after.keys()
 
 
 if __name__ == "__main__":

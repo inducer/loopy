@@ -51,7 +51,8 @@ class AccessMapFinder(WalkMapper):
         super().__init__()
 
     def get_map(self, insn_id: str, variable_name: str) -> isl.Map | None:  # type: ignore
-        """Retrieve an access map indexed by an instruction ID and variable
+        """
+        Retrieve an access map indexed by an instruction ID and variable
         name.
         """
         try:

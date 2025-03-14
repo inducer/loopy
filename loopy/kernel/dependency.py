@@ -36,6 +36,63 @@ from loopy.kernel.instruction import (
 from loopy.transform.dependency import AccessMapFinder
 
 
+def _add_lexicographic_happens_after_inner(knl, after_insn, before_insn):
+    domain_before = knl.get_inames_domain(before_insn.within_inames)
+    domain_after = knl.get_inames_domain(after_insn.within_inames)
+
+    happens_after = isl.Map.from_domain_and_range(domain_after,
+                                                  domain_before)
+    for idim in range(happens_after.dim(dim_type.out)):
+        happens_after = happens_after.set_dim_name(
+            dim_type.out,
+            idim,
+            happens_after.get_dim_name(dim_type.out, idim) + "'"
+        )
+
+    shared_inames = before_insn.within_inames & after_insn.within_inames
+
+    # {{{ use whatever iname ordering exists at this point
+
+    shared_inames_order_before = [
+        domain_before.get_dim_name(dim_type.out, idim)
+        for idim in range(domain_before.dim(dim_type.out))
+        if domain_before.get_dim_name(dim_type.out, idim)
+        in shared_inames
+    ]
+
+    shared_inames_order_after = [
+        domain_after.get_dim_name(dim_type.out, idim)
+        for idim in range(domain_after.dim(dim_type.out))
+        if domain_after.get_dim_name(dim_type.out, idim)
+        in shared_inames
+    ]
+
+    assert shared_inames_order_after == shared_inames_order_before
+    shared_inames_order = shared_inames_order_after
+
+    # }}}
+
+    affs_in = isl.affs_from_space(happens_after.domain().space)
+    affs_out = isl.affs_from_space(happens_after.range().space)
+
+    lex_map = isl.Map.empty(happens_after.space)
+    for iinnermost, innermost_iname in enumerate(shared_inames_order):
+        innermost_map = affs_in[innermost_iname].gt_map(
+            affs_out[innermost_iname + "'"]
+        )
+
+        for outer_iname in list(shared_inames_order)[:iinnermost]:
+            innermost_map = innermost_map & (
+                affs_in[outer_iname].eq_map(
+                    affs_out[outer_iname + "'"]
+                )
+            )
+
+        lex_map = lex_map | innermost_map
+
+    return happens_after & lex_map
+
+
 @for_each_kernel
 def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
     """
@@ -44,65 +101,39 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
     :func:`reduce_strict_ordering_with_dependencies` using data dependencies.
     """
 
-    new_insns = [knl.instructions[0].copy()]
-    for iafter, after_insn in enumerate(knl.instructions[1:], start=1):
-        before_insn = knl.instructions[iafter-1]
+    rmap = knl.reader_map()
+    wmap_r: dict[str, set[str]] = {}
+    for var, insns in knl.writer_map().items():
+        for insn in insns:
+            wmap_r.setdefault(insn, set())
+            wmap_r[insn].add(var)
 
-        domain_before = knl.get_inames_domain(before_insn.within_inames)
-        domain_after = knl.get_inames_domain(after_insn.within_inames)
+    new_insns = []
+    for iafter, after_insn in enumerate(knl.instructions):
+        assert after_insn.id is not None
 
-        happens_after = isl.Map.from_domain_and_range(domain_after,
-                                                      domain_before)
-        for idim in range(happens_after.dim(dim_type.out)):
-            happens_after = happens_after.set_dim_name(
-                dim_type.out,
-                idim,
-                happens_after.get_dim_name(dim_type.out, idim) + "'"
-            )
+        new_happens_after = {}
 
-        shared_inames = before_insn.within_inames & after_insn.within_inames
-
-        # {{{ use whatever iname ordering exists at this point
-
-        shared_inames_order_before = [
-            domain_before.get_dim_name(dim_type.out, idim)
-            for idim in range(domain_before.dim(dim_type.out))
-            if domain_before.get_dim_name(dim_type.out, idim)
-            in shared_inames
-        ]
-
-        shared_inames_order_after = [
-            domain_after.get_dim_name(dim_type.out, idim)
-            for idim in range(domain_after.dim(dim_type.out))
-            if domain_after.get_dim_name(dim_type.out, idim)
-            in shared_inames
-        ]
-
-        assert shared_inames_order_after == shared_inames_order_before
-        shared_inames_order = shared_inames_order_after
-
-        # }}}
-
-        affs_in = isl.affs_from_space(happens_after.domain().space)
-        affs_out = isl.affs_from_space(happens_after.range().space)
-
-        lex_map = isl.Map.empty(happens_after.space)
-        for iinnermost, innermost_iname in enumerate(shared_inames_order):
-            innermost_map = affs_in[innermost_iname].gt_map(
-                affs_out[innermost_iname + "'"]
-            )
-
-            for outer_iname in list(shared_inames_order)[:iinnermost]:
-                innermost_map = innermost_map & (
-                    affs_in[outer_iname].eq_map(
-                        affs_out[outer_iname + "'"]
-                    )
+        # check for self dependencies
+        for var in wmap_r[after_insn.id]:
+            if rmap.get(var) and after_insn.id in rmap[var]:
+                self_happens_after = _add_lexicographic_happens_after_inner(
+                    knl, after_insn, after_insn
+                )
+                new_happens_after[after_insn.id] = HappensAfter(
+                    self_happens_after
                 )
 
-            lex_map = lex_map | innermost_map
+        # add happens after relation with previous instruction
+        if iafter != 0:
+            before_insn = knl.instructions[iafter - 1]
 
-        happens_after = happens_after & lex_map
-        new_happens_after = {before_insn.id: HappensAfter(happens_after)}
+            happens_after = _add_lexicographic_happens_after_inner(
+                knl, after_insn, before_insn
+            )
+
+            new_happens_after[before_insn.id] = HappensAfter(happens_after)
+
         new_insns.append(after_insn.copy(happens_after=new_happens_after))
 
     return knl.copy(instructions=new_insns)
@@ -148,14 +179,15 @@ def reduce_strict_ordering(knl) -> LoopKernel:
                     )
                     happens_afters.update(new_happens_after)
 
-            happens_afters.update(
-                narrow_dependencies(
-                    after,
-                    knl.id_to_insn[insn],
-                    happens_afters,
-                    remaining,
+            if insn != after.id:
+                happens_afters.update(
+                    narrow_dependencies(
+                        after,
+                        knl.id_to_insn[insn],
+                        happens_afters,
+                        remaining,
+                    )
                 )
-            )
 
         return happens_afters
 
