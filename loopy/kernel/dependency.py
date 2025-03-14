@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from constantdict import constantdict
 import islpy as isl
 from islpy import dim_type
 
@@ -51,8 +52,6 @@ def _add_lexicographic_happens_after_inner(knl, after_insn, before_insn):
 
     shared_inames = before_insn.within_inames & after_insn.within_inames
 
-    # {{{ use whatever iname ordering exists at this point
-
     shared_inames_order_before = [
         domain_before.get_dim_name(dim_type.out, idim)
         for idim in range(domain_before.dim(dim_type.out))
@@ -69,8 +68,6 @@ def _add_lexicographic_happens_after_inner(knl, after_insn, before_insn):
 
     assert shared_inames_order_after == shared_inames_order_before
     shared_inames_order = shared_inames_order_after
-
-    # }}}
 
     affs_in = isl.affs_from_space(happens_after.domain().space)
     affs_out = isl.affs_from_space(happens_after.range().space)
@@ -124,14 +121,11 @@ def add_lexicographic_happens_after(knl: LoopKernel) -> LoopKernel:
                     self_happens_after
                 )
 
-        # add happens after relation with previous instruction
         if iafter != 0:
             before_insn = knl.instructions[iafter - 1]
-
             happens_after = _add_lexicographic_happens_after_inner(
                 knl, after_insn, before_insn
             )
-
             new_happens_after[before_insn.id] = HappensAfter(happens_after)
 
         new_insns.append(after_insn.copy(happens_after=new_happens_after))
@@ -144,16 +138,17 @@ def reduce_strict_ordering(knl) -> LoopKernel:
     def narrow_dependencies(
             after: InstructionBase,
             before: InstructionBase,
-            happens_afters: Mapping,
+            happens_afters: Mapping[str, VariableSpecificHappensAfter] = {},
             remaining: isl.Map | None = None,  # type: ignore
-        ) -> Mapping:
+        ) -> Mapping[str, VariableSpecificHappensAfter]:
+        # FIXME: can we get rid of all the "assert x is not None" stuff?
+
         assert isinstance(after.id, str)
         assert isinstance(before.id, str)
 
         if remaining is not None and remaining.is_empty():
             return happens_afters
 
-        new_happens_after: dict[str, VariableSpecificHappensAfter] = {}
         for insn, happens_after in before.happens_after.items():
             if remaining is None:
                 remaining = happens_after.instances_rel
@@ -167,6 +162,7 @@ def reduce_strict_ordering(knl) -> LoopKernel:
             for var in common_vars:
                 write_map = access_mapper.get_map(insn, var)
                 source_map = access_mapper.get_map(after.id, var)
+
                 assert write_map is not None
                 assert source_map is not None
 
@@ -174,19 +170,21 @@ def reduce_strict_ordering(knl) -> LoopKernel:
                 dependency_map = source_to_writer & remaining
                 remaining = remaining - dependency_map
                 if dependency_map is not None and not dependency_map.is_empty():
-                    new_happens_after[insn] = VariableSpecificHappensAfter(
-                        instances_rel=dependency_map, variable_name=var
+                    happens_after_obj = VariableSpecificHappensAfter(
+                        dependency_map, var
                     )
-                    happens_afters.update(new_happens_after)
+
+                    happens_afters = constantdict(
+                        dict(happens_afters) | {insn: happens_after_obj})
 
             if insn != after.id:
-                happens_afters.update(
-                    narrow_dependencies(
+                happens_afters = constantdict(
+                    dict(happens_afters) | dict(narrow_dependencies(
                         after,
                         knl.id_to_insn[insn],
                         happens_afters,
                         remaining,
-                    )
+                    ))
                 )
 
         return happens_afters
@@ -205,7 +203,7 @@ def reduce_strict_ordering(knl) -> LoopKernel:
     new_insns = []
     for insn in knl.instructions[::-1]:
         new_insns.append(
-            insn.copy(happens_after=narrow_dependencies(insn, insn, {}))
+            insn.copy(happens_after=narrow_dependencies(insn, insn))
         )
 
     return knl.copy(instructions=new_insns[::-1])
