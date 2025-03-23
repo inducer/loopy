@@ -1155,11 +1155,10 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
                     target=orig_kernel.target)
     init_id = red_realize_ctx.insn_id_gen(
             f"{red_realize_ctx.id_prefix}_{red_iname}_init")
+    init_index = (*outer_local_iname_vars, var(base_exec_iname))
     init_insn = make_assignment(
             id=init_id,
-            assignees=tuple(
-                acc_var[(*outer_local_iname_vars, var(base_exec_iname))]
-                for acc_var in acc_vars),
+            assignees=tuple(acc_var[init_index] for acc_var in acc_vars),
             expression=neutral,
             within_inames=(
                 red_realize_ctx.surrounding_within_inames
@@ -1238,11 +1237,10 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
             reduction_expr,
             red_realize_ctx.boxed_callables_table[0],
             orig_kernel.target)
+    transfer_index = (*outer_local_iname_vars, var(red_iname))
     transfer_insn = make_assignment(
             id=transfer_id,
-            assignees=tuple(
-                acc_var[(*outer_local_iname_vars, var(red_iname))]
-                for acc_var in acc_vars),
+            assignees=tuple(acc_var[transfer_index] for acc_var in acc_vars),
             expression=expression,
             **transfer_red_realize_ctx.get_insn_kwargs())
     red_realize_ctx.additional_insns.append(transfer_insn)
@@ -1272,24 +1270,21 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
         stage_id = red_realize_ctx.insn_id_gen(
                 "red_%s_stage_%d" % (red_iname, istage))
 
+        op_lhs_index = (*outer_local_iname_vars, var(stage_exec_iname))
+        op_rhs_index = (*outer_local_iname_vars, var(stage_exec_iname) + new_size)
         expression, red_realize_ctx.boxed_callables_table[0] = expr.operation(
                 arg_dtypes,
-                _strip_if_scalar(acc_vars, tuple(
-                    acc_var[
-                        (*outer_local_iname_vars, var(stage_exec_iname))]
-                    for acc_var in acc_vars)),
-                _strip_if_scalar(acc_vars, tuple(
-                    acc_var[
-                        (*outer_local_iname_vars, var(stage_exec_iname) + new_size)]
-                    for acc_var in acc_vars)),
+                _strip_if_scalar(acc_vars,
+                                 tuple(acc_var[op_lhs_index] for acc_var in acc_vars)),
+                _strip_if_scalar(acc_vars,
+                                 tuple(acc_var[op_rhs_index] for acc_var in acc_vars)),
                 red_realize_ctx.boxed_callables_table[0],
                 orig_kernel.target)
 
+        stage_index = (*outer_local_iname_vars, var(stage_exec_iname))
         stage_insn = make_assignment(
                 id=stage_id,
-                assignees=tuple(
-                    acc_var[(*outer_local_iname_vars, var(stage_exec_iname))]
-                    for acc_var in acc_vars),
+                assignees=tuple(acc_var[stage_index] for acc_var in acc_vars),
                 expression=expression,
                 within_inames=(
                     red_realize_ctx.surrounding_within_inames
@@ -1311,12 +1306,13 @@ def map_reduction_local(red_realize_ctx, expr, nresults, arg_dtypes,
     red_realize_ctx.surrounding_insn_add_within_inames.add(
             stage_exec_iname or base_exec_iname)
 
+    output_idx = (*outer_local_iname_vars, 0)
     if nresults == 1:
         assert len(acc_vars) == 1
-        return acc_vars[0][(*outer_local_iname_vars, 0)]
+        return acc_vars[0][output_idx]
     else:
-        return [acc_var[(*outer_local_iname_vars, 0)] for acc_var in
-                acc_vars]
+        return [acc_var[output_idx] for acc_var in acc_vars]
+
 # }}}
 
 
@@ -1582,11 +1578,10 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
 
     init_id = red_realize_ctx.insn_id_gen(
             f"{red_realize_ctx.id_prefix}_{scan_param.scan_iname}_init")
+    init_index = (*outer_local_iname_vars, var(base_exec_iname))
     init_insn = make_assignment(
             id=init_id,
-            assignees=tuple(
-                acc_var[(*outer_local_iname_vars, var(base_exec_iname))]
-                for acc_var in acc_vars),
+            assignees=tuple(acc_var[init_index] for acc_var in acc_vars),
             expression=neutral,
             within_inames=base_iname_deps | frozenset([base_exec_iname]),
             within_inames_is_final=True,
@@ -1644,12 +1639,11 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
     for acc_var, pre_scan_result_i in zip(acc_vars, pre_scan_result):
         transfer_id = red_realize_ctx.insn_id_gen(
                 f"{red_realize_ctx.id_prefix}_{scan_param.scan_iname}_transfer")
+        transfer_index = (*outer_local_iname_vars,
+                          var(scan_param.sweep_iname) - sweep_lower_bound_expr)
         transfer_insn = make_assignment(
                 id=transfer_id,
-                assignees=(acc_var[(
-                    *outer_local_iname_vars,
-                    var(scan_param.sweep_iname) - sweep_lower_bound_expr)
-                ],),
+                assignees=(acc_var[transfer_index],),
                 expression=pre_scan_result_i,
                 within_inames=(
                     red_realize_ctx.surrounding_within_inames
@@ -1687,13 +1681,12 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
             read_stage_id = red_realize_ctx.insn_id_gen(
                     f"scan_{scan_param.scan_iname}_read_stage_{istage}")
 
+            read_stage_index = (*outer_local_iname_vars,
+                                var(stage_exec_iname) - cur_size)
             read_stage_insn = make_assignment(
                     id=read_stage_id,
                     assignees=(read_var,),
-                    expression=(
-                            acc_var[
-                                (*outer_local_iname_vars,
-                                    var(stage_exec_iname) - cur_size)]),
+                    expression=acc_var[read_stage_index],
                     within_inames=(
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=True,
@@ -1716,21 +1709,19 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
         write_stage_id = red_realize_ctx.insn_id_gen(
                 f"scan_{scan_param.scan_iname}_write_stage_{istage}")
 
+        op_rhs_index = (*outer_local_iname_vars, var(stage_exec_iname))
         expression, red_realize_ctx.boxed_callables_table[0] = expr.operation(
             arg_dtypes,
             _strip_if_scalar(acc_vars, read_vars),
-            _strip_if_scalar(acc_vars, tuple(
-                acc_var[
-                    (*outer_local_iname_vars, var(stage_exec_iname))]
-                for acc_var in acc_vars)),
+            _strip_if_scalar(acc_vars,
+                             tuple(acc_var[op_rhs_index] for acc_var in acc_vars)),
             red_realize_ctx.boxed_callables_table[0],
             orig_kernel.target)
 
+        write_stage_index = (*outer_local_iname_vars, var(stage_exec_iname))
         write_stage_insn = make_assignment(
                 id=write_stage_id,
-                assignees=tuple(
-                    acc_var[(*outer_local_iname_vars, var(stage_exec_iname))]
-                    for acc_var in acc_vars),
+                assignees=tuple(acc_var[write_stage_index] for acc_var in acc_vars),
                 expression=expression,
                 within_inames=(
                     base_iname_deps | frozenset([stage_exec_iname])),
@@ -1748,14 +1739,13 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
     red_realize_ctx.surrounding_insn_add_depends_on.update(prev_ids)
     red_realize_ctx.surrounding_insn_add_within_inames.add(scan_param.sweep_iname)
 
-    output_idx = var(scan_param.sweep_iname) - sweep_lower_bound_expr
-
+    output_idx = (*outer_local_iname_vars,
+                  var(scan_param.sweep_iname) - sweep_lower_bound_expr)
     if nresults == 1:
         assert len(acc_vars) == 1
-        return acc_vars[0][(*outer_local_iname_vars, output_idx)]
+        return acc_vars[0][output_idx]
     else:
-        return [acc_var[(*outer_local_iname_vars, output_idx)]
-                for acc_var in acc_vars]
+        return [acc_var[output_idx] for acc_var in acc_vars]
 
 # }}}
 
