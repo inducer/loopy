@@ -174,11 +174,11 @@ def test_nested_scan(ctx_factory, i_tag, j_tag):
 
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    print(knl)
+    logger.info("%s", knl)
 
     _evt, (out,) = knl(queue)
 
-    print(out)
+    logger.info("%s", out)
 
 
 def test_scan_not_triangular():
