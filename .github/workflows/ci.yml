@@ -177,7 +177,7 @@ jobs:
         steps:
         -   name: "Main script"
             run: |
-                cd /home/firedrake
+                cd /root
                 python3 -m venv --system-site-packages myvenv
 
                 export HOME="$(pwd)"
@@ -191,7 +191,7 @@ jobs:
 
                 git submodule update --init
 
-                . /home/firedrake/myvenv/bin/activate
+                . /root/myvenv/bin/activate
 
                 pip install --editable .
                 pip uninstall -y pytools
@@ -199,7 +199,7 @@ jobs:
                 pip install "git+https://github.com/inducer/pytools.git#egg=pytools"
                 pip install "git+https://github.com/inducer/pymbolic.git#egg=pymbolic"
 
-                cd /home/firedrake/firedrake
+                cd /opt/firedrake
 
                 # patch so exception messages get shown
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/ec5470a7d8587b6e1f336f3ef1d0ece5e26f236a/firedrake-debug-patch.diff | patch -p1
