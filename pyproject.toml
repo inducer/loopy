@@ -57,6 +57,8 @@ fortran = [
     "f2py @ git+https://github.com/pearu/f2py.git",
     "ply>=3.6",
 ]
+
+[dependency-groups]
 dev = [
     "mypy",
     "types-colorama",
