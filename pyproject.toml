@@ -61,6 +61,8 @@ fortran = [
 
 [dependency-groups]
 dev = [
+    # https://github.com/astral-sh/ruff/issues/16943
+    "ruff!=0.11.1,!=0.11.2",
     "mypy",
     "types-colorama",
     "types-Pygments",
