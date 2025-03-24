@@ -54,7 +54,8 @@ fortran = [
     # the Fortran parser from the (unfinished) third-edition
     # f2py, as linked below. This package is not on the package index, AFAIK.
     # -AK, 2024-08-02
-    "f2py @ git+https://github.com/pearu/f2py.git",
+    # Fork for https://github.com/pearu/f2py/pull/63
+    "f2py @ git+https://github.com/inducer/f2py.git@pyproject",
     "ply>=3.6",
 ]
 
