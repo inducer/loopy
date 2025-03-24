@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import itertools
 import logging
 import sys
 from functools import reduce
@@ -1709,7 +1710,7 @@ def get_global_barrier_order(kernel):
     visited = set()
     visiting = set()
 
-    for prev_barrier, barrier in zip(barriers, barriers[1:]):
+    for prev_barrier, barrier in itertools.pairwise(barriers):
         # Check if prev_barrier is reachable from barrier.
         stack = [barrier]
         visited.discard(prev_barrier)

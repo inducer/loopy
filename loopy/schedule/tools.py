@@ -61,6 +61,7 @@ THE SOFTWARE.
 """
 
 import enum
+import itertools
 from dataclasses import dataclass
 from functools import cached_property, reduce
 from typing import TYPE_CHECKING, AbstractSet, Sequence
@@ -752,7 +753,7 @@ def separate_loop_nest(
 
     loop_nests = sorted(loop_nests, key=lambda nest: tree.depth(nest))
 
-    for outer, inner in zip(loop_nests[:-1], loop_nests[1:]):
+    for outer, inner in itertools.pairwise(loop_nests):
         if outer != tree.parent(inner):
             raise LoopyError(f"Cannot schedule loop nest {inames_to_separate} "
                              f" in the nesting tree:\n{tree}")
@@ -846,7 +847,7 @@ def _order_loop_nests(
         priorities cannot be met.
         """
         for priority in priorities:
-            for outer_iname, inner_iname in zip(priority[:-1], priority[1:]):
+            for outer_iname, inner_iname in itertools.pairwise(priority):
                 if inner_iname not in iname_to_tree_node_id:
                     cannot_satisfy_callback(f"Cannot enforce the constraint:"
                                             f" {inner_iname} to be nested within"
@@ -929,7 +930,7 @@ def _order_loop_nests(
         new_tree = new_tree.add_node(ordered_nest[0],
                                      parent=old_to_new_parent[not_none(loop_nest_tree
                                                               .parent(current_nest))])
-        for new_parent, new_child in zip(ordered_nest[:-1], ordered_nest[1:]):
+        for new_parent, new_child in itertools.pairwise(ordered_nest):
             new_tree = new_tree.add_node(node=new_child, parent=new_parent)
 
         old_to_new_parent[current_nest] = ordered_nest[-1]
