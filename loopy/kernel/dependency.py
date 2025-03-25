@@ -68,7 +68,7 @@ def _add_lexicographic_happens_after_inner(knl, after_insn, before_insn):
     ]
 
     assert shared_inames_order_after == shared_inames_order_before
-    shared_inames_order = shared_inames_order_after
+    shared_inames_order = list(shared_inames_order_after)
 
     affs_in = isl.affs_from_space(happens_after.domain().space)
     affs_out = isl.affs_from_space(happens_after.range().space)
@@ -79,10 +79,17 @@ def _add_lexicographic_happens_after_inner(knl, after_insn, before_insn):
             affs_out[innermost_iname + "'"]
         )
 
-        for outer_iname in list(shared_inames_order)[:iinnermost]:
+        for outer_iname in shared_inames_order[:iinnermost]:
             innermost_map = innermost_map & (
                 affs_in[outer_iname].eq_map(
                     affs_out[outer_iname + "'"]
+                )
+            )
+
+        if before_insn != after_insn:
+            innermost_map = innermost_map | (
+                affs_in[shared_inames_order[iinnermost]].eq_map(
+                    affs_out[shared_inames_order[iinnermost] + "'"]
                 )
             )
 
@@ -139,24 +146,25 @@ def reduce_strict_ordering(knl) -> LoopKernel:
     def narrow_dependencies(
             after: InstructionBase,
             before: InstructionBase,
+            remaining_instances: isl.Set,  # type: ignore
             happens_afters: Mapping[str, VariableSpecificHappensAfter] = {},
-            remaining: isl.Map | None = None,  # type: ignore
+            happens_after_map: isl.Map | None = None,  # type: ignore
         ) -> Mapping[str, VariableSpecificHappensAfter]:
         # FIXME: can we get rid of all the "assert x is not None" stuff?
 
         assert isinstance(after.id, str)
         assert isinstance(before.id, str)
 
-        if remaining is not None and remaining.is_empty():
+        if remaining_instances.is_empty():
             return happens_afters
 
         for insn, happens_after in before.happens_after.items():
-            if remaining is None:
-                remaining = happens_after.instances_rel
+            if happens_after_map is None:
+                happens_after_map = happens_after.instances_rel
             else:
                 assert happens_after.instances_rel is not None
-                if remaining.space != happens_after.instances_rel.space:
-                    remaining = remaining.apply_range(happens_after.instances_rel)
+                happens_after_map = happens_after_map.apply_range(
+                    happens_after.instances_rel)
 
             source_vars = access_mapper.get_accessed_variables(after.id)
             common_vars = wmap_r[insn] & source_vars  # type: ignore
@@ -168,8 +176,8 @@ def reduce_strict_ordering(knl) -> LoopKernel:
                 assert source_map is not None
 
                 source_to_writer = source_map.apply_range(write_map.reverse())
-                dependency_map = source_to_writer & remaining
-                remaining = remaining - dependency_map
+                dependency_map = source_to_writer & happens_after_map
+                remaining_instances = remaining_instances - dependency_map.domain()
                 if dependency_map is not None and not dependency_map.is_empty():
                     happens_after_obj = VariableSpecificHappensAfter(
                         dependency_map, var
@@ -183,8 +191,9 @@ def reduce_strict_ordering(knl) -> LoopKernel:
                     dict(happens_afters) | dict(narrow_dependencies(
                         after,
                         knl.id_to_insn[insn],
+                        remaining_instances,
                         happens_afters,
-                        remaining,
+                        happens_after_map,
                     ))
                 )
 
@@ -204,7 +213,10 @@ def reduce_strict_ordering(knl) -> LoopKernel:
     new_insns = []
     for insn in knl.instructions[::-1]:
         new_insns.append(
-            insn.copy(happens_after=narrow_dependencies(insn, insn))
+            insn.copy(happens_after=narrow_dependencies(
+                after=insn,
+                before=insn,
+                remaining_instances=knl.get_inames_domain(insn.within_inames)))
         )
 
     return knl.copy(instructions=new_insns[::-1])

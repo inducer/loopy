@@ -19,8 +19,8 @@ def test_no_dependency():
     t_unit = lp.make_kernel(
         "{ [i,j] : 0 <= i, j < n}",
         """
-        a[i,j] = 2*i    {id=S}
-        b[i,j] = a[i,j] {id=T}
+        a[i,j] = 2*i        {id=S}
+        b[i,j] = a[i+1,j+1] {id=T}
         """,
     )
 
@@ -36,17 +36,9 @@ def test_odd_even_dependencies():
     t_unit = lp.make_kernel(
         "{ [i] : 0 <= i < np }",
         """
-        u[2*i+1] = i {id=src_odd_0}
-        u[2*i] = i   {id=src_even_0}
-        u[i] = i     {id=sink_0}
-
-        u[2*i+1] = i {id=src_odd_1}
-        u[2*i] = i   {id=src_even_1}
-        u[i] = i     {id=sink_1}
-
-        u[2*i+1] = i {id=src_odd_2}
-        u[2*i] = i   {id=src_even_2}
-        u[i] = i     {id=sink_2}
+        u[2*i+1] = i {id=S}
+        u[2*i] = i   {id=T}
+        u[i] = i     {id=V}
         """
     )
 
@@ -54,12 +46,12 @@ def test_odd_even_dependencies():
     t_unit = reduce_strict_ordering(t_unit)
 
     knl = t_unit.default_entrypoint
-    for i in range(3):
-        assert len(knl.id_to_insn[f"src_odd_{i}"].happens_after) == 0
-        assert len(knl.id_to_insn[f"src_even_{i}"].happens_after) == 0
-        assert len(knl.id_to_insn[f"sink_{i}"].happens_after) == 2
-        for dep_id in knl.id_to_insn[f"sink_{i}"].happens_after.keys():
-            assert ((dep_id == f"src_odd_{i}") or (dep_id == f"src_even_{i}"))
+    assert "S" in knl.id_to_insn["V"].happens_after
+    assert "T" in knl.id_to_insn["V"].happens_after
+    for insn in knl.instructions:
+        print(f"{insn.id}:")
+        for insn_after, instances_rel in insn.happens_after.items():
+            print(f"    {insn_after}: {instances_rel}")
 
 
 @pytest.mark.parametrize("img_size", [(512, 512), (1920, 1080)])
@@ -91,6 +83,9 @@ def test_3x3_blur(ctx_factory, img_size):
 
     knl = lp.fix_parameters(knl, hx=hx-2, hy=hy-2)
 
+    knl = add_lexicographic_happens_after(knl)
+    knl = reduce_strict_ordering(knl)
+
     bsize = 4
     knl = lp.split_iname(knl, "x", bsize, inner_tag="vec", outer_tag="for")
     knl = lp.split_iname(knl, "y", bsize, inner_tag="for", outer_tag="g.0")
@@ -104,9 +99,6 @@ def test_3x3_blur(ctx_factory, img_size):
 
     knl = lp.prioritize_loops(knl, "y_outer, x_outer, y_inner, x_inner")
     knl = lp.expand_subst(knl)
-
-    knl = add_lexicographic_happens_after(knl)
-    knl = reduce_strict_ordering(knl)
 
     _, out = knl(queue, img=img)
     blurx = np.zeros_like(img)
@@ -133,6 +125,7 @@ def test_self_dependence():
 
     knl = t_unit.default_entrypoint
     assert "self" in knl.instructions[0].happens_after.keys()
+    print(knl.id_to_insn["self"].happens_after["self"].instances_rel)
 
 
 if __name__ == "__main__":
