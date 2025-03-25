@@ -50,12 +50,7 @@ pyopencl = [
     "pyopencl>=2022.3",
 ]
 fortran = [
-    # Note that this is *not* regular 'f2py2e', this is
-    # the Fortran parser from the (unfinished) third-edition
-    # f2py, as linked below. This package is not on the package index, AFAIK.
-    # -AK, 2024-08-02
-    # Fork for https://github.com/pearu/f2py/pull/63
-    "f2py @ git+https://github.com/inducer/f2py.git@pyproject",
+    "fparser>=0.2.0",
     "ply>=3.6",
 ]
 
