@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "loopy"
-version = "2024.1"
+version = "2025.1"
 description = "A code generator for array-based code on CPUs and GPUs"
 readme = "README.rst"
 license = { text = "MIT" }
