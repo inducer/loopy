@@ -149,8 +149,8 @@ Documentation:
 
 Ruff:
   script:
-  - pipx install ruff
-  - ruff check
+  - pipx install uv
+  - uv run --only-dev ruff check
   tags:
   - docker-runner
   except:

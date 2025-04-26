@@ -85,3 +85,11 @@ def integer_expr_or_err(expr: Expression) -> Integer | ExpressionNode:
         return expr
     else:
         raise ValueError(f"expected integer or expression, got {type(expr)}")
+
+
+ElT = TypeVar("ElT")
+
+
+def assert_tuple(obj: tuple[ElT, ...] | object) -> tuple[ElT, ...]:
+    assert isinstance(obj, tuple)
+    return obj

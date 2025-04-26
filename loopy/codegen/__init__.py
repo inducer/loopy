@@ -632,8 +632,8 @@ def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
     # adding the callee fdecls to the device_programs
     device_programs = ([device_programs[0].copy(
             ast=t_unit.target.get_device_ast_builder().ast_module.Collection(
-                [*callee_fdecls, device_programs[0].ast]))] +
-            device_programs[1:])
+                [*callee_fdecls, device_programs[0].ast])),
+            *device_programs[1:]])
 
     def not_reduction_op(name: str | ReductionOpFunction) -> str:
         assert isinstance(name, str)

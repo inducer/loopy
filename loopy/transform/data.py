@@ -22,7 +22,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 from warnings import warn
@@ -39,9 +38,12 @@ from loopy.kernel.data import AddressSpace, ImageArg, TemporaryVariable, auto
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.types import LoopyType
+from loopy.typing import assert_tuple
 
 
 if TYPE_CHECKING:
+    from pymbolic import ArithmeticExpression
+
     from loopy.typing import Expression
 
 
@@ -990,7 +992,7 @@ def add_padding_to_avoid_bank_conflicts(kernel, device):
 @dataclass(frozen=True)
 class _BaseStorageInfo:
     name: str
-    next_offset: Expression
+    next_offset: ArithmeticExpression
     approx_nbytes: int | None = None
 
 
@@ -1086,8 +1088,8 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
                     else tv._base_storage_access_may_be_aliasing))
 
             bs_tv = new_tvs[bsi.name]
-            assert isinstance(bs_tv.shape, tuple)
-            bs_size, = bs_tv.shape
+            bs_size: ArithmeticExpression
+            bs_size, = assert_tuple(bs_tv.shape)
             if aliased:
                 new_bs_size = _sym_max(bs_size, ary_size)
             else:
