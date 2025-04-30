@@ -44,13 +44,14 @@ from loopy.symbolic import (
     CoefficientCollector,
     CombineMapper,
     GroupHardwareAxisIndex,
-    Literal,
     LocalHardwareAxisIndex,
     SubstitutionMapper,
+    TypedLiteral,
     flatten,
 )
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.types import to_loopy_type
 
 
 if TYPE_CHECKING:
@@ -125,10 +126,10 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             raise NotImplementedError("complex numbers in ispc")
         else:
             if type_context == "f":
-                return Literal(repr(float(expr)))
+                return TypedLiteral(repr(float(expr)), to_loopy_type(np.float32))
             elif type_context == "d":
                 # Keepin' the good ideas flowin' since '66.
-                return Literal(repr(float(expr))+"d")
+                return TypedLiteral(repr(float(expr))+"d", to_loopy_type(np.float64))
             elif type_context in ["i", "b"]:
                 return expr
             else:
