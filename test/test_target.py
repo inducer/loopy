@@ -64,8 +64,8 @@ def test_ispc_target():
 
     codegen_result = lp.generate_code_v2(knl)
 
-    print(codegen_result.device_code())
-    print(codegen_result.host_code())
+    logger.info("%s", codegen_result.device_code())
+    logger.info("%s", codegen_result.host_code())
 
 
 def test_cuda_target():
@@ -85,9 +85,7 @@ def test_cuda_target():
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"],
             default_tag="l.auto")
 
-    print(
-            lp.generate_code_v2(
-                knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_generate_c_snippet():
@@ -128,7 +126,7 @@ def test_generate_c_snippet():
 
     knl = lp.split_iname(knl, "k", 4, inner_tag="unr", slabs=(0, 1))
     knl = lp.prioritize_loops(knl, "I,k_outer,k_inner")
-    print(lp.generate_code_v2(knl))
+    logger.info("%s", lp.generate_code_v2(knl))
 
 
 @pytest.mark.parametrize("target", [CTarget, OpenCLTarget])
@@ -322,7 +320,7 @@ def test_cuda_short_vector():
     knl = lp.set_options(knl, write_wrapper=True)
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_pyopencl_execution_numpy_handling(ctx_factory):
@@ -795,7 +793,7 @@ def test_ispc_private_var():
 
     cg_result = lp.generate_code_v2(knl)
 
-    print(cg_result.device_code())
+    logger.info("%s", cg_result.device_code())
 
 
 def test_to_complex_casts(ctx_factory):
