@@ -7,7 +7,7 @@ name = "loopy"
 version = "2025.1"
 description = "A code generator for array-based code on CPUs and GPUs"
 readme = "README.rst"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
     { name = "Andreas Kloeckner", email = "inform@tiker.net" },
 ]
@@ -17,7 +17,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Other Audience",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
