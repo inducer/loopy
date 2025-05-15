@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+from loopy.typing import not_none
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -464,7 +466,7 @@ class LoopKernel(Taggable):
 
         return result
 
-    def get_inames_domain(self, inames: frozenset[str]) -> isl.BasicSet:
+    def get_inames_domain(self, inames: str | frozenset[str]) -> isl.BasicSet:
         if not inames:
             return self.combine_domains(())
 
@@ -586,11 +588,10 @@ class LoopKernel(Taggable):
         """Return a mapping from instruction ids to inames inside which
         they should be run.
         """
-        result = {}
-        for insn in self.instructions:
-            result[insn.id] = insn.within_inames
-
-        return result
+        return {
+            not_none(insn.id): insn.within_inames
+            for insn in self.instructions
+        }
 
     @memoize_method
     def all_referenced_inames(self):
@@ -765,7 +766,7 @@ class LoopKernel(Taggable):
     # {{{ argument wrangling
 
     @cached_property
-    def arg_dict(self) -> dict[str, KernelArgument]:
+    def arg_dict(self) -> Mapping[str, KernelArgument]:
         return {arg.name: arg for arg in self.args}
 
     @cached_property

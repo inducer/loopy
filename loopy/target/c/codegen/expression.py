@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing_extensions import override
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -31,7 +33,7 @@ import numpy as np
 import islpy as isl
 import pymbolic.primitives as p
 from pymbolic import var
-from pymbolic.mapper import IdentityMapper, Mapper
+from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import (
     PREC_BITWISE_AND,
     PREC_BITWISE_OR,
@@ -47,6 +49,7 @@ from pymbolic.mapper.stringifier import (
 
 from loopy.diagnostic import LoopyError
 from loopy.expression import dtype_to_type_context
+from loopy.symbolic import IdentityMapper
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeInferenceMapper, TypeReader
 from loopy.types import LoopyType
@@ -67,7 +70,7 @@ __doc__ = """
 
 # {{{ Loopy expression to C expression mapper
 
-class ExpressionToCExpressionMapper(IdentityMapper):
+class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
     """
     Mapper that converts a loopy-semantic expression to a C-semantic expression
     with typecasts, appropriate arithmetic semantic mapping, etc.
@@ -85,6 +88,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                  fortran_abi: bool = False,
                  type_inf_mapper: TypeInferenceMapper | None = None
              ) -> None:
+        super().__init__()
         self.kernel = codegen_state.kernel
         self.codegen_state = codegen_state
 
@@ -144,7 +148,13 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     self.infer_type(expr), needed_type,
                     result)
 
-    def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
+    @override
+    def __call__(self,  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
+                 expr: Expression,
+                 prec: int | None = None,
+                 type_context: str | None = None,
+                 needed_dtype: LoopyType | None = None
+             ) -> CExpression:
         if prec is None:
             prec = PREC_NONE
 
@@ -155,6 +165,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     # }}}
 
+    @override
     def map_variable(self, expr, type_context):
         from loopy.kernel.data import AddressSpace, ValueArg
 
@@ -209,14 +220,17 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return postproc(var(expr.name))
 
+    @override
     def map_tagged_variable(self, expr, type_context):
         return var(expr.name)
 
+    @override
     def map_sub_array_ref(self, expr, type_context):
         from loopy.symbolic import get_start_subscript_from_sar
         return var("&")(self.rec(get_start_subscript_from_sar(expr, self.kernel),
             type_context))
 
+    @override
     def map_subscript(self, expr, type_context):
         def base_impl(expr, type_context):
             return self.rec(expr.aggregate, type_context)[self.rec(expr.index, "i")]
@@ -311,6 +325,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         else:
             raise AssertionError()
 
+    @override
     def map_linear_subscript(self, expr, type_context):
         from pymbolic.primitives import Variable
         if not isinstance(expr.aggregate, Variable):
@@ -397,11 +412,13 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     self.rec(expr.numerator, "i"),
                     self.rec(expr.denominator, "i"))
 
+    @override
     def map_floor_div(self, expr, type_context):
         import operator
         return self._map_integer_div_operator(
                 "loopy_floor_div", operator.floordiv, expr, type_context)
 
+    @override
     def map_remainder(self, expr, type_context):
         tgt_dtype = self.infer_type(expr)
         if tgt_dtype.is_complex():
@@ -411,6 +428,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         return self._map_integer_div_operator(
                 "loopy_mod", operator.mod, expr, type_context)
 
+    @override
     def map_if(self, expr, type_context):
         from loopy.types import to_loopy_type
         result_type = self.infer_type(expr)
@@ -421,6 +439,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 self.rec(expr.else_, type_context, result_type),
                 )
 
+    @override
     def map_comparison(self, expr, type_context):
         inner_type_context = dtype_to_type_context(
                 self.kernel.target,
@@ -431,9 +450,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     expr.operator,
                     self.rec(expr.right, inner_type_context))
 
-    def map_type_cast(self, expr: TypeCast, type_context: str):
+    @override
+    def map_type_cast(self, expr: TypeCast, type_context: str | None) -> Expression:
         return self.rec(expr.child, type_context, expr.type)
 
+    @override
     def map_constant(self, expr, type_context):
         from loopy.symbolic import Literal
 
@@ -501,6 +522,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             raise LoopyError("don't know how to generate code "
                              "for constant '%s'" % expr)
 
+    @override
     def map_call(self, expr, type_context):
         return (
                 self.codegen_state.callables_table[
@@ -532,6 +554,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         return type(expr)(num, denom)
 
+    @override
     def map_power(self, expr, type_context):
         tgt_dtype = self.infer_type(expr)
         base_dtype = self.infer_type(expr.base)
@@ -574,9 +597,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
     # }}}
 
+    @override
     def map_group_hw_index(self, expr, type_context):
         raise LoopyError("plain C does not have group hw axes")
 
+    @override
     def map_local_hw_index(self, expr, type_context):
         raise LoopyError("plain C does not have local hw axes")
 

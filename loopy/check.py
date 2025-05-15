@@ -1719,6 +1719,7 @@ def _validate_kernel_call_insn(
             call_insn: CallInstruction,
             callee: LoopKernel
         ) -> None:
+    assert isinstance(call_insn.expression.function, ResolvedFunction)
     assert call_insn.expression.function.name == callee.name
     from loopy.kernel.array import ArrayBase
     from loopy.symbolic import SubArrayRef
