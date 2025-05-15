@@ -207,3 +207,40 @@ extend-exclude = [
 
 [tool.pytest.ini_options]
 addopts = "--ignore=proto-tests"
+
+
+[tool.basedpyright]
+reportImplicitStringConcatenation = "none"
+reportUnnecessaryIsInstance = "none"
+reportUnusedCallResult = "none"
+reportExplicitAny = "none"
+reportPrivateUsage = "none"
+
+# Multiple reasons for this:
+# - make_subst_func is reported as having an incomplete type (but only in CI?)
+# - numpy scalar types are reported as incomplete (because of "any" precision)
+reportUnknownVariableType = "none"
+
+# This reports even cycles that are qualified by 'if TYPE_CHECKING'. Not what
+# we care about at this moment.
+# https://github.com/microsoft/pyright/issues/746
+reportImportCycles = "none"
+
+pythonVersion = "3.10"
+pythonPlatform = "All"
+
+exclude = [
+    "proto-tests/*.py",
+    "contrib/mem-pattern-explorer/*.py",
+    "loopy/ipython_ext.py",
+    "loopy/frontend/fortran/*.py",
+]
+
+[[tool.basedpyright.executionEnvironments]]
+root = "test"
+reportUnknownArgumentType = "none"
+reportUnknownVariableType = "none"
+reportMissingParameterType = "none"
+reportAttributeAccessIssue = "none"
+reportMissingImports = "none"
+
