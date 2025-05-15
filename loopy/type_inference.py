@@ -28,6 +28,7 @@ THE SOFTWARE.
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -38,7 +39,7 @@ from loopy.diagnostic import (
     LoopyError,
     TypeInferenceFailure,
 )
-from loopy.kernel.instruction import _DataObliviousInstruction
+from loopy.kernel.instruction import MultiAssignmentBase, _DataObliviousInstruction
 from loopy.symbolic import (
     CombineMapper,
     LinearSubscript,
@@ -56,6 +57,10 @@ from loopy.translation_unit import (
 )
 from loopy.types import NumpyType
 from loopy.typing import is_integer
+
+
+if TYPE_CHECKING:
+    from loopy.kernel import LoopKernel
 
 
 logger = logging.getLogger(__name__)
@@ -794,7 +799,7 @@ class _DictUnionView:
 
 # {{{ infer_unknown_types
 
-def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
+def infer_unknown_types_for_a_single_kernel(kernel: LoopKernel, clbl_inf_ctx):
     """Infer types on temporaries and arguments."""
 
     logger.debug("%s: infer types", kernel.name)
@@ -810,8 +815,8 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
         from loopy.transform.subst import expand_subst
         kernel = expand_subst(kernel)
 
-    new_temp_vars = kernel.temporary_variables.copy()
-    new_arg_dict = kernel.arg_dict.copy()
+    new_temp_vars = dict(kernel.temporary_variables)
+    new_arg_dict = dict(kernel.arg_dict)
 
     # {{{ find names_with_unknown_types
 
@@ -836,7 +841,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
 
     writer_map = kernel.writer_map()
 
-    dep_graph = {
+    dep_graph: dict[str, set[str]] = {
             written_var: {
                 read_var
                 for insn_id in writer_map.get(written_var, [])
@@ -867,12 +872,12 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
     from loopy.kernel.data import KernelArgument, TemporaryVariable
 
     old_calls_to_new_calls = {}
-    touched_variable_names = set()
+    touched_variable_names: set[str] = set()
 
     for var_chain in sccs:
         changed_during_last_queue_run = False
         var_queue = var_chain[:]
-        failed_names = set()
+        failed_names: set[str] = set()
 
         while var_queue or changed_during_last_queue_run:
             if not var_queue and changed_during_last_queue_run:
@@ -953,7 +958,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
 
     # {{{ check if insn missed during type inference
 
-    def _instruction_missed_during_inference(insn):
+    def _instruction_missed_during_inference(insn: MultiAssignmentBase):
         for assignee in insn.assignees:
             if isinstance(assignee, Lookup):
                 assignee = assignee.aggregate
@@ -968,6 +973,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                         return False
 
             elif isinstance(assignee, (Subscript, LinearSubscript)):
+                assert isinstance(assignee.aggregate, Variable)
                 if assignee.aggregate.name in kernel.arg_dict:
                     if kernel.arg_dict[assignee.aggregate.name].dtype is None:
                         return False
@@ -978,6 +984,7 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
                         return False
             else:
                 assert isinstance(assignee, SubArrayRef)
+                assert isinstance(assignee.subscript.aggregate, Variable)
                 if assignee.subscript.aggregate.name in kernel.arg_dict:
                     if kernel.arg_dict[
                             assignee.subscript.aggregate.name].dtype is None:
@@ -1016,9 +1023,11 @@ def infer_unknown_types_for_a_single_kernel(kernel, clbl_inf_ctx):
             dur=end_time - start_time))
 
     if kernel._separation_info():
-        sep_names = set(kernel._separation_info()) | {
-                sep_info.subarray_names.values()
-                for sep_info in kernel._separation_info().values()}
+        sep_names: set[str] = set(kernel._separation_info()) | {
+            name
+            for sep_info in kernel._separation_info().values()
+            for name in sep_info.subarray_names.values()
+            }
 
         touched_sep_names = sep_names & touched_variable_names
         if touched_sep_names:

@@ -24,11 +24,11 @@ THE SOFTWARE.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Callable, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Protocol, TypeVar
 from warnings import warn
 
 from constantdict import constantdict
-from typing_extensions import Self
+from typing_extensions import Self, override
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
@@ -41,7 +41,12 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
+    import pymbolic.primitives as p
+    from pymbolic.typing import Expression
+
     from loopy.kernel import LoopKernel
+    from loopy.kernel.instruction import CallInstruction
+    from loopy.target import TargetBase
     from loopy.translation_unit import CallablesTable, FunctionIdT
     from loopy.types import LoopyType
     from loopy.typing import ShapeType
@@ -271,6 +276,27 @@ def get_arg_descriptor_for_expression(kernel, expr):
         return ValueArgDescriptor()
 
 # }}}
+
+
+class GeneratedExpression(Protocol):
+    expr: Expression
+
+    @override
+    def __str__(self) -> str:
+        ...
+
+
+class AbstractExpressionToCodeMapper(Protocol):
+    def infer_type(self, expr: Expression) -> LoopyType:
+        ...
+
+    def __call__(self,
+                 expr: Expression,
+                 prec: int | None = None,
+                 type_context: str | None = None,
+                 needed_dtype: LoopyType | None = None
+             ) -> GeneratedExpression:
+        ...
 
 
 # {{{ helper function for in-kernel callables
@@ -608,7 +634,11 @@ class ScalarCallable(InKernelCallable):
         from pymbolic import var
         return var(self.name_in_target)(*processed_parameters)
 
-    def emit_call_insn(self, insn, target, expression_to_code_mapper):
+    def emit_call_insn(self,
+                       insn: CallInstruction,
+                       target: TargetBase,
+                       expression_to_code_mapper: AbstractExpressionToCodeMapper,
+                   )  -> tuple[p.Call | p.CallWithKwargs, bool]:
         """
         :arg insn: An instance of :class:`loopy.kernel.instructions.CallInstruction`.
         :arg target: An instance of :class:`loopy.target.TargetBase`.
@@ -640,6 +670,7 @@ class ScalarCallable(InKernelCallable):
 
         assert isinstance(insn, CallInstruction)
         assert self.is_ready_for_codegen()
+        assert self.arg_id_to_dtype is not None
 
         ecm = expression_to_code_mapper
         parameters = insn.expression.parameters
@@ -653,7 +684,7 @@ class ScalarCallable(InKernelCallable):
         assignee_dtypes = tuple(self.arg_id_to_dtype[-i-2]
                                 for i, _ in enumerate(assignees))
 
-        tgt_parameters = [ecm(par, PREC_NONE,
+        tgt_parameters: list[Expression] = [ecm(par, PREC_NONE,
                               dtype_to_type_context(target, tgt_dtype),
                               tgt_dtype).expr
                           for par, par_dtype, tgt_dtype in zip(parameters,
@@ -673,6 +704,7 @@ class ScalarCallable(InKernelCallable):
         # assignee is returned whenever the size of assignees is non zero.
         first_assignee_is_returned = len(insn.assignees) > 0
 
+        assert self.name_in_target
         return var(self.name_in_target)(*tgt_parameters), first_assignee_is_returned
 
     def generate_preambles(self, target):

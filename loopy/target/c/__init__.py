@@ -1,6 +1,8 @@
 """Plain C target and base for other C-family languages."""
 from __future__ import annotations
 
+from typing_extensions import override
+
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -25,7 +27,8 @@ THE SOFTWARE.
 """
 
 import re
-from typing import TYPE_CHECKING, Any, Sequence, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 import numpy as np
 from constantdict import constantdict
@@ -42,6 +45,7 @@ from cgen import (
     Pointer,
 )
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
+from pymbolic import Expression
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_method
 
@@ -60,10 +64,12 @@ from loopy.symbolic import IdentityMapper
 from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
 from loopy.tools import remove_common_indentation
 from loopy.types import LoopyType, NumpyType, to_loopy_type
-from loopy.typing import Expression, auto
+from loopy.typing import auto
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
@@ -407,12 +413,13 @@ class CASTIdentityMapper(CASTIdentityMapperBase):
 
 # {{{ lazy expression generation
 
+@dataclass(frozen=True)
 class CExpression:
-    def __init__(self, to_code_mapper, expr):
-        self.to_code_mapper = to_code_mapper
-        self.expr = expr
+    to_code_mapper: Callable[[Expression, int], str]
+    expr: Expression
 
-    def __str__(self):
+    @override
+    def __str__(self) -> str:
         return self.to_code_mapper(self.expr, PREC_NONE)
 
 # }}}

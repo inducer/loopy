@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 # - "d" for double-precision floating point
 # or None for 'no known context'.
 
-def dtype_to_type_context(target, dtype):
+def dtype_to_type_context(target, dtype) -> str | None:
     from loopy.types import NumpyType
 
     if dtype.is_integral():

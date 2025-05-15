@@ -202,7 +202,13 @@ class OpaqueType(LoopyType):
 # }}}
 
 
-ToLoopyTypeConvertible: TypeAlias = Union[Type[auto], np.dtype, LoopyType, None]
+ToLoopyTypeConvertible: TypeAlias = Union[
+    Type[auto],
+    Type[np.generic],
+    np.dtype,
+    LoopyType,
+    str,
+    None]
 
 
 def to_loopy_type(dtype: ToLoopyTypeConvertible,

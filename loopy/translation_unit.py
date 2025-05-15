@@ -33,12 +33,11 @@ from typing import (
     Callable,
     Mapping,
     TypeVar,
-    Union,
 )
 from warnings import warn
 
 from constantdict import constantdict
-from typing_extensions import Concatenate, ParamSpec, Self
+from typing_extensions import Concatenate, ParamSpec, Self, TypeAlias
 
 from pymbolic.primitives import Call, Variable
 
@@ -174,9 +173,9 @@ class CallableResolver(RuleAwareIdentityMapper):
 
 # {{{ translation unit
 
-FunctionIdT = Union[str, ReductionOpFunction]
-ConcreteCallablesTable = constantdict[FunctionIdT, InKernelCallable]
-CallablesTable = Mapping[FunctionIdT, InKernelCallable]
+FunctionIdT: TypeAlias = str | ReductionOpFunction
+ConcreteCallablesTable: TypeAlias = constantdict[FunctionIdT, InKernelCallable]
+CallablesTable: TypeAlias = Mapping[FunctionIdT, InKernelCallable]
 
 
 @dataclass(frozen=True)
