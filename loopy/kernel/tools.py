@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import itertools
 import logging
 import sys
 from functools import reduce
@@ -45,10 +46,17 @@ from loopy.kernel.instruction import (
     _DataObliviousInstruction,
 )
 from loopy.symbolic import CombineMapper
-from loopy.translation_unit import TranslationUnit, TUnitOrKernelT, for_each_kernel
+from loopy.translation_unit import (
+    FunctionIdT,
+    TranslationUnit,
+    TUnitOrKernelT,
+    for_each_kernel,
+)
 
 
 if TYPE_CHECKING:
+    from collections.abc import Set
+
     from pytools.tag import Tag
 
     from loopy.types import ToLoopyTypeConvertible
@@ -1709,7 +1717,7 @@ def get_global_barrier_order(kernel):
     visited = set()
     visiting = set()
 
-    for prev_barrier, barrier in zip(barriers, barriers[1:]):
+    for prev_barrier, barrier in itertools.pairwise(barriers):
         # Check if prev_barrier is reachable from barrier.
         stack = [barrier]
         visited.discard(prev_barrier)
@@ -2083,7 +2091,10 @@ def get_resolved_callable_ids_called_by_knl(knl, callables, recursive=True):
 
 # {{{ get_call_graph
 
-def get_call_graph(t_unit, only_kernel_callables=False):
+def get_call_graph(
+            t_unit: TranslationUnit,
+            only_kernel_callables: bool = False
+        ) -> Mapping[FunctionIdT, Set[FunctionIdT]]:
     """
     Returns a mapping from a callable name to the calls seen in it.
 
@@ -2101,7 +2112,7 @@ def get_call_graph(t_unit, only_kernel_callables=False):
                               if isinstance(clbl, CallableKernel))
 
     # stores a mapping from caller -> "direct"" callees
-    call_graph = {}
+    call_graph: dict[FunctionIdT, frozenset[FunctionIdT]] = {}
 
     for name, clbl in t_unit.callables_table.items():
         if (not isinstance(clbl, CallableKernel)

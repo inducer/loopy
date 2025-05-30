@@ -1,4 +1,8 @@
+# pyright: reportAny=false
+
 """UI for kernel creation."""
+
+
 from __future__ import annotations
 
 
@@ -26,8 +30,9 @@ THE SOFTWARE.
 
 import logging
 import re
+from dataclasses import dataclass
 from sys import intern
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -70,13 +75,12 @@ def _gather_isl_identifiers(s):
     return set(_IDENTIFIER_RE.findall(s)) - _ISL_KEYWORDS
 
 
+@dataclass(frozen=True)
 class UniqueName:
     """A tag for a string that identifies a partial identifier that is to
     be made unique by the UI.
     """
-
-    def __init__(self, name):
-        self.name = name
+    name: str
 
 # }}}
 
@@ -222,18 +226,26 @@ def get_default_insn_options_dict():
 from collections import namedtuple
 
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+
 _NosyncParseResult = namedtuple("_NosyncParseResult", "expr, scope")
 
 
-def parse_insn_options(opt_dict, options_str, assignee_names=None):
+def parse_insn_options(
+            opt_dict: dict[str, Any],
+            options_str: str | None,
+            assignee_names: Sequence[str] | None = None,
+        ) -> dict[str, Any]:
     if options_str is None:
         return opt_dict
 
     is_with_block = assignee_names is None
 
-    result = opt_dict.copy()
+    result = dict(opt_dict)
 
-    def parse_nosync_option(opt_value):
+    def parse_nosync_option(opt_value: str) -> _NosyncParseResult:
         if "@" in opt_value:
             expr, scope = opt_value.split("@")
         else:
@@ -376,6 +388,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 raise LoopyError("'atomic' option may not be specified "
                         "in a with block")
 
+            assert assignee_names is not None
             if len(assignee_names) != 1:
                 raise LoopyError("atomic operations with more than one "
                         "left-hand side not supported")
@@ -397,6 +410,9 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             del assignee_name
 
         elif opt_key == "mem_kind":
+            if opt_value is None:
+                raise LoopyError("mem_kind requires a value")
+
             opt_value = opt_value.lower().strip()
             if opt_value not in ["local", "global"]:
                 raise LoopyError("Unknown memory synchronization type %s specified"

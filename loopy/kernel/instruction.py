@@ -48,6 +48,8 @@ from loopy.tools import Optional as LoopyOptional
 
 
 if TYPE_CHECKING:
+    import pymbolic.primitives as p
+
     from loopy.types import LoopyType
     from loopy.typing import Expression, InameStr
 
@@ -1077,6 +1079,8 @@ class CallInstruction(MultiAssignmentBase):
 
     .. automethod:: __init__
     """
+
+    expression: p.Call
 
     fields = MultiAssignmentBase.fields | \
             set("assignees temp_var_types".split())

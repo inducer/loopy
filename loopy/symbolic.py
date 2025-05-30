@@ -209,7 +209,7 @@ class IdentityMapperMixin(Mapper[Expression, P]):
                 allow_simultaneous=expr.allow_simultaneous)
 
     def map_tagged_variable(self, expr: TaggedVariable,
-                            *args: P.args, **kwargs: P.kwargs):
+                            *args: P.args, **kwargs: P.kwargs) -> Expression:
         # leaf, doesn't change
         return expr
 
@@ -224,7 +224,8 @@ class IdentityMapperMixin(Mapper[Expression, P]):
 
         return type(expr)(expr.type, new_child)
 
-    def map_sub_array_ref(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_sub_array_ref(self, expr: SubArrayRef,
+                          *args: P.args, **kwargs: P.kwargs) -> Expression:
         new_inames = self.rec(expr.swept_inames, *args, **kwargs)
         new_subscript = self.rec(expr.subscript, *args, **kwargs)
 
@@ -241,7 +242,16 @@ class IdentityMapperMixin(Mapper[Expression, P]):
         # leaf, doesn't change
         return expr
 
-    map_type_cast = map_type_annotation
+    def map_type_cast(
+                self, expr: TypeCast,
+                *args: P.args, **kwargs: P.kwargs
+            ) -> Expression:
+        new_child = self.rec(expr.child, *args, **kwargs)
+
+        if new_child is expr.child:
+            return expr
+
+        return type(expr)(expr.type, new_child)
 
     map_linear_subscript = IdentityMapperBase.map_subscript
 
@@ -588,7 +598,11 @@ class SubstitutionRuleExpander(IdentityMapper[[]]):
         else:
             return super().map_call(expr)
 
-    def map_subst_rule(self, name, rule, arguments):
+    def map_subst_rule(self,
+                        name: str,
+                        rule: SubstitutionRule,
+                        arguments: Sequence[Expression],
+                    ) -> Expression:
         if len(rule.arguments) != len(arguments):
             from loopy.diagnostic import LoopyError
             raise LoopyError("number of arguments to '%s' does not match "
@@ -597,7 +611,7 @@ class SubstitutionRuleExpander(IdentityMapper[[]]):
         from pymbolic.mapper.substitutor import make_subst_func
         submap = SubstitutionMapper(
                 make_subst_func(
-                    dict(zip(rule.arguments, arguments))))
+                    dict(zip(rule.arguments, arguments, strict=True))))
 
         expr = submap(rule.expression)
 
