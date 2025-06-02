@@ -810,41 +810,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         return []
-        # from genpy import Assign, Comment, Line
-        # from pymbolic.mapper.stringifier import PREC_NONE
-        # ecm = self.get_expression_to_code_mapper(codegen_state)
-
-        # global_temporaries = self._get_global_temporaries(codegen_state)
-        # if not global_temporaries:
-        #     return []
-
-        # allocated_var_names = []
-        # code_lines = []
-        # code_lines.append(Line())
-        # code_lines.append(Comment("{{{ allocate global temporaries"))
-        # code_lines.append(Line())
-
-        # for tv in global_temporaries:
-        #     if not tv.base_storage:
-        #         if tv.nbytes:
-        #             # NB: This does not prevent all zero-size allocations,
-        #             # as sizes are parametric, and allocation size
-        #             # could turn out to be zero at runtime.
-        #             nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
-        #             allocated_var_names.append(tv.name)
-        #             code_lines.append(Assign(tv.name,
-        #                                      f"allocator({nbytes_str})"))
-        #         else:
-        #             code_lines.append(Assign(tv.name, "None"))
-
-        # code_lines.append(Assign("_global_temporaries", "[{tvs}]".format(
-        #     tvs=", ".join(tv for tv in allocated_var_names))))
-
-        # code_lines.append(Line())
-        # code_lines.append(Comment("}}}"))
-        # code_lines.append(Line())
-
-        # return code_lines
 
     def get_temporary_decl_locations(self, codegen_state: CodeGenerationState) -> Tuple[Mapping[str, set[str]], Mapping[str, set[str]]]:
         from loopy.schedule.tools import (
