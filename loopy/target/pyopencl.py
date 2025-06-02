@@ -26,7 +26,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Sequence, cast
+from typing import TYPE_CHECKING, Any, Sequence, cast, Tuple, Mapping
 from warnings import warn
 
 import numpy as np
@@ -790,15 +790,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     Line(),
                     function_body,
                     Line(),
-                    ] + ([
-                        For("_tv", "_global_temporaries",
-                            # Free global temporaries.
-                            # Zero-size temporaries allocate as None, tolerate that.
-                            # https://documen.tician.de/pyopencl/tools.html#pyopencl.tools.ImmediateAllocator
-                            S("if _tv is not None: _tv.release()"))
-                        ] if self._get_global_temporaries(codegen_state) else []
-                    ) + [
-                    Line(),
                     Return("_lpy_evt"),
                     ]))
 
@@ -818,48 +809,81 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             key=lambda tv: tv.name)
 
     def get_temporary_decls(self, codegen_state, schedule_index):
-        from genpy import Assign, Comment, Line
-        from pymbolic.mapper.stringifier import PREC_NONE
-        ecm = self.get_expression_to_code_mapper(codegen_state)
+        return []
+        # from genpy import Assign, Comment, Line
+        # from pymbolic.mapper.stringifier import PREC_NONE
+        # ecm = self.get_expression_to_code_mapper(codegen_state)
 
-        global_temporaries = self._get_global_temporaries(codegen_state)
-        if not global_temporaries:
-            return []
+        # global_temporaries = self._get_global_temporaries(codegen_state)
+        # if not global_temporaries:
+        #     return []
 
-        allocated_var_names = []
-        code_lines = []
-        code_lines.append(Line())
-        code_lines.append(Comment("{{{ allocate global temporaries"))
-        code_lines.append(Line())
+        # allocated_var_names = []
+        # code_lines = []
+        # code_lines.append(Line())
+        # code_lines.append(Comment("{{{ allocate global temporaries"))
+        # code_lines.append(Line())
 
-        for tv in global_temporaries:
-            if not tv.base_storage:
-                if tv.nbytes:
-                    # NB: This does not prevent all zero-size allocations,
-                    # as sizes are parametric, and allocation size
-                    # could turn out to be zero at runtime.
-                    nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
-                    allocated_var_names.append(tv.name)
-                    code_lines.append(Assign(tv.name,
-                                             f"allocator({nbytes_str})"))
-                else:
-                    code_lines.append(Assign(tv.name, "None"))
+        # for tv in global_temporaries:
+        #     if not tv.base_storage:
+        #         if tv.nbytes:
+        #             # NB: This does not prevent all zero-size allocations,
+        #             # as sizes are parametric, and allocation size
+        #             # could turn out to be zero at runtime.
+        #             nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
+        #             allocated_var_names.append(tv.name)
+        #             code_lines.append(Assign(tv.name,
+        #                                      f"allocator({nbytes_str})"))
+        #         else:
+        #             code_lines.append(Assign(tv.name, "None"))
 
-        code_lines.append(Assign("_global_temporaries", "[{tvs}]".format(
-            tvs=", ".join(tv for tv in allocated_var_names))))
+        # code_lines.append(Assign("_global_temporaries", "[{tvs}]".format(
+        #     tvs=", ".join(tv for tv in allocated_var_names))))
 
-        code_lines.append(Line())
-        code_lines.append(Comment("}}}"))
-        code_lines.append(Line())
+        # code_lines.append(Line())
+        # code_lines.append(Comment("}}}"))
+        # code_lines.append(Line())
 
-        return code_lines
+        # return code_lines
+
+    def get_temporary_decl_locations(self, codegen_state: CodeGenerationState) -> Tuple[Mapping[str, set[str]], Mapping[str, set[str]]]:
+        from loopy.schedule.tools import (
+            temporaries_read_in_subkernel,
+            temporaries_written_in_subkernel,
+        )
+        # Find sub-kernels
+        kernel = codegen_state.kernel
+        sched_index = 0
+        subkernel_names = []
+        for sched_index in range(0, codegen_state.schedule_index_end):
+            sched_item = kernel.linearization[sched_index]
+            if isinstance(sched_item, CallKernel):
+                subkernel_names.append(sched_item.kernel_name)
+
+        # Forward pass to find first writes
+        first_accesses = {}
+        seen_temporary_variables = set()
+        for subkernel_name in subkernel_names:
+            new_temporary_variables = temporaries_written_in_subkernel(kernel, subkernel_name).union(temporaries_read_in_subkernel(kernel, subkernel_name)) - seen_temporary_variables
+            first_accesses[subkernel_name] = new_temporary_variables
+            seen_temporary_variables = new_temporary_variables.union(seen_temporary_variables)
+        
+        # Backwards pass to find last reads
+        last_accesses = {}
+        seen_temporary_variables = set()
+        for subkernel_name in reversed(subkernel_names):
+            new_temporary_variables = temporaries_written_in_subkernel(kernel, subkernel_name).union(temporaries_read_in_subkernel(kernel, subkernel_name)) - seen_temporary_variables
+            last_accesses[subkernel_name] = new_temporary_variables
+            seen_temporary_variables = new_temporary_variables.union(seen_temporary_variables)
+        return (first_accesses, last_accesses)
 
     def get_kernel_call(
             self, codegen_state: CodeGenerationState,
             subkernel_name: str,
             gsize: tuple[Expression, ...], lsize: tuple[Expression, ...]
             ) -> genpy.Suite:
-        from genpy import Assert, Assign, Comment, Line, Suite
+        from genpy import Assert, Assign, Statement, Comment, Line, Suite
+        from pymbolic.mapper.stringifier import PREC_NONE
 
         kernel = codegen_state.kernel
 
@@ -867,6 +891,25 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         skai = get_subkernel_arg_info(kernel, subkernel_name)
 
         ecm = self.get_expression_to_code_mapper(codegen_state)
+
+        start_temporary_variables, end_temporary_variables = self.get_temporary_decl_locations(codegen_state)
+        allocation_code_lines = []
+        for tv_name in start_temporary_variables[subkernel_name]:
+            tv = kernel.temporary_variables[tv_name]
+            if not tv.base_storage:
+                if tv.nbytes:
+                    # NB: This does not prevent all zero-size allocations,
+                    # as sizes are parametric, and allocation size
+                    # could turn out to be zero at runtime.
+                    nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
+                    allocation_code_lines.append(Assign(tv.name,
+                                             f"allocator({nbytes_str})"))
+                else:
+                    allocation_code_lines.append(Assign(tv.name, "None"))
+        
+        deallocation_code_lines = []
+        for tv_name in end_temporary_variables[subkernel_name]:
+            deallocation_code_lines.append(Statement(f"if {tv_name} is not None: {tv_name}.release()"))
 
         if not gsize:
             gsize = (1,)
@@ -943,6 +986,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         # TODO: Generate finer-grained dependency structure
         return Suite([
+            *allocation_code_lines,
             Comment("{{{ enqueue %s" % subkernel_name),
             Line(),
             Assign("_lpy_knl", "_lpy_cl_kernels."+subkernel_name),
@@ -971,6 +1015,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             Line(),
             Comment("}}}"),
             Line(),
+            *deallocation_code_lines
             ])
 
     # }}}
