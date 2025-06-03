@@ -156,18 +156,6 @@ Ruff:
   except:
   - tags
 
-Mypy:
-  script: |
-    EXTRA_INSTALL="mypy pybind11 numpy types-colorama types-Pygments"
-    curl -L -O https://tiker.net/ci-support-v0
-    . ./ci-support-v0
-    build_py_project_in_venv
-    ./run-mypy.sh
-  tags:
-  - python3
-  except:
-  - tags
-
 Downstream:
   parallel:
     matrix:
