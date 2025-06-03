@@ -44,7 +44,7 @@ __doc__ = """
 # {{{ assume
 
 @for_each_kernel
-def assume(kernel, assumptions):
+def assume(kernel: LoopKernel, assumptions: str | isl.Set | isl.BasicSet) -> LoopKernel:
     """Include an assumption about :ref:`domain-parameters` in the kernel, e.g.
     `n mod 4 = 0`.
 

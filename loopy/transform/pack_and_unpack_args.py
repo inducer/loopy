@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, cast
 
 from constantdict import constantdict
 
-from pymbolic.primitives import EmptyOK, Variable
+from pymbolic.primitives import EmptyOK, Subscript, Variable
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
@@ -198,6 +198,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
                     new_domain_unpack = kernel.get_inames_domain(iname).copy()
                     for i in range(new_domain_pack.n_dim()):
                         old_iname = new_domain_pack.get_dim_name(dim_type, i)
+                        assert old_iname
                         if var(old_iname) in new_pack_inames:
                             new_domain_pack = new_domain_pack.set_dim_name(
                                 dim_type, i, new_pack_inames[var(old_iname)].name)
@@ -261,6 +262,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
 
                 pack_lhs_assignee = pack_subst_mapper(
                         var(pack_name)[new_indices_tup])
+                assert isinstance(pack_lhs_assignee, Subscript)
                 unpack_rhs = unpack_subst_mapper(
                         var(pack_name)[new_indices_tup])
 
@@ -268,7 +270,7 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
 
                 # }}}
 
-                insn_id = not_none(insn.id)
+                insn_id = insn.id
                 packing_insns.append(Assignment(
                     assignee=pack_lhs_assignee,
                     expression=pack_subst_mapper.map_subscript(p.subscript),
@@ -283,7 +285,8 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
                 if p.subscript.aggregate.name in args_to_unpack:
                     unpacking_insns.append(Assignment(
                         expression=unpack_rhs,
-                        assignee=unpack_subst_mapper.map_subscript(p.subscript),
+                        assignee=cast("Subscript",
+                                      unpack_subst_mapper.map_subscript(p.subscript)),
                         within_inames=insn.within_inames - ilp_inames | {
                             new_unpack_inames[i].name for i in p.swept_inames} | (
                                 new_ilp_inames),

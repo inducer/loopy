@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, Mapping, Sequence
+from typing import TYPE_CHECKING
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
@@ -33,7 +33,10 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from loopy.kernel.instruction import InstructionBase
+    from loopy.match import ToMatchConvertible
 
 
 # {{{ find_instructions
@@ -327,7 +330,7 @@ def replace_instruction_ids(
 # {{{ tag_instructions
 
 @for_each_kernel
-def tag_instructions(kernel, new_tag, within=None):
+def tag_instructions(kernel, new_tag, within: ToMatchConvertible = None):
     from loopy.match import parse_match
     within = parse_match(within)
 

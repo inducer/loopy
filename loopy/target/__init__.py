@@ -38,22 +38,29 @@ THE SOFTWARE.
 """
 
 
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
     Generic,
-    Sequence,
     TypeVar,
 )
 
+from typing_extensions import override
+
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from pymbolic import Expression
+
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.target.c import DTypeRegistry
     from loopy.target.execution import ExecutorBase
-    from loopy.translation_unit import FunctionIdT, TranslationUnit
-    from loopy.typing import Expression
+    from loopy.translation_unit import CallableId, TranslationUnit
+    from loopy.types import LoopyType
 
 
 ASTType = TypeVar("ASTType")
@@ -71,6 +78,7 @@ class TargetBase:
     hash_fields: ClassVar[tuple[str, ...]] = ()
     comparison_fields: ClassVar[tuple[str, ...]] = ()
 
+    @override
     def __hash__(self):
         # NOTE: _hash_value may vanish during pickling
         if getattr(self, "_hash_value", None) is None:
@@ -140,13 +148,13 @@ class TargetBase:
 
     # {{{ types
 
-    def get_dtype_registry(self):
+    def get_dtype_registry(self) -> DTypeRegistry:
         raise NotImplementedError()
 
-    def is_vector_dtype(self, dtype):
+    def is_vector_dtype(self, dtype: LoopyType) -> bool:
         raise NotImplementedError()
 
-    def vector_dtype(self, base, count):
+    def vector_dtype(self, base: LoopyType, count: int) -> LoopyType:
         raise NotImplementedError()
 
     def alignment_requirement(self, type_decl):
@@ -163,7 +171,7 @@ class TargetBase:
         raise NotImplementedError()
 
     def get_kernel_executor(
-            self, t_unit: TranslationUnit, *args, entrypoint: FunctionIdT,
+            self, t_unit: TranslationUnit, *args, entrypoint: CallableId,
             **kwargs) -> ExecutorBase:
         """
         :returns: an immutable type to be used as the cache key for
@@ -172,12 +180,12 @@ class TargetBase:
         raise NotImplementedError()
 
 
+@dataclass(frozen=True)
 class ASTBuilderBase(Generic[ASTType]):
     """An interface for generating (host or device) ASTs.
     """
 
-    def __init__(self, target) -> None:
-        self.target = target
+    target: TargetBase
 
     # {{{ library
 

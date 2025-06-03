@@ -26,13 +26,14 @@ import collections.abc as abc
 import logging
 from functools import cached_property
 from sys import intern
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Generic, Literal, TypeVar, cast, overload
 
 import numpy as np
 from constantdict import constantdict
+from typing_extensions import override
 
 import islpy as isl
-from pytools import ProcessLogger, memoize_method
+from pytools import Hash, ProcessLogger, memoize_method
 from pytools.persistent_dict import (
     KeyBuilder as KeyBuilderBase,
     WriteOncePersistentDict,
@@ -41,11 +42,14 @@ from pytools.persistent_dict import (
 from .symbolic import (
     RuleAwareIdentityMapper,
 )
-from .typing import is_integer  # noqa: F401
 
 
 if TYPE_CHECKING:
     from numpy.typing import DTypeLike, NDArray
+
+    from loopy.kernel import LoopKernel
+    from loopy.translation_unit import TranslationUnit
+    from loopy.typing import InsnId
 
 
 logger = logging.getLogger(__name__)
@@ -377,29 +381,40 @@ class _PickledObjectWithEqAndPersistentHashKeys(_PickledObject):
 
 # {{{ lazily unpickling dictionary
 
-class LazilyUnpicklingDict(abc.MutableMapping):
+K = TypeVar("K")
+V = TypeVar("V")
+
+
+class LazilyUnpicklingDict(abc.MutableMapping[K, V]):
     """A dictionary-like object which lazily unpickles its values.
     """
 
-    def __init__(self, *args, **kwargs):
-        self._map = dict(*args, **kwargs)
+    _map: dict[K, V]
 
-    def __getitem__(self, key):
+    def __init__(self, *args: object):
+        self._map = dict(*args)
+
+    @override
+    def __getitem__(self, key: K) -> V:
         value = self._map[key]
         if isinstance(value, _PickledObject):
-            value = self._map[key] = value.unpickle()
+            value = self._map[key] = cast("V", value.unpickle())
         return value
 
+    @override
     def __setitem__(self, key, value):
         self._map[key] = value
 
+    @override
     def __delitem__(self, key):
         del self._map[key]
 
+    @override
     def __len__(self):
         return len(self._map)
 
-    def __iter__(self):
+    @override
+    def __iter__(self) -> abc.Iterator[K]:
         return iter(self._map)
 
     def __getstate__(self):
@@ -407,6 +422,7 @@ class LazilyUnpicklingDict(abc.MutableMapping):
             key: _PickledObject(val)
             for key, val in self._map.items()}}
 
+    @override
     def __repr__(self) -> str:
         return type(self).__name__ + "(" + repr(self._map) + ")"
 
@@ -415,28 +431,38 @@ class LazilyUnpicklingDict(abc.MutableMapping):
 
 # {{{ lazily unpickling list
 
-class LazilyUnpicklingList(abc.MutableSequence):
+class LazilyUnpicklingList(abc.MutableSequence[V]):
     """A list which lazily unpickles its values."""
+
+    _list: list[V]
 
     def __init__(self, *args, **kwargs):
         self._list = list(*args, **kwargs)
 
-    def __getitem__(self, key):
+    # incompatible because no slice support
+    @override
+    def __getitem__(self, key: int) -> V:  # pyright: ignore[reportIncompatibleMethodOverride]
         item = self._list[key]
         if isinstance(item, _PickledObject):
-            item = self._list[key] = item.unpickle()
+            item = self._list[key] = cast("V", item.unpickle())
         return item
 
-    def __setitem__(self, key, value):
+    # incompatible because no slice support
+    @override
+    def __setitem__(self, key: int, value: V):  # pyright: ignore[reportIncompatibleMethodOverride]
         self._list[key] = value
 
-    def __delitem__(self, key):
+    # incompatible because no slice support
+    @override
+    def __delitem__(self, key: int):  # pyright: ignore[reportIncompatibleMethodOverride]
         del self._list[key]
 
+    @override
     def __len__(self):
         return len(self._list)
 
-    def insert(self, key, value):
+    @override
+    def insert(self, key: int, value: V):
         self._list.insert(key, value)
 
     def __getstate__(self):
@@ -448,11 +474,12 @@ class LazilyUnpicklingList(abc.MutableSequence):
     def __mul__(self, other):
         return self._list * other
 
+    @override
     def __repr__(self) -> str:
         return type(self).__name__ + "(" + repr(self._list) + ")"
 
 
-class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
+class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList[V]):
     """A list which lazily unpickles its values, and supports equality comparison
     and persistent hashing without unpickling.
 
@@ -521,7 +548,7 @@ class _no_value:  # noqa
     pass
 
 
-class Optional:
+class Optional(Generic[V]):
     """A wrapper for an optionally present object.
 
     .. attribute:: has_value
@@ -533,18 +560,23 @@ class Optional:
         The value, if present.
     """
 
-    __slots__ = ("_value", "has_value")
+    has_value: bool
+    _value: V
 
-    def __init__(self, value=_no_value):
+    __slots__: ClassVar[tuple[str, ...]] = ("_value", "has_value")
+
+    def __init__(self, value: V | type[_no_value] = _no_value):
         self.has_value = value is not _no_value
         if self.has_value:
-            self._value = value
+            self._value = cast("V", value)
 
-    def __str__(self):
+    @override
+    def __str__(self) -> str:
         if not self.has_value:
             return "Optional()"
         return "Optional(%s)" % self._value
 
+    @override
     def __repr__(self):
         if not self.has_value:
             return "Optional()"
@@ -564,14 +596,15 @@ class Optional:
         self.has_value = True
         self._value, = state
 
-    def __eq__(self, other):
+    @override
+    def __eq__(self, other: object):
+        if not isinstance(other, Optional):
+            return False
+
         if not self.has_value:
             return not other.has_value
 
         return self.value == other.value if other.has_value else False
-
-    def __neq__(self, other):
-        return not self.__eq__(other)
 
     @property
     def value(self):
@@ -579,11 +612,14 @@ class Optional:
             raise AttributeError("optional value not present")
         return self._value
 
-    def update_persistent_hash(self, key_hash, key_builder):
+    def update_persistent_hash(self,
+            key_hash: Hash,
+            key_builder: KeyBuilderBase) -> None:
         key_builder.rec(
                 key_hash,
                 (self._value,) if self.has_value else ())
 
+    @override
     def __hash__(self):
         if not self.has_value:
             return hash((type(self), False))
@@ -622,7 +658,7 @@ def _is_generated_t_unit_the_same(python_code, var_name, ref_t_unit):
 
 # {{{ CallablesUnresolver
 
-class _CallablesUnresolver(RuleAwareIdentityMapper):
+class _CallablesUnresolver(RuleAwareIdentityMapper[[]]):
     def __init__(self, rule_mapping_context, callables_table, target):
         super().__init__(rule_mapping_context)
         self.callables_table = callables_table
@@ -666,19 +702,23 @@ def _unresolve_callables(kernel, callables_table):
 # }}}
 
 
-def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
+def _kernel_to_python(
+            kernel: LoopKernel,
+            is_entrypoint: bool = False,
+            var_name: str = "kernel"
+        ) -> str:
     from mako.template import Template
 
     from loopy.kernel.instruction import BarrierInstruction, MultiAssignmentBase
 
-    options = {}  # options: mapping from insn_id to str of options
+    options: dict[InsnId, str] = {}  # options: mapping from insn_id to str of options
 
     for insn in kernel.instructions:
         option = f"id={insn.id}, "
         if insn.depends_on:
             option += ("dep="+":".join(insn.depends_on)+", ")
         if insn.tags:
-            option += ("tags="+":".join(insn.tags)+", ")
+            option += ("tags="+":".join(str(tag) for tag in insn.tags)+", ")
         if insn.within_inames is not None:
             if insn.within_inames_is_final:
                 option += ("inames="+":".join(insn.within_inames)+", ")
@@ -781,8 +821,27 @@ def _kernel_to_python(kernel, is_entrypoint=False, var_name="kernel"):
     return python_code
 
 
-def t_unit_to_python(t_unit, var_name="t_unit",
-                     return_preamble_and_body_separately=False):
+@overload
+def t_unit_to_python(
+            t_unit: TranslationUnit,
+            *, var_name: str = "t_unit",
+            return_preamble_and_body_separately: Literal[False] = False
+        ) -> str: ...
+
+
+@overload
+def t_unit_to_python(
+            t_unit: TranslationUnit,
+            *, var_name: str = "t_unit",
+            return_preamble_and_body_separately: Literal[True]
+        ) -> tuple[str, str]: ...
+
+
+def t_unit_to_python(
+            t_unit: TranslationUnit,
+            *, var_name: str = "t_unit",
+            return_preamble_and_body_separately: bool = False
+        ) -> tuple[str, str] | str:
     """"
     Returns a :class:`str` of a python code that instantiates *kernel*.
 
@@ -809,7 +868,7 @@ def t_unit_to_python(t_unit, var_name="t_unit",
                      if isinstance(clbl, CallableKernel)}
     t_unit = t_unit.copy(callables_table=constantdict(new_callables))
 
-    knl_python_code_srcs = [_kernel_to_python(clbl.subkernel,
+    knl_python_code_srcs = [_kernel_to_python(cast("CallableKernel", clbl).subkernel,
                                               name in t_unit.entrypoints,
                                               f"{name}_knl"
                                               )

@@ -25,9 +25,9 @@ THE SOFTWARE.
 
 
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
-from typing_extensions import TypeAlias
+from typing_extensions import override
 
 import islpy as isl
 from islpy import dim_type
@@ -37,16 +37,21 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 from loopy.symbolic import (
+    ExpansionState,
+    Reduction,
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
 )
 from loopy.translation_unit import TranslationUnit, for_each_kernel
+from loopy.typing import not_none
 
 
 if TYPE_CHECKING:
+    from loopy.kernel.data import GroupInameTag, LocalInameTag, ToInameTagConvertible
     from loopy.kernel.instruction import InstructionBase
-    from loopy.match import ToStackMatchConvertible
+    from loopy.match import ToMatchConvertible, ToStackMatchConvertible
+    from loopy.typing import InameStr
 
 
 __doc__ = """
@@ -92,13 +97,18 @@ __doc__ = """
 
 .. autofunction:: add_inames_for_unused_hw_axes
 
+.. class:: ToInameTagConvertible
+
+    :class:`str` or :class:`~pytools.tag.Tag`.
 """
 
 
 # {{{ set loop priority
 
 @for_each_kernel
-def prioritize_loops(kernel, loop_priority):
+def prioritize_loops(
+        kernel: LoopKernel,
+        loop_priority: str | Sequence[InameStr]):
     """Indicates the textual order in which loops should be entered in the
     kernel code. Note that this priority has an advisory role only. If the
     kernel logically requires a different nesting, priority is ignored.
@@ -128,7 +138,7 @@ def prioritize_loops(kernel, loop_priority):
 
 # {{{ backend
 
-class _InameSplitter(RuleAwareIdentityMapper):
+class _InameSplitter(RuleAwareIdentityMapper[[]]):
     def __init__(self, rule_mapping_context, within,
             iname_to_split, outer_iname, inner_iname, replacement_index):
         super().__init__(rule_mapping_context)
@@ -169,8 +179,14 @@ class _InameSplitter(RuleAwareIdentityMapper):
             return super().map_variable(expr, expn_state)
 
 
-def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_length,
-        fixed_length_is_inner):
+def _split_iname_in_set(
+            s: isl.BasicSet,
+            iname_to_split: str,
+            inner_iname: str,
+            outer_iname: str,
+            fixed_length: int,
+            fixed_length_is_inner: bool
+        ):
     var_dict = s.get_var_dict()
 
     if iname_to_split not in var_dict:
@@ -220,13 +236,20 @@ def _split_iname_in_set(s, iname_to_split, inner_iname, outer_iname, fixed_lengt
     return s
 
 
-def _split_iname_backend(kernel, iname_to_split,
-        fixed_length, fixed_length_is_inner,
+def _split_iname_backend(
+        kernel: LoopKernel,
+        iname_to_split: InameStr,
+        fixed_length: int,
+        fixed_length_is_inner: bool,
         make_new_loop_index,
-        outer_iname=None, inner_iname=None,
-        outer_tag=None, inner_tag=None,
-        slabs=(0, 0), do_tagged_check=True,
-        within=None):
+        outer_iname: InameStr | None = None,
+        inner_iname: InameStr | None = None,
+        outer_tag: ToInameTagConvertible = None,
+        inner_tag: ToInameTagConvertible = None,
+        slabs: tuple[int, int] = (0, 0),
+        do_tagged_check: bool = True,
+        within: ToMatchConvertible = None
+    ) -> LoopKernel:
     """
     :arg within: If not None, limit the action of the transformation to
         matching contexts.  See :func:`loopy.match.parse_stack_match`
@@ -345,12 +368,17 @@ def _split_iname_backend(kernel, iname_to_split,
 # {{{ split iname
 
 @for_each_kernel
-def split_iname(kernel, split_iname, inner_length,
-        *,
-        outer_iname=None, inner_iname=None,
-        outer_tag=None, inner_tag=None,
-        slabs=(0, 0), do_tagged_check=True,
-        within=None):
+def split_iname(
+            kernel: LoopKernel, split_iname: InameStr, inner_length: int,
+            *,
+            outer_iname: InameStr | None = None,
+            inner_iname: InameStr | None = None,
+            outer_tag: ToInameTagConvertible = None,
+            inner_tag: ToInameTagConvertible = None,
+            slabs: tuple[int, int] = (0, 0),
+            do_tagged_check: bool = True,
+            within: ToMatchConvertible = None
+        ) -> LoopKernel:
     """Split *split_iname* into two inames (an 'inner' one and an 'outer' one)
     so that ``split_iname == inner + outer*inner_length`` and *inner* is of
     constant length *inner_length*.
@@ -392,11 +420,16 @@ def split_iname(kernel, split_iname, inner_length,
 # {{{ chunk iname
 
 @for_each_kernel
-def chunk_iname(kernel, split_iname, num_chunks,
-        outer_iname=None, inner_iname=None,
-        outer_tag=None, inner_tag=None,
-        slabs=(0, 0), do_tagged_check=True,
-        within=None):
+def chunk_iname(
+            kernel: LoopKernel, split_iname: InameStr, num_chunks: int,
+            outer_iname: InameStr | None = None,
+            inner_iname: InameStr | None = None,
+            outer_tag: ToInameTagConvertible = None,
+            inner_tag: ToInameTagConvertible = None,
+            slabs: tuple[int, int] = (0, 0),
+            do_tagged_check: bool = True,
+            within: ToMatchConvertible = None
+         ) -> LoopKernel:
     """
     Split *split_iname* into two inames (an 'inner' one and an 'outer' one)
     so that ``split_iname == inner + outer*chunk_length`` and *outer* is of
@@ -530,7 +563,9 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
 
 @for_each_kernel
-def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
+def join_inames(kernel, inames, new_iname=None, tag=None,
+                within: ToMatchConvertible = None,
+            ):
     """In a sense, the inverse of :func:`split_iname`. Takes in inames,
     finds their bounds (all but the first have to be bounded), and combines
     them into a single loop via analogs of ``new_iname = i0 * LEN(i1) + i1``.
@@ -640,12 +675,12 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
                 ))
 
     from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
+    within_s = parse_stack_match(within)
 
     from pymbolic.mapper.substitutor import make_subst_func
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
-    ijoin = _InameJoiner(rule_mapping_context, within,
+    ijoin = _InameJoiner(rule_mapping_context, within_s,
             make_subst_func(subst_dict),
             inames, new_iname)
 
@@ -686,7 +721,7 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
-_Tags_ish: TypeAlias = Tag | Sequence[Tag] | str  | Sequence[str]
+_Tags_ish: TypeAlias = Tag | Collection[Tag] | str  | Collection[str]
 
 
 @for_each_kernel
@@ -912,7 +947,7 @@ def duplicate_inames(kernel, inames, within, new_inames=None, suffix=None,
         from loopy.isl_helpers import duplicate_axes
         kernel = kernel.copy(
                 domains=domch.get_domains_with(
-                    duplicate_axes(domch.domain, [old_iname], [new_iname])))
+                    duplicate_axes(domch.domain, [old_iname], [not_none(new_iname)])))
 
     # }}}
 
@@ -1524,7 +1559,11 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 
 # {{{ find unused axes
 
-def find_unused_axis_tag(kernel, kind, insn_match=None):
+def find_unused_axis_tag(
+                kernel: LoopKernel,
+                kind: str | type[GroupInameTag | LocalInameTag],
+                insn_match: ToMatchConvertible = None,
+            ) -> GroupInameTag | LocalInameTag:
     """For one of the hardware-parallel execution tags, find an unused
     axis.
 
@@ -1536,20 +1575,20 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
         :class:`loopy.kernel.data.LocalInameTag` that is not being used within
         the instructions matched by *insn_match*.
     """
-    used_axes = set()
+    used_axes: set[int] = set()
 
     from loopy.kernel.data import GroupInameTag, LocalInameTag
 
+    kind_cls: type[GroupInameTag | LocalInameTag]
     if isinstance(kind, str):
-        found = False
         for cls in [GroupInameTag, LocalInameTag]:
             if kind == cls.print_name:
-                kind = cls
-                found = True
+                kind_cls = cls
                 break
-
-        if not found:
+        else:
             raise LoopyError("invalid tag kind: %s" % kind)
+    else:
+        kind_cls = kind
 
     from loopy.match import parse_match
     match = parse_match(insn_match)
@@ -1557,14 +1596,14 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
 
     for insn in insns:
         for iname in insn.within_inames:
-            if kernel.iname_tags_of_type(iname, kind):
-                used_axes.add(kind.axis)
+            if kernel.iname_tags_of_type(iname, kind_cls):
+                used_axes.add(kind_cls.axis)
 
     i = 0
     while i in used_axes:
         i += 1
 
-    return kind(i)
+    return kind_cls(i)
 
 # }}}
 
@@ -1588,7 +1627,12 @@ def separate_loop_head_tail_slab(kernel, iname, head_it_count, tail_it_count):
 
 # {{{ make_reduction_inames_unique
 
-class _ReductionInameUniquifier(RuleAwareIdentityMapper):
+class _ReductionInameUniquifier(RuleAwareIdentityMapper[[]]):
+    inames: Sequence[InameStr]
+    old_to_new: list[tuple[str, str]]
+    iname_to_red_count: dict[InameStr, int]
+    iname_to_nonsimultaneous_red_count: dict[InameStr, int]
+
     def __init__(self, rule_mapping_context, inames, within):
         super().__init__(rule_mapping_context)
 
@@ -1605,7 +1649,8 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
                 hash(frozenset(self.iname_to_nonsimultaneous_red_count.items())),
                 )
 
-    def map_reduction(self, expr, expn_state):
+    @override
+    def map_reduction(self, expr: Reduction, expn_state: ExpansionState):
         within = self.within(
                     expn_state.kernel,
                     expn_state.instruction,
@@ -1623,7 +1668,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
 
             from pymbolic import var
 
-            new_inames = []
+            new_inames: list[str] = []
             for iname in expr.inames:
                 if (
                         not (self.inames is None or iname in self.inames)
@@ -1639,7 +1684,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
 
             from pymbolic.mapper.substitutor import make_subst_func
 
-            from loopy.symbolic import Reduction, SubstitutionMapper
+            from loopy.symbolic import SubstitutionMapper
             return Reduction(expr.operation, tuple(new_inames),
                     self.rec(
                         SubstitutionMapper(make_subst_func(subst_dict))(
@@ -1647,8 +1692,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
                         expn_state),
                     expr.allow_simultaneous)
         else:
-            return super().map_reduction(
-                    expr, expn_state)
+            return super().map_reduction(expr, expn_state)
 
 
 @for_each_kernel
@@ -2124,7 +2168,7 @@ def map_domain(kernel, transform_map):
         dim_types = [dim_type.param, dim_type.in_, dim_type.out]
         # Variables found in iname domain set
         s_names = {
-                map_with_s_domain.get_dim_name(dt, i)
+                not_none(map_with_s_domain.get_dim_name(dt, i))
                 for dt in dim_types
                 for i in range(map_with_s_domain.dim(dt))
                 }
@@ -2263,7 +2307,8 @@ def map_domain(kernel, transform_map):
 
 
 @for_each_kernel
-def add_inames_for_unused_hw_axes(kernel, within=None):
+def add_inames_for_unused_hw_axes(kernel: LoopKernel,
+                                  within: ToMatchConvertible = None) -> LoopKernel:
     """
     Returns a kernel with inames added to each instruction
     corresponding to any hardware-parallel iname tags
@@ -2306,10 +2351,10 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
 
     # local_axes_to_inames: ith entry contains the iname tagged with l.i or None
     # if multiple inames are tagged with l.i
-    local_axes_to_inames = []
+    local_axes_to_inames: list[InameStr | None] = []
     # group_axes_to_inames: ith entry contains the iname tagged with g.i or None
     # if multiple inames are tagged with g.i
-    group_axes_to_inames = []
+    group_axes_to_inames: list[InameStr | None] = []
 
     for i in range(n_local_axes):
         ith_local_axes_tag = LocalInameTag(i)
@@ -2336,7 +2381,7 @@ def add_inames_for_unused_hw_axes(kernel, within=None):
     from loopy.match import parse_match
     within = parse_match(within)
 
-    new_insns = []
+    new_insns: list[InstructionBase] = []
 
     for insn in kernel.instructions:
         if within(kernel, insn):

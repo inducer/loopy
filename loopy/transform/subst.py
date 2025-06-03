@@ -24,9 +24,10 @@ THE SOFTWARE.
 """
 
 import logging
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
-from pymbolic import var
-from pytools import ImmutableRecord
+from pymbolic import Expression, Variable, var
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
@@ -35,16 +36,26 @@ from loopy.transform.iname import remove_any_newly_unused_inames
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
+if TYPE_CHECKING:
+    from loopy.kernel.instruction import InstructionBase
+    from loopy.match import ToMatchConvertible
+
+
 logger = logging.getLogger(__name__)
 
 
-class ExprDescriptor(ImmutableRecord):
-    __slots__ = ["expr", "insn", "unif_var_dict"]
+@dataclass(frozen=True)
+class ExprDescriptor:
+    expr: Expression
+    insn: InstructionBase
+    unif_var_dict: dict[str, Expression]
 
 
 # {{{ extract_subst
 
-def extract_subst(kernel, subst_name, template, parameters=(), within=None):
+def extract_subst(kernel, subst_name, template, parameters=(),
+            within: ToMatchConvertible = None
+        ):
     """
     :arg subst_name: The name of the substitution rule to be created.
     :arg template: Unification template expression.
@@ -117,7 +128,7 @@ def extract_subst(kernel, subst_name, template, parameters=(), within=None):
                     ExprDescriptor(
                         insn=insn,
                         expr=expr,
-                        unif_var_dict={lhs.name: rhs
+                        unif_var_dict={cast("Variable", lhs).name: rhs
                             for lhs, rhs in urec.equations}))
         else:
             mapper.fallback_mapper(expr)

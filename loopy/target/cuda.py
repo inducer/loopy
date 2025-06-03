@@ -1,6 +1,8 @@
 """CUDA target independent of PyCUDA."""
 from __future__ import annotations
 
+from loopy.typing import not_none
+
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -24,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -48,6 +50,8 @@ from loopy.types import NumpyType
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
 
@@ -318,6 +322,7 @@ def cuda_preamble_generator(preamble_info):
 # {{{ ast builder
 
 class CUDACASTBuilder(CFamilyASTBuilder):
+    target: CudaTarget
 
     preamble_function_qualifier = "inline __device__"
 
@@ -433,7 +438,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
         vec_size = ary.vector_length()
         if vec_size > 1:
-            dtype = self.target.vector_dtype(dtype, vec_size)
+            dtype = self.target.vector_dtype(not_none(dtype), vec_size)
 
         if ary.dim_tags:
             for dim_tag in ary.dim_tags:

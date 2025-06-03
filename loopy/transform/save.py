@@ -24,6 +24,7 @@ THE SOFTWARE.
 """
 
 import logging
+from dataclasses import dataclass
 from functools import cached_property
 
 from constantdict import constantdict
@@ -41,7 +42,7 @@ from loopy.schedule import (
     RunInstruction,
 )
 from loopy.schedule.tools import get_block_boundaries
-from loopy.types import auto
+from loopy.typing import auto
 
 
 logger = logging.getLogger(__name__)
@@ -56,14 +57,16 @@ __doc__ = """
 
 # {{{ liveness analysis
 
-class LivenessResult(dict):
+@dataclass
+class InstructionLivenessResult:
+    live_in: set[str]
+    live_out: set[str]
 
-    class InstructionResult(Record):
-        __slots__ = ["live_in", "live_out"]
 
+class LivenessResult(dict[int, InstructionLivenessResult]):
     @classmethod
-    def make_empty(cls, nscheditems):
-        return cls((idx, cls.InstructionResult(live_in=set(), live_out=set()))
+    def make_empty(cls, nscheditems: int):
+        return cls((idx, InstructionLivenessResult(live_in=set(), live_out=set()))
                    for idx in range(nscheditems))
 
 
@@ -272,9 +275,9 @@ class TemporarySaver:
                     isl.Space.create_from_names(
                         isl.DEFAULT_CONTEXT,
                         set=[],
-                        params={
+                        params=[
                             arg.name for arg in kernel.args
-                            if isinstance(arg, ValueArg)})))
+                            if isinstance(arg, ValueArg)])))
 
     def find_accessing_instructions_in_subkernel(self, temporary, subkernel):
         # Find all accessing instructions in the subkernel. If base_storage is

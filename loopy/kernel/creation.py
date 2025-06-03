@@ -32,7 +32,7 @@ import logging
 import re
 from dataclasses import dataclass
 from sys import intern
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -56,6 +56,7 @@ from loopy.kernel.data import (
 from loopy.symbolic import IdentityMapper, SubArrayRef, WalkMapper
 from loopy.tools import Optional, intern_frozenset_of_ids
 from loopy.translation_unit import TranslationUnit, for_each_kernel
+from loopy.typing import not_none
 
 
 logger = logging.getLogger(__name__)
@@ -2315,7 +2316,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
     default_offset = kwargs.pop("default_offset", 0)
-    silenced_warnings = kwargs.pop("silenced_warnings", [])
+    silenced_warnings = cast("Sequence[str]", kwargs.pop("silenced_warnings", []))
     options = kwargs.pop("options", None)
     flags = kwargs.pop("flags", None)
     target = kwargs.pop("target", None)
@@ -2472,7 +2473,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
         for i in range(dom0_space.dim(dim_type.param)):
             assumptions_space = assumptions_space.set_dim_name(
                     dim_type.param, i,
-                    dom0_space.get_dim_name(dim_type.param, i))
+                    not_none(dom0_space.get_dim_name(dim_type.param, i)))
         assumptions = isl.BasicSet.universe(assumptions_space)
     elif isinstance(assumptions, str):
         assumptions_set_str = "[%s] -> { : %s}" \
@@ -2532,7 +2533,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     from loopy.kernel import LoopKernel
     knl = LoopKernel(domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
-            silenced_warnings=silenced_warnings,
+            silenced_warnings=frozenset(silenced_warnings),
             options=options,
             target=target,
             tags=tags,

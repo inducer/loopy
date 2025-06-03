@@ -27,12 +27,12 @@ from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
     Any,
-    Mapping,
-    Sequence,
 )
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     import islpy
 
     from loopy.codegen import CodeGenerationState
@@ -119,7 +119,7 @@ class CodeGenerationResult:
     """
     host_program: GeneratedProgram | None
     device_programs: Sequence[GeneratedProgram]
-    implemented_domains: Mapping[str, islpy.Set]
+    implemented_domains: Mapping[str, list[islpy.Set]]
     host_preambles: Sequence[tuple[str, str]] = ()
     device_preambles: Sequence[tuple[str, str]] = ()
 
@@ -227,8 +227,9 @@ class CodeGenerationResult:
 # {{{ support code for AST merging
 
 def merge_codegen_results(
-        codegen_state: CodeGenerationState,
-        elements: Sequence[CodeGenerationResult | Any], collapse=True
+            codegen_state: CodeGenerationState,
+            elements: Sequence[CodeGenerationResult | Any],
+            collapse: bool = True
         ) -> CodeGenerationResult:
     elements = [el for el in elements if el is not None]
 
@@ -247,7 +248,7 @@ def merge_codegen_results(
     new_device_programs = []
     new_device_preambles: list[tuple[str, str]] = []
     dev_program_names = set()
-    implemented_domains: dict[str, islpy.Set] = {}
+    implemented_domains: dict[str, list[islpy.Set]] = {}
     codegen_result = None
 
     block_cls = codegen_state.ast_builder.ast_block_class

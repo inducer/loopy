@@ -129,11 +129,11 @@ def get_loopy_callables() -> CallablesTable:
     - callables that have a predefined meaning in :mod:`loo.py` like
       ``make_tuple``, ``index_of``, ``indexof_vec``.
     """
-    return {
+    return constantdict({
             "make_tuple": MakeTupleCallable(name="make_tuple"),
             "indexof": IndexOfCallable(name="indexof"),
             "indexof_vec": IndexOfCallable(name="indexof_vec"),
-            }
+            })
 
 
 # vim: foldmethod=marker
