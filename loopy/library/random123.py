@@ -24,61 +24,72 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 from constantdict import constantdict
 from mako.template import Template
+from typing_extensions import override
 
 from pymbolic.typing import not_none
 
-from loopy.kernel.function_interface import ScalarCallable
+from loopy.kernel.function_interface import ArgDescriptor, ScalarCallable
 
 
 if TYPE_CHECKING:
-    from loopy.target import TargetBase
+    from collections.abc import Mapping
+
+    from loopy.target.c import CFamilyTarget
+    from loopy.translation_unit import CallablesInferenceContext
+    from loopy.types import LoopyType
 
 
 # {{{ rng metadata
 
-@dataclass(frozen=True)
-class RNGInfo:
+class BaseRNGInfo(NamedTuple):
     name: str
     pyopencl_header: str
     generic_header: str
     key_width: int
-    width: int | None = None
-    bits: int | None = None
+
+
+class RNGInfo(NamedTuple):
+    name: str
+    pyopencl_header: str
+    generic_header: str
+    key_width: int
+
+    width: int
+    bits: int
 
     @property
     def full_name(self) -> str:
         return "%s%dx%d" % (self.name, not_none(self.width), not_none(self.bits))
 
 
-_philox_base_info = RNGInfo(
+_philox_base_info = BaseRNGInfo(
             name="philox",
             pyopencl_header="pyopencl-random123/philox.cl",
             generic_header="Random123/philox.h",
             key_width=2)
 
-_threefry_base_info = RNGInfo(
+_threefry_base_info = BaseRNGInfo(
             name="threefry",
             pyopencl_header="pyopencl-random123/threefry.cl",
             generic_header="Random123/threefry.h",
             key_width=4)
 
 RNG_VARIANTS = [
-        replace(_philox_base_info, width=2, bits=32),
-        replace(_philox_base_info, width=2, bits=64),
-        replace(_philox_base_info, width=4, bits=32),
-        replace(_philox_base_info, width=4, bits=64),
+        RNGInfo(*_philox_base_info, 2, 32),
+        RNGInfo(*_philox_base_info, 2, 64),
+        RNGInfo(*_philox_base_info, 4, 32),
+        RNGInfo(*_philox_base_info, 4, 64),
 
-        replace(_threefry_base_info, width=2, bits=32),
-        replace(_threefry_base_info, width=2, bits=64),
-        replace(_threefry_base_info, width=4, bits=32),
-        replace(_threefry_base_info, width=4, bits=64),
+        RNGInfo(*_threefry_base_info, 2, 32),
+        RNGInfo(*_threefry_base_info, 2, 64),
+        RNGInfo(*_threefry_base_info, 4, 32),
+        RNGInfo(*_threefry_base_info, 4, 64),
         ]
 
 FUNC_NAMES_TO_RNG = {
@@ -187,25 +198,32 @@ class Random123Callable(ScalarCallable):
     """
     Records information about for the random123 functions.
     """
-    target: TargetBase
+    target: CFamilyTarget
 
-    def __init__(self, name, arg_id_to_dtype=None,
-                 arg_id_to_descr=None, name_in_target=None, target=None):
+    def __init__(self,
+                 name: str,
+                 arg_id_to_dtype: Mapping[int | str, LoopyType] | None = None,
+                 arg_id_to_descr: Mapping[int | str, ArgDescriptor] | None = None,
+                 name_in_target: str | None = None,
+                 target: CFamilyTarget | None = None,
+             ) -> None:
         super().__init__(name=name,
                          arg_id_to_dtype=arg_id_to_dtype,
                          arg_id_to_descr=arg_id_to_descr,
                          name_in_target=name_in_target)
 
-        object.__setattr__(self, "target", target)
+        object.__setattr__(self, "target", not_none(target))
 
-    def with_types(self, arg_id_to_dtype, callables_table):
+    @override
+    def with_types(self,
+                   arg_id_to_dtype: Mapping[int | str, LoopyType],
+                   clbl_inf_ctx: CallablesInferenceContext,
+               ) -> tuple[ScalarCallable, CallablesInferenceContext]:
 
-        if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype or (
-                arg_id_to_dtype[0] is None or arg_id_to_dtype[1] is None):
+        if 0 not in arg_id_to_dtype or 1 not in arg_id_to_dtype:
             # the types provided aren't mature enough to specialize the
             # callable
-            return (self.copy(),
-                    callables_table)
+            return (self.copy(), clbl_inf_ctx)
 
         name = self.name
         target = self.target
@@ -224,7 +242,7 @@ class Random123Callable(ScalarCallable):
             return (
                     self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
                               name_in_target=fn+"_gen"),
-                    callables_table)
+                    clbl_inf_ctx)
 
         elif name == fn + "_f32":
             new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float32),
@@ -234,7 +252,7 @@ class Random123Callable(ScalarCallable):
             return (
                     self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
                               name_in_target=name),
-                    callables_table)
+                    clbl_inf_ctx)
 
         elif name == fn + "_f64":
             new_arg_id_to_dtype = {-1: target.vector_dtype(NumpyType(np.float64),
@@ -244,10 +262,10 @@ class Random123Callable(ScalarCallable):
             return (
                     self.copy(arg_id_to_dtype=constantdict(new_arg_id_to_dtype),
                               name_in_target=name),
-                    callables_table)
+                    clbl_inf_ctx)
 
         return (self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
-                callables_table)
+                clbl_inf_ctx)
 
     def generate_preambles(self, target):
         rng_variant = FUNC_NAMES_TO_RNG[self.name]

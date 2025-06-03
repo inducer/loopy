@@ -22,7 +22,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
+from typing import TYPE_CHECKING, TypeVar
 
 from constantdict import constantdict
 
@@ -34,6 +34,10 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel
 from loopy.translation_unit import TranslationUnit
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 
 def _apply_renames_in_exprs(kernel, var_renames):
@@ -99,8 +103,11 @@ def _find_fusable_loop_domain_index(domain, other_domains):
 
 # {{{ generic merge helpers
 
-def _ordered_merge_lists(list_a, list_b):
-    result = list_a[:]
+T  = TypeVar("T")
+
+
+def _ordered_merge_lists(list_a: Sequence[T], list_b: Sequence[T]) -> list[T]:
+    result = list(list_a)
     for item in list_b:
         if item not in list_b:
             result.append(item)
@@ -108,8 +115,16 @@ def _ordered_merge_lists(list_a, list_b):
     return result
 
 
-def _merge_dicts(item_name, dict_a, dict_b):
-    result = dict(dict_a)
+K = TypeVar("K")
+V = TypeVar("V")
+
+
+def _merge_dicts(
+            item_name: str,
+            dict_a: constantdict[K, V],
+            dict_b: Mapping[K, V]
+        ) -> constantdict[K, V]:
+    result = dict_a.mutate()
 
     for k, v in dict_b.items():
         if k in result:
@@ -120,13 +135,10 @@ def _merge_dicts(item_name, dict_a, dict_b):
         else:
             result[k] = v
 
-    if isinstance(dict_a, constantdict):
-        return constantdict(result)
-    else:
-        return result
+    return result.finish()
 
 
-def _merge_values(item_name, val_a, val_b):
+def _merge_values(item_name: str, val_a: T, val_b: T) -> T:
     if val_a != val_b:
         raise LoopyError("inconsistent %ss in merge: %s and %s"
                 % (item_name, val_a, val_b))
@@ -138,11 +150,11 @@ def _merge_values(item_name, val_a, val_b):
 
 # {{{ two-kernel fusion
 
-def _fuse_two_kernels(kernela, kernelb):
+def _fuse_two_kernels(kernela: LoopKernel, kernelb: LoopKernel):
 
     # {{{ fuse domains
 
-    new_domains = kernela.domains[:]
+    new_domains = list(kernela.domains)
 
     for dom_b in kernelb.domains:
         i_fuse = _find_fusable_loop_domain_index(dom_b, new_domains)
@@ -175,7 +187,7 @@ def _fuse_two_kernels(kernela, kernelb):
 
     # {{{ fuse args
 
-    new_args = kernela.args[:]
+    new_args = list(kernela.args)
     for b_arg in kernelb.args:
         if b_arg.name not in kernela.arg_dict:
             new_arg_name = vng(b_arg.name)
@@ -198,7 +210,7 @@ def _fuse_two_kernels(kernela, kernelb):
 
     # {{{ fuse temporaries
 
-    new_temporaries = kernela.temporary_variables.copy()
+    new_temporaries = dict(kernela.temporary_variables)
     for b_name, b_tv in kernelb.temporary_variables.items():
         assert b_name == b_tv.name
 
@@ -253,11 +265,11 @@ def _fuse_two_kernels(kernela, kernelb):
             temporary_variables=new_temporaries,
             inames=_merge_dicts(
                 "inames",
-                kernela.inames,
+                constantdict(kernela.inames),
                 kernelb.inames),
             substitutions=_merge_dicts(
                 "substitution",
-                kernela.substitutions,
+                constantdict(kernela.substitutions),
                 kernelb.substitutions),
             symbol_manglers=_ordered_merge_lists(
                 kernela.symbol_manglers,
@@ -268,12 +280,11 @@ def _fuse_two_kernels(kernela, kernelb):
                 kernela.iname_slab_increments,
                 kernelb.iname_slab_increments),
             loop_priority=kernela.loop_priority.union(kernelb.loop_priority),
-            silenced_warnings=_ordered_merge_lists(
-                kernela.silenced_warnings,
-                kernelb.silenced_warnings),
-            applied_iname_rewrites=_ordered_merge_lists(
+            silenced_warnings=frozenset(
+                            {*kernela.silenced_warnings, *kernelb.silenced_warnings}),
+            applied_iname_rewrites=tuple(_ordered_merge_lists(
                 kernela.applied_iname_rewrites,
-                kernelb.applied_iname_rewrites),
+                kernelb.applied_iname_rewrites)),
             index_dtype=_merge_values(
                 "index dtype",
                 kernela.index_dtype,

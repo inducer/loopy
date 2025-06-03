@@ -36,10 +36,10 @@ THE SOFTWARE.
 """
 
 
-from typing import Tuple, TypeVar
+from typing import TypeAlias, TypeVar
 
 import numpy as np
-from typing_extensions import TypeAlias, TypeIs
+from typing_extensions import TypeIs
 
 from pymbolic.primitives import ExpressionNode
 from pymbolic.typing import ArithmeticExpression, Expression, Integer
@@ -47,11 +47,13 @@ from pymbolic.typing import ArithmeticExpression, Expression, Integer
 
 # The Fortran parser may insert dimensions of 'None', but I'd like to phase
 # that out, so we're not encoding that in the type.
-ShapeType: TypeAlias = Tuple[ArithmeticExpression, ...]
+ShapeType: TypeAlias = tuple[ArithmeticExpression, ...]
 StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str
 InameStrSet: TypeAlias = frozenset[InameStr]
+
+InsnId: TypeAlias = str
 
 
 class auto:  # noqa

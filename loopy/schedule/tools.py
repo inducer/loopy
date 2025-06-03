@@ -64,10 +64,9 @@ import enum
 import itertools
 from dataclasses import dataclass
 from functools import cached_property, reduce
-from typing import TYPE_CHECKING, AbstractSet, Sequence
+from typing import TYPE_CHECKING, TypeAlias
 
 from constantdict import constantdict
-from typing_extensions import TypeAlias
 
 import islpy as isl
 from pytools import memoize_method, memoize_on_first_arg
@@ -79,7 +78,7 @@ from loopy.typing import InameStr, InameStrSet, not_none
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Mapping
+    from collections.abc import Callable, Collection, Mapping, Sequence, Set
 
     from loopy.kernel import LoopKernel
     from loopy.schedule import ScheduleItem
@@ -943,7 +942,7 @@ def _order_loop_nests(
 
 
 @memoize_on_first_arg
-def _get_parallel_inames(kernel: LoopKernel) -> AbstractSet[str]:
+def _get_parallel_inames(kernel: LoopKernel) -> Set[str]:
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
     concurrent_inames = {iname for iname in kernel.all_inames()

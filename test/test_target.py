@@ -24,6 +24,7 @@ import logging
 
 import numpy as np
 import pytest
+from typing_extensions import override
 
 import pymbolic.primitives as prim
 import pyopencl as cl
@@ -557,6 +558,7 @@ def test_pyopencl_target_with_global_temps_with_base_storage(
             super().__init__(queue)
             self.allocated_nbytes = 0
 
+        @override
         def __call__(self, size):
             self.allocated_nbytes += size
             return super().__call__(size)

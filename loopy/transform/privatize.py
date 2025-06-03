@@ -27,6 +27,7 @@ THE SOFTWARE.
 import logging
 
 import pymbolic
+import pymbolic.primitives as p
 
 from loopy.diagnostic import LoopyError
 from loopy.translation_unit import for_each_kernel
@@ -49,14 +50,15 @@ __doc__ = """
 from loopy.symbolic import IdentityMapper, flatten
 
 
-class ExtraInameIndexInserter(IdentityMapper):
+class ExtraInameIndexInserter(IdentityMapper[[]]):
     def __init__(self, var_to_new_inames, iname_to_lbound):
         self.var_to_new_inames = var_to_new_inames
         self.iname_to_lbound = iname_to_lbound
         self.seen_priv_axis_inames = set()
         super().__init__()
 
-    def map_subscript(self, expr):
+    def map_subscript(self, expr: p.Subscript):
+        assert isinstance(expr.aggregate, p.Variable)
         try:
             extra_idx = self.var_to_new_inames[expr.aggregate.name]
         except KeyError:
@@ -74,9 +76,9 @@ class ExtraInameIndexInserter(IdentityMapper):
 
             if len(new_idx) == 1:
                 new_idx = new_idx[0]
-            return expr.aggregate.index(new_idx)
+            return expr.aggregate[new_idx]
 
-    def map_variable(self, expr):
+    def map_variable(self, expr: p.Variable):
         try:
             new_idx = self.var_to_new_inames[expr.name]
         except KeyError:
@@ -89,7 +91,7 @@ class ExtraInameIndexInserter(IdentityMapper):
 
             if len(new_idx) == 1:
                 new_idx = new_idx[0]
-            return expr.index(new_idx)
+            return expr[new_idx]
 
 
 @for_each_kernel
@@ -266,14 +268,15 @@ def privatize_temporaries_with_inames(
 
 # {{{ unprivatize temporaries with iname
 
-class _InameRemover(IdentityMapper):
+class _InameRemover(IdentityMapper[[bool]]):
     def __init__(self, inames_to_remove, only_var_names):
         self.only_var_names = only_var_names
         self.inames_to_remove = inames_to_remove
         self.var_name_to_remove_indices = {}
         super().__init__()
 
-    def map_subscript(self, expr, in_subscript=False):
+    def map_subscript(self, expr: p.Subscript, in_subscript: bool = False):
+        assert isinstance(expr.aggregate, p.Variable)
         name = expr.aggregate.name
         if not self.only_var_names or name in self.only_var_names:
             index = expr.index
@@ -304,7 +307,7 @@ class _InameRemover(IdentityMapper):
                     new_index = new_index[0]
                 else:
                     new_index = tuple(new_index)
-                return expr.aggregate.index(new_index)
+                return expr.aggregate[new_index]
             else:
                 return expr.aggregate
         else:

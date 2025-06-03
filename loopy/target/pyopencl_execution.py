@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -42,6 +42,8 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
     from constantdict import constantdict
 
     import pyopencl as cl

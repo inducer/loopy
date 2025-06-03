@@ -28,9 +28,11 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Iterable, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 import numpy as np
+from typing_extensions import override
 
 from pymbolic.primitives import Lookup, Subscript, Variable
 
@@ -42,25 +44,40 @@ from loopy.diagnostic import (
 from loopy.kernel.instruction import MultiAssignmentBase, _DataObliviousInstruction
 from loopy.symbolic import (
     CombineMapper,
+    GroupHardwareAxisIndex,
     LinearSubscript,
+    LocalHardwareAxisIndex,
+    Reduction,
     ResolvedFunction,
     RuleAwareIdentityMapper,
     SubArrayRef,
     SubstitutionRuleExpander,
     SubstitutionRuleMappingContext,
+    TaggedVariable,
+    TypeCast,
     parse_tagged_name,
 )
 from loopy.translation_unit import (
+    CallableId,
     CallablesInferenceContext,
+    CallablesTable,
     TranslationUnit,
     make_clbl_inf_ctx,
 )
-from loopy.types import NumpyType
+from loopy.types import LoopyType, NumpyType
 from loopy.typing import is_integer
 
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
+    import pymbolic.primitives as p
+    from pymbolic import Expression
+
     from loopy.kernel import LoopKernel
+    from loopy.kernel.data import KernelArgument, TemporaryVariable
+    from loopy.kernel.function_interface import CallableKernel
+    from loopy.library.reduction import ReductionOpFunction
 
 
 logger = logging.getLogger(__name__)
@@ -119,7 +136,10 @@ class FunctionNameChanger(RuleAwareIdentityMapper):
         raise NotImplementedError
 
 
-def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
+def change_names_of_pymbolic_calls(
+            kernel: LoopKernel,
+            pymbolic_calls_to_new_names: Mapping[p.Call, CallableId]
+        ):
     """
     Returns a copy of *kernel* with the names of pymbolic calls changed
     according to the mapping given by *pymbolic_calls_new_names*.
@@ -196,15 +216,14 @@ def change_names_of_pymbolic_calls(kernel, pymbolic_calls_to_new_names):
 
 # {{{ type inference mapper
 
-class TypeInferenceMapper(CombineMapper):
+class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
+    kernel: LoopKernel
+    clbl_inf_ctx: CallablesInferenceContext
+    symbols_with_unknown_types: set[str]
+    new_assignments: dict[str, TemporaryVariable | KernelArgument]
+    old_calls_to_new_calls: dict[p.Call, ReductionOpFunction | p.Variable]
+
     def __init__(self, kernel, clbl_inf_ctx, new_assignments=None):
-        """
-        :arg new_assignments: mapping from names to either
-            :class:`loopy.kernel.data.TemporaryVariable`
-            or
-            :class:`loopy.kernel.data.KernelArgument`
-            instances
-        """
         self.kernel = kernel
         assert isinstance(clbl_inf_ctx, CallablesInferenceContext)
         if new_assignments is None:
@@ -215,13 +234,51 @@ class TypeInferenceMapper(CombineMapper):
         self.old_calls_to_new_calls = {}
         super().__init__()
 
-    def __call__(self, expr, return_tuple=False, return_dtype_set=False):
+    @overload
+    def __call__(self,
+                expr: Expression,
+                *,
+                return_tuple: Literal[False] = False,
+                return_dtype_set: Literal[False] = False,
+            ) -> LoopyType:
+        ...
+
+    @overload
+    def __call__(self,
+                expr: Expression,
+                *,
+                return_tuple: Literal[False] = False,
+                return_dtype_set: Literal[True],
+            ) -> Sequence[LoopyType]:
+        ...
+
+    @overload
+    def __call__(self,
+                expr: Expression,
+                *,
+                return_tuple: Literal[True],
+                return_dtype_set: Literal[True],
+            ) -> Sequence[tuple[LoopyType, ...]]:
+        ...
+
+    @override
+    def __call__(self,  # pyright: ignore[reportIncompatibleMethodOverride]
+                expr: Expression,
+                *,
+                return_tuple: bool = False,
+                return_dtype_set: bool = False,
+            ) -> (
+                Sequence[LoopyType]
+                | Sequence[tuple[LoopyType, ...]]
+                | LoopyType
+                | tuple[LoopyType, ...]):
         kwargs = {}
         if return_tuple:
             kwargs["return_tuple"] = True
 
-        result = super().__call__(
-                expr, **kwargs)
+        result = cast(
+            "Sequence[LoopyType] | Sequence[tuple[LoopyType, ...]]",
+            super().__call__(expr, **kwargs))
 
         assert isinstance(result, list)
 
@@ -257,28 +314,28 @@ class TypeInferenceMapper(CombineMapper):
         new_ass.update(names_to_vars)
         return type(self)(self.kernel, self.clbl_inf_ctx, new_ass)
 
-    @staticmethod
-    def combine(dtype_sets):
+    @override
+    def combine(self, values: Iterable[Sequence[LoopyType]]) -> Sequence[LoopyType]:
         """
         :arg dtype_sets: A list of lists, where each of the inner lists
             consists of either zero or one type. An empty list is
             consistent with any type. A list with a type requires
             that an operation be valid in conjunction with that type.
         """
-        dtype_sets = list(dtype_sets)
+        values = list(values)
 
         from loopy.types import LoopyType, NumpyType
         assert all(
                 all(isinstance(dtype, LoopyType) for dtype in dtype_set)
-                for dtype_set in dtype_sets)
+                for dtype_set in values)
         assert all(
                 0 <= len(dtype_set) <= 1
-                for dtype_set in dtype_sets)
+                for dtype_set in values)
 
         from pytools import is_single_valued
 
         dtypes = [dtype
-                for dtype_set in dtype_sets
+                for dtype_set in values
                 for dtype in dtype_set]
 
         if not all(isinstance(dtype, NumpyType) for dtype in dtypes):
@@ -289,7 +346,7 @@ class TypeInferenceMapper(CombineMapper):
 
             return [dtypes[0]]
 
-        numpy_dtypes = [dtype.dtype for dtype in dtypes]
+        numpy_dtypes = [cast("NumpyType", dtype).dtype for dtype in dtypes]
 
         if not numpy_dtypes:
             return []
@@ -338,9 +395,10 @@ class TypeInferenceMapper(CombineMapper):
 
         return [NumpyType(result)]
 
-    def map_sum(self, expr):
-        dtype_sets = []
-        small_integer_dtype_sets = []
+    @override
+    def map_sum(self, expr: p.Sum | p.Product):
+        dtype_sets: list[Sequence[LoopyType]] = []
+        small_integer_dtype_sets: list[Sequence[LoopyType]] = []
         for child in expr.children:
             dtype_set = self.rec(child)
             if is_integer(child) and abs(child) < 1024:
@@ -357,11 +415,12 @@ class TypeInferenceMapper(CombineMapper):
 
     map_product = map_sum
 
-    def map_quotient(self, expr):
+    @override
+    def map_quotient(self, expr: p.Quotient):
         n_dtype_set = self.rec(expr.numerator)
         d_dtype_set = self.rec(expr.denominator)
 
-        dtypes = n_dtype_set + d_dtype_set
+        dtypes = [*n_dtype_set, *d_dtype_set]
 
         if all(dtype.is_integral() for dtype in dtypes):
             # both integers
@@ -370,7 +429,8 @@ class TypeInferenceMapper(CombineMapper):
         else:
             return self.combine([n_dtype_set, d_dtype_set])
 
-    def map_constant(self, expr):
+    @override
+    def map_constant(self, expr: object):
         if isinstance(expr, np.generic):
             return [NumpyType(np.dtype(type(expr)))]
         if is_integer(expr):
@@ -384,19 +444,19 @@ class TypeInferenceMapper(CombineMapper):
 
         dt = np.asarray(expr).dtype
         if hasattr(expr, "dtype"):
-            return [NumpyType(expr.dtype)]
+            return [NumpyType(cast("NDArray[Any]", expr).dtype)]
         elif isinstance(expr, np.number):
             # Numpy types are sized
             return [NumpyType(np.dtype(type(expr)))]
         elif dt.kind == "f":
-            if np.float32(expr) == np.float64(expr):
+            if np.float32(expr) == np.float64(expr):  # pyright: ignore[reportArgumentType]
                 # No precision is lost by 'guessing' single precision, use that.
                 # This at least covers simple cases like '1j'.
                 return [NumpyType(np.dtype(np.float32))]
 
             return [NumpyType(np.dtype(np.float64))]
         elif dt.kind == "c":
-            if np.complex64(expr) == np.complex128(expr):
+            if np.complex64(expr) == np.complex128(expr):  # pyright: ignore[reportCallIssue, reportArgumentType]
                 # (COMPLEX_GUESS_LOGIC)
                 # No precision is lost by 'guessing' single precision, use that.
                 # This at least covers simple cases like '1j'.
@@ -410,13 +470,16 @@ class TypeInferenceMapper(CombineMapper):
         else:
             raise TypeInferenceFailure("Cannot deduce type of constant '%s'" % expr)
 
-    def map_type_cast(self, expr):
+    @override
+    def map_type_cast(self, expr: TypeCast) -> list[LoopyType]:
         subtype, = self.rec(expr.child)
+        assert isinstance(subtype, NumpyType)
         if not issubclass(subtype.dtype.type, (np.number, np.bool_)):
             raise LoopyError(f"Can't cast a '{subtype}' to '{expr.type}'")
         return [expr.type]
 
-    def map_subscript(self, expr):
+    @override
+    def map_subscript(self, expr: p.Subscript):
         # The subscript may contain function calls, and we won't type-specialize
         # them if we don't see them.
         self.rec(expr.index)
@@ -426,30 +489,23 @@ class TypeInferenceMapper(CombineMapper):
     def map_linear_subscript(self, expr):
         return self.rec(expr.aggregate)
 
-    def map_call(self, expr, return_tuple=False):
-        from pymbolic.primitives import Variable
-
+    @override
+    def map_call(self, expr: p.Call, return_tuple: bool = False):  # pyright: ignore[reportIncompatibleMethodOverride]
         identifier = expr.function
 
         if not isinstance(identifier, ResolvedFunction):
             # function not resolved => exit
             return []
 
-        if isinstance(identifier, (Variable, ResolvedFunction)):
-            identifier = identifier.name
-
-        def none_if_empty(d):
-            if d:
-                d, = d
-                return d
-            else:
-                return None
-
-        arg_id_to_dtype = {i: none_if_empty(self.rec(par))
-                           for (i, par) in enumerate(expr.parameters)}
+        arg_id_to_dtype: dict[int | str, LoopyType]  = {
+                # FIXME: In order to properly participate in type inference,
+                # functions must be able to deal with multiple types.
+                i: rpar[0]
+                for i, par in enumerate(expr.parameters)
+                if (rpar := self.rec(par))}
 
         # specializing the known function wrt type
-        in_knl_callable = self.clbl_inf_ctx[expr.function.name]
+        in_knl_callable = self.clbl_inf_ctx[identifier.name]
 
         in_knl_callable, self.clbl_inf_ctx = (in_knl_callable
                                               .with_types(arg_id_to_dtype,
@@ -459,7 +515,7 @@ class TypeInferenceMapper(CombineMapper):
         # later use
         self.clbl_inf_ctx, new_function_id = (
                 self.clbl_inf_ctx.with_callable(
-                    expr.function.function,
+                    identifier.function,
                     in_knl_callable))
 
         self.old_calls_to_new_calls[expr] = new_function_id
@@ -482,7 +538,8 @@ class TypeInferenceMapper(CombineMapper):
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
 
-    def map_variable(self, expr):
+    @override
+    def map_variable(self, expr: p.Variable | TaggedVariable):  # pyright: ignore[reportIncompatibleMethodOverride]
         if expr.name in self.kernel.all_inames():
             return [self.kernel.index_dtype]
 
@@ -523,7 +580,8 @@ class TypeInferenceMapper(CombineMapper):
 
     map_tagged_variable = map_variable
 
-    def map_lookup(self, expr):
+    @override
+    def map_lookup(self, expr: p.Lookup):
         agg_result = self.rec(expr.aggregate)
         if not agg_result:
             return agg_result
@@ -536,7 +594,8 @@ class TypeInferenceMapper(CombineMapper):
                     % (expr.name, expr.aggregate))
 
         try:
-            field = fields[expr.name]
+            # type ignore because of numpy type imprecision
+            field = fields[expr.name]  # pyright: ignore[reportArgumentType]
         except KeyError:
             raise LoopyError("cannot look up attribute '%s' in "
                     "aggregate expression '%s' of dtype '%s'"
@@ -545,17 +604,20 @@ class TypeInferenceMapper(CombineMapper):
         dtype = field[0]
         return [NumpyType(dtype)]
 
-    def map_comparison(self, expr):
+    @override
+    def map_comparison(self, expr: p.Comparison):
         self(expr.left, return_tuple=False, return_dtype_set=False)
         self(expr.right, return_tuple=False, return_dtype_set=False)
         return [NumpyType(np.dtype(np.bool_))]
 
-    def map_logical_not(self, expr):
+    @override
+    def map_logical_not(self, expr: p.LogicalNot):
         self.rec(expr.child)
 
         return [NumpyType(np.dtype(np.bool_))]
 
-    def map_logical_and(self, expr):
+    @override
+    def map_logical_and(self, expr: p.LogicalAnd | p.LogicalOr):
         for child in expr.children:
             self.rec(child)
 
@@ -563,13 +625,13 @@ class TypeInferenceMapper(CombineMapper):
 
     map_logical_or = map_logical_and
 
-    def map_group_hw_index(self, expr, *args):
+    def map_group_hw_index(self, expr: GroupHardwareAxisIndex):
         return [self.kernel.index_dtype]
 
-    def map_local_hw_index(self, expr, *args):
+    def map_local_hw_index(self, expr: LocalHardwareAxisIndex):
         return [self.kernel.index_dtype]
 
-    def map_reduction(self, expr, return_tuple=False):
+    def map_reduction(self, expr: Reduction, return_tuple: bool = False):  # pyright: ignore[reportIncompatibleMethodOverride]
         """
         :arg return_tuple: If *True*, treat the reduction as having tuple type.
         Otherwise, if *False*, the reduction must have scalar type.
@@ -588,7 +650,8 @@ class TypeInferenceMapper(CombineMapper):
             from itertools import product
             rec_results = product(*rec_results)
         elif isinstance(expr.expr, Reduction):
-            rec_results = self.rec(expr.expr, return_tuple=return_tuple)
+            # FIXME: type ignore because the return_tuple scheme is broken
+            rec_results = self.rec(expr.expr, return_tuple=return_tuple)  # pyright: ignore[reportCallIssue]
         elif isinstance(expr.expr, Call):
             rec_results = self.map_call(expr.expr, return_tuple=return_tuple)
         else:
@@ -599,23 +662,26 @@ class TypeInferenceMapper(CombineMapper):
                 rec_results = self.rec(expr.expr)
 
         if return_tuple:
-            return [expr.operation.result_dtypes(*rec_result)
+            return [expr.operation.result_dtypes(
+                                    *cast("tuple[LoopyType, ...]", rec_result))
                     for rec_result in rec_results]
         else:
-            return [expr.operation.result_dtypes(rec_result)[0]
+            return [expr.operation.result_dtypes(cast("LoopyType", rec_result))[0]
                     for rec_result in rec_results]
 
-    def map_sub_array_ref(self, expr):
+    @override
+    def map_sub_array_ref(self, expr: SubArrayRef):
         return self.rec(expr.subscript)
 
     def map_fortran_division(self, expr):
         return self.combine((self.rec(expr.numerator), self.rec(expr.denominator)))
 
-    def map_nan(self, expr):
+    @override
+    def map_nan(self, expr: p.NaN):
         if expr.data_type is None:
             return [NumpyType(np.dtype(np.float32))]
         else:
-            return [NumpyType(np.dtype(expr.data_type))]
+            return [NumpyType(np.dtype(expr.data_type(float("nan"))))]
 
 # }}}
 
@@ -799,7 +865,10 @@ class _DictUnionView:
 
 # {{{ infer_unknown_types
 
-def infer_unknown_types_for_a_single_kernel(kernel: LoopKernel, clbl_inf_ctx):
+def infer_unknown_types_for_a_single_kernel(
+            kernel: LoopKernel,
+            clbl_inf_ctx: CallablesInferenceContext,
+        ) -> tuple[LoopKernel, CallablesInferenceContext]:
     """Infer types on temporaries and arguments."""
 
     logger.debug("%s: infer types", kernel.name)
@@ -1052,8 +1121,8 @@ def infer_unknown_types(
             expect_completion: bool = False
         ) -> TranslationUnit:
     """Infer types on temporaries and arguments."""
-    from loopy.kernel.data import auto
     from loopy.translation_unit import resolve_callables
+    from loopy.typing import auto
 
     t_unit = resolve_callables(t_unit)
 
@@ -1072,10 +1141,11 @@ def infer_unknown_types(
 
     for e in t_unit.entrypoints:
         logger.debug(f"Entering entrypoint: {e}")
-        arg_id_to_dtype = {arg.name: arg.dtype for arg in
+        arg_id_to_dtype: dict[int | str, LoopyType] = {arg.name: arg.dtype for arg in
                 t_unit[e].args if arg.dtype not in (None, auto)}
-        new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_types(
-                arg_id_to_dtype, clbl_inf_ctx)
+        new_callable, clbl_inf_ctx = cast(
+                "CallableKernel", t_unit.callables_table[e]
+            ).with_types(arg_id_to_dtype, clbl_inf_ctx)
         clbl_inf_ctx, _new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
         if expect_completion:
@@ -1105,7 +1175,11 @@ def infer_unknown_types(
 # {{{ reduction expression helper
 
 def infer_arg_and_reduction_dtypes_for_reduction_expression(
-        kernel, expr, callables_table, unknown_types_ok):
+            kernel: LoopKernel,
+            expr: Reduction,
+            callables_table: CallablesTable,
+            unknown_types_ok: bool,
+        ):
     type_inf_mapper = TypeReader(kernel, callables_table)
 
     if expr.is_tuple_typed:

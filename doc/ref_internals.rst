@@ -61,4 +61,39 @@ Schedule
 .. automodule:: loopy.schedule.tools
 .. automodule:: loopy.schedule.tree
 
+References
+----------
 
+Mostly things that Sphinx (our documentation tool) should resolve but won't.
+
+.. class:: constantdict
+
+    See :class:`constantdict.constantdict`.
+
+.. class:: DTypeLike
+
+    See :data:`numpy.typing.DTypeLike`.
+
+.. currentmodule:: p
+
+.. class:: Call
+
+    See :class:`pymbolic.primitives.Call`.
+
+.. class:: CallWithKwargs
+
+    See :class:`pymbolic.primitives.CallWithKwargs`.
+
+.. currentmodule:: isl
+
+.. class:: Space
+
+    See :class:`islpy.Space`.
+
+.. class:: Aff
+
+    See :class:`islpy.Aff`.
+
+.. class:: PwAff
+
+    See :class:`islpy.PwAff`.

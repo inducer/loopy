@@ -23,24 +23,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from typing import TYPE_CHECKING
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, ClassVar, cast
 
 import numpy as np
 from constantdict import constantdict
+from typing_extensions import override
 
-from pymbolic import var
+from pymbolic import ArithmeticExpression, Expression, var
 from pymbolic.primitives import expr_dataclass
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.symbolic import FunctionIdentifier, ResolvedFunction
 from loopy.tools import update_persistent_hash
-from loopy.types import NumpyType
+from loopy.types import LoopyType, NumpyType
 
 
 if TYPE_CHECKING:
-    from pytools.persistent_dict import Hash, KeyBuilder
+    from collections.abc import Sequence
+
+    from numpy.typing import DTypeLike
+
+    from pytools import Hash
+    from pytools.persistent_dict import KeyBuilder
+
+    from loopy.target import TargetBase
+    from loopy.translation_unit import CallablesTable
 
 
 __doc__ = """
@@ -62,12 +71,15 @@ __doc__ = """
 """
 
 
-class ReductionOperation:
+class ReductionOperation(ABC):
     """Subclasses of this type have to be hashable, picklable, and
     equality-comparable.
     """
 
-    def result_dtypes(self, *arg_dtypes):
+    @abstractmethod
+    def result_dtypes(self,
+              *dtypes: LoopyType | None
+          ) -> tuple[LoopyType | None, ...]:
         """
         :arg arg_dtypes: may be None if not known
         :returns: None if not known, otherwise the returned type
@@ -76,39 +88,57 @@ class ReductionOperation:
         raise NotImplementedError
 
     @property
-    def arg_count(self):
+    def arg_count(self) -> int:
         raise NotImplementedError
 
-    def neutral_element(self, dtypes, callables_table, target):
-        raise NotImplementedError
+    @abstractmethod
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        ...
 
-    def __hash__(self):
+    @override
+    def __hash__(self) -> int:
         # Force subclasses to override
         raise NotImplementedError
 
-    def __eq__(self, other):
+    @override
+    def __eq__(self, other: object) -> bool:
         # Force subclasses to override
         raise NotImplementedError
 
-    def __call__(self, dtype, operand1, operand2):
+    @abstractmethod
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
         raise NotImplementedError
 
-    def __ne__(self, other):
+    @override
+    def __ne__(self, other: object):
         return not self.__eq__(other)
 
+    @override
     def __repr__(self) -> str:
         return type(self).__name__
 
     @staticmethod
-    def parse_result_type(target, op_type):
+    def parse_result_type(target: TargetBase, op_type: str | DTypeLike) -> NumpyType:
         try:
             return NumpyType(np.dtype(op_type))
         except TypeError:
             pass
 
+        assert isinstance(op_type, str)
         if op_type.startswith("vec_"):
             try:
-                return NumpyType(target.get_or_register_dtype(op_type[4:]))
+                return NumpyType(
+                        target.get_dtype_registry().get_or_register_dtype(op_type[4:]))
             except AttributeError:
                 pass
 
@@ -116,24 +146,32 @@ class ReductionOperation:
                 % op_type)
 
 
-class ScalarReductionOperation(ReductionOperation):
+class ScalarReductionOperation(ReductionOperation, ABC):
     @property
-    def arg_count(self):
+    @override
+    def arg_count(self) -> int:
         return 1
 
-    def result_dtypes(self, arg_dtype):
+    @override
+    def result_dtypes(self,
+              *dtypes: LoopyType | None,
+          ) -> tuple[LoopyType | None, ...]:
+        arg_dtype, = dtypes
         if arg_dtype is None:
             return (None,)
 
         return (arg_dtype,)
 
+    @override
     def __hash__(self):
         return hash((type(self),))
 
-    def __eq__(self, other):
+    @override
+    def __eq__(self, other: object):
         return type(self) is type(other)
 
-    def __str__(self):
+    @override
+    def __str__(self) -> str:
         result = type(self).__name__.replace("ReductionOperation", "").lower()
 
         return result
@@ -144,51 +182,105 @@ class ScalarReductionOperation(ReductionOperation):
 
 
 class SumReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, callables_table, target):
-        # FIXME: Document that we always use an int here.
-        from loopy import auto
-        if dtype not in [None, auto] and dtype.numpy_dtype.kind == "f":
+    @override
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        dtype, = dtypes
+
+        if dtype is not None and cast("NumpyType", dtype).numpy_dtype.kind == "f":
             return 0.0, callables_table
 
         return 0, callables_table
 
-    def __call__(self, dtype, operand1, operand2, callables_table, target):
+    @override
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        assert not isinstance(operand1, tuple)
+        assert not isinstance(operand2, tuple)
         return operand1 + operand2, callables_table
 
 
 class ProductReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, callables_table, target):
-        # FIXME: Document that we always use an int here.
-        from loopy import auto
-        if dtype not in [None, auto] and dtype.numpy_dtype.kind == "f":
+    @override
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        dtype, = dtypes
+
+        if dtype is not None and cast("NumpyType", dtype).numpy_dtype.kind == "f":
             return 1.0, callables_table
 
         return 1, callables_table
 
-    def __call__(self, dtype, operand1, operand2, callables_table, target):
+    @override
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        assert not isinstance(operand1, tuple)
+        assert not isinstance(operand2, tuple)
         return operand1 * operand2, callables_table
 
 
 class AnyReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, callables_table, target):
+    @override
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
         return False, callables_table
 
-    def __call__(self, dtype, operand1, operand2, callables_table, target):
+    @override
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
         from pymbolic.primitives import LogicalOr
         return LogicalOr((operand1, operand2)), callables_table
 
 
 class AllReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, callables_table, target):
+    @override
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
         return True, callables_table
 
-    def __call__(self, dtype, operand1, operand2, callables_table, target):
+    @override
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
         from pymbolic.primitives import LogicalAnd
         return LogicalAnd((operand1, operand2)), callables_table
 
 
-def get_le_neutral(dtype):
+def get_le_neutral(dtype: LoopyType) -> ArithmeticExpression:
     """Return a number y that satisfies (x <= y) for all y."""
+
+    assert isinstance(dtype, NumpyType)
 
     if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.2, section 6.12.2
@@ -218,8 +310,10 @@ def get_le_neutral(dtype):
     raise NotImplementedError(f"neutral element for <= and {dtype}")
 
 
-def get_ge_neutral(dtype):
+def get_ge_neutral(dtype: LoopyType) -> ArithmeticExpression:
     """Return a number y that satisfies (x >= y) for all y."""
+
+    assert isinstance(dtype, NumpyType)
 
     if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.2, section 6.12.2
@@ -244,11 +338,25 @@ def get_ge_neutral(dtype):
 
 
 class MaxReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, callables_table, target):
+    @override
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        dtype, = dtypes
+        assert dtype is not None
         return get_ge_neutral(dtype), callables_table
 
-    def __call__(self, dtype, operand1, operand2, callables_table, target):
-        dtype, = dtype
+    @override
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        dtype, = dtypes
         from loopy.translation_unit import add_callable_to_table
 
         # getting the callable 'max' from target
@@ -266,11 +374,25 @@ class MaxReductionOperation(ScalarReductionOperation):
 
 
 class MinReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, callables_table, target):
+    @override
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        dtype, = dtypes
+        assert dtype is not None
         return get_le_neutral(dtype), callables_table
 
-    def __call__(self, dtype, operand1, operand2, callables_table, target):
-        dtype, = dtype
+    @override
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        dtype, = dtypes
         from loopy.translation_unit import add_callable_to_table
 
         # getting the callable 'min' from target
@@ -313,15 +435,14 @@ class SegmentedOp(ReductionOpFunction):
 
 
 class _SegmentedScalarReductionOperation(ReductionOperation):
+    inner_reduction: ReductionOperation
+    base_reduction_class: ClassVar[type[ReductionOperation]]
+
     def __init__(self, **kwargs):
         self.inner_reduction = self.base_reduction_class(**kwargs)
 
     @property
-    def base_reduction_class(self):
-        raise NotImplementedError
-
-    @property
-    def which(self):
+    def which(self) -> str:
         raise NotImplementedError
 
     @property
@@ -333,14 +454,20 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
                 scalar_dtype.numpy_dtype.type.__name__,
                 segment_flag_dtype.numpy_dtype.type.__name__)
 
-    def neutral_element(self, scalar_dtype, segment_flag_dtype,
-            callables_table, target):
+    @override
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        scalar_dtype, segment_flag_dtype = dtypes
+
         from loopy.library.function import MakeTupleCallable
         from loopy.translation_unit import add_callable_to_table
 
         scalar_neutral_element, _calables_table = (
                 self.inner_reduction.neutral_element(
-                    scalar_dtype, callables_table, target))
+                    scalar_dtype, callables_table=callables_table, target=target))
 
         make_tuple_callable = MakeTupleCallable(
                 name="make_tuple")
@@ -352,23 +479,42 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         func_id, callables_table = add_callable_to_table(
                 callables_table, "make_tuple", make_tuple_callable)
 
-        return ResolvedFunction(func_id)(scalar_neutral_element,
-                segment_flag_dtype.numpy_dtype.type(0)), callables_table
+        return ResolvedFunction(func_id)(
+                scalar_neutral_element,
+                cast("NumpyType", segment_flag_dtype).numpy_dtype.type(0)
+            ), callables_table
 
-    def result_dtypes(self, scalar_dtype, segment_flag_dtype):
+    @override
+    def result_dtypes(self,
+              *dtypes: LoopyType | None
+          ) -> tuple[LoopyType | None, ...]:
+        scalar_dtype, segment_flag_dtype = dtypes
+
         return ((*self.inner_reduction.result_dtypes(scalar_dtype), segment_flag_dtype))
 
+    @override
     def __str__(self):
         return "segmented(%s)" % self.which
 
+    @override
     def __hash__(self):
         return hash(type(self))
 
-    def __eq__(self, other):
+    def __eq__(self, other: object):
         return type(self) is type(other) and (self.inner_reduction ==
-                other.inner_reduction)
+                cast("_SegmentedScalarReductionOperation", other).inner_reduction)
 
-    def __call__(self, dtypes, operand1, operand2, callables_table, target):
+    @override
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        assert isinstance(operand1, tuple)
+        assert isinstance(operand2, tuple)
+
         segmented_scalar_callable = SegmentOpCallable(SegmentedOp(self))
 
         # type specialize the callable
@@ -382,7 +528,7 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         func_id, callables_table = add_callable_to_table(
                 callables_table, SegmentedOp(self), segmented_scalar_callable)
 
-        return (ResolvedFunction(func_id)(*(operand1 + operand2)),
+        return (ResolvedFunction(func_id)(*operand1, *operand2),
                 callables_table)
 
 
@@ -435,11 +581,21 @@ class _ArgExtremumReductionOperation(ReductionOperation):
                 scalar_dtype.numpy_dtype.type.__name__,
                 index_dtype.numpy_dtype.type.__name__)
 
-    def result_dtypes(self, scalar_dtype, index_dtype):
+    @override
+    def result_dtypes(self,
+              *dtypes: LoopyType | None
+          ) -> tuple[LoopyType | None, ...]:
+        scalar_dtype, index_dtype = dtypes
         return (scalar_dtype, index_dtype)
 
-    def neutral_element(self, scalar_dtype, index_dtype, callables_table,
-            target):
+    @override
+    def neutral_element(self,
+                 *dtypes: LoopyType | None,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        scalar_dtype, index_dtype = dtypes
+        assert scalar_dtype is not None
         scalar_neutral_func = (
                 get_ge_neutral if self.neutral_sign < 0 else get_le_neutral)
         scalar_neutral_element = scalar_neutral_func(scalar_dtype)
@@ -458,29 +614,46 @@ class _ArgExtremumReductionOperation(ReductionOperation):
                                                          "make_tuple",
                                                          make_tuple_callable)
 
+        # FIXME: This doesn't handle None
         return ResolvedFunction(func_id)(scalar_neutral_element,
-                index_dtype.numpy_dtype.type(-1)), callables_table
+                cast("NumpyType", index_dtype).numpy_dtype.type(-1)), callables_table
 
+    @override
     def __str__(self):
         return "arg" + self.which
 
+    @override
     def __hash__(self):
         return hash(type(self))
 
+    @override
     def __eq__(self, other):
         return type(self) is type(other)
 
     @property
+    @override
     def arg_count(self):
         return 2
 
-    def __call__(self, dtypes, operand1, operand2, callables_table, target):
+    @override
+    def __call__(self,
+                 dtypes: Sequence[LoopyType | None],
+                 operand1: Expression,
+                 operand2: Expression,
+                 callables_table: CallablesTable,
+                 target: TargetBase,
+             ) -> tuple[Expression, CallablesTable]:
+        assert isinstance(operand1, tuple)
+        assert isinstance(operand2, tuple)
+
+        scalar_dtype, index_dtype = dtypes
+
         arg_ext_scalar_callable = ArgExtOpCallable(ArgExtOp(self))
 
         # type specialize the callable
         arg_ext_scalar_callable, callables_table = (
                 arg_ext_scalar_callable.with_types(
-                    {0: dtypes[0], 1: dtypes[1], 2: dtypes[0], 3: dtypes[1]},
+                    {0: scalar_dtype, 1: index_dtype, 2: scalar_dtype, 3: index_dtype},
                     callables_table))
 
         # populate callables_table
@@ -488,8 +661,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         func_id, callables_table = add_callable_to_table(
                 callables_table, ArgExtOp(self), arg_ext_scalar_callable)
 
-        return (ResolvedFunction(func_id)(*(operand1 + operand2)),
-                callables_table)
+        return (ResolvedFunction(func_id)(*operand1, *operand2), callables_table)
 
 
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):

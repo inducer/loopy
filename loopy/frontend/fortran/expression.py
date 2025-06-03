@@ -38,7 +38,7 @@ from loopy.frontend.fortran.diagnostic import TranslationError
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from loopy.symbolic import LexTable
+    from pytools.lex import LexTable
 
 
 _less_than = intern("less_than")
