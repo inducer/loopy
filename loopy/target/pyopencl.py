@@ -816,6 +816,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             temporaries_read_in_subkernel,
             temporaries_written_in_subkernel,
         )
+        from collections import defaultdict
         # Find sub-kernels
         kernel = codegen_state.kernel
         sched_index = 0
@@ -825,21 +826,40 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             if isinstance(sched_item, CallKernel):
                 subkernel_names.append(sched_item.kernel_name)
 
-        # Forward pass to find first writes
+        # deal with base storage
+        global_temporaries = self._get_global_temporaries(codegen_state)
+        storage_variables = defaultdict(set)
+        for tv in global_temporaries:
+            if tv.base_storage:
+                storage_variables[tv.base_storage].add(tv.name)
+            else:
+                storage_variables[tv.name].add(tv.name)
+
+
+        # Forward pass to find first accesses
         first_accesses = {}
-        seen_temporary_variables = set()
+        unseen_storage_variables = set(storage_variables.keys())
         for subkernel_name in subkernel_names:
-            new_temporary_variables = temporaries_written_in_subkernel(kernel, subkernel_name).union(temporaries_read_in_subkernel(kernel, subkernel_name)) - seen_temporary_variables
-            first_accesses[subkernel_name] = new_temporary_variables
-            seen_temporary_variables = new_temporary_variables.union(seen_temporary_variables)
+            new_temporary_variables = temporaries_written_in_subkernel(kernel, subkernel_name).union(temporaries_read_in_subkernel(kernel, subkernel_name))
+            new_storage_variables = set()
+            for sv in unseen_storage_variables:
+                if not storage_variables[sv].isdisjoint(new_temporary_variables):
+                    new_storage_variables.add(sv)
+            unseen_storage_variables = unseen_storage_variables - new_storage_variables
+            first_accesses[subkernel_name] = new_storage_variables
         
-        # Backwards pass to find last reads
+        # Backwards pass to find last accesses
         last_accesses = {}
-        seen_temporary_variables = set()
+        unseen_storage_variables = set(storage_variables.keys())
         for subkernel_name in reversed(subkernel_names):
-            new_temporary_variables = temporaries_written_in_subkernel(kernel, subkernel_name).union(temporaries_read_in_subkernel(kernel, subkernel_name)) - seen_temporary_variables
-            last_accesses[subkernel_name] = new_temporary_variables
-            seen_temporary_variables = new_temporary_variables.union(seen_temporary_variables)
+            new_temporary_variables = temporaries_written_in_subkernel(kernel, subkernel_name).union(temporaries_read_in_subkernel(kernel, subkernel_name))
+            new_storage_variables = set()
+            for sv in unseen_storage_variables:
+                if not storage_variables[sv].isdisjoint(new_temporary_variables):
+                    new_storage_variables.add(sv)
+            unseen_storage_variables = unseen_storage_variables - new_storage_variables
+            last_accesses[subkernel_name] = new_storage_variables
+        
         return (first_accesses, last_accesses)
 
     def get_kernel_call(
