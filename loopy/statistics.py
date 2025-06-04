@@ -2185,7 +2185,7 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
 
     assert entrypoint in program.entrypoints
 
-    # FIMXE: works only for one callable kernel till now.
+    # FIXME: works only for one callable kernel till now.
     if len([in_knl_callable for in_knl_callable in
         program.callables_table.values() if isinstance(in_knl_callable,
             CallableKernel)]) != 1:
