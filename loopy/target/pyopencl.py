@@ -26,7 +26,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Sequence, cast, Tuple, Mapping
+from typing import TYPE_CHECKING, Any, Mapping, Sequence, Tuple, cast
 from warnings import warn
 
 import numpy as np
@@ -780,13 +780,12 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 ["_lpy_cl_kernels", "queue", *kai.passed_arg_names,
                     "wait_for=None", "allocator=None"])
 
-        from genpy import For, Function, Line, Return, Statement as S, Suite
+        from genpy import Function, Line, Return, Suite
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
                     Line(),
-                    ] + [
                     Line(),
                     function_body,
                     Line(),
@@ -811,12 +810,15 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_temporary_decls(self, codegen_state, schedule_index):
         return []
 
-    def get_temporary_decl_locations(self, codegen_state: CodeGenerationState) -> Tuple[Mapping[str, set[str]], Mapping[str, set[str]]]:
+    def get_temporary_decl_locations(
+            self, codegen_state: CodeGenerationState
+        ) -> Tuple[Mapping[str, set[str]], Mapping[str, set[str]]]:
+        from collections import defaultdict
+
         from loopy.schedule.tools import (
             temporaries_read_in_subkernel,
             temporaries_written_in_subkernel,
         )
-        from collections import defaultdict
         # Find sub-kernels
         kernel = codegen_state.kernel
         sched_index = 0
@@ -835,31 +837,36 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             else:
                 storage_variables[tv.name].add(tv.name)
 
-
         # Forward pass to find first accesses
         first_accesses = {}
         unseen_storage_variables = set(storage_variables.keys())
         for subkernel_name in subkernel_names:
-            new_temporary_variables = temporaries_written_in_subkernel(kernel, subkernel_name).union(temporaries_read_in_subkernel(kernel, subkernel_name))
+            new_temporary_variables = (
+                temporaries_written_in_subkernel(kernel, subkernel_name)
+                .union(temporaries_read_in_subkernel(kernel, subkernel_name))
+            )
             new_storage_variables = set()
             for sv in unseen_storage_variables:
                 if not storage_variables[sv].isdisjoint(new_temporary_variables):
                     new_storage_variables.add(sv)
             unseen_storage_variables = unseen_storage_variables - new_storage_variables
             first_accesses[subkernel_name] = new_storage_variables
-        
+
         # Backwards pass to find last accesses
         last_accesses = {}
         unseen_storage_variables = set(storage_variables.keys())
         for subkernel_name in reversed(subkernel_names):
-            new_temporary_variables = temporaries_written_in_subkernel(kernel, subkernel_name).union(temporaries_read_in_subkernel(kernel, subkernel_name))
+            new_temporary_variables = (
+                temporaries_written_in_subkernel(kernel, subkernel_name)
+                .union(temporaries_read_in_subkernel(kernel, subkernel_name))
+            )
             new_storage_variables = set()
             for sv in unseen_storage_variables:
                 if not storage_variables[sv].isdisjoint(new_temporary_variables):
                     new_storage_variables.add(sv)
             unseen_storage_variables = unseen_storage_variables - new_storage_variables
             last_accesses[subkernel_name] = new_storage_variables
-        
+
         return (first_accesses, last_accesses)
 
     def get_kernel_call(
@@ -867,7 +874,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             subkernel_name: str,
             gsize: tuple[Expression, ...], lsize: tuple[Expression, ...]
             ) -> genpy.Suite:
-        from genpy import Assert, Assign, Statement, Comment, Line, Suite
+        from genpy import Assert, Assign, Comment, Line, Statement, Suite
         from pymbolic.mapper.stringifier import PREC_NONE
 
         kernel = codegen_state.kernel
@@ -877,9 +884,9 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
-        start_temporary_variables, end_temporary_variables = self.get_temporary_decl_locations(codegen_state)
+        start_tvs, end_tvs = self.get_temporary_decl_locations(codegen_state)
         allocation_code_lines = []
-        for tv_name in start_temporary_variables[subkernel_name]:
+        for tv_name in start_tvs[subkernel_name]:
             tv = kernel.temporary_variables[tv_name]
             if not tv.base_storage:
                 if tv.nbytes:
@@ -891,10 +898,12 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                                              f"allocator({nbytes_str})"))
                 else:
                     allocation_code_lines.append(Assign(tv.name, "None"))
-        
+
         deallocation_code_lines = []
-        for tv_name in end_temporary_variables[subkernel_name]:
-            deallocation_code_lines.append(Statement(f"if {tv_name} is not None: {tv_name}.release()"))
+        for tv_name in end_tvs[subkernel_name]:
+            deallocation_code_lines.append(
+                Statement(f"if {tv_name} is not None: {tv_name}.release()")
+            )
 
         if not gsize:
             gsize = (1,)
