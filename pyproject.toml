@@ -179,7 +179,9 @@ extend-exclude = [
 
 [tool.pytest.ini_options]
 addopts = "--ignore=proto-tests"
-
+filterwarnings = [
+    'ignore:.*:loopy.diagnostic.DirectCallUncachedWarning',
+]
 
 [tool.basedpyright]
 reportImplicitStringConcatenation = "none"
