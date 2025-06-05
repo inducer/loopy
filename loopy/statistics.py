@@ -36,7 +36,6 @@ from typing import (
     Any,
     Callable,
     Generic,
-    Iterable,
     TypeVar,
     Union,
     cast,
@@ -65,7 +64,7 @@ from loopy.translation_unit import ConcreteCallablesTable, TranslationUnit
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     import pymbolic.primitives as p
     from pymbolic.typing import ArithmeticExpressionT
@@ -73,7 +72,7 @@ if TYPE_CHECKING:
 
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.instruction import InstructionBase
-    from loopy.types import LoopyType
+    from loopy.types import ToLoopyTypeConvertible
     from loopy.typing import Expression, auto
 
 
@@ -180,12 +179,13 @@ class GuardedPwQPolynomial:
 
     __rmul__ = __mul__
 
-    def eval_with_dict(self, value_dict):
+    def eval_with_dict(self, value_dict: dict[str, int]) -> int:
         space = self.pwqpolynomial.space
         pt = isl.Point.zero(space.params())
 
         for i in range(space.dim(dim_type.param)):
             par_name = space.get_dim_name(dim_type.param, i)
+            assert par_name
             pt = pt.set_coordinate_val(
                 dim_type.param, i, value_dict[par_name])
 
@@ -313,12 +313,12 @@ class ToCountMap(Generic[CountT]):
 
         return type(self)(count_map=count_map)
 
-    def with_set_attributes(self, **kwargs) -> ToCountMap:
+    def with_set_attributes(self, **kwargs: Any) -> ToCountMap[CountT]:
         return self.copy(count_map={
             replace(key, **kwargs): val
             for key, val in self.count_map.items()})
 
-    def filter_by(self, **kwargs) -> ToCountMap:
+    def filter_by(self, **kwargs: Any) -> ToCountMap[CountT]:
         """Remove items without specified key fields.
 
         :arg kwargs: Keyword arguments matching fields in the keys of the
@@ -721,7 +721,7 @@ class Op:
 
         A :class:`frozenset` of tags to the operation.
     """
-    dtype: LoopyType | None = None
+    dtype: ToLoopyTypeConvertible = None
     op_type: OpType | None = None
     count_granularity: CountGranularity | None = None
     kernel_name: str | None = None
@@ -782,7 +782,7 @@ class MemAccess:
     """A :class:`AddressSpace` that specifies the memory type accessed as **global**
     or **local**."""
 
-    dtype: LoopyType | None = None
+    dtype: ToLoopyTypeConvertible = None
     """A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
     data type accessed."""
 
@@ -1366,7 +1366,7 @@ class MemAccessCounter(CounterBase):
             return super().map_call(expr, tags)
 
     def count_var_access(self,
-                         dtype: LoopyType,
+                         dtype: ToLoopyTypeConvertible,
                          name: str,
                          index: Expression | None,
                          tags: frozenset[Tag],
@@ -1559,7 +1559,7 @@ def add_assumptions_guard(
             kernel.assumptions.align_params(pwqpolynomial.space))
 
 
-def count(kernel, set: isl.Set, space=None) -> GuardedPwQPolynomial:
+def count(kernel, set: isl.Set, space: isl.Space | None = None) -> GuardedPwQPolynomial:
     if isinstance(kernel, TranslationUnit):
         kernel_names = [i for i, clbl in kernel.callables_table.items()
                 if isinstance(clbl, CallableKernel)]
@@ -1666,7 +1666,7 @@ def count(kernel, set: isl.Set, space=None) -> GuardedPwQPolynomial:
 
 
 def get_unused_hw_axes_factor(
-        knl: LoopKernel, callables_table, insn: InstructionBase,
+        knl: LoopKernel, callables_table: ConcreteCallablesTable, insn: InstructionBase,
         disregard_local_axes: bool) -> GuardedPwQPolynomial:
     # FIXME: Multi-kernel support
     gsize, lsize = knl.get_grid_size_upper_bounds(callables_table)
@@ -1808,11 +1808,6 @@ def _get_insn_count(
         from pytools import div_ceil
         return ct_disregard_local*div_ceil(workgroup_size, subgroup_size)
 
-    else:
-        # this should not happen since this is enforced in Op/MemAccess
-        raise ValueError("get_insn_count: count_granularity "
-                         f"'{count_granularity}' is not allowed.")
-
 # }}}
 
 
@@ -1823,7 +1818,8 @@ def _get_op_map_for_single_kernel(
         callables_table: ConcreteCallablesTable,
         count_redundant_work: bool,
         count_within_subscripts: bool,
-        subgroup_size: int | None, within) -> ToCountMap[GuardedPwQPolynomial]:
+        subgroup_size: int | str | None,
+        within: Any) -> ToCountMap[GuardedPwQPolynomial]:
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
@@ -1869,9 +1865,9 @@ def _get_op_map_for_single_kernel(
 def get_op_map(
         t_unit: TranslationUnit, *, count_redundant_work: bool = False,
         count_within_subscripts: bool = True,
-        subgroup_size: int | None = None,
+        subgroup_size: int | str | None = None,
         entrypoint: str | None = None,
-        within: Any = None) -> ToCountMap[GuardedPwQPolynomial]:
+        within: str | None = None) -> ToCountMap[GuardedPwQPolynomial]:
 
     """Count the number of operations in a loopy kernel.
 
@@ -1942,7 +1938,7 @@ def get_op_map(
     t_unit = preprocess_program(t_unit)
 
     from loopy.match import parse_match
-    within = parse_match(within)
+    within_parsed = parse_match(within)
 
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
@@ -1955,7 +1951,7 @@ def get_op_map(
             count_redundant_work=count_redundant_work,
             count_within_subscripts=count_within_subscripts,
             subgroup_size=subgroup_size,
-            within=within)
+            within=within_parsed)
 
 # }}}
 
@@ -2021,7 +2017,7 @@ def _process_subgroup_size(knl, subgroup_size_requested):
 def _get_mem_access_map_for_single_kernel(
         knl: LoopKernel,
         callables_table: ConcreteCallablesTable,
-        count_redundant_work: bool, subgroup_size: int | None,
+        count_redundant_work: bool, subgroup_size: int | str | None,
         within: Any) -> ToCountMap[GuardedPwQPolynomial]:
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
@@ -2073,9 +2069,9 @@ def _get_mem_access_map_for_single_kernel(
 
 def get_mem_access_map(
         t_unit: TranslationUnit, *, count_redundant_work: bool = False,
-        subgroup_size: int | None = None,
+        subgroup_size: int | str | None = None,
         entrypoint: str | None = None,
-        within: Any = None) -> ToCountMap[GuardedPwQPolynomial]:
+        within: str | None = None) -> ToCountMap[GuardedPwQPolynomial]:
     """Count the number of memory accesses in a loopy kernel.
 
     :arg knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
@@ -2173,7 +2169,7 @@ def get_mem_access_map(
     t_unit = preprocess_program(t_unit)
 
     from loopy.match import parse_match
-    within = parse_match(within)
+    within_parsed = parse_match(within)
 
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
@@ -2183,7 +2179,7 @@ def get_mem_access_map(
             t_unit[entrypoint], t_unit.callables_table,
             count_redundant_work=count_redundant_work,
             subgroup_size=subgroup_size,
-            within=within)
+            within=within_parsed)
 
 # }}}
 

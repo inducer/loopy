@@ -31,9 +31,9 @@ from pyopencl.tools import (  # noqa: F401
 from pytools import div_ceil
 
 import loopy as lp
+from loopy.kernel.data import AddressSpace
 from loopy.statistics import (
     AccessDirection,
-    AddressSpace,
     CountGranularity as CG,
     OpType,
     SynchronizationKind,
@@ -983,7 +983,7 @@ def test_count_granularity_val_checks():
         lp.MemAccess(count_granularity=CG.WORKGROUP)
         lp.MemAccess(count_granularity=None)
         assert True
-        lp.MemAccess(count_granularity="bushel")
+        lp.MemAccess(count_granularity="bushel")  # pyright: ignore[reportArgumentType]
         raise AssertionError()
     except ValueError:
         assert True
@@ -994,7 +994,7 @@ def test_count_granularity_val_checks():
         lp.Op(count_granularity=CG.WORKGROUP)
         lp.Op(count_granularity=None)
         assert True
-        lp.Op(count_granularity="bushel")
+        lp.Op(count_granularity="bushel")  # pyright: ignore[reportArgumentType]
         raise AssertionError()
     except ValueError:
         assert True
