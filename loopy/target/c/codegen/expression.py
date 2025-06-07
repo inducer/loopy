@@ -52,7 +52,7 @@ from loopy.expression import dtype_to_type_context
 from loopy.symbolic import IdentityMapper
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeInferenceMapper, TypeReader
-from loopy.types import LoopyType
+from loopy.types import LoopyType, to_loopy_type
 from loopy.typing import Expression, is_integer
 
 
@@ -456,7 +456,7 @@ class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
 
     @override
     def map_constant(self, expr, type_context):
-        from loopy.symbolic import Literal
+        from loopy.symbolic import TypedLiteral
 
         if isinstance(expr, (complex, np.complexfloating)):
             real = self.rec(expr.real, type_context)
@@ -483,10 +483,10 @@ class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
 
             # FIXME: This assumes a 32-bit architecture.
             if isinstance(expr, np.float32):
-                return Literal(repr(float(expr))+"f")
+                return TypedLiteral(repr(float(expr))+"f", to_loopy_type(np.float32))
 
             elif isinstance(expr, np.float64):
-                return Literal(repr(float(expr)))
+                return TypedLiteral(repr(float(expr)), to_loopy_type(np.float64))
 
             # Disabled for now, possibly should be a subtarget.
             # elif isinstance(expr, np.float128):
@@ -499,18 +499,19 @@ class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
                     suffix += "u"
                 if iinfo.max > (2**31-1):
                     suffix += "l"
-                return Literal(repr(int(expr))+suffix)
+                return TypedLiteral(repr(int(expr))+suffix, to_loopy_type(iinfo.dtype))
             elif isinstance(expr, np.bool_):
-                return Literal("true") if expr else Literal("false")
+                return TypedLiteral("true", to_loopy_type(np.bool_)) if expr \
+                        else TypedLiteral("false", to_loopy_type(np.bool_))
             else:
                 raise LoopyError("do not know how to generate code for "
                         "constant of numpy type '%s'" % type(expr).__name__)
 
         elif np.isfinite(expr):
             if type_context == "f":
-                return Literal(repr(float(expr))+"f")
+                return TypedLiteral(repr(float(expr))+"f", to_loopy_type(np.float32))
             elif type_context == "d":
-                return Literal(repr(float(expr)))
+                return TypedLiteral(repr(float(expr)), to_loopy_type(np.float64))
             elif type_context in ["i", "b"]:
                 return int(expr)
             else:

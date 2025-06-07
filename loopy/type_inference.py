@@ -48,6 +48,7 @@ from loopy.symbolic import (
     SubArrayRef,
     SubstitutionRuleExpander,
     SubstitutionRuleMappingContext,
+    TypedLiteral,
     parse_tagged_name,
 )
 from loopy.translation_unit import (
@@ -370,6 +371,9 @@ class TypeInferenceMapper(CombineMapper):
         else:
             return self.combine([n_dtype_set, d_dtype_set])
 
+    def map_typed_literal(self, expr: TypedLiteral):
+        return [expr.dtype]
+
     def map_constant(self, expr):
         if isinstance(expr, np.generic):
             return [NumpyType(np.dtype(type(expr)))]
@@ -545,19 +549,40 @@ class TypeInferenceMapper(CombineMapper):
         dtype = field[0]
         return [NumpyType(dtype)]
 
+    def is_vector_dtype(self, dtype):
+        target = self.kernel.target
+
+        return target.is_vector_dtype(dtype)
+
     def map_comparison(self, expr):
-        self(expr.left, return_tuple=False, return_dtype_set=False)
-        self(expr.right, return_tuple=False, return_dtype_set=False)
+        left = self(expr.left, return_tuple=False, return_dtype_set=False)
+        right = self(expr.right, return_tuple=False, return_dtype_set=False)
+        # We need to return a vector type if we either of the sides is a vector.
+
+        vector_output = []
+        for dtype in (left, right):
+            if self.is_vector_dtype(dtype):
+                vector_output.append(dtype)
+        if vector_output:
+            return vector_output
         return [NumpyType(np.dtype(np.bool_))]
 
     def map_logical_not(self, expr):
-        self.rec(expr.child)
+        child = self.rec(expr.child)
+        if self.is_vector_dtype(child):
+            return child
 
         return [NumpyType(np.dtype(np.bool_))]
 
     def map_logical_and(self, expr):
+        output_type = []
         for child in expr.children:
-            self.rec(child)
+            type_to_check = self.rec(child)
+            if self.is_vector_dtype(type_to_check):
+                output_type.append(type_to_check)
+
+        if output_type:
+            return output_type
 
         return [NumpyType(np.dtype(np.bool_))]
 

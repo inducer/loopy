@@ -621,6 +621,21 @@ class Literal(LoopyExpressionBase):
 
 
 @p.expr_dataclass()
+class TypedLiteral(Literal):
+    """A literal to be used during code generation which we know the type of.
+
+    .. note::
+
+        Only used in the output of
+        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
+        similar mappers). Not for use in Loopy source representation.
+    """
+
+    s: str
+    dtype: ToLoopyTypeConvertible
+
+
+@p.expr_dataclass()
 class ArrayLiteral(LoopyExpressionBase):
     """An array literal.
 
