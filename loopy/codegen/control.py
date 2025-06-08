@@ -66,6 +66,24 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
                     get_insn_ids_for_block_at(kernel.linearization, sched_index),
                     codegen_state.callables_table)
+
+            from loopy.target.pyopencl import PyOpenCLPythonASTBuilder
+            if isinstance(codegen_state.ast_builder, PyOpenCLPythonASTBuilder):
+                prefix, postfix = (
+                    codegen_state.ast_builder
+                    .get_temporary_decl_at_index(codegen_state, sched_index)
+                )
+                results = [
+                    prefix,
+                    codegen_result,
+                    codegen_state.ast_builder.get_kernel_call(
+                        codegen_state,
+                        sched_item.kernel_name,
+                        glob_grid, loc_grid),
+                    postfix
+                ]
+                return merge_codegen_results(codegen_state, results)
+
             return merge_codegen_results(codegen_state, [
                 codegen_result,
 
@@ -116,6 +134,15 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             raise RuntimeError("encountered (invalid) EnterLoop "
                     "for '%s', tagged '%s'"
                     % (sched_item.iname, ", ".join(str(tag) for tag in tags)))
+
+        from loopy.target.pyopencl import PyOpenCLPythonASTBuilder
+        if isinstance(codegen_state.ast_builder, PyOpenCLPythonASTBuilder):
+            prefix, postfix = (
+                codegen_state.ast_builder
+                .get_temporary_decl_at_index(codegen_state, sched_index)
+            )
+            results = [prefix, func(codegen_state, sched_index), postfix]
+            return merge_codegen_results(codegen_state, results)
 
         return func(codegen_state, sched_index)
 
