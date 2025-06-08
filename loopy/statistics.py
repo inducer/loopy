@@ -755,6 +755,14 @@ class MemAccess(ImmutableRecord):
             from loopy.types import to_loopy_type
             dtype = to_loopy_type(dtype)
 
+        from pymbolic import flatten
+        if gid_strides is not None:
+            gid_strides = {k: flatten(v)
+                for k, v in gid_strides.items()}
+        if lid_strides is not None:
+            lid_strides = {k: flatten(v)
+                for k, v in lid_strides.items()}
+
         ImmutableRecord.__init__(self, mtype=mtype, dtype=dtype,
                             lid_strides=lid_strides,
                             gid_strides=gid_strides, direction=direction,
