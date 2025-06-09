@@ -26,7 +26,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Mapping, Sequence, Tuple, cast, Iterable
+from typing import TYPE_CHECKING, Any, cast
 from warnings import warn
 
 import numpy as np
@@ -55,7 +55,13 @@ from loopy.kernel.data import (
     ValueArg,
 )
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.schedule import CallKernel, EnterLoop, LeaveLoop, ReturnFromKernel
+from loopy.schedule import (
+    CallKernel,
+    EnterLoop,
+    LeaveLoop,
+    ReturnFromKernel,
+    ScheduleItem,
+)
 from loopy.target.opencl import (
     ExpressionToOpenCLCExpressionMapper,
     OpenCLCASTBuilder,
@@ -68,18 +74,21 @@ from loopy.types import NumpyType
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
+
     import genpy
     import pyopencl as cl
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
+    from loopy.schedule import ScheduleItem
     from loopy.target.pyopencl_execution import PyOpenCLExecutor
     from loopy.translation_unit import FunctionIdT, TranslationUnit
     from loopy.typing import Expression
 
-
 # {{{ pyopencl function scopers
+
 
 class PyOpenCLCallable(ScalarCallable):
     """
@@ -812,7 +821,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_temporary_decl_locations(
             self, codegen_state: CodeGenerationState
-        ) -> Tuple[Mapping[int, set[str]], Mapping[int, set[str]]]:
+        ) -> tuple[Mapping[int, set[str]], Mapping[int, set[str]]]:
         from collections import defaultdict
 
         from loopy.schedule.tools import (
@@ -825,7 +834,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         sched_index = 0
 
         # deal with base storage
-        storage_variables = defaultdict(set)
+        storage_variables: defaultdict[str, set[str]] = defaultdict(set)
         global_temporaries = self._get_global_temporaries(codegen_state)
         for tv in global_temporaries:
             if tv.base_storage:
@@ -834,7 +843,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 storage_variables[tv.name].add(tv.name)
 
         # Collapse into blocks
-        def get_temporaries_in_bounds(linearization, lower_bound, upper_bound):
+        def get_temporaries_in_bounds(
+                linearization: Sequence[ScheduleItem],
+                lower_bound: int,
+                upper_bound: int
+            ) -> frozenset[str]:
             temporaries: frozenset[str] = frozenset()
             for sched_index in range(lower_bound, upper_bound+1):
                 sched_item = linearization[sched_index]
@@ -848,14 +861,22 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     )
             return temporaries
 
-        def get_leave_loop_index(linearization, iname, starting_index):
+        def get_leave_loop_index(
+                linearization: Sequence[ScheduleItem],
+                iname: str,
+                starting_index: int
+            ) -> int:
             for sched_index in range(starting_index, len(linearization)):
                 sched_item = linearization[sched_index]
                 if isinstance(sched_item, LeaveLoop) and sched_item.iname == iname:
                     return sched_index
             raise LoopyError("LeaveLoop for iname '%s' not found" % iname)
 
-        def get_return_from_kernel_index(linearization, kernel_name, starting_index):
+        def get_return_from_kernel_index(
+                linearization: Sequence[ScheduleItem],
+                kernel_name: str,
+                starting_index: int
+            ) -> int:
             for sched_index in range(starting_index, len(linearization)):
                 sched_item = linearization[sched_index]
                 if (
@@ -866,7 +887,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             raise LoopyError("ReturnFromKernel for subkernel"
                              "'%s' not found" % kernel_name)
 
-        bounds = {}
+        bounds: dict[int, frozenset[str]] = {}
         sched_index = 0
         while sched_index < codegen_state.schedule_index_end:
             sched_item = kernel.linearization[sched_index]
@@ -901,19 +922,21 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 continue
             sched_item = kernel.linearization[sched_index]
             new_temporary_variables = bounds[sched_index]
-            new_storage_variables: set[str] = set()
+            fwd_new_storage_variables: set[str] = set()
             for sv in unseen_storage_variables:
                 if not storage_variables[sv].isdisjoint(new_temporary_variables):
-                    new_storage_variables.add(sv)
-            unseen_storage_variables = unseen_storage_variables - new_storage_variables
-            if (len(new_storage_variables) > 0):
+                    fwd_new_storage_variables.add(sv)
+            unseen_storage_variables = (
+                unseen_storage_variables - fwd_new_storage_variables
+            )
+            if (len(fwd_new_storage_variables) > 0):
                 target_index = sched_index
                 if target_index in first_accesses:
                     first_accesses[target_index] = (
-                        first_accesses[target_index].union(new_storage_variables)
+                        first_accesses[target_index].union(fwd_new_storage_variables)
                     )
                 else:
-                    first_accesses[target_index] = new_storage_variables
+                    first_accesses[target_index] = fwd_new_storage_variables
 
         last_accesses: dict[int, set[str]] = {}
         unseen_storage_variables = set(storage_variables.keys())
@@ -922,19 +945,21 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 continue
             sched_item = kernel.linearization[sched_index]
             new_temporary_variables = bounds[sched_index]
-            new_storage_variables: set[str] = set()
+            back_new_storage_variables: set[str] = set()
             for sv in unseen_storage_variables:
                 if not storage_variables[sv].isdisjoint(new_temporary_variables):
-                    new_storage_variables.add(sv)
-            unseen_storage_variables = unseen_storage_variables - new_storage_variables
-            if (len(new_storage_variables) > 0):
+                    back_new_storage_variables.add(sv)
+            unseen_storage_variables = (
+                unseen_storage_variables - back_new_storage_variables
+            )
+            if (len(back_new_storage_variables) > 0):
                 target_index = sched_index
                 if target_index in last_accesses:
                     last_accesses[target_index] = (
-                        last_accesses[target_index].union(new_storage_variables)
+                        last_accesses[target_index].union(back_new_storage_variables)
                     )
                 else:
-                    last_accesses[target_index] = new_storage_variables
+                    last_accesses[target_index] = back_new_storage_variables
         return (first_accesses, last_accesses)
 
     def get_temporary_allocation(
@@ -964,7 +989,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             temporary_variable_names: Iterable[str]
         ) -> genpy.Suite:
         from genpy import Statement, Suite
-        deallocation_code_lines = []
+        deallocation_code_lines: list[Statement] = []
         for tv_name in temporary_variable_names:
             deallocation_code_lines.append(
                 Statement(f"if {tv_name} is not None: {tv_name}.release()")
@@ -973,7 +998,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_temporary_decl_at_index(
             self, codegen_state: CodeGenerationState, sched_index: int
-        ) -> Tuple[genpy.Suite, genpy.Suite]:
+        ) -> tuple[genpy.Suite, genpy.Suite]:
         from genpy import Suite
         first_accesses, last_accesses = self.get_temporary_decl_locations(codegen_state)
         prefixes, suffixes = Suite(), Suite()
