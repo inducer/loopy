@@ -65,7 +65,7 @@ def parameters(request):
     return dict(zip("kn", request.param))
 
 
-def test_split_slabs(ctx_factory, vanilla, split, parameters):
+def test_split_slabs(ctx_factory: cl.CtxFactory, vanilla, split, parameters):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     expect = clarray.zeros(queue, 8, dtype=np.int32)

@@ -34,6 +34,7 @@ from pyopencl.tools import (  # noqa: F401
 )
 
 import loopy as lp
+from loopy.target import TargetBase
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
@@ -234,7 +235,11 @@ def assert_parse_roundtrip(expr):
 @pytest.mark.parametrize("target_cls", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 @pytest.mark.parametrize("random_seed", [0, 1, 2, 3, 4, 5])
 @pytest.mark.parametrize("expr_type", ["int", "int_nonneg", "real", "complex"])
-def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cls):
+def test_fuzz_expression_code_gen(
+        ctx_factory: cl.CtxFactory,
+        expr_type: str,
+        random_seed: int,
+        target_cls: type[TargetBase]):
     from pymbolic import evaluate
 
     def get_numpy_type(x):
@@ -388,7 +393,7 @@ def test_fuzz_expression_code_gen(ctx_factory, expr_type, random_seed, target_cl
 # }}}
 
 
-def test_sci_notation_literal(ctx_factory):
+def test_sci_notation_literal(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -403,7 +408,7 @@ def test_sci_notation_literal(ctx_factory):
     assert (np.abs(out.get() - 1e-12) < 1e-20).all()
 
 
-def test_indexof(ctx_factory):
+def test_indexof(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -421,7 +426,7 @@ def test_indexof(ctx_factory):
     assert np.array_equal(out.ravel(order="C"), np.arange(25))
 
 
-def test_indexof_vec(ctx_factory):
+def test_indexof_vec(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -494,7 +499,7 @@ def test_floor_div():
     assert "loopy_floor_div" not in lp.generate_code_v2(knl).device_code()
 
 
-def test_divide_precedence(ctx_factory):
+def test_divide_precedence(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -515,7 +520,7 @@ def test_divide_precedence(ctx_factory):
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
-def test_complex_support(ctx_factory, target):
+def test_complex_support(ctx_factory: cl.CtxFactory, target):
     knl = lp.make_kernel(
             "{[i, i1, i2]: 0<=i,i1,i2<10}",
             """
@@ -576,7 +581,7 @@ def test_complex_support(ctx_factory, target):
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_real_with_real_argument(ctx_factory, dtype):
+def test_real_with_real_argument(ctx_factory: cl.CtxFactory, dtype):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -594,7 +599,7 @@ def test_real_with_real_argument(ctx_factory, dtype):
     np.testing.assert_allclose(result.get(), np.real(ary.get()))
 
 
-def test_bool_type_context(ctx_factory):
+def test_bool_type_context(ctx_factory: cl.CtxFactory):
     # Checks if a boolean type context is correctly handled in codegen phase.
     # See https://github.com/inducer/loopy/pull/258
     ctx = ctx_factory()
@@ -613,7 +618,7 @@ def test_bool_type_context(ctx_factory):
     assert out.get() == np.logical_and(7.0, 8.0)
 
 
-def test_np_bool_handling(ctx_factory):
+def test_np_bool_handling(ctx_factory: cl.CtxFactory):
     import pymbolic.primitives as p
 
     from loopy.symbolic import parse
@@ -629,7 +634,7 @@ def test_np_bool_handling(ctx_factory):
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
-def test_complex_functions_with_real_args(ctx_factory, target):
+def test_complex_functions_with_real_args(ctx_factory: cl.CtxFactory, target):
     # Reported by David Ham. See <https://github.com/inducer/loopy/issues/851>
     t_unit = lp.make_kernel(
             "{[i]: 0<=i<10}",
