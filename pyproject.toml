@@ -70,9 +70,9 @@ exclude = [
   "/.git*",
   "/doc/_build",
   "/run-*.sh",
+  "/.editorconfig",
+  "/.basedpyright",
 ]
-
-[project.scripts]
 
 [project.urls]
 Documentation = "https://documen.tician.de/loopy"
