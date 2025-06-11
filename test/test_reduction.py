@@ -56,6 +56,24 @@ def test_nonsense_reduction():
         knl = lp.preprocess_kernel(knl)
 
 
+def test_simple_reduction(ctx_factory: cl.CtxFactory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<100}",
+            """
+                a = sum(i, 2)
+                """,
+            )
+
+    knl = lp.realize_reduction(knl)
+    print(knl)
+    _evt, (a,) = knl(queue)
+
+    assert (a.get() == 200).all()
+
+
 def test_empty_reduction(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
