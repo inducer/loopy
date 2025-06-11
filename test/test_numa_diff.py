@@ -26,7 +26,7 @@ import logging
 
 import pytest
 
-import pyopencl as cl  # noqa: F401
+import pyopencl as cl
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 @pytest.mark.parametrize("ilp_multiple", [1, 2])
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("opt_level", [11])
-def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa: N803
+def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_level):  # noqa: N803
     pytest.importorskip("fparser")
     ctx = ctx_factory()
 
