@@ -35,6 +35,7 @@ from pyopencl.tools import (  # noqa: F401
 )
 
 import loopy as lp
+from loopy.translation_unit import TranslationUnit
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
@@ -98,14 +99,15 @@ def test_axpy(ctx_factory: cl.CtxFactory):
 
         seq_knl = knl
 
-        def variant_cpu(knl):
+        def variant_cpu(knl: TranslationUnit):
             unroll = 16
             block_size = unroll*4096
             knl = lp.split_iname(knl, "i", block_size, outer_tag="g.0", slabs=(0, 1))
             knl = lp.split_iname(knl, "i_inner", unroll, inner_tag="unr")
+            knl = lp.prioritize_loops(knl, "i_outer, i_inner_outer, i_inner_inner")
             return knl
 
-        def variant_gpu(knl):
+        def variant_gpu(knl: TranslationUnit):
             unroll = 4
             block_size = 256
             knl = lp.split_iname(knl, "i", unroll*block_size,
