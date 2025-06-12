@@ -45,11 +45,6 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
     pytest.importorskip("fparser")
     ctx = ctx_factory()
 
-    if (ctx.devices[0].platform.name == "Portable Computing Language"
-            and ilp_multiple > 1):
-        # about 400s, cf. https://gitlab.tiker.net/inducer/loopy/-/jobs/421250#L937
-        pytest.skip("takes a very long time to compile on pocl")
-
     import os
 
     filename = os.path.join(os.path.dirname(__file__), "strongVolumeKernels.f90")
