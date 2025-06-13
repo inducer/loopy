@@ -60,7 +60,7 @@ from loopy.symbolic import (
     TaggedExpression,
     flatten,
 )
-from loopy.translation_unit import ConcreteCallablesTable, TranslationUnit
+from loopy.translation_unit import CallablesTable, TranslationUnit
 
 
 if TYPE_CHECKING:
@@ -1669,7 +1669,7 @@ def count(kernel, set: isl.Set, space: isl.Space | None = None) -> GuardedPwQPol
 
 
 def get_unused_hw_axes_factor(
-        knl: LoopKernel, callables_table: ConcreteCallablesTable, insn: InstructionBase,
+        knl: LoopKernel, callables_table: CallablesTable, insn: InstructionBase,
         disregard_local_axes: bool) -> GuardedPwQPolynomial:
     # FIXME: Multi-kernel support
     gsize, lsize = knl.get_grid_size_upper_bounds(callables_table)
@@ -1723,7 +1723,7 @@ def count_inames_domain(
 
 def count_insn_runs(
         knl: LoopKernel,
-        callables_table: ConcreteCallablesTable,
+        callables_table: CallablesTable,
         insn: InstructionBase,
         count_redundant_work: bool,
         disregard_local_axes: bool = False) -> GuardedPwQPolynomial:
@@ -1748,7 +1748,7 @@ def count_insn_runs(
 
 def _get_insn_count(
         knl: LoopKernel,
-        callables_table: ConcreteCallablesTable,
+        callables_table: CallablesTable,
         insn_id: str | None,
         subgroup_size: int | None,
         count_redundant_work: bool,
@@ -1818,7 +1818,7 @@ def _get_insn_count(
 
 def _get_op_map_for_single_kernel(
         knl: LoopKernel,
-        callables_table: ConcreteCallablesTable,
+        callables_table: CallablesTable,
         count_redundant_work: bool,
         count_within_subscripts: bool,
         subgroup_size: int | str | None,
@@ -2021,7 +2021,7 @@ def _process_subgroup_size(knl, subgroup_size_requested):
 
 def _get_mem_access_map_for_single_kernel(
         knl: LoopKernel,
-        callables_table: ConcreteCallablesTable,
+        callables_table: CallablesTable,
         count_redundant_work: bool, subgroup_size: int | str | None,
         within: Any) -> ToCountMap[GuardedPwQPolynomial]:
 
@@ -2193,7 +2193,7 @@ def get_mem_access_map(
 
 def _get_synchronization_map_for_single_kernel(
         knl: LoopKernel,
-        callables_table: ConcreteCallablesTable,
+        callables_table: CallablesTable,
         subgroup_size: int | None = None) -> ToCountMap[GuardedPwQPolynomial]:
 
     knl = lp.get_one_linearized_kernel(knl, callables_table)
