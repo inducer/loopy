@@ -23,13 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import Any, Mapping, Type, Union
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
-from typing_extensions import TypeAlias
+from typing_extensions import override
 
 from loopy.diagnostic import LoopyError
 from loopy.typing import auto
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from numpy.typing import DTypeLike
+
+    from pytools import Hash
+    from pytools.persistent_dict import KeyBuilder
 
 
 __doc__ = """
@@ -49,34 +59,38 @@ __doc__ = """
 """
 
 
-class LoopyType:
+class LoopyType(ABC):
     """
     Abstract class for dtypes of variables encountered in a
     :class:`loopy.LoopKernel`.
     """
+    @abstractmethod
     def is_integral(self) -> bool:
-        raise NotImplementedError()
+        ...
 
+    @abstractmethod
     def is_complex(self) -> bool:
-        raise NotImplementedError()
+        ...
 
-    def uses_complex(self) -> bool:
-        raise NotImplementedError()
+    @abstractmethod
+    def involves_complex(self) -> bool:
+        ...
 
+    @abstractmethod
     def is_composite(self) -> bool:
-        raise NotImplementedError()
+        ...
 
     @property
+    @abstractmethod
     def itemsize(self) -> int:
-        raise NotImplementedError()
+        ...
 
     @property
-    def numpy_dtype(self) -> np.dtype:
-        raise ValueError("'%s' is not a numpy type"
-                % str(self))
+    def numpy_dtype(self) -> np.dtype[Any]:
+        raise ValueError("'%s' is not a numpy type" % str(self))
 
 
-class AtomicType(LoopyType):
+class AtomicType(LoopyType, ABC):
     """
     Abstract class for dtypes of variables encountered in a :class:`loopy.LoopKernel`
     on which atomic operations are performed .
@@ -86,7 +100,9 @@ class AtomicType(LoopyType):
 # {{{ numpy-based dtype
 
 class NumpyType(LoopyType):
-    def __init__(self, dtype: np.dtype):
+    dtype: np.dtype[Any]
+
+    def __init__(self, dtype: DTypeLike) -> None:
         assert not isinstance(dtype, LoopyType)
 
         if dtype is None:
@@ -97,24 +113,29 @@ class NumpyType(LoopyType):
 
         self.dtype = np.dtype(dtype)
 
+    @override
     def __hash__(self) -> int:
         return hash(self.dtype)
 
-    def update_persistent_hash(self, key_hash, key_builder):
+    def update_persistent_hash(self, key_hash: Hash, key_builder: KeyBuilder) -> None:
         key_builder.rec(key_hash, self.dtype)
 
+    @override
     def __eq__(self, other: object) -> bool:
         return (
                 type(self) is type(other)
                 # mypy doesn't understand 'type(self) is type(other)'
                 and self.dtype == other.dtype)  # type: ignore[attr-defined]
 
+    @override
     def is_integral(self) -> bool:
         return self.dtype.kind in "iu"
 
+    @override
     def is_complex(self) -> bool:
         return self.dtype.kind == "c"
 
+    @override
     def involves_complex(self) -> bool:
         def dtype_involves_complex(dtype):
             if dtype.kind == "c":
@@ -129,17 +150,21 @@ class NumpyType(LoopyType):
 
         return dtype_involves_complex(self.dtype)
 
+    @override
     def is_composite(self):
         return self.dtype.kind == "V"
 
     @property
+    @override
     def itemsize(self) -> int:
         return self.dtype.itemsize
 
     @property
-    def numpy_dtype(self) -> np.dtype:
+    @override
+    def numpy_dtype(self) -> np.dtype[Any]:
         return self.dtype
 
+    @override
     def __repr__(self) -> str:
         return "np:" + repr(self.dtype)
 
@@ -155,7 +180,7 @@ class AtomicNumpyType(NumpyType, AtomicType):
     def __hash__(self):
         return 0xa7031c ^ hash(self.dtype)
 
-    def update_persistent_hash(self, key_hash, key_builder):
+    def update_persistent_hash(self, key_hash: Hash, key_builder: KeyBuilder) -> None:
         key_builder.rec(key_hash, 0xa7031c)
         key_builder.rec(key_hash, self.dtype)
 
@@ -173,25 +198,41 @@ class OpaqueType(LoopyType):
     through one ValueArg and go out to another. It is introduced to accommodate
     functional calls to external libraries.
     """
+    name: str
+
     def __init__(self, name: str) -> None:
         assert isinstance(name, str)
         self.name = name
 
+    @override
     def is_integral(self) -> bool:
         return False
 
+    @override
     def is_complex(self) -> bool:
         return False
 
+    @override
     def involves_complex(self) -> bool:
         return False
 
-    def update_persistent_hash(self, key_hash, key_builder):
+    @override
+    def is_composite(self):
+        return False
+
+    @property
+    @override
+    def itemsize(self) -> int:
+        raise LoopyError("cannot find size of an opaque type")
+
+    def update_persistent_hash(self, key_hash: Hash, key_builder: KeyBuilder) -> None:
         key_builder.rec(key_hash, self.name)
 
+    @override
     def __hash__(self) -> int:
         return hash(self.name)
 
+    @override
     def __eq__(self, other: object) -> bool:
         return (
                 type(self) is type(other)
@@ -202,13 +243,13 @@ class OpaqueType(LoopyType):
 # }}}
 
 
-ToLoopyTypeConvertible: TypeAlias = Union[
-    Type[auto],
-    Type[np.generic],
-    np.dtype,
-    LoopyType,
-    str,
-    None]
+ToLoopyTypeConvertible: TypeAlias = (
+    type[auto]
+    | type[np.generic]
+    | np.dtype[Any]
+    | LoopyType
+    | str
+    | None)
 
 
 def to_loopy_type(dtype: ToLoopyTypeConvertible,

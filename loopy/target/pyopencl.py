@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loopy.target.c import CompyteDTypeRegistryWrapper, DTypeRegistry
+
 
 """OpenCL target integrated with PyOpenCL."""
 
@@ -31,6 +33,7 @@ from warnings import warn
 
 import numpy as np
 from constantdict import constantdict
+from typing_extensions import override
 
 import pymbolic.primitives as p
 from cgen import (
@@ -68,7 +71,7 @@ from loopy.target.opencl import (
     OpenCLTarget,
 )
 from loopy.target.python import PythonASTBuilderBase
-from loopy.types import NumpyType
+from loopy.types import LoopyType, NumpyType
 
 
 logger = logging.getLogger(__name__)
@@ -78,6 +81,7 @@ if TYPE_CHECKING:
 
     import genpy
     import pyopencl as cl
+    from pymbolic import Expression
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
@@ -87,6 +91,7 @@ if TYPE_CHECKING:
     from loopy.translation_unit import FunctionIdT, TranslationUnit
     from loopy.typing import Expression
 
+
 # {{{ pyopencl function scopers
 
 
@@ -95,11 +100,16 @@ class PyOpenCLCallable(ScalarCallable):
     Records information about the callables which are not covered by
     :class:`loopy.target.opencl.OpenCLCallable`
     """
-    def with_types(self, arg_id_to_dtype, callables_table):
+    @override
+    def with_types(self,
+                   arg_id_to_dtype: Mapping[int | str, LoopyType],
+                   clbl_inf_ctx: CallablesInferenceContext,
+               ) -> tuple[ScalarCallable, CallablesInferenceContext]:
 
         name = self.name
 
         for id in arg_id_to_dtype:
+            assert isinstance(id, int)
             # since all the below functions are single arg.
             if not -1 <= id <= 0:
                 raise LoopyError(f"{name} can only take one argument")
@@ -109,7 +119,7 @@ class PyOpenCLCallable(ScalarCallable):
             # callable
             return (
                     self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
-                    callables_table)
+                    clbl_inf_ctx)
 
         dtype = arg_id_to_dtype[0]
 
@@ -128,7 +138,7 @@ class PyOpenCLCallable(ScalarCallable):
                                 0: dtype,
                                 -1: NumpyType(np.dtype(dtype.numpy_dtype.type(0).real))
                                 })),
-                        callables_table)
+                        clbl_inf_ctx)
 
         if name in ["real", "imag", "conj"]:
             if not dtype.is_complex():
@@ -137,7 +147,7 @@ class PyOpenCLCallable(ScalarCallable):
                         self.copy(
                             name_in_target=f"_lpy_{name}_{tpname}",
                             arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
-                        callables_table)
+                        clbl_inf_ctx)
 
         if name in ["sqrt", "exp", "log",
                 "sin", "cos", "tan",
@@ -155,7 +165,7 @@ class PyOpenCLCallable(ScalarCallable):
                 return (
                         self.copy(name_in_target=f"{tpname}_{name}",
                             arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
-                        callables_table)
+                        clbl_inf_ctx)
 
             # fall back to pure OpenCL for real-valued arguments
 
@@ -164,7 +174,7 @@ class PyOpenCLCallable(ScalarCallable):
                 arg_id_to_dtype=self.arg_id_to_dtype,
                 arg_id_to_descr=self.arg_id_to_descr,
                 name_in_target=self.name_in_target).with_types(
-                        arg_id_to_dtype, callables_table)
+                        arg_id_to_dtype, clbl_inf_ctx)
 
     def generate_preambles(self, target):
         name = self.name_in_target
@@ -233,7 +243,7 @@ def pyopencl_preamble_generator(preamble_info):
 # {{{ expression mapper
 
 class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper):
-    def complex_type_name(self, dtype):
+    def complex_type_name(self, dtype: LoopyType):
         from loopy.types import NumpyType
         if not isinstance(dtype, NumpyType):
             raise LoopyError("'%s' is not a complex type" % dtype)
@@ -255,7 +265,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         else:
             return super().wrap_in_typecast(actual_type, needed_type, s)
 
-    def map_sum(self, expr, type_context):
+    @override
+    def map_sum(self, expr: p.Sum, type_context: str) -> Expression:
         # I've added 'type_context == "i"' because of the following
         # idiotic corner case: Code generation for subscripts comes
         # through here, and it may involve variables that we know
@@ -281,9 +292,9 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             for child in expr.children:
                 rhs_is_complex = self.infer_type(child).is_complex()
                 if rhs_is_complex:
-                    child_val = self.rec(child, type_context, tgt_dtype)
+                    child_val = self.rec_arith(child, type_context, tgt_dtype)
                 else:
-                    child_val = self.rec(child, type_context)
+                    child_val = self.rec_arith(child, type_context)
 
                 if result is None:
                     result = child_val
@@ -296,6 +307,9 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 else:
                     result = p.Sum((result, child_val))
                 lhs_is_complex = lhs_is_complex or rhs_is_complex
+
+            assert result is not None
+
             return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
@@ -363,7 +377,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             else:
                 return complex_sum
 
-    def map_product(self, expr, type_context):
+    @override
+    def map_product(self, expr: p.Product, type_context: str) -> Expression:
         # I've added 'type_context == "i"' because of the following
         # idiotic corner case: Code generation for subscripts comes
         # through here, and it may involve variables that we know
@@ -386,9 +401,9 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             for child in expr.children:
                 rhs_is_complex = self.infer_type(child).is_complex()
                 if rhs_is_complex:
-                    child_val = self.rec(child, type_context, tgt_dtype)
+                    child_val = self.rec_arith(child, type_context, tgt_dtype)
                 else:
-                    child_val = self.rec(child, type_context)
+                    child_val = self.rec_arith(child, type_context)
 
                 if result is None:
                     result = child_val
@@ -401,6 +416,9 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 else:
                     result = p.Product((result, child_val))
                 lhs_is_complex = lhs_is_complex or rhs_is_complex
+
+            assert result is not None
+
             return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
@@ -433,7 +451,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             else:
                 return complex_prd
 
-    def map_quotient(self, expr, type_context):
+    @override
+    def map_quotient(self, expr: p.Quotient, type_context: str):
         n_dtype = self.infer_type(expr.numerator).numpy_dtype
         d_dtype = self.infer_type(expr.denominator).numpy_dtype
         tgt_dtype = self.infer_type(expr)
@@ -456,7 +475,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                     self.rec(expr.numerator, type_context, tgt_dtype),
                     self.rec(expr.denominator, type_context, tgt_dtype))
 
-    def map_constant(self, expr, type_context):
+    @override
+    def map_constant(self, expr: object, type_context: str):
         if isinstance(expr, (complex, np.complexfloating)):
             try:
                 dtype = expr.dtype
@@ -482,7 +502,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         return super().map_constant(expr, type_context)
 
-    def map_power(self, expr, type_context):
+    @override
+    def map_power(self, expr: p.Power, type_context: str):
         tgt_dtype = self.infer_type(expr)
         base_dtype = self.infer_type(expr.base)
         exponent_dtype = self.infer_type(expr.exponent)
@@ -492,7 +513,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if expr.exponent in [2, 3, 4]:
             value = expr.base
-            for _i in range(expr.exponent-1):
+            for _i in range(cast("int", expr.exponent)-1):
                 value = value * expr.base
             return self.rec(value, type_context)
         else:
@@ -578,9 +599,11 @@ class PyOpenCLTarget(OpenCLTarget):
 
     # {{{ types
 
-    def get_dtype_registry(self):
+    @override
+    def get_dtype_registry(self) -> DTypeRegistry:
         from pyopencl.compyte.dtypes import TYPE_REGISTRY
-        result = TYPE_REGISTRY
+
+        result = CompyteDTypeRegistryWrapper(TYPE_REGISTRY)
 
         from loopy.target.opencl import (
             DTypeRegistryWrapperWithCL1Atomics,
@@ -634,7 +657,7 @@ class PyOpenCLTarget(OpenCLTarget):
     # and mypy doesn't like it.
     def get_kernel_executor(self, t_unit: TranslationUnit,  # type: ignore[override]
                             queue_or_context: cl.CommandQueue | cl.Context,
-                            *args: Any, entrypoint: FunctionIdT, **kwargs: Any
+                            *args: Any, entrypoint: CallableId, **kwargs: Any
                             ) -> PyOpenCLExecutor:
         from pyopencl import CommandQueue
         if isinstance(queue_or_context, CommandQueue):
@@ -773,6 +796,8 @@ def generate_array_arg_setup(
 class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     """A Python host AST builder for integration with PyOpenCL.
     """
+
+    target: PyOpenCLTarget
 
     # {{{ code generation guts
 
@@ -1182,6 +1207,8 @@ def split_args_for_overflow(
 class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     """A C device AST builder for integration with PyOpenCL.
     """
+
+    target: PyOpenCLTarget
 
     # {{{ function decl/def, with arg overflow handling
 

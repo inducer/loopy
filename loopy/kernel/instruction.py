@@ -24,7 +24,10 @@ THE SOFTWARE.
 """
 
 from collections.abc import (
-    Mapping as MappingABC,
+    Callable,
+    Mapping,
+    Mapping as abc_Mapping,
+    Sequence,
     Set as abc_Set,
 )
 from dataclasses import dataclass
@@ -34,24 +37,37 @@ from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
-    Mapping,
-    Sequence,
+    TypeAlias,
+    cast,
 )
 from warnings import warn
 
+from typing_extensions import Self, override
+
 import islpy as isl
+import pymbolic.primitives as p
 from pytools import ImmutableRecord, memoize_method
 from pytools.tag import Tag, Taggable, tag_dataclass
 
 from loopy.diagnostic import LoopyError
+from loopy.symbolic import LinearSubscript, SubArrayRef
 from loopy.tools import Optional as LoopyOptional
+from loopy.types import LoopyType
 
 
 if TYPE_CHECKING:
-    import pymbolic.primitives as p
+    from pymbolic import Expression
 
-    from loopy.types import LoopyType
-    from loopy.typing import Expression, InameStr
+    from loopy.kernel import LoopKernel
+    from loopy.typing import InameStr
+
+
+Assignable: TypeAlias = (
+    p.Variable
+    | p.Subscript
+    | p.Lookup
+    | SubArrayRef
+    | LinearSubscript)
 
 
 # {{{ instruction tags
@@ -258,7 +274,9 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     Inherits from :class:`pytools.tag.Taggable`.
     """
-    id: str | None
+    # None-able during kernel creation
+    id: str
+
     happens_after: Mapping[str, HappensAfter]
     depends_on_is_final: bool
     groups: frozenset[str]
@@ -373,7 +391,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         if depends_on_is_final is None:
             depends_on_is_final = False
 
-        if depends_on_is_final and not isinstance(happens_after, MappingABC):
+        if depends_on_is_final and not isinstance(happens_after, abc_Mapping):
             raise LoopyError("Setting depends_on_is_final to True requires "
                     "actually specifying happens_after/depends_on")
 
@@ -399,7 +417,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         # assert all(is_interned(pred) for pred in predicates)
 
         assert isinstance(within_inames, abc_Set)
-        assert isinstance(happens_after, MappingABC) or happens_after is None
+        assert isinstance(happens_after, abc_Mapping) or happens_after is None
         assert isinstance(groups, abc_Set)
         assert isinstance(conflicts_with_groups, abc_Set)
 
@@ -439,22 +457,22 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # {{{ abstract interface
 
-    def read_dependency_names(self):
+    def read_dependency_names(self) -> abc_Set[str]:
         from loopy.symbolic import get_dependencies
-        result = frozenset()
+        result: frozenset[str] = frozenset()
 
         for pred in self.predicates:
             result = result | get_dependencies(pred)
 
         return result
 
-    def reduction_inames(self) -> frozenset[str]:
+    def reduction_inames(self) -> abc_Set[str]:
         raise NotImplementedError
 
-    def sub_array_ref_inames(self):
+    def sub_array_ref_inames(self) -> abc_Set[str]:
         raise NotImplementedError
 
-    def assignee_var_names(self):
+    def assignee_var_names(self) -> Sequence[str]:
         """Return a tuple of assignee variable names, one
         for each quantity being assigned to.
         """
@@ -466,7 +484,10 @@ class InstructionBase(ImmutableRecord, Taggable):
         """
         raise NotImplementedError
 
-    def with_transformed_expressions(self, f, assignee_f=None):
+    def with_transformed_expressions(self,
+                f: Callable[[Expression], Expression],
+                assignee_f: Callable[[Expression], Expression] | None = None
+            ) -> Self:
         """Return a new copy of *self* where *f* has been applied to every
         expression occurring in *self*. *args* will be passed as extra
         arguments (in addition to the expression) to *f*.
@@ -592,13 +613,13 @@ class InstructionBase(ImmutableRecord, Taggable):
 # }}}
 
 
-def _get_assignee_var_name(expr):
+def _get_assignee_var_name(expr: Assignable) -> str:
     from pymbolic.primitives import Lookup, Subscript, Variable
 
     from loopy.symbolic import LinearSubscript, SubArrayRef
 
     if isinstance(expr, Lookup):
-        expr = expr.aggregate
+        expr = cast("Assignable", expr.aggregate)
 
     if isinstance(expr, Variable):
         return expr.name
@@ -625,7 +646,7 @@ def _get_assignee_var_name(expr):
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
-def _get_assignee_subscript_deps(expr):
+def _get_assignee_subscript_deps(expr: Expression) -> frozenset[str]:
     from pymbolic.primitives import Lookup, Subscript, Variable
 
     from loopy.symbolic import LinearSubscript, SubArrayRef, get_dependencies
@@ -832,6 +853,8 @@ class MultiAssignmentBase(InstructionBase):
 
     fields = InstructionBase.fields | {"expression"}
 
+    assignees: tuple[Assignable, ...]  # pyright: ignore[reportUninitializedInstanceVariable]
+
     @memoize_method
     def read_dependency_names(self):
         from loopy.symbolic import get_dependencies
@@ -915,16 +938,16 @@ class Assignment(MultiAssignmentBase):
     .. automethod:: __init__
     """
 
-    assignee: Expression
+    assignee: Assignable
     expression: Expression
-    temp_var_type: LoopyOptional
+    temp_var_type: LoopyOptional[LoopyType | None]
     atomicity: tuple[VarAtomicity, ...]
 
     fields = MultiAssignmentBase.fields | \
             set("assignee temp_var_type atomicity".split())
 
     def __init__(self,
-                 assignee: str | Expression,
+                 assignee: str | Assignable,
                  expression: str | Expression,
                  id: str | None = None,
                  happens_after:
@@ -939,7 +962,7 @@ class Assignment(MultiAssignmentBase):
                  predicates: frozenset[str] | None = None,
                  tags: frozenset[Tag] | None = None,
                  temp_var_type:
-                    type[_not_provided] | LoopyOptional | LoopyType | None
+                    type[_not_provided] | LoopyOptional[LoopyType] | LoopyType | None
                     = _not_provided,
                  atomicity: tuple[VarAtomicity, ...] = (),
                  *,
@@ -947,7 +970,7 @@ class Assignment(MultiAssignmentBase):
                  ) -> None:
 
         if temp_var_type is _not_provided:
-            temp_var_type = LoopyOptional()
+            temp_var_type = LoopyOptional[LoopyType]()
 
         super().__init__(
                 id=id,
@@ -965,7 +988,12 @@ class Assignment(MultiAssignmentBase):
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
-            assignee = parse(assignee)
+            assignee_expr = parse(assignee)
+            if isinstance(assignee_expr, (p.Subscript, p.Variable)):
+                assignee = assignee_expr
+            else:
+                raise LoopyError(f"not assignable: {type(assignee_expr)}")
+
         if isinstance(expression, str):
             parsed_expression = parse(expression)
         else:
@@ -990,9 +1018,13 @@ class Assignment(MultiAssignmentBase):
         return (_get_assignee_var_name(self.assignee),)
 
     def assignee_subscript_deps(self):
-        return (_get_assignee_subscript_deps(self.assignee),)
+        return frozenset({_get_assignee_subscript_deps(self.assignee)})
 
-    def with_transformed_expressions(self, f, assignee_f=None):
+    @override
+    def with_transformed_expressions(self,
+                f: Callable[[Expression], Expression],
+                assignee_f: Callable[[Expression], Expression] | None = None
+            ) -> Self:
         if assignee_f is None:
             assignee_f = f
 
@@ -1043,7 +1075,8 @@ class Assignment(MultiAssignmentBase):
         return (self.temp_var_type,)
 
     @property
-    def assignees(self):
+    @override
+    def assignees(self) -> tuple[Assignable]:  # pyright: ignore[reportIncompatibleVariableOverride]
         return (self.assignee,)
 
     @memoize_method
@@ -1086,8 +1119,9 @@ class CallInstruction(MultiAssignmentBase):
             set("assignees temp_var_types".split())
 
     def __init__(self,
-            assignees, expression,
-            id=None,
+            assignees: tuple[Assignable, ...] | str,
+            expression: Expression,
+            id: str | None = None,
             happens_after=None,
             depends_on_is_final=None,
             groups=None,
@@ -1098,7 +1132,8 @@ class CallInstruction(MultiAssignmentBase):
             tags=None,
             temp_var_types=None,
             priority=0, predicates=frozenset(),
-            depends_on=None):
+            depends_on=None
+        ) -> None:
 
         super().__init__(
                 id=id,
@@ -1124,7 +1159,12 @@ class CallInstruction(MultiAssignmentBase):
 
         from loopy.symbolic import parse
         if isinstance(assignees, str):
-            assignees = parse(assignees)
+            assignees_expr = parse(assignees)
+            if isinstance(assignees_expr, tuple):
+                assignees = cast(
+                                 "tuple[Assignable, ...]", assignees_expr)
+            else:
+                raise LoopyError(f"not assignable: {type(assignees_expr)}")
         if not isinstance(assignees, tuple):
             raise LoopyError("'assignees' argument to CallInstruction "
                     "must be a tuple or a string parseable to a tuple"
@@ -1162,11 +1202,16 @@ class CallInstruction(MultiAssignmentBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, assignee_f=None):
+    @override
+    def with_transformed_expressions(self,
+                f: Callable[[Expression], Expression],
+                assignee_f: Callable[[Expression], Expression] | None = None
+            ) -> Self:
         if assignee_f is None:
             assignee_f = f
 
-        assignees = assignee_f(self.assignees)
+        assignees = cast("tuple[Assignable]", assignee_f(self.assignees))
+
         expression = f(self.expression)
         predicates = []
         changed_predicates = False
@@ -1208,7 +1253,7 @@ class CallInstruction(MultiAssignmentBase):
                     str(pred) for pred in self.predicates)
         return result
 
-    def arg_id_to_arg(self):
+    def arg_id_to_arg(self) -> Mapping[int, Expression]:
         """:returns: a :class:`dict` mapping argument identifiers (non-negative
             numbers for positional arguments and negative numbers for assignees) to
             their respective values
@@ -1264,7 +1309,9 @@ def is_array_call(assignees, expression):
     return False
 
 
-def modify_assignee_for_array_call(assignee):
+def modify_assignee_for_array_call(
+            assignee: p.Variable | p.Subscript | SubArrayRef
+        ) -> p.Subscript | SubArrayRef:
     """
     Converts the assignee subscript or variable as a SubArrayRef.
     """
@@ -1287,14 +1334,15 @@ def modify_assignee_for_array_call(assignee):
                 "SubArrayRef as its inputs")
 
 
-def make_assignment(assignees: tuple[Expression, ...],
+def make_assignment(assignees: tuple[Assignable, ...],
                     expression: Expression,
                     temp_var_types: (
                         Sequence[LoopyType | None] | None) = None,
                     **kwargs: Any) -> Assignment | CallInstruction:
 
     if temp_var_types is not None:
-        tv_types: Sequence[LoopyType | LoopyOptional | None] = temp_var_types
+        tv_types: Sequence[
+            LoopyType | LoopyOptional[LoopyType | None] | None] = temp_var_types
     else:
         tv_types = (LoopyOptional(),) * len(assignees)
 
@@ -1324,7 +1372,8 @@ def make_assignment(assignees: tuple[Expression, ...],
             # SubArrayRef
             return CallInstruction(
                     assignees=tuple(modify_assignee_for_array_call(
-                        assignee) for assignee in assignees),
+                        # FIXME: It's got a point. But LinearSubscript is deprecated.
+                        assignee) for assignee in assignees),  # pyright: ignore[reportArgumentType]
                     expression=expression,
                     temp_var_types=tuple(tv_types),
                     **kwargs)
@@ -1497,7 +1546,11 @@ class CInstruction(InstructionBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, assignee_f=None):
+    @override
+    def with_transformed_expressions(self,
+                f: Callable[[Expression], Expression],
+                assignee_f: Callable[[Expression], Expression] | None = None
+            ) -> Self:
         if assignee_f is None:
             assignee_f = f
 
@@ -1533,19 +1586,27 @@ class _DataObliviousInstruction(InstructionBase):
 
     # read_dependency_names inherited
 
+    @override
     def reduction_inames(self):
         return frozenset()
 
+    @override
     def sub_array_ref_inames(self):
         return frozenset()
 
-    def assignee_var_names(self):
-        return frozenset()
+    @override
+    def assignee_var_names(self) -> Sequence[str]:
+        return ()
 
+    @override
     def assignee_subscript_deps(self):
         return frozenset()
 
-    def with_transformed_expressions(self, f, assignee_f=None):
+    @override
+    def with_transformed_expressions(self,
+                f: Callable[[Expression], Expression],
+                assignee_f: Callable[[Expression], Expression] | None = None
+            ) -> Self:
         return self.copy(
                 predicates=frozenset(
                     f(pred) for pred in self.predicates))
@@ -1688,7 +1749,10 @@ def _get_insn_hash_key(insn):
 
 # {{{ _check_and_fix_temp_var_type
 
-def _check_and_fix_temp_var_type(temp_var_type, stacklevel=2):
+def _check_and_fix_temp_var_type(
+            temp_var_type: Any,  # pyright: ignore[reportAny]
+            stacklevel: int = 2
+        ) -> LoopyOptional[LoopyType | None]:
     """Check temp_var_type for deprecated usage, and convert to the right value.
     """
 
@@ -1698,26 +1762,26 @@ def _check_and_fix_temp_var_type(temp_var_type, stacklevel=2):
         warn("temp_var_type should be Optional() if no temporary, not None. "
              "This usage will be disallowed soon.",
              DeprecationWarning, stacklevel=1 + stacklevel)
-        temp_var_type = lp.Optional()
+        return lp.Optional()
 
     elif temp_var_type is lp.auto:
         warn("temp_var_type should be Optional(None) if "
              "unspecified, not auto. This usage will be disallowed soon.",
              DeprecationWarning, stacklevel=1 + stacklevel)
-        temp_var_type = lp.Optional(None)
+        return lp.Optional(None)
 
     elif not isinstance(temp_var_type, lp.Optional):
         warn("temp_var_type should be an instance of Optional. "
              "Other values for temp_var_type will be disallowed soon.",
              DeprecationWarning, stacklevel=1 + stacklevel)
-        temp_var_type = lp.Optional(temp_var_type)
+        return lp.Optional(temp_var_type)  # pyright: ignore[reportAny]
 
     return temp_var_type
 
 # }}}
 
 
-def get_insn_domain(insn, kernel):
+def get_insn_domain(insn: InstructionBase, kernel: LoopKernel) -> isl.Set:
     """
     Returns an instance of :class:`islpy.Set` for the *insn*'s domain.
 
@@ -1749,7 +1813,7 @@ def get_insn_domain(insn, kernel):
 
     # {{{ enforce restriction from predicates
 
-    insn_preds_set = isl.BasicSet.universe(domain.space)
+    insn_preds_set = isl.Set.universe(domain.space)
 
     for predicate in insn.predicates:
         from loopy.symbolic import condition_to_set

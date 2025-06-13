@@ -37,7 +37,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def test_dg_volume(ctx_factory):
+def test_dg_volume(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     dtype4 = cl.array.vec.float4
     ctx = ctx_factory()
@@ -172,7 +172,7 @@ def test_dg_volume(ctx_factory):
                 )
 
 
-def no_test_dg_surface(ctx_factory):
+def no_test_dg_surface(ctx_factory: cl.CtxFactory):
     # tough to test, would need the right index info
     dtype = np.float32
     ctx = ctx_factory()

@@ -24,19 +24,29 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 import islpy as isl
 from islpy import dim_type
 from pymbolic.mapper.stringifier import PREC_NONE
 
 from loopy.codegen.control import build_loop_nest
-from loopy.codegen.result import merge_codegen_results
+from loopy.codegen.result import CodeGenerationResult, merge_codegen_results
 from loopy.diagnostic import LoopyError, warn
 from loopy.symbolic import flatten
 
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from loopy.codegen import CodeGenerationState
+    from loopy.kernel import LoopKernel
+    from loopy.typing import InameStr
+
+
 # {{{ conditional-reducing slab decomposition
 
-def get_slab_decomposition(kernel, iname):
+def get_slab_decomposition(kernel: LoopKernel, iname: InameStr):
     iname_domain = kernel.get_inames_domain(iname)
 
     if iname_domain.is_empty():
@@ -224,16 +234,20 @@ def intersect_kernel_with_slab(kernel, slab, iname):
     from loopy.kernel.tools import DomainChanger
 
     domch = DomainChanger(kernel, (iname,))
-    orig_domain = domch.get_original_domain()
+    orig_domain = domch.domain
     orig_domain, slab = isl.align_two(slab, orig_domain)
     return domch.get_kernel_with(orig_domain & slab)
 
 
 # {{{ hw-parallel loop
 
-def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
-        hw_inames_left=None):
+def set_up_hw_parallel_loops(
+        codegen_state: CodeGenerationState, schedule_index: int,
+        next_func,
+        hw_inames_left: Sequence[InameStr] | None = None) -> CodeGenerationResult:
     kernel = codegen_state.kernel
+
+    assert kernel.linearization is not None
 
     from loopy.kernel.data import (
         GroupInameTag,
@@ -248,7 +262,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
                                                    schedule_index)
 
     if hw_inames_left is None:
-        all_inames_by_insns = set()
+        all_inames_by_insns: set[InameStr] = set()
         for insn_id in insn_ids_for_block:
             all_inames_by_insns |= kernel.insn_inames(insn_id)
 
@@ -262,7 +276,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     global_size, local_size = kernel.get_grid_sizes_for_insn_ids(
             insn_ids_for_block, codegen_state.callables_table, return_dict=True)
 
-    hw_inames_left = hw_inames_left[:]
+    hw_inames_left = list(hw_inames_left)
     iname = hw_inames_left.pop()
 
     from loopy.symbolic import GroupHardwareAxisIndex, LocalHardwareAxisIndex
@@ -300,7 +314,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     # It's ok to find a bound that's too "loose". The conditional
     # generators will mop up after us.
     from loopy.kernel.tools import get_hw_axis_base_for_codegen
-    lower_bound = get_hw_axis_base_for_codegen(kernel, iname)
+    lower_bound = get_hw_axis_base_for_codegen(kernel, iname).to_pw_aff()
 
     # These bounds are 'implemented' by the hardware. Make sure
     # that the downstream conditional generators realize that.
@@ -310,7 +324,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     from loopy.isl_helpers import make_slab
     slab = make_slab(domain.get_space(), iname,
             lower_bound, lower_bound+hw_axis_size)
-    codegen_state = codegen_state.intersect(slab)
+    codegen_state = codegen_state.intersect(slab.to_set())
 
     from loopy.symbolic import pw_aff_to_expr
     hw_axis_expr = flatten(hw_axis_expr + pw_aff_to_expr(lower_bound))

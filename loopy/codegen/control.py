@@ -25,10 +25,11 @@ THE SOFTWARE.
 """
 
 from functools import partial
+from typing import TYPE_CHECKING
 
 import islpy as isl
 
-from loopy.codegen.result import merge_codegen_results, wrap_in_if
+from loopy.codegen.result import CodeGenerationResult, merge_codegen_results, wrap_in_if
 from loopy.diagnostic import LoopyError
 from loopy.schedule import (
     Barrier,
@@ -41,8 +42,17 @@ from loopy.schedule import (
 )
 
 
-def generate_code_for_sched_index(codegen_state, sched_index):
+if TYPE_CHECKING:
+    from loopy.codegen import CodeGenerationState
+
+
+def generate_code_for_sched_index(
+            codegen_state: CodeGenerationState,
+            sched_index: int
+        ) -> CodeGenerationResult:
     kernel = codegen_state.kernel
+    assert kernel.linearization is not None
+
     sched_item = kernel.linearization[sched_index]
 
     if isinstance(sched_item, CallKernel):

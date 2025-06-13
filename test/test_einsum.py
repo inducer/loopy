@@ -50,7 +50,7 @@ def test_make_einsum_error_handling():
     "ij->ji",  # transpose
     "ii->i",   # extract diagonal
 ])
-def test_einsum_array_manipulation(ctx_factory, spec):
+def test_einsum_array_manipulation(ctx_factory: cl.CtxFactory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -69,7 +69,7 @@ def test_einsum_array_manipulation(ctx_factory, spec):
 @pytest.mark.parametrize("spec", [
     "ij,j->j",
 ])
-def test_einsum_array_matvec(ctx_factory, spec):
+def test_einsum_array_matvec(ctx_factory: cl.CtxFactory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -91,7 +91,7 @@ def test_einsum_array_matvec(ctx_factory, spec):
     "ij,ji->ij",  # A * B.T
     "ij,kj->ik",  # inner(A, B)
 ])
-def test_einsum_array_ops_same_dims(ctx_factory, spec):
+def test_einsum_array_ops_same_dims(ctx_factory: cl.CtxFactory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -111,7 +111,7 @@ def test_einsum_array_ops_same_dims(ctx_factory, spec):
 @pytest.mark.parametrize("spec", [
     "ik,kj->ij",  # A @ B
 ])
-def test_einsum_array_ops_diff_dims(ctx_factory, spec):
+def test_einsum_array_ops_diff_dims(ctx_factory: cl.CtxFactory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -133,7 +133,7 @@ def test_einsum_array_ops_diff_dims(ctx_factory, spec):
 @pytest.mark.parametrize("spec", [
     "im,mj,km->ijk",
 ])
-def test_einsum_array_ops_triple_prod(ctx_factory, spec):
+def test_einsum_array_ops_triple_prod(ctx_factory: cl.CtxFactory, spec):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -151,7 +151,7 @@ def test_einsum_array_ops_triple_prod(ctx_factory, spec):
     assert np.linalg.norm(out - ans) <= 1e-15
 
 
-def test_einsum_with_variable_strides(ctx_factory):
+def test_einsum_with_variable_strides(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)

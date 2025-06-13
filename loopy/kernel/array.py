@@ -24,22 +24,21 @@ THE SOFTWARE.
 """
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
-    Sequence,
-    Tuple,
+    TypeAlias,
     TypeVar,
     cast,
 )
 from warnings import warn
 
-import numpy as np  # noqa
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self
 
+from pymbolic import Expression
 from pymbolic.primitives import is_arithmetic_expression
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable
@@ -47,12 +46,13 @@ from pytools.tag import Tag, Taggable
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import flatten
 from loopy.types import LoopyType
-from loopy.typing import Expression, ShapeType, auto, is_integer
+from loopy.typing import ShapeType, auto, is_integer
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pymbolic import ArithmeticExpression
-    from pymbolic.typing import Integer
 
     from loopy.codegen import VectorizationInfo
     from loopy.kernel import LoopKernel
@@ -74,6 +74,13 @@ __doc__ = """
 .. autoclass:: SeparateArrayArrayDimTag
 
 .. autoclass:: VectorArrayDimTag
+
+.. autodata:: ToDimTagsParseable
+    :noindex:
+
+.. class:: ToDimTagsParseable
+
+    See above.
 
 .. autofunction:: parse_array_dim_tags
 
@@ -369,20 +376,36 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
                     nesting_level, pad_to=pad_to, target_axis=target_axis))
 
 
-def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False,
-        dim_names=None):
+ToDimTagsParseable: TypeAlias = (
+    str
+    | Sequence[str
+    | ArrayDimImplementationTag]
+    | dict[str, str])
+
+
+def parse_array_dim_tags(
+            dim_tags: ToDimTagsParseable,
+            n_axes: int | None = None,
+            use_increasing_target_axes: bool = False,
+            dim_names: Sequence[str] | None = None,
+        ) -> Sequence[ArrayDimImplementationTag]:
+    dim_tags_list: list[str | ArrayDimImplementationTag | None]
+
     if isinstance(dim_tags, str):
-        dim_tags = dim_tags.split(",")
-    if isinstance(dim_tags, dict):
+        dim_tags_list = list(dim_tags.split(","))
+    elif isinstance(dim_tags, dict):
         dim_tags_dict = dim_tags
 
         if dim_names is None:
             raise LoopyError("dim_tags may only be given as a dictionary if "
                     "dim_names is available")
+        if n_axes is None:
+            raise LoopyError("n_axes must be supplied "
+                    "if dim_tags is be given as a dictionary")
 
         assert n_axes == len(dim_names)
 
-        dim_tags = [None]*n_axes
+        dim_tags_list = [None]*n_axes
         for dim_name, val in dim_tags_dict.items():
             try:
                 dim_idx = dim_names.index(dim_name)
@@ -390,30 +413,34 @@ def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False
                 raise LoopyError(
                         "'%s' does not name an array axis" % dim_name) from None
 
-            dim_tags[dim_idx] = val
+            dim_tags_list[dim_idx] = val
 
         for idim, dim_tag in enumerate(dim_tags):
             if dim_tag is None:
                 raise LoopyError("array axis tag for axis %d (1-based) was not "
                         "set by passed dictionary" % (idim + 1))
+    else:
+        dim_tags_list = list(dim_tags)
+
+    del dim_tags
 
     default_target_axis = 0
 
-    result = []
+    result: list[ArrayDimImplementationTag] = []
 
     # a mapping from target axes to used nesting levels
-    nesting_levels = {}
+    nesting_levels: dict[int, list[int]] = {}
 
-    target_axis_to_has_explicit_nesting_level = {}
+    target_axis_to_has_explicit_nesting_level: dict[int, bool] = {}
 
-    for iaxis, dim_tag in enumerate(dim_tags):
+    for iaxis, dim_tag in enumerate(dim_tags_list):
         has_explicit_nesting_level, is_optional, parsed_dim_tag = (
                 _parse_array_dim_tag(
                     dim_tag, default_target_axis, nesting_levels))
 
         if (is_optional
                 and n_axes is not None
-                and len(result) + (len(dim_tags) - iaxis) > n_axes):
+                and len(result) + (len(dim_tags_list) - iaxis) > n_axes):
             continue
 
         if isinstance(parsed_dim_tag, _StrideArrayDimTagBase):
@@ -477,8 +504,13 @@ def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False
     return result
 
 
-def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
-        shape, dim_tags):
+def convert_computed_to_fixed_dim_tags(
+            name: str,
+            num_user_axes: int | None,  # pyright: ignore[reportUnusedParameter]
+            num_target_axes: int,
+            shape: ShapeType | type[auto] | None,
+            dim_tags: Sequence[ArrayDimImplementationTag],
+        ) -> Sequence[ArrayDimImplementationTag] | None:
 
     # Just to clarify:
     #
@@ -494,7 +526,7 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
     vector_dim = None
 
     # a mapping from target axes to {layout_nesting_level: dim_tag_index}
-    target_axis_to_nesting_level_map = {}
+    target_axis_to_nesting_level_map: dict[int, dict[int, int]] = {}
 
     for i, dim_tag in enumerate(dim_tags):
         if isinstance(dim_tag, VectorArrayDimTag):
@@ -523,7 +555,7 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
     # {{{ convert computed to fixed stride dim tags
 
-    new_dim_tags = dim_tags[:]
+    new_dim_tags = list(dim_tags)
 
     for target_axis in range(num_target_axes):
         if vector_dim is None:
@@ -532,6 +564,8 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
             if shape is None or shape is lp.auto:
                 # unable to normalize without known shape
                 return None
+
+            assert isinstance(shape, tuple)
 
             if not is_integer(shape[vector_dim]):
                 raise TypeError("shape along vector axis %d of array '%s' "
@@ -567,6 +601,7 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
                 if shape is None or shape is lp.auto:
                     # unable to normalize without known shape
                     return None
+                assert isinstance(shape, tuple)
 
                 shape_axis = shape[dim_tag_index]
                 if shape_axis is None:
@@ -598,7 +633,7 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
 # {{{ array base class (for arguments and temporary arrays)
 
-ToShapeLikeConvertible: TypeAlias = (Tuple[Expression | str, ...]
+ToShapeLikeConvertible: TypeAlias = (tuple[Expression | str, ...]
                 | Expression | type[auto] | str | tuple[str, ...])
 
 
@@ -1121,7 +1156,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         iaxis, = vec_axes
         return iaxis
 
-    def vector_length(self) -> Integer:
+    def vector_length(self) -> int:
         iaxis = self._vector_axis_index()
         if iaxis is None:
             return 1
@@ -1134,7 +1169,7 @@ class ArrayBase(ImmutableRecord, Taggable):
                     "length for vector axis %d (0-based)" % (
                         self.name, iaxis))
 
-        return shape_i
+        return int(shape_i)
 
     def vector_size(self, target: TargetBase) -> int:
         """Return the size of the vector type used for the array
@@ -1158,7 +1193,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         if self.dim_tags is None or self.shape is None:
             return 1
 
-        vec_dtype = target.vector_dtype(self.dtype, shape_i)
+        vec_dtype = target.vector_dtype(self.dtype, int(shape_i))
 
         return int(vec_dtype.itemsize) // int(self.dtype.itemsize)
 

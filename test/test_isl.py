@@ -107,7 +107,8 @@ def test_qpolynomrial_to_expr():
     expr = qpolynomial_to_expr(qpoly)
 
     i, j, k = p.variables("i j k")
-    assert expr == (4*i + 6*j + 3*k) // 12
+    from pymbolic import flatten
+    assert flatten(expr) == flatten((4*i + 6*j + 3*k) // 12)
 
 
 if __name__ == "__main__":

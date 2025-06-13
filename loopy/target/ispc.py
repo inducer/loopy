@@ -1,6 +1,8 @@
 """Target for Intel ISPC."""
 from __future__ import annotations
 
+from loopy.typing import not_none
+
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -26,7 +28,7 @@ THE SOFTWARE.
 
 import operator
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable, Sequence, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from typing_extensions import Never
@@ -54,6 +56,8 @@ from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
@@ -519,7 +523,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 # to perform a vector store.
                 registry = codegen_state.ast_builder.target.get_dtype_registry()
                 rhs_code = var("(varying "
-                           f"{registry.dtype_to_ctype(lhs_dtype)}"
+                           f"{registry.dtype_to_ctype(not_none(lhs_dtype))}"
                            f") ({rhs_code})")
 
             from cgen import Statement

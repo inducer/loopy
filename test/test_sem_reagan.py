@@ -24,7 +24,7 @@ import logging
 
 import numpy as np
 
-import pyopencl as cl  # noqa: F401
+import pyopencl as cl
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -36,7 +36,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def test_tim2d(ctx_factory):
+def test_tim2d(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"

@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -39,6 +39,8 @@ from loopy.type_inference import TypeReader
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
 

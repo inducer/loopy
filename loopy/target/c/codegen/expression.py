@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing_extensions import override
-
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,14 +23,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 from typing import TYPE_CHECKING
 
 import numpy as np
+from typing_extensions import override
 
 import islpy as isl
 import pymbolic.primitives as p
-from pymbolic import var
+from pymbolic import Expression, var
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import (
     PREC_BITWISE_AND,
@@ -52,8 +50,8 @@ from loopy.expression import dtype_to_type_context
 from loopy.symbolic import IdentityMapper
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeInferenceMapper, TypeReader
-from loopy.types import LoopyType
-from loopy.typing import Expression, is_integer
+from loopy.types import LoopyType, NumpyType
+from loopy.typing import is_integer, not_none
 
 
 if TYPE_CHECKING:
@@ -70,7 +68,7 @@ __doc__ = """
 
 # {{{ Loopy expression to C expression mapper
 
-class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
+class ExpressionToCExpressionMapper(IdentityMapper[[str]]):
     """
     Mapper that converts a loopy-semantic expression to a C-semantic expression
     with typecasts, appropriate arithmetic semantic mapping, etc.
@@ -130,7 +128,10 @@ class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
 
         return ary
 
-    def wrap_in_typecast(self, actual_type: LoopyType, needed_type: LoopyType, s):
+    def wrap_in_typecast(self,
+                actual_type: LoopyType,
+                needed_type: LoopyType,
+                s: Expression) -> Expression:
         if actual_type != needed_type:
             registry = self.codegen_state.ast_builder.target.get_dtype_registry()
             cast = var("(%s) " % registry.dtype_to_ctype(needed_type))
@@ -138,7 +139,11 @@ class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
 
         return s
 
-    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
+    @override
+    def rec(self,
+            expr: Expression,
+            type_context: str | None = None,
+            needed_type: LoopyType | None = None) -> Expression:  # type: ignore[override]
         result = super().rec(expr, type_context)
 
         if needed_type is None:
@@ -282,9 +287,10 @@ class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
                     var("loopy_sampler"),
                     var("(%s)" % idx_vec_type)(*self.rec(idx_tuple, "i")))
 
+            assert isinstance(ary.dtype, NumpyType)
             if ary.dtype.numpy_dtype == np.float32:
                 return base_access.attr("x")
-            if self.kernel.target.is_vector_dtype(ary.dtype):
+            if self.kernel.target.is_vector_dtype(not_none(ary.dtype)):
                 return base_access
             elif ary.dtype.numpy_dtype == np.float64:
                 return var("as_double")(base_access.attr("xy"))
@@ -380,9 +386,9 @@ class ExpressionToCExpressionMapper(IdentityMapper[[int, str]]):
                                       "for floating-point types")
 
         from loopy.isl_helpers import is_nonnegative
-        num_nonneg = is_nonnegative(expr.numerator, domain) \
+        num_nonneg = is_nonnegative(expr.numerator, domain.to_set()) \
             or num_type.numpy_dtype.kind == "u"
-        den_nonneg = is_nonnegative(expr.denominator, domain) \
+        den_nonneg = is_nonnegative(expr.denominator, domain.to_set()) \
             or den_type.numpy_dtype.kind == "u"
 
         result_dtype = self.infer_type(expr)
@@ -858,7 +864,8 @@ class CExpressionToCodeMapper(Mapper):
     def map_remainder(self, expr, enclosing_prec):
         return self._map_division_operator("%", expr, enclosing_prec)
 
-    def map_power(self, expr, enclosing_prec):
+    @override
+    def map_power(self, expr: p.Power, enclosing_prec: int):
         raise RuntimeError(f"'{expr}' should have been transformed to 'Call'"
                            " expression node.")
 
