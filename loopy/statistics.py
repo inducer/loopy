@@ -34,8 +34,6 @@ from functools import cached_property, partial
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    ClassVar, 
     Generic,
     Literal,
     TypeVar,
@@ -66,7 +64,7 @@ from loopy.translation_unit import ConcreteCallablesTable, TranslationUnit
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     import pymbolic.primitives as p
     from pymbolic.typing import ArithmeticExpressionT
@@ -74,10 +72,9 @@ if TYPE_CHECKING:
 
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.instruction import InstructionBase
+    from loopy.match import ToMatchConvertible
     from loopy.types import ToLoopyTypeConvertible
     from loopy.typing import Expression, auto
-
-    from loopy.match import ToMatchConvertible
 
 
 __doc__ = """
