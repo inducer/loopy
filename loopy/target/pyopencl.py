@@ -58,7 +58,13 @@ from loopy.kernel.data import (
     ValueArg,
 )
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.schedule import CallKernel
+from loopy.schedule import (
+    CallKernel,
+    EnterLoop,
+    LeaveLoop,
+    ReturnFromKernel,
+    ScheduleItem,
+)
 from loopy.target.opencl import (
     ExpressionToOpenCLCExpressionMapper,
     OpenCLCASTBuilder,
@@ -71,7 +77,7 @@ from loopy.types import LoopyType, NumpyType
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     import genpy
     import pyopencl as cl
@@ -80,15 +86,14 @@ if TYPE_CHECKING:
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
+    from loopy.schedule import ScheduleItem
     from loopy.target.pyopencl_execution import PyOpenCLExecutor
-    from loopy.translation_unit import (
-        CallableId,
-        CallablesInferenceContext,
-        TranslationUnit,
-    )
+    from loopy.translation_unit import FunctionIdT, TranslationUnit
+    from loopy.typing import Expression
 
 
 # {{{ pyopencl function scopers
+
 
 class PyOpenCLCallable(ScalarCallable):
     """
@@ -809,24 +814,14 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 ["_lpy_cl_kernels", "queue", *kai.passed_arg_names,
                     "wait_for=None", "allocator=None"])
 
-        from genpy import For, Function, Line, Return, Statement as S, Suite
+        from genpy import Function, Line, Return, Suite
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
                     Line(),
-                    ] + [
                     Line(),
                     function_body,
-                    Line(),
-                    ] + ([
-                        For("_tv", "_global_temporaries",
-                            # Free global temporaries.
-                            # Zero-size temporaries allocate as None, tolerate that.
-                            # https://documen.tician.de/pyopencl/tools.html#pyopencl.tools.ImmediateAllocator
-                            S("if _tv is not None: _tv.release()"))
-                        ] if self._get_global_temporaries(codegen_state) else []
-                    ) + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
@@ -847,41 +842,200 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             key=lambda tv: tv.name)
 
     def get_temporary_decls(self, codegen_state, schedule_index):
-        from genpy import Assign, Comment, Line
-        from pymbolic.mapper.stringifier import PREC_NONE
-        ecm = self.get_expression_to_code_mapper(codegen_state)
+        return []
 
+    def get_temporary_decl_locations(
+            self, codegen_state: CodeGenerationState
+        ) -> tuple[Mapping[int, set[str]], Mapping[int, set[str]]]:
+        from collections import defaultdict
+
+        from loopy.schedule.tools import (
+            temporaries_read_in_subkernel,
+            temporaries_written_in_subkernel,
+        )
+        # Find sub-kernels
+        kernel = codegen_state.kernel
+        assert kernel.linearization is not None
+        sched_index = 0
+
+        # deal with base storage
+        storage_variables: defaultdict[str, set[str]] = defaultdict(set)
         global_temporaries = self._get_global_temporaries(codegen_state)
-        if not global_temporaries:
-            return []
-
-        allocated_var_names = []
-        code_lines = []
-        code_lines.append(Line())
-        code_lines.append(Comment("{{{ allocate global temporaries"))
-        code_lines.append(Line())
-
         for tv in global_temporaries:
+            if tv.base_storage:
+                storage_variables[tv.base_storage].add(tv.name)
+            else:
+                storage_variables[tv.name].add(tv.name)
+
+        # Collapse into blocks
+        def get_temporaries_in_bounds(
+                linearization: Sequence[ScheduleItem],
+                lower_bound: int,
+                upper_bound: int
+            ) -> frozenset[str]:
+            temporaries: frozenset[str] = frozenset()
+            for sched_index in range(lower_bound, upper_bound+1):
+                sched_item = linearization[sched_index]
+                if isinstance(sched_item, CallKernel):
+                    temporaries = (
+                        temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
+                        .union(temporaries_read_in_subkernel(
+                            kernel, sched_item.kernel_name
+                        ))
+                        .union(temporaries)
+                    )
+            return temporaries
+
+        def get_leave_loop_index(
+                linearization: Sequence[ScheduleItem],
+                iname: str,
+                starting_index: int
+            ) -> int:
+            for sched_index in range(starting_index, len(linearization)):
+                sched_item = linearization[sched_index]
+                if isinstance(sched_item, LeaveLoop) and sched_item.iname == iname:
+                    return sched_index
+            raise LoopyError("LeaveLoop for iname '%s' not found" % iname)
+
+        def get_return_from_kernel_index(
+                linearization: Sequence[ScheduleItem],
+                kernel_name: str,
+                starting_index: int
+            ) -> int:
+            for sched_index in range(starting_index, len(linearization)):
+                sched_item = linearization[sched_index]
+                if (
+                    isinstance(sched_item, ReturnFromKernel)
+                    and sched_item.kernel_name == kernel_name
+                ):
+                    return sched_index
+            raise LoopyError("ReturnFromKernel for subkernel"
+                             "'%s' not found" % kernel_name)
+
+        bounds: dict[int, frozenset[str]] = {}
+        sched_index = 0
+        while sched_index < codegen_state.schedule_index_end:
+            sched_item = kernel.linearization[sched_index]
+            if isinstance(sched_item, EnterLoop) or isinstance(sched_item, CallKernel):
+                if isinstance(sched_item, CallKernel):
+                    block_end = get_return_from_kernel_index(
+                        kernel.linearization, sched_item.kernel_name, sched_index
+                    )
+                    accessed_temporaries = (
+                        temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
+                        .union(temporaries_read_in_subkernel(
+                            kernel, sched_item.kernel_name)
+                        )
+                    )
+                else:
+                    block_end = get_leave_loop_index(
+                        kernel.linearization, sched_item.iname, sched_index
+                    )
+                    accessed_temporaries = get_temporaries_in_bounds(
+                        kernel.linearization, sched_index, block_end
+                    )
+                bounds[sched_index] = accessed_temporaries
+                sched_index = block_end + 1
+            else:
+                sched_index += 1
+
+        # forward pass for first accesses
+        first_accesses: dict[int, set[str]] = {}
+        unseen_storage_variables = set(storage_variables.keys())
+        for sched_index in range(0, codegen_state.schedule_index_end):
+            if (sched_index not in bounds):
+                continue
+            sched_item = kernel.linearization[sched_index]
+            new_temporary_variables = bounds[sched_index]
+            fwd_new_storage_variables: set[str] = set()
+            for sv in unseen_storage_variables:
+                if not storage_variables[sv].isdisjoint(new_temporary_variables):
+                    fwd_new_storage_variables.add(sv)
+            unseen_storage_variables = (
+                unseen_storage_variables - fwd_new_storage_variables
+            )
+            if (len(fwd_new_storage_variables) > 0):
+                target_index = sched_index
+                if target_index in first_accesses:
+                    first_accesses[target_index] = (
+                        first_accesses[target_index].union(fwd_new_storage_variables)
+                    )
+                else:
+                    first_accesses[target_index] = fwd_new_storage_variables
+
+        last_accesses: dict[int, set[str]] = {}
+        unseen_storage_variables = set(storage_variables.keys())
+        for sched_index in range(codegen_state.schedule_index_end-1, -1, -1):
+            if (sched_index not in bounds):
+                continue
+            sched_item = kernel.linearization[sched_index]
+            new_temporary_variables = bounds[sched_index]
+            back_new_storage_variables: set[str] = set()
+            for sv in unseen_storage_variables:
+                if not storage_variables[sv].isdisjoint(new_temporary_variables):
+                    back_new_storage_variables.add(sv)
+            unseen_storage_variables = (
+                unseen_storage_variables - back_new_storage_variables
+            )
+            if (len(back_new_storage_variables) > 0):
+                target_index = sched_index
+                if target_index in last_accesses:
+                    last_accesses[target_index] = (
+                        last_accesses[target_index].union(back_new_storage_variables)
+                    )
+                else:
+                    last_accesses[target_index] = back_new_storage_variables
+        return (first_accesses, last_accesses)
+
+    def get_temporary_allocation(
+            self,
+            codegen_state: CodeGenerationState,
+            temporary_variable_names: Iterable[str]
+        ) -> genpy.Suite:
+        from genpy import Assign, Suite
+        from pymbolic.mapper.stringifier import PREC_NONE
+        kernel = codegen_state.kernel
+        ecm = self.get_expression_to_code_mapper(codegen_state)
+        allocation_code_lines: list[Assign] = []
+        for tv_name in temporary_variable_names:
+            tv = kernel.temporary_variables[tv_name]
             if not tv.base_storage:
                 if tv.nbytes:
-                    # NB: This does not prevent all zero-size allocations,
-                    # as sizes are parametric, and allocation size
-                    # could turn out to be zero at runtime.
                     nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
-                    allocated_var_names.append(tv.name)
-                    code_lines.append(Assign(tv.name,
+                    allocation_code_lines.append(Assign(tv.name,
                                              f"allocator({nbytes_str})"))
                 else:
-                    code_lines.append(Assign(tv.name, "None"))
+                    allocation_code_lines.append(Assign(tv.name, "None"))
+        return Suite(allocation_code_lines)
 
-        code_lines.append(Assign("_global_temporaries", "[{tvs}]".format(
-            tvs=", ".join(tv for tv in allocated_var_names))))
+    def get_temporary_deallocation(
+            self,
+            codegen_state: CodeGenerationState,
+            temporary_variable_names: Iterable[str]
+        ) -> genpy.Suite:
+        from genpy import Statement, Suite
+        deallocation_code_lines: list[Statement] = []
+        for tv_name in temporary_variable_names:
+            deallocation_code_lines.append(
+                Statement(f"if {tv_name} is not None: {tv_name}.release()")
+            )
+        return Suite(deallocation_code_lines)
 
-        code_lines.append(Line())
-        code_lines.append(Comment("}}}"))
-        code_lines.append(Line())
-
-        return code_lines
+    def get_temporary_decl_at_index(
+            self, codegen_state: CodeGenerationState, sched_index: int
+        ) -> tuple[genpy.Suite, genpy.Suite]:
+        from genpy import Suite
+        first_accesses, last_accesses = self.get_temporary_decl_locations(codegen_state)
+        prefixes, suffixes = Suite(), Suite()
+        if sched_index in first_accesses:
+            prefixes = self.get_temporary_allocation(
+                codegen_state, first_accesses[sched_index]
+            )
+        if sched_index in last_accesses:
+            suffixes = self.get_temporary_deallocation(
+                codegen_state, last_accesses[sched_index]
+            )
+        return (prefixes, suffixes)
 
     def get_kernel_call(
             self, codegen_state: CodeGenerationState,
@@ -889,13 +1043,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             gsize: tuple[Expression, ...], lsize: tuple[Expression, ...]
             ) -> genpy.Suite:
         from genpy import Assert, Assign, Comment, Line, Suite
+        from pymbolic.mapper.stringifier import PREC_NONE
 
         kernel = codegen_state.kernel
+        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         from loopy.schedule.tools import get_subkernel_arg_info
         skai = get_subkernel_arg_info(kernel, subkernel_name)
-
-        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         if not gsize:
             gsize = (1,)
@@ -963,7 +1117,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             overflow_args_code = Suite([])
 
         import pyopencl.version as cl_ver
-        from pymbolic.mapper.stringifier import PREC_NONE
         if cl_ver.VERSION < (2020, 2):
             from warnings import warn
             warn("Your kernel invocation will likely fail because your "
