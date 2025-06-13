@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loopy.typing import not_none
+
 
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
@@ -26,9 +28,9 @@ THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any
 
-from typing_extensions import Self
+from typing_extensions import Self, override
 
 import islpy as isl
 from islpy import dim_type
@@ -40,7 +42,11 @@ from loopy.symbolic import SubstitutionMapper, get_dependencies
 
 
 if TYPE_CHECKING:
-    from loopy.typing import Expression
+    from collections.abc import Callable, Sequence
+
+    from pymbolic import Expression
+
+    from loopy.kernel import LoopKernel
 
 
 @dataclass(frozen=True)
@@ -123,6 +129,8 @@ def build_per_access_storage_to_domain_map(
                 dim_type.in_, 0,
                 dim_type.out, rn, stor_dim)
 
+    assert stor2sweep
+
     # stor2sweep is back in map_space
     return stor2sweep
 
@@ -142,8 +150,12 @@ def move_to_par_from_out(s2smap, except_inames):
             return s2smap
 
 
-def build_global_storage_to_sweep_map(access_descriptors,
-        domain_dup_sweep, storage_axis_names, prime_sweep_inames):
+def build_global_storage_to_sweep_map(
+            access_descriptors: Sequence[AccessDescriptor],
+            domain_dup_sweep: isl.BasicSet,
+            storage_axis_names: Sequence[str],
+            prime_sweep_inames: Callable[[Expression], Expression],
+        ):
     # The storage map goes from storage axes to the domain.
     # The first len(arg_names) storage dimensions are the rule's arguments.
 
@@ -152,7 +164,7 @@ def build_global_storage_to_sweep_map(access_descriptors,
     # build footprint
     for accdesc in access_descriptors:
         stor2sweep = build_per_access_storage_to_domain_map(
-                accdesc.storage_axis_exprs, domain_dup_sweep,
+                not_none(accdesc.storage_axis_exprs), domain_dup_sweep,
                 storage_axis_names,
                 prime_sweep_inames)
 
@@ -219,13 +231,18 @@ class ArrayToBufferMapBase(ABC):
         ...
 
     @abstractmethod
-    def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
-            boxify_sweep=False):
+    def augment_domain_with_sweep(self,
+                domain: isl.BasicSet,
+                new_non1_storage_axis_names: Sequence[str],
+                boxify_sweep: bool = False
+            ) -> isl.BasicSet:
         ...
 
 
 class ArrayToBufferMap(ArrayToBufferMapBase):
-    def __init__(self, kernel, domain, sweep_inames, access_descriptors,
+    kernel: LoopKernel
+
+    def __init__(self, kernel: LoopKernel, domain, sweep_inames, access_descriptors,
             storage_axis_count):
         self.kernel = kernel
         self.sweep_inames = sweep_inames
@@ -332,9 +349,12 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
         self.storage_base_indices = storage_base_indices
         self.non1_storage_shape = tuple(non1_storage_shape)
 
-    def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
-            boxify_sweep=False):
-
+    @override
+    def augment_domain_with_sweep(self,
+                domain: isl.BasicSet,
+                new_non1_storage_axis_names: Sequence[str],
+                boxify_sweep: bool = False
+            ) -> isl.BasicSet:
         renamed_aug_domain = self.aug_domain
         first_storage_index = (renamed_aug_domain.dim(dim_type.set)
                 - len(self.non1_storage_shape))
@@ -359,14 +379,14 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
         # 'guiding' ordering.
         renamed_aug_domain, domain = isl.align_two(renamed_aug_domain, domain)
 
-        domain = domain & renamed_aug_domain
+        dom_and_aug = domain & renamed_aug_domain
 
         from loopy.isl_helpers import boxify, convexify
         if boxify_sweep:
-            return boxify(self.kernel.cache_manager, domain,
+            return boxify(self.kernel.cache_manager, dom_and_aug,
                     new_non1_storage_axis_names, self.kernel.assumptions)
         else:
-            return convexify(domain)
+            return convexify(dom_and_aug)
 
     def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
         assert accdesc.storage_axis_exprs is not None
@@ -398,7 +418,7 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
             iname = usage_domain.get_dim_name(dim_type.set, i)
             if iname in self.sweep_inames:
                 usage_domain = usage_domain.set_dim_name(
-                        dim_type.set, i, iname+"'")
+                        dim_type.set, i, not_none(iname)+"'")
 
         stor2sweep = build_per_access_storage_to_domain_map(
                 storage_axis_exprs,
@@ -443,8 +463,12 @@ class NoOpArrayToBufferMap(ArrayToBufferMapBase):
 
         return True
 
-    def augment_domain_with_sweep(self, domain, new_non1_storage_axis_names,
-            boxify_sweep=False):
+    @override
+    def augment_domain_with_sweep(self,
+                domain: isl.BasicSet,
+                new_non1_storage_axis_names: Sequence[str],
+                boxify_sweep: bool = False
+            ) -> isl.BasicSet:
         return domain
 # }}}
 

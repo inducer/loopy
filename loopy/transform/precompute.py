@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Sequence, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from constantdict import constantdict
@@ -69,6 +69,8 @@ from loopy.typing import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from pytools.tag import Tag
 
     from loopy.kernel import LoopKernel

@@ -24,6 +24,7 @@ import logging
 
 import numpy as np
 import pytest
+from typing_extensions import override
 
 import pymbolic.primitives as prim
 import pyopencl as cl
@@ -177,7 +178,7 @@ def test_math_function(target, tp):
 
 
 @pytest.mark.parametrize("tp", ["f32", "f64"])
-def test_random123(ctx_factory, tp):
+def test_random123(ctx_factory: cl.CtxFactory, tp):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -211,7 +212,7 @@ def test_random123(ctx_factory, tp):
     assert (0 <= out).all()
 
 
-def test_tuple(ctx_factory):
+def test_tuple(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -228,7 +229,7 @@ def test_tuple(ctx_factory):
     assert b.get() == 2.
 
 
-def test_clamp(ctx_factory):
+def test_clamp(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -245,7 +246,7 @@ def test_clamp(ctx_factory):
     _evt, (_out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
 
 
-def test_sized_integer_c_codegen(ctx_factory):
+def test_sized_integer_c_codegen(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -325,7 +326,7 @@ def test_cuda_short_vector():
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_pyopencl_execution_numpy_handling(ctx_factory):
+def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -357,7 +358,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory):
     assert x[0] == 5.
 
 
-def test_opencl_support_for_bool(ctx_factory):
+def test_opencl_support_for_bool(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
         "{[i]: 0<=i<10}",
         """
@@ -373,7 +374,7 @@ def test_opencl_support_for_bool(ctx_factory):
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
-def test_nan_support(ctx_factory, target):
+def test_nan_support(ctx_factory: cl.CtxFactory, target):
     from pymbolic.primitives import NaN, Variable
 
     from loopy.symbolic import parse
@@ -418,7 +419,7 @@ def test_nan_support(ctx_factory, target):
 
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
-def test_emits_ternary_operators_correctly(ctx_factory, target):
+def test_emits_ternary_operators_correctly(ctx_factory: cl.CtxFactory, target):
     # See: https://github.com/inducer/loopy/issues/390
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -448,7 +449,7 @@ def test_emits_ternary_operators_correctly(ctx_factory, target):
     assert out_dict["y3"] == 128
 
 
-def test_scalar_array_take_offset(ctx_factory):
+def test_scalar_array_take_offset(ctx_factory: cl.CtxFactory):
     import pyopencl.array as cla
 
     ctx = ctx_factory()
@@ -471,7 +472,7 @@ def test_scalar_array_take_offset(ctx_factory):
 
 @pytest.mark.parametrize("target", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_inf_support(ctx_factory, target, dtype):
+def test_inf_support(ctx_factory: cl.CtxFactory, target, dtype):
     import math
 
     from loopy.symbolic import parse
@@ -505,7 +506,7 @@ def test_inf_support(ctx_factory, target, dtype):
     assert np.isneginf(out_dict["out_neginf"])
 
 
-def test_input_args_are_required(ctx_factory):
+def test_input_args_are_required(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -548,7 +549,8 @@ def test_input_args_are_required(ctx_factory):
         _ = knl(queue)
 
 
-def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
+def test_pyopencl_target_with_global_temps_with_base_storage(
+        ctx_factory: cl.CtxFactory):
     from pyopencl.tools import ImmediateAllocator
 
     class RecordingAllocator(ImmediateAllocator):
@@ -556,6 +558,7 @@ def test_pyopencl_target_with_global_temps_with_base_storage(ctx_factory):
             super().__init__(queue)
             self.allocated_nbytes = 0
 
+        @override
         def __call__(self, size):
             self.allocated_nbytes += size
             return super().__call__(size)
@@ -630,7 +633,7 @@ def test_glibc_bessel_functions(dtype):
                                rtol=1e-6, atol=1e-6)
 
 
-def test_zero_size_temporaries(ctx_factory):
+def test_zero_size_temporaries(ctx_factory: cl.CtxFactory):
     """Zero-sized arrays in PyOpenCL allocate as "None". This tests that the
     invoker is OK with that.
     """
@@ -653,7 +656,7 @@ def test_zero_size_temporaries(ctx_factory):
     assert out.shape == (0,)
 
 
-def test_empty_array_output(ctx_factory):
+def test_empty_array_output(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
 
@@ -667,7 +670,7 @@ def test_empty_array_output(ctx_factory):
     assert out.shape == (0,)
 
 
-def test_empty_array_stride_check(ctx_factory):
+def test_empty_array_stride_check(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -682,7 +685,7 @@ def test_empty_array_stride_check(ctx_factory):
         einsum(cq, a=rng.normal(size=(3, 2, 5)).copy(order="F"), x=rng.normal(size=5))
 
 
-def test_no_op_with_predicate(ctx_factory):
+def test_no_op_with_predicate(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     predicate = prim.Comparison(prim.Variable("a"), ">", 0)
@@ -692,7 +695,7 @@ def test_no_op_with_predicate(ctx_factory):
     cl.Program(ctx, code).build()
 
 
-def test_empty_array_stride_check_fortran(ctx_factory):
+def test_empty_array_stride_check_fortran(ctx_factory: cl.CtxFactory):
     # https://github.com/inducer/loopy/issues/583
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -709,7 +712,7 @@ def test_empty_array_stride_check_fortran(ctx_factory):
 
 
 @pytest.mark.parametrize("with_gbarrier", [False, True])
-def test_passing_bajillions_of_svm_args(ctx_factory, with_gbarrier):
+def test_passing_bajillions_of_svm_args(ctx_factory: cl.CtxFactory, with_gbarrier):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -798,7 +801,7 @@ def test_ispc_private_var():
     print(cg_result.device_code())
 
 
-def test_to_complex_casts(ctx_factory):
+def test_to_complex_casts(ctx_factory: cl.CtxFactory):
     arith_dtypes = "bhilqpBHILQPfdFD"
 
     out_type = lp.to_loopy_type(np.dtype(np.complex128))
@@ -828,7 +831,7 @@ def test_to_complex_casts(ctx_factory):
     cl.Program(ctx, code).build()
 
 
-def test_cl_vectorize_ternary(ctx_factory):
+def test_cl_vectorize_ternary(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
             """

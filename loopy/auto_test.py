@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from warnings import warn
 
 import numpy as np
@@ -36,6 +36,8 @@ from loopy.kernel.array import get_strides
 
 if TYPE_CHECKING:
     import pyopencl.array as cla
+
+    from loopy.types import NumpyType
 
 
 AUTO_TEST_SKIP_RUN = False
@@ -142,7 +144,7 @@ def make_ref_args(kernel, queue, parameters):
                         "testing" % arg.name)
 
             shape = evaluate_shape(arg.shape, parameters)
-            dtype = arg.dtype
+            dtype = cast("NumpyType", arg.dtype).dtype
 
             is_output = arg.is_output
 

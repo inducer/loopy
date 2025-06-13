@@ -24,16 +24,19 @@ THE SOFTWARE.
 """
 
 import logging
+from typing import cast
 
 from constantdict import constantdict
 
-from pymbolic import var
+import pymbolic.primitives as p
+from pymbolic import ArithmeticExpression, Expression, var
 from pymbolic.mapper.substitutor import make_subst_func
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.symbolic import (
+    ExpansionState,
     RuleAwareIdentityMapper,
     SubstitutionMapper,
     SubstitutionRuleMappingContext,
@@ -43,6 +46,7 @@ from loopy.tools import memoize_on_disk
 from loopy.transform.array_buffer_map import (
     AccessDescriptor,
     ArrayToBufferMap,
+    ArrayToBufferMapBase,
     NoOpArrayToBufferMap,
 )
 from loopy.translation_unit import TranslationUnit
@@ -53,7 +57,10 @@ logger = logging.getLogger(__name__)
 
 # {{{ replace array access
 
-class ArrayAccessReplacer(RuleAwareIdentityMapper):
+class ArrayAccessReplacer(RuleAwareIdentityMapper[[]]):
+    buf_var: p.Variable
+    array_base_map: ArrayToBufferMapBase
+
     def __init__(self, rule_mapping_context,
             var_name, within, array_base_map, buf_var):
         super().__init__(rule_mapping_context)
@@ -95,7 +102,10 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
             self.modified_insn_ids.add(expn_state.insn_id)
             return result
 
-    def map_array_access(self, index, expn_state):
+    def map_array_access(self,
+                index: tuple[ArithmeticExpression, ...],
+                expn_state: ExpansionState
+            ):
         accdesc = AccessDescriptor(
             identifier=None,
             storage_axis_exprs=index)
@@ -105,11 +115,13 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
 
         abm = self.array_base_map
 
-        index = expn_state.apply_arg_context(index)
+        index = cast(
+                     "tuple[ArithmeticExpression, ...]",
+                     expn_state.apply_arg_context(index))
 
         assert len(index) == len(abm.non1_storage_axis_flags)
 
-        access_subscript = []
+        access_subscript: list[Expression] = []
         for i in range(len(index)):
             if not abm.non1_storage_axis_flags[i]:
                 continue
@@ -123,7 +135,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
 
         result = self.buf_var
         if access_subscript:
-            result = result.index(tuple(access_subscript))
+            result = result[tuple(access_subscript)]
 
         # Can't possibly be nested, but recurse anyway to
         # make sure substitution rules referenced below here
@@ -372,12 +384,12 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     buf_var_init = buf_var
     if non1_init_inames:
-        buf_var_init = buf_var_init.index(
-                tuple(var(iname) for iname in non1_init_inames))
+        buf_var_init = buf_var_init[
+                tuple(var(iname) for iname in non1_init_inames)]
 
     init_base = var(var_name)
 
-    init_subscript = []
+    init_subscript: list[ArithmeticExpression] = []
     init_iname_idx = 0
     if var_shape:
         for i in range(len(var_shape)):
@@ -388,7 +400,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
             init_subscript.append(ax_subscript)
 
     if init_subscript:
-        init_base = init_base.index(tuple(init_subscript))
+        init_base = init_base[tuple(init_subscript)]
 
     if init_expression is None:
         init_expression = init_base
@@ -450,10 +462,10 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     buf_var_store = buf_var
     if non1_store_inames:
-        buf_var_store = buf_var_store.index(
-                tuple(var(iname) for iname in non1_store_inames))
+        buf_var_store = buf_var_store[
+                tuple(var(iname) for iname in non1_store_inames)]
 
-    store_subscript = []
+    store_subscript: list[ArithmeticExpression] = []
     store_iname_idx = 0
     if var_shape:
         for i in range(len(var_shape)):
@@ -465,7 +477,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     store_target = var(var_name)
     if store_subscript:
-        store_target = store_target.index(tuple(store_subscript))
+        store_target = store_target[tuple(store_subscript)]
 
     if store_expression is None:
         store_expression = buf_var_store

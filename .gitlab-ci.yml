@@ -123,18 +123,6 @@ Pytest POCL Examples:
   except:
   - tags
 
-Pylint:
-  script:
-  # Needed to avoid name shadowing issues when running from source directory.
-  - PROJECT_INSTALL_FLAGS="--editable"
-  - EXTRA_INSTALL="pybind11 numpy mako matplotlib ipykernel ply fparser"
-  - curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/prepare-and-run-pylint.sh
-  - . ./prepare-and-run-pylint.sh "$CI_PROJECT_NAME" test/test_*.py
-  tags:
-  - python3
-  except:
-  - tags
-
 Documentation:
   script: |
     EXTRA_INSTALL="pybind11 numpy"
@@ -153,18 +141,6 @@ Ruff:
   - uv run --only-dev ruff check
   tags:
   - docker-runner
-  except:
-  - tags
-
-Mypy:
-  script: |
-    EXTRA_INSTALL="mypy pybind11 numpy types-colorama types-Pygments"
-    curl -L -O https://tiker.net/ci-support-v0
-    . ./ci-support-v0
-    build_py_project_in_venv
-    ./run-mypy.sh
-  tags:
-  - python3
   except:
   - tags
 

@@ -24,6 +24,9 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, cast
+
+import pymbolic.primitives as p
 from pytools import MovedFunctionDeprecationWrapper
 
 from loopy.diagnostic import LoopyError
@@ -33,7 +36,11 @@ from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingConte
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
-class SubscriptRewriter(RuleAwareIdentityMapper):
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+
+class SubscriptRewriter(RuleAwareIdentityMapper[[]]):
     def __init__(self, rule_mapping_context, arg_names, handler):
         super().__init__(rule_mapping_context)
         self.arg_names = arg_names
@@ -62,10 +69,17 @@ class SubscriptRewriter(RuleAwareIdentityMapper):
 
 # {{{ split_array_dim (deprecated since June 2016)
 
+SplitSpec: TypeAlias = tuple[str, int] | tuple[str, int, Literal["C"] | Literal["F"]]
+
+
 @for_each_kernel
-def split_array_dim(kernel, arrays_and_axes, count,
-        auto_split_inames=True,
-        split_kwargs=None):
+def split_array_dim(
+            kernel: LoopKernel,
+            arrays_and_axes: Sequence[SplitSpec] | SplitSpec,
+            count: int,
+            auto_split_inames: bool = True,
+            split_kwargs: dict[str, Any] | None = None
+        ) -> LoopKernel:
     """
     :arg arrays_and_axes: a list of tuples *(array, axis_nr)* indicating
         that the index in *axis_nr* should be split. The tuples may
@@ -97,7 +111,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
 
     # where "rest" is the non-argument-name part of the input tuples
     # in args_and_axes
-    def normalize_rest(rest):
+    def normalize_rest(rest: tuple[int, Literal["C"] | Literal["F"]] | tuple[int]):
         if len(rest) == 1:
             return (rest[0], "C")
         elif len(rest) == 2:
@@ -106,7 +120,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
             raise RuntimeError("split instruction '%s' not understood" % rest)
 
     if isinstance(arrays_and_axes, tuple):
-        arrays_and_axes = [arrays_and_axes]
+        arrays_and_axes = [cast("tuple[str, int]", arrays_and_axes)]
 
     array_to_rest = {
             tup[0]: normalize_rest(tup[1:]) for tup in arrays_and_axes}
@@ -198,11 +212,12 @@ def split_array_dim(kernel, arrays_and_axes, count,
 
     # }}}
 
-    split_vars = {}
+    split_vars: dict[str, tuple[str, str]] = {}
 
     var_name_gen = kernel.get_var_name_generator()
 
-    def split_access_axis(expr):
+    def split_access_axis(expr: p.Subscript):
+        assert isinstance(expr.aggregate, p.Variable)
         axis_nr, order = array_to_rest[expr.aggregate.name]
 
         idx = expr.index
@@ -210,7 +225,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
             idx = (idx,)
         idx = list(idx)
 
-        axis_idx = idx[axis_nr]
+        axis_idx = cast("p.ExpressionNode | int", idx[axis_nr])
 
         if auto_split_inames:
             from pymbolic.primitives import Variable
@@ -221,7 +236,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
                         "beforehand? If so, you shouldn't.)"
                         % (expr, axis_nr))
 
-            split_iname = idx[axis_nr].name
+            split_iname = cast("p.Variable", idx[axis_nr]).name
             assert split_iname in kernel.all_inames()
 
             try:
@@ -248,7 +263,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
         else:
             raise RuntimeError("order '%s' not understood" % order)
 
-        return expr.aggregate.index(tuple(idx))
+        return expr.aggregate[tuple(idx)]
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
@@ -261,7 +276,7 @@ def split_array_dim(kernel, arrays_and_axes, count,
         for iname, (outer_iname, inner_iname) in split_vars.items():
             kernel = split_iname(kernel, iname, count,
                     outer_iname=outer_iname, inner_iname=inner_iname,
-                    **split_kwargs)
+                    **split_kwargs)  # pyright: ignore[reportAny]
 
     return kernel
 

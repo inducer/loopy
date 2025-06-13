@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from loopy.typing import not_none
-
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -42,7 +40,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
 from loopy.tools import LoopyKeyBuilder, caches
-from loopy.typing import InameStr
+from loopy.typing import not_none as not_none
 from loopy.version import DATA_MODEL_VERSION
 
 
@@ -53,10 +51,10 @@ if TYPE_CHECKING:
     from loopy.kernel.function_interface import InKernelCallable
     from loopy.kernel.instruction import InstructionBase
     from loopy.schedule.tools import (
-        InameStrSet,
         LoopTree,
     )
-    from loopy.translation_unit import CallablesTable, FunctionIdT, TranslationUnit
+    from loopy.translation_unit import CallableId, CallablesTable, TranslationUnit
+    from loopy.typing import InameStr, InameStrSet, InsnId
 
 
 logger = logging.getLogger(__name__)
@@ -389,9 +387,9 @@ def gen_dependencies_except(
 
 
 def get_priority_tiers(
-        wanted: Set[int],
-        priorities: Set[Sequence[int]]
-        ) -> Iterator[set[int]]:
+        wanted: Set[InameStr],
+        priorities: Set[Sequence[InameStr]]
+        ) -> Iterator[Set[InameStr]]:
     # Get highest priority tier candidates: These are the first inames
     # of all the given priority constraints
     candidates = set()
@@ -448,13 +446,13 @@ def sched_item_to_insn_id(sched_item: ScheduleItem) -> Iterator[str]:
 
 # {{{ debug help
 
-def format_insn_id(kernel, insn_id):
+def format_insn_id(kernel: LoopKernel, insn_id: InsnId):
     Fore = kernel.options._fore  # noqa
     Style = kernel.options._style  # noqa
     return Fore.GREEN + insn_id + Style.RESET_ALL
 
 
-def format_insn(kernel, insn_id):
+def format_insn(kernel: LoopKernel, insn_id: InsnId):
     insn = kernel.id_to_insn[insn_id]
     Fore = kernel.options._fore  # noqa
     Style = kernel.options._style  # noqa
@@ -487,8 +485,8 @@ def format_insn(kernel, insn_id):
                 Fore.CYAN, str(insn), Style.RESET_ALL)
 
 
-def dump_schedule(kernel, schedule):
-    lines = []
+def dump_schedule(kernel: LoopKernel, schedule: Sequence[ScheduleItem]):
+    lines: list[str] = []
     indent = ""
 
     from loopy.kernel.data import MultiAssignmentBase
@@ -678,7 +676,7 @@ class SchedulerState:
     vec_inames: set[str]
     concurrent_inames: set[str]
 
-    insn_ids_to_try: set[str] | None
+    insn_ids_to_try: list[str] | None
     active_inames: Sequence[str]
     entered_inames: frozenset[str]
     enclosing_subkernel_inames: tuple[str, ...]
@@ -712,7 +710,7 @@ def get_insns_in_topologically_sorted_order(
     from pytools.graph import compute_topological_order
 
     rev_dep_map: dict[str, set[str]] = {
-            not_none(insn.id): set() for insn in kernel.instructions}
+            insn.id: set() for insn in kernel.instructions}
     for insn in kernel.instructions:
         for dep in insn.depends_on:
             assert insn.id is not None
@@ -963,7 +961,7 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
                 for iname in loop_inames})
     dag.update({LeaveLoop(iname=iname): frozenset()
                 for iname in loop_inames})
-    dag.update({RunInstruction(insn_id=not_none(insn.id)): frozenset()
+    dag.update({RunInstruction(insn_id=insn.id): frozenset()
                 for insn in kernel.instructions})
 
     # {{{ add constraints imposed by the loop nesting
@@ -1041,7 +1039,9 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
 # {{{ legacy scheduling algorithm
 
 def _generate_loop_schedules_internal(
-        sched_state, debug=None):
+            sched_state: SchedulerState,
+            debug: ScheduleDebugger | None = None,
+        ):
     # allow_insn is set to False initially and after entering each loop
     # to give loops containing high-priority instructions a chance.
     kernel = sched_state.kernel
@@ -1140,10 +1140,10 @@ def _generate_loop_schedules_internal(
     # Also take note of insns that have a chance of being schedulable inside
     # the current loop nest, in this set:
 
-    reachable_insn_ids = set()
+    reachable_insn_ids: set[InsnId] = set()
     active_groups = frozenset(sched_state.active_group_counts)
 
-    def insn_sort_key(insn_id):
+    def insn_sort_key(insn_id: InsnId):
         insn = kernel.id_to_insn[insn_id]
 
         # Sort by insn.id as a last criterion to achieve deterministic
@@ -1252,7 +1252,7 @@ def _generate_loop_schedules_internal(
             # {{{ update active group counts for added instruction
 
             if insn.groups:
-                new_active_group_counts = sched_state.active_group_counts.copy()
+                new_active_group_counts = dict(sched_state.active_group_counts)
 
                 for grp in insn.groups:
                     if grp in new_active_group_counts:
@@ -1423,7 +1423,7 @@ def _generate_loop_schedules_internal(
     # {{{ see if any loop can be entered now
 
     # Find inames that are being referenced by as yet unscheduled instructions.
-    needed_inames = set()
+    needed_inames: set[InameStr] = set()
     for insn_id in sched_state.unscheduled_insn_ids:
         needed_inames.update(kernel.insn_inames(insn_id))
 
@@ -1446,7 +1446,7 @@ def _generate_loop_schedules_internal(
         print(75*"-")
 
     if needed_inames:
-        iname_to_usefulness = {}
+        iname_to_usefulness: dict[InameStr, int] = {}
 
         for iname in needed_inames:
 
@@ -1583,13 +1583,13 @@ def _generate_loop_schedules_internal(
 
         # vectorization must be the absolute innermost loop
         priority_tiers.extend([
-            [iname]
+            {iname}
             for iname in sched_state.ilp_inames
             if iname in useful_loops_set
             ])
 
         priority_tiers.extend([
-            [iname]
+            {iname}
             for iname in sched_state.vec_inames
             if iname in useful_loops_set
             ])
@@ -2309,7 +2309,7 @@ def _generate_loop_schedules_inner(
 
             schedule=(),
 
-            unscheduled_insn_ids={not_none(insn.id) for insn in kernel.instructions},
+            unscheduled_insn_ids={insn.id for insn in kernel.instructions},
             scheduled_insn_ids=frozenset(),
             within_subkernel=kernel.state != KernelState.LINEARIZED,
             may_schedule_global_barriers=True,
@@ -2465,7 +2465,7 @@ def linearize(t_unit: TranslationUnit) -> TranslationUnit:
 
     pre_schedule_checks(t_unit)
 
-    new_callables: dict[FunctionIdT, InKernelCallable] = {}
+    new_callables: dict[CallableId, InKernelCallable] = {}
 
     for name, clbl in t_unit.callables_table.items():
         if isinstance(clbl, CallableKernel):

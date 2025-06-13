@@ -40,7 +40,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def test_globals_decl_once_with_multi_subprogram(ctx_factory):
+def test_globals_decl_once_with_multi_subprogram(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -69,7 +69,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
     assert np.linalg.norm(out-(2*(a+cnst)+cnst)) <= 1e-15
 
 
-def test_complicated_subst(ctx_factory):
+def test_complicated_subst(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
@@ -140,7 +140,7 @@ def test_type_inference_with_type_dependencies():
             np.complex128)
 
 
-def test_sized_and_complex_literals(ctx_factory):
+def test_sized_and_complex_literals(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -209,7 +209,7 @@ def test_multi_cse():
     print(lp.generate_code_v2(knl))
 
 
-def test_bare_data_dependency(ctx_factory):
+def test_bare_data_dependency(ctx_factory: cl.CtxFactory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -417,7 +417,7 @@ def test_nonlinear_index():
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_offsets_and_slicing(ctx_factory):
+def test_offsets_and_slicing(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -455,7 +455,7 @@ def test_offsets_and_slicing(ctx_factory):
     assert la.norm(b_full.get() - b_full_h) < 1e-13
 
 
-def test_vector_ilp_with_prefetch(ctx_factory):
+def test_vector_ilp_with_prefetch(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -533,7 +533,7 @@ def test_dependent_domain_insn_iname_finding():
     print(lp.generate_code_v2(prog).device_code())
 
 
-def test_inames_deps_from_write_subscript(ctx_factory):
+def test_inames_deps_from_write_subscript(ctx_factory: cl.CtxFactory):
     prog = lp.make_kernel(
             "{[i,j]: 0<=i,j<n}",
             """
@@ -569,7 +569,7 @@ def test_modulo_indexing():
 
 
 @pytest.mark.parametrize("vec_len", [2, 3, 4, 8, 16])
-def test_vector_types(ctx_factory, vec_len):
+def test_vector_types(ctx_factory: cl.CtxFactory, vec_len):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -596,7 +596,7 @@ def test_vector_types(ctx_factory, vec_len):
                 })
 
 
-def test_conditional(ctx_factory):
+def test_conditional(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -622,7 +622,7 @@ def test_conditional(ctx_factory):
                 })
 
 
-def test_conditional_two_ways(ctx_factory):
+def test_conditional_two_ways(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -666,7 +666,7 @@ def test_conditional_two_ways(ctx_factory):
                 })
 
 
-def test_ilp_loop_bound(ctx_factory):
+def test_ilp_loop_bound(ctx_factory: cl.CtxFactory):
     # The salient bit of this test is that a joint bound on (outer, inner)
     # from a split occurs in a setting where the inner loop has been ilp'ed.
     # In 'normal' parallel loops, the inner index is available for conditionals
@@ -695,7 +695,7 @@ def test_ilp_loop_bound(ctx_factory):
                 })
 
 
-def test_arg_shape_uses_assumptions(ctx_factory):
+def test_arg_shape_uses_assumptions(ctx_factory: cl.CtxFactory):
     # If arg shape determination does not use assumptions, then it won't find a
     # static shape for out, which is at least 1 x 1 in size, but otherwise of
     # size n x n.
@@ -708,7 +708,7 @@ def test_arg_shape_uses_assumptions(ctx_factory):
             """, assumptions="n>=1")
 
 
-def test_slab_decomposition_does_not_double_execute(ctx_factory):
+def test_slab_decomposition_does_not_double_execute(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -759,7 +759,7 @@ def test_multiple_writes_to_local_temporary():
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_make_copy_kernel(ctx_factory):
+def test_make_copy_kernel(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -783,7 +783,7 @@ def test_make_copy_kernel(ctx_factory):
     assert (a1 == a3).all()
 
 
-def test_make_copy_kernel_with_offsets(ctx_factory):
+def test_make_copy_kernel_with_offsets(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -801,7 +801,7 @@ def test_make_copy_kernel_with_offsets(ctx_factory):
     assert (a1 == a2_dev.get()).all()
 
 
-def test_auto_test_can_detect_problems(ctx_factory):
+def test_auto_test_can_detect_problems(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     ref_knl = lp.make_kernel(
@@ -826,7 +826,7 @@ def test_auto_test_can_detect_problems(ctx_factory):
                 parameters={"n": 123})
 
 
-def test_auto_test_zero_warmup_rounds(ctx_factory):
+def test_auto_test_zero_warmup_rounds(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     ref_knl = lp.make_kernel(
@@ -859,7 +859,7 @@ def test_variable_size_temporary():
 
 
 @pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
-def test_atomic(ctx_factory, dtype):
+def test_atomic(ctx_factory: cl.CtxFactory, dtype):
     ctx = ctx_factory()
 
     if (
@@ -884,7 +884,7 @@ def test_atomic(ctx_factory, dtype):
 
 
 @pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
-def test_atomic_load(ctx_factory, dtype):
+def test_atomic_load(ctx_factory: cl.CtxFactory, dtype):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -972,7 +972,7 @@ def test_within_inames_and_reduction():
     print(prog["loopy_kernel"].stringify(with_dependencies=True))
 
 
-def test_literal_local_barrier(ctx_factory):
+def test_literal_local_barrier(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1012,7 +1012,7 @@ def test_local_barrier_mem_kind():
     _test_type("local", "CLK_LOCAL_MEM_FENCE")
 
 
-def test_kernel_splitting(ctx_factory):
+def test_kernel_splitting(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1045,7 +1045,7 @@ def test_kernel_splitting(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 5})
 
 
-def test_kernel_splitting_with_loop(ctx_factory):
+def test_kernel_splitting_with_loop(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1097,7 +1097,7 @@ def save_and_reload_temporaries_test(queue, prog, out_expect, debug=False):
 
 
 @pytest.mark.parametrize("hw_loop", [True, False])
-def test_save_of_private_scalar(ctx_factory, hw_loop, debug=False):
+def test_save_of_private_scalar(ctx_factory: cl.CtxFactory, hw_loop, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1117,7 +1117,7 @@ def test_save_of_private_scalar(ctx_factory, hw_loop, debug=False):
     save_and_reload_temporaries_test(queue, prog, np.arange(8), debug)
 
 
-def test_save_of_private_array(ctx_factory, debug=False):
+def test_save_of_private_array(ctx_factory: cl.CtxFactory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1135,7 +1135,7 @@ def test_save_of_private_array(ctx_factory, debug=False):
     save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
 
 
-def test_save_of_private_array_in_hw_loop(ctx_factory, debug=False):
+def test_save_of_private_array_in_hw_loop(ctx_factory: cl.CtxFactory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1160,7 +1160,7 @@ def test_save_of_private_array_in_hw_loop(ctx_factory, debug=False):
         queue, knl, np.vstack(8 * (np.arange(8),)), debug)
 
 
-def test_save_of_private_multidim_array(ctx_factory, debug=False):
+def test_save_of_private_multidim_array(ctx_factory: cl.CtxFactory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1184,7 +1184,9 @@ def test_save_of_private_multidim_array(ctx_factory, debug=False):
     save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
-def test_save_of_private_multidim_array_in_hw_loop(ctx_factory, debug=False):
+def test_save_of_private_multidim_array_in_hw_loop(
+        ctx_factory: cl.CtxFactory,
+        debug: bool = False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1210,7 +1212,10 @@ def test_save_of_private_multidim_array_in_hw_loop(ctx_factory, debug=False):
 
 
 @pytest.mark.parametrize("hw_loop", [True, False])
-def test_save_of_multiple_private_temporaries(ctx_factory, hw_loop, debug=False):
+def test_save_of_multiple_private_temporaries(
+            ctx_factory: cl.CtxFactory,
+            hw_loop: bool,
+            debug: bool = False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1243,7 +1248,7 @@ def test_save_of_multiple_private_temporaries(ctx_factory, hw_loop, debug=False)
     save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
-def test_save_of_local_array(ctx_factory, debug=False):
+def test_save_of_local_array(ctx_factory: cl.CtxFactory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1264,7 +1269,9 @@ def test_save_of_local_array(ctx_factory, debug=False):
     save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
 
 
-def test_save_of_local_array_with_explicit_local_barrier(ctx_factory, debug=False):
+def test_save_of_local_array_with_explicit_local_barrier(
+        ctx_factory: cl.CtxFactory,
+        debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1286,7 +1293,7 @@ def test_save_of_local_array_with_explicit_local_barrier(ctx_factory, debug=Fals
     save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
 
 
-def test_save_local_multidim_array(ctx_factory, debug=False):
+def test_save_local_multidim_array(ctx_factory: cl.CtxFactory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1307,7 +1314,7 @@ def test_save_local_multidim_array(ctx_factory, debug=False):
     save_and_reload_temporaries_test(queue, knl, 1, debug)
 
 
-def test_save_with_base_storage(ctx_factory, debug=False):
+def test_save_with_base_storage(ctx_factory: cl.CtxFactory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1354,7 +1361,7 @@ def test_save_ambiguous_storage_requirements():
         lp.save_and_reload_temporaries(knl)
 
 
-def test_save_across_inames_with_same_tag(ctx_factory, debug=False):
+def test_save_across_inames_with_same_tag(ctx_factory: cl.CtxFactory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1411,7 +1418,7 @@ def test_missing_definition_check_respects_aliases():
     lp.generate_code_v2(knl)
 
 
-def test_global_temporary(ctx_factory):
+def test_global_temporary(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1442,7 +1449,7 @@ def test_global_temporary(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 5})
 
 
-def test_assign_to_linear_subscript(ctx_factory):
+def test_assign_to_linear_subscript(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1462,7 +1469,7 @@ def test_assign_to_linear_subscript(ctx_factory):
     assert np.array_equal(a1.get(),  a2.get())
 
 
-def test_finite_difference_expr_subst(ctx_factory):
+def test_finite_difference_expr_subst(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1521,7 +1528,7 @@ def test_finite_difference_expr_subst(ctx_factory):
 
 # {{{ call without returned values
 
-def test_call_with_no_returned_value(ctx_factory):
+def test_call_with_no_returned_value(ctx_factory: cl.CtxFactory):
     import pymbolic.primitives as p
 
     ctx = ctx_factory()
@@ -1588,7 +1595,7 @@ def test_unschedulable_kernel_detection():
     assert len(list(lp.get_iname_duplication_options(knl))) == 10
 
 
-def test_regression_no_ret_call_removal(ctx_factory):
+def test_regression_no_ret_call_removal(ctx_factory: cl.CtxFactory):
     # https://github.com/inducer/loopy/issues/32
     prog = lp.make_kernel(
             "{[i] : 0<=i<n}",
@@ -1613,7 +1620,7 @@ def test_regression_persistent_hash():
     assert lkb(knl1) != lkb(knl2)
 
 
-def test_sequential_dependencies(ctx_factory):
+def test_sequential_dependencies(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     prog = lp.make_kernel(
@@ -1633,7 +1640,7 @@ def test_sequential_dependencies(ctx_factory):
     lp.auto_test_vs_ref(prog, ctx, prog, parameters={"n": 5})
 
 
-def test_nop(ctx_factory):
+def test_nop(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1655,7 +1662,7 @@ def test_nop(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl, parameters={"ntrips": 5})
 
 
-def test_global_barrier(ctx_factory):
+def test_global_barrier(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1721,7 +1728,7 @@ def test_missing_global_barrier():
         lp.generate_code_v2(knl)
 
 
-def test_index_cse(ctx_factory):
+def test_index_cse(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(["{[i,j,k,l,m]:0<=i,j,k,l,m<n}"],
                          """
                          for i
@@ -1737,7 +1744,7 @@ def test_index_cse(ctx_factory):
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_ilp_and_conditionals(ctx_factory):
+def test_ilp_and_conditionals(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel("{[k]: 0<=k<n}}",
@@ -1761,7 +1768,7 @@ def test_ilp_and_conditionals(ctx_factory):
 
 
 @pytest.mark.parametrize("unr_tag", ["unr", "unr_hint"])
-def test_unr_and_conditionals(ctx_factory, unr_tag):
+def test_unr_and_conditionals(ctx_factory: cl.CtxFactory, unr_tag):
     ctx = ctx_factory()
 
     knl = lp.make_kernel("{[k]: 0<=k<n}}",
@@ -1784,7 +1791,7 @@ def test_unr_and_conditionals(ctx_factory, unr_tag):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-def test_constant_array_args(ctx_factory):
+def test_constant_array_args(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel("{[k]: 0<=k<n}}",
@@ -1806,7 +1813,7 @@ def test_constant_array_args(ctx_factory):
 
 @pytest.mark.parametrize("src_order", ["C"])
 @pytest.mark.parametrize("tmp_order", ["C", "F"])
-def test_temp_initializer(ctx_factory, src_order, tmp_order):
+def test_temp_initializer(ctx_factory: cl.CtxFactory, src_order, tmp_order):
     rng = np.random.default_rng(seed=42)
     a = rng.normal(size=(3, 3)).copy(order=src_order)
 
@@ -1888,7 +1895,7 @@ def test_header_extract():
             "loopy_kernel(__global float *__restrict__ T);")
 
 
-def test_scalars_with_base_storage(ctx_factory):
+def test_scalars_with_base_storage(ctx_factory: cl.CtxFactory):
     """ Regression test for !50 """
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -1909,7 +1916,7 @@ def test_scalars_with_base_storage(ctx_factory):
     knl(queue, out_host=True)
 
 
-def test_if_else(ctx_factory):
+def test_if_else(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1996,7 +2003,7 @@ def test_if_else(ctx_factory):
     assert np.array_equal(out_ref, out)
 
 
-def test_tight_loop_bounds(ctx_factory):
+def test_tight_loop_bounds(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -2075,7 +2082,7 @@ def test_unscheduled_insn_detection():
         lp.generate_code(prog)
 
 
-def test_integer_reduction(ctx_factory):
+def test_integer_reduction(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -2124,7 +2131,7 @@ def test_integer_reduction(ctx_factory):
             assert function(out)
 
 
-def test_complicated_argmin_reduction(ctx_factory):
+def test_complicated_argmin_reduction(ctx_factory: cl.CtxFactory):
     cl_ctx = ctx_factory()
     knl = lp.make_kernel(
             "{[ictr,itgt,idim]: "
@@ -2385,7 +2392,7 @@ def test_global_barrier_error_if_unordered():
         lp.get_global_barrier_order(prog["loopy_kernel"])
 
 
-def test_struct_assignment(ctx_factory):
+def test_struct_assignment(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -2420,7 +2427,7 @@ def test_struct_assignment(ctx_factory):
     knl(queue, N=200)
 
 
-def test_inames_conditional_generation(ctx_factory):
+def test_inames_conditional_generation(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     knl = lp.make_kernel(
             "{[i,j,k]: 0 < k < i and 0 < j < 10 and 0 < i < 10}",
@@ -2443,7 +2450,7 @@ def test_inames_conditional_generation(ctx_factory):
         knl(queue)
 
 
-def test_fixed_parameters(ctx_factory):
+def test_fixed_parameters(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -2463,7 +2470,7 @@ def test_parameter_inference():
     assert knl["loopy_kernel"].all_params() == {"n"}
 
 
-def test_execution_backend_can_cache_dtypes(ctx_factory):
+def test_execution_backend_can_cache_dtypes(ctx_factory: cl.CtxFactory):
     # When the kernel is invoked, the execution backend uses it as a cache key
     # for the type inference and scheduling cache. This tests to make sure that
     # dtypes in the kernel can be cached, even though they may not have a
@@ -2517,7 +2524,7 @@ def test_arg_inference_for_predicates():
     assert knl.arg_dict["incr"].shape == (10,)
 
 
-def test_relaxed_stride_checks(ctx_factory):
+def test_relaxed_stride_checks(ctx_factory: cl.CtxFactory):
     # Check that loopy is compatible with numpy's relaxed stride rules.
     ctx = ctx_factory()
 
@@ -2616,7 +2623,7 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
     assert barrier_between(knl, "first", "second") == expect_barrier
 
 
-def test_half_complex_conditional(ctx_factory):
+def test_half_complex_conditional(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -2684,7 +2691,7 @@ def test_backwards_dep_printing_and_error():
     print(knl)
 
 
-def test_dump_binary(ctx_factory):
+def test_dump_binary(ctx_factory: cl.CtxFactory):
     pytest.skip("Not investing time in passing test depends on feature which was "
             "deprecated in 2016")
     ctx = ctx_factory()
@@ -2738,7 +2745,7 @@ def test_temp_var_type_deprecated_usage():
                 temp_var_types=(np.dtype(np.int32),))
 
 
-def test_shape_mismatch_check(ctx_factory):
+def test_shape_mismatch_check(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -2827,7 +2834,7 @@ def test_non_integral_array_idx_raises():
 
 
 @pytest.mark.parametrize("tag", ["for", "l.0", "g.0", "fixed"])
-def test_empty_domain(ctx_factory, tag):
+def test_empty_domain(ctx_factory: cl.CtxFactory, tag):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -2904,7 +2911,7 @@ def test_access_check_with_insn_predicates():
     print(lp.generate_code_v2(knl).device_code())
 
 
-def test_conditional_access_range_with_parameters(ctx_factory):
+def test_conditional_access_range_with_parameters(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -2943,7 +2950,7 @@ def test_conditional_access_range_with_parameters(ctx_factory):
                                 (10, 8)))
 
 
-def test_split_iname_within(ctx_factory):
+def test_split_iname_within(ctx_factory: cl.CtxFactory):
     # https://github.com/inducer/loopy/issues/163
     ctx = ctx_factory()
 
@@ -2977,7 +2984,7 @@ def test_split_iname_within(ctx_factory):
     (np.int32, np.float64),
     (np.float64, np.int32), (np.int64, np.int32),
     (np.float32, np.float64), (np.float64, np.float32)])
-def test_pow(ctx_factory, base_type, exp_type):
+def test_pow(ctx_factory: cl.CtxFactory, base_type, exp_type):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -3043,7 +3050,7 @@ def test_deps_from_conditionals():
     print(lp.generate_code_v2(ppknl).device_code())
 
 
-def test_scalar_temporary(ctx_factory):
+def test_scalar_temporary(ctx_factory: cl.CtxFactory):
     from numpy.random import default_rng
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -3109,7 +3116,7 @@ def test_kernel_tagging():
     assert knl3.copy().tags == knl3.tags
 
 
-def test_split_iname_with_multiple_dim_params(ctx_factory):
+def test_split_iname_with_multiple_dim_params(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     ref_knl = lp.make_kernel(
@@ -3125,7 +3132,7 @@ def test_split_iname_with_multiple_dim_params(ctx_factory):
 
 @pytest.mark.parametrize("opt_name",
         ["trace_assignments", "trace_assignment_values"])
-def test_trace_assignments(ctx_factory, opt_name):
+def test_trace_assignments(ctx_factory: cl.CtxFactory, opt_name):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -3182,7 +3189,7 @@ def test_tunit_to_python():
     lp.t_unit_to_python(knl_explicit_iname)
 
 
-def test_global_tv_with_base_storage_across_gbarrier(ctx_factory):
+def test_global_tv_with_base_storage_across_gbarrier(ctx_factory: cl.CtxFactory):
     # see https://github.com/inducer/loopy/pull/466 for context
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
@@ -3233,7 +3240,7 @@ def test_get_return_from_kernel_mapping():
     assert ret_from_knl_idx[9] == 10
 
 
-def test_zero_stride_array(ctx_factory):
+def test_zero_stride_array(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
 
@@ -3248,7 +3255,7 @@ def test_zero_stride_array(ctx_factory):
     assert out.shape == (10, 0)
 
 
-def test_sep_array_ordering(ctx_factory):
+def test_sep_array_ordering(ctx_factory: cl.CtxFactory):
     # https://github.com/inducer/loopy/pull/667
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
@@ -3272,7 +3279,7 @@ def test_sep_array_ordering(ctx_factory):
         assert out[i] is x[i], f"failed on input x{i}: {id(out[i])} {id(x[i])}"
 
 
-def test_predicated_redn(ctx_factory):
+def test_predicated_redn(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/427
     ctx = ctx_factory()
 
@@ -3289,7 +3296,7 @@ def test_predicated_redn(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl)
 
 
-def test_redn_in_predicate(ctx_factory):
+def test_redn_in_predicate(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -3320,7 +3327,7 @@ def test_obj_tagged_is_persistent_hashable():
 
 
 @pytest.mark.xfail
-def test_vec_loops_surrounded_by_preds(ctx_factory):
+def test_vec_loops_surrounded_by_preds(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/615
     ctx = ctx_factory()
     knl = lp.make_kernel(
@@ -3343,7 +3350,7 @@ def test_vec_loops_surrounded_by_preds(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-def test_vec_inames_can_reenter(ctx_factory):
+def test_vec_inames_can_reenter(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/644
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
@@ -3373,7 +3380,7 @@ def test_vec_inames_can_reenter(ctx_factory):
     np.testing.assert_allclose(out.get(), 6*np.ones(4))
 
 
-def test_split_and_join_inames(ctx_factory):
+def test_split_and_join_inames(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/652
     ctx = ctx_factory()
 
@@ -3458,7 +3465,7 @@ def test_creation_kwargs():
             ksdfjlasdf=None)
 
 
-def test_global_temps_with_multiple_base_storages(ctx_factory):
+def test_global_temps_with_multiple_base_storages(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/737
 
     n = 10
@@ -3508,7 +3515,7 @@ def test_t_unit_to_python_with_substs():
     lp.t_unit_to_python(t_unit)  # contains check to assert roundtrip equivalence
 
 
-def test_type_inference_of_clbls_in_substitutions(ctx_factory):
+def test_type_inference_of_clbls_in_substitutions(ctx_factory: cl.CtxFactory):
     # Regression for https://github.com/inducer/loopy/issues/746
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
@@ -3525,7 +3532,7 @@ def test_type_inference_of_clbls_in_substitutions(ctx_factory):
     np.testing.assert_allclose(out.get(), np.abs(10.0*(np.arange(10)-5)))
 
 
-def test_einsum_parsing(ctx_factory):
+def test_einsum_parsing(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     # See <https://github.com/inducer/loopy/issues/753>
@@ -3535,7 +3542,7 @@ def test_einsum_parsing(ctx_factory):
                         parameters={"Ni": 10, "Nj": 10, "Nk": 10})
 
 
-def test_no_barrier_err_for_global_temps_with_base_storage(ctx_factory):
+def test_no_barrier_err_for_global_temps_with_base_storage(ctx_factory: cl.CtxFactory):
     # Regression for https://github.com/inducer/loopy/issues/748
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
@@ -3620,7 +3627,7 @@ def test_dgemm_with_rectangular_tile_prefetch():
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
-def test_modulo_vs_type_context(ctx_factory):
+def test_modulo_vs_type_context(ctx_factory: cl.CtxFactory):
     t_unit = lp.make_kernel(
             "{[i]: 0 <= i < 10}",
             """
@@ -3654,7 +3661,7 @@ def test_barrier_non_zero_hw_lbound():
     assert barrier_between(knl, "w_a", "w_b")
 
 
-def test_no_unnecessary_lbarrier(ctx_factory):
+def test_no_unnecessary_lbarrier(ctx_factory: cl.CtxFactory):
     # This regression would fail on loopy.git <= 268a7f4
     # (Issue reported by @thilinarmtb)
 
