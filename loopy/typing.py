@@ -36,6 +36,7 @@ THE SOFTWARE.
 """
 
 
+from collections.abc import Set
 from typing import TypeAlias, TypeVar
 
 import numpy as np
@@ -51,7 +52,7 @@ ShapeType: TypeAlias = tuple[ArithmeticExpression, ...]
 StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str
-InameStrSet: TypeAlias = frozenset[InameStr]
+InameStrSet: TypeAlias = Set[InameStr]
 
 InsnId: TypeAlias = str
 
