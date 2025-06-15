@@ -45,17 +45,16 @@ from loopy.diagnostic import (
 )
 from loopy.kernel.array import (
     ArrayBase,
+    ArrayDimImplementationTag,
     FixedStrideArrayDimTag,
     SeparateArrayArrayDimTag,
 )
 from loopy.kernel.data import (
     AddressSpace,
     ArrayArg,
-    ArrayDimImplementationTag,
     AxisTag,
     InameImplementationTag,
     TemporaryVariable,
-    auto,
 )
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (
@@ -67,12 +66,13 @@ from loopy.kernel.instruction import (
 )
 from loopy.symbolic import CombineMapper, ResolvedFunction, SubArrayRef, WalkMapper
 from loopy.translation_unit import (
+    CallableId,
     CallablesTable,
     TranslationUnit,
     check_each_kernel,
 )
 from loopy.type_inference import TypeReader
-from loopy.typing import not_none
+from loopy.typing import auto, not_none
 
 
 if TYPE_CHECKING:
@@ -118,7 +118,7 @@ __doc__ = """
 
 # {{{ sanity checks run before preprocessing
 
-def check_identifiers_in_subst_rules(knl):
+def check_identifiers_in_subst_rules(knl: LoopKernel):
     """Substitution rules may only refer to kernel-global quantities or their
     own arguments.
     """
@@ -139,7 +139,7 @@ def check_identifiers_in_subst_rules(knl):
                        ", ".join(deps-rule_allowed_identifiers)))
 
 
-class UnresolvedCallCollector(CombineMapper):
+class UnresolvedCallCollector(CombineMapper[frozenset[CallableId], []]):
     """
     Collects all the unresolved calls within a kernel.
 
@@ -1962,7 +1962,7 @@ def check_implemented_domains(
                     not_none(insn_domain.get_dim_name(dim_type.param, i))
                     for i in range(insn_impl_domain.dim(dim_type.param))}
 
-            lines = []
+            lines: list[str] = []
             for bigger, smaller, diff_set, gist_domain in [
                     ("implemented", "desired", i_minus_d,
                         desired_domain.gist(insn_impl_domain)),
@@ -1981,7 +1981,7 @@ def check_implemented_domains(
                 # lines.append("point desired: %s" % (pt_set <= desired_domain))
 
                 iname_to_dim = pt.get_space().get_var_dict()
-                point_axes = []
+                point_axes: list[str] = []
                 for iname in insn_inames | parameter_inames:
                     tp, dim = iname_to_dim[iname]
                     point_axes.append("%s=%d" % (
