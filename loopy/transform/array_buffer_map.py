@@ -402,7 +402,7 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
                 self.stor2sweep,
                 except_inames=frozenset(self.primed_sweep_inames)).domain()
 
-        arg_inames = set(global_s2s_par_dom.get_var_names(dim_type.param))
+        arg_inames = set(global_s2s_par_dom.get_var_names_not_none(dim_type.param))
 
         for arg in storage_axis_exprs:
             arg_inames.update(get_dependencies(arg))

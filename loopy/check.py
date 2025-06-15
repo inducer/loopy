@@ -659,7 +659,7 @@ def check_for_data_dependent_parallel_bounds(kernel: LoopKernel) -> None:
     from loopy.kernel.data import ConcurrentTag
 
     for i, dom in enumerate(kernel.domains):
-        dom_inames = set(dom.get_var_names(dim_type.set))
+        dom_inames = set(dom.get_var_names_not_none(dim_type.set))
         par_inames = {
                 iname for iname in dom_inames
                 if kernel.iname_tags_of_type(iname, ConcurrentTag)}
@@ -1938,7 +1938,7 @@ def check_implemented_domains(
                 non_lid_inames, [dim_type.set])
 
         insn_domain = kernel.get_inames_domain(insn_inames)
-        insn_parameters = frozenset(insn_domain.get_var_names(dim_type.param))
+        insn_parameters = frozenset(insn_domain.get_var_names_not_none(dim_type.param))
         assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
         desired_domain = ((insn_domain & assumptions)
             .project_out_except(insn_inames, [dim_type.set])

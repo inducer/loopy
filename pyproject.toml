@@ -36,7 +36,7 @@ dependencies = [
     "numpy>=1.19",
 
     "cgen>=2016.1",
-    "islpy>=2025.2.3",
+    "islpy>=2025.2.5",
     "codepy>=2017.1",
     "colorama",
     "Mako",
