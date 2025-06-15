@@ -73,7 +73,7 @@ from loopy.kernel.data import (
 )
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import not_none
+from loopy.typing import fset_union, not_none
 
 
 if TYPE_CHECKING:
@@ -103,8 +103,8 @@ class KernelState(IntEnum):
 def _get_inames_from_domains(
             domains: Sequence[isl.Set | isl.BasicSet]
         ) -> Set[InameStr]:
-    return frozenset().union(*
-            (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
+    return fset_union(
+            frozenset(dom.get_var_names_not_none(dim_type.set)) for dom in domains)
 
 
 @dataclass(frozen=True)
@@ -348,7 +348,7 @@ class LoopKernel(Taggable):
         from loopy.kernel.tools import is_domain_dependent_on_inames
 
         for dom_idx, dom in enumerate(self.domains):
-            inames = set(dom.get_var_names(dim_type.set))
+            inames = set(dom.get_var_names_not_none(dim_type.set))
 
             # This next domain may be nested inside the previous domain.
             # Or it may not, in which case we need to figure out how many
@@ -419,7 +419,7 @@ class LoopKernel(Taggable):
         return {
                 iname: i_domain
                 for i_domain, dom in enumerate(self.domains)
-                for iname in dom.get_var_names(dim_type.set)}
+                for iname in dom.get_var_names_not_none(dim_type.set)}
 
     def get_home_domain_index(self, iname: str) -> int:
         return self._get_home_domain_map()[iname]
@@ -724,14 +724,13 @@ class LoopKernel(Taggable):
 
     @memoize_method
     def get_read_variables(self) -> Set[str]:
-        result: set[str] = set()
-        for insn in self.instructions:
-            result.update(insn.read_dependency_names())
-
-        for domain in self.domains:
-            result.update(domain.get_var_names(dim_type.param))
-
-        return result
+        return fset_union(
+            insn.read_dependency_names()
+            for insn in self.instructions
+        ) | fset_union(
+            domain.get_var_names_not_none(dim_type.param)
+            for domain in self.domains
+        )
 
     def get_written_variables(self) -> Set[str]:
         try:

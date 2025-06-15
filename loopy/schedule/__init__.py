@@ -282,7 +282,7 @@ def find_loop_nest_around_map(kernel: LoopKernel) -> Mapping[str, set[str]]:
             if outer_iname not in all_inames:
                 continue
 
-            for inner_iname in dom.get_var_names(isl.dim_type.set):
+            for inner_iname in dom.get_var_names_not_none(isl.dim_type.set):
                 result[inner_iname].add(outer_iname)
 
     return result
