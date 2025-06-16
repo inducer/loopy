@@ -1,6 +1,8 @@
 """Code generation for Instruction objects."""
 from __future__ import annotations
 
+from loopy.types import NumpyType
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -23,17 +25,27 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
+from typing import TYPE_CHECKING, Any
 
 import islpy as isl
-
-
-dim_type = isl.dim_type
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_on_first_arg
 
-from loopy.codegen import UnvectorizableError
+from loopy.codegen import CodeGenerationState, UnvectorizableError
 from loopy.codegen.result import CodeGenerationResult
+
+
+if TYPE_CHECKING:
+    from collections.abc import Collection, Set
+
+    from pymbolic import Expression
+
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.instruction import InstructionBase
+    from loopy.target import ASTType
+    from loopy.typing import InsnId
+
+dim_type = isl.dim_type
 
 
 # These 'id' arguments are here because Set has a __hash__ supplied by isl,
@@ -44,9 +56,11 @@ from loopy.codegen.result import CodeGenerationResult
 # https://github.com/inducer/islpy/pull/103/.
 @memoize_on_first_arg
 def _get_new_implemented_domain(
-        kernel,
-        id_chk_domain, chk_domain,
-        id_implemented_domain, implemented_domain):
+        kernel: LoopKernel,
+        id_chk_domain: int,
+        chk_domain: isl.Set,
+        id_implemented_domain: int,
+        implemented_domain: isl.Set):
 
     chk_domain, implemented_domain = isl.align_two(
             chk_domain, implemented_domain)
@@ -57,7 +71,13 @@ def _get_new_implemented_domain(
 
 
 def to_codegen_result(
-        codegen_state, insn_id, domain, check_inames, required_preds, ast):
+            codegen_state: CodeGenerationState,
+            insn_id: InsnId,
+            domain: isl.BasicSet,
+            check_inames: Collection[str],
+            required_preds: Set[Expression],
+            ast: ASTType
+        ) -> CodeGenerationResult[ASTType] | None:
     chk_domain = isl.Set.from_basic_set(domain)
     chk_domain = chk_domain.remove_redundancies()
     chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
@@ -91,7 +111,10 @@ def to_codegen_result(
             codegen_state, insn_id, ast, new_implemented_domain)
 
 
-def generate_instruction_code(codegen_state, insn):
+def generate_instruction_code(
+            codegen_state: CodeGenerationState,
+            insn: InstructionBase
+        ) -> CodeGenerationResult[Any] | None:
     kernel = codegen_state.kernel
 
     from loopy.kernel.instruction import (
@@ -122,7 +145,10 @@ def generate_instruction_code(codegen_state, insn):
             ast)
 
 
-def generate_assignment_instruction_code(codegen_state, insn):
+def generate_assignment_instruction_code(
+            codegen_state: CodeGenerationState,
+            insn: InstructionBase
+        ):
     kernel = codegen_state.kernel
 
     ecm = codegen_state.expression_to_code_mapper
@@ -216,6 +242,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
                     for i in assignee_indices)
 
         if kernel.options.trace_assignment_values:
+            assert isinstance(lhs_dtype, NumpyType)
             if lhs_dtype.numpy_dtype.kind == "i":
                 printf_format += " = %d"
                 printf_args.append(lhs_code)

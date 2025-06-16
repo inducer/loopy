@@ -27,15 +27,20 @@ from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
     Any,
+    Generic,
 )
+
+from loopy.target import ASTType
 
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     import islpy
+    from pymbolic import Expression
 
     from loopy.codegen import CodeGenerationState
+    from loopy.typing import InsnId
 
 
 def process_preambles(preambles: Sequence[tuple[int, str]]) -> Sequence[str]:
@@ -97,7 +102,7 @@ class GeneratedProgram:
 
 
 @dataclass(frozen=True)
-class CodeGenerationResult:
+class CodeGenerationResult(Generic[ASTType]):
     """
     .. attribute:: host_program
     .. attribute:: device_programs
@@ -123,11 +128,16 @@ class CodeGenerationResult:
     host_preambles: Sequence[tuple[str, str]] = ()
     device_preambles: Sequence[tuple[str, str]] = ()
 
-    def copy(self, **kwargs: Any) -> CodeGenerationResult:
+    def copy(self, **kwargs: Any) -> CodeGenerationResult[ASTType]:
         return replace(self, **kwargs)
 
     @staticmethod
-    def new(codegen_state, insn_id, ast, implemented_domain):
+    def new(
+                codegen_state: CodeGenerationState,
+                insn_id: InsnId,
+                ast: ASTType,
+                implemented_domain: islpy.Set,
+            ):
         prg = GeneratedProgram(
                 name=codegen_state.gen_program_name,
                 is_device_program=codegen_state.is_generating_device_code,
@@ -144,7 +154,7 @@ class CodeGenerationResult:
                     "device_programs": [],
                     }
 
-        return CodeGenerationResult(
+        return CodeGenerationResult[ASTType](
                 implemented_domains={insn_id: [implemented_domain]},
                 **kwargs)
 
@@ -200,7 +210,10 @@ class CodeGenerationResult:
         assert result.name == codegen_state.gen_program_name
         return result
 
-    def with_new_program(self, codegen_state, program):
+    def with_new_program(self,
+                codegen_state: CodeGenerationState,
+                program: GeneratedProgram
+            ):
         if codegen_state.is_generating_device_code:
             assert program.name == codegen_state.gen_program_name
             assert program.is_device_program
@@ -212,10 +225,10 @@ class CodeGenerationResult:
             assert not program.is_device_program
             return self.copy(host_program=program)
 
-    def current_ast(self, codegen_state):
+    def current_ast(self, codegen_state: CodeGenerationState) -> ASTType:
         return self.current_program(codegen_state).ast
 
-    def with_new_ast(self, codegen_state, new_ast):
+    def with_new_ast(self, codegen_state: CodeGenerationState, new_ast: object):
         return self.with_new_program(
                 codegen_state,
                 self.current_program(codegen_state).copy(
@@ -228,9 +241,9 @@ class CodeGenerationResult:
 
 def merge_codegen_results(
             codegen_state: CodeGenerationState,
-            elements: Sequence[CodeGenerationResult | Any],
+            elements: Sequence[CodeGenerationResult[ASTType] | Any],
             collapse: bool = True
-        ) -> CodeGenerationResult:
+        ) -> CodeGenerationResult[ASTType]:
     elements = [el for el in elements if el is not None]
 
     if not elements:
@@ -277,7 +290,7 @@ def merge_codegen_results(
             cur_ast = el.current_ast(codegen_state)
             if (isinstance(cur_ast, block_cls)
                     and not isinstance(cur_ast, block_scope_cls)):
-                ast_els.extend(cur_ast.contents)
+                ast_els.extend(cur_ast.contents)  # pyright: ignore[reportAttributeAccessIssue,reportUnknownMemberType,reportUnknownArgumentType]
             else:
                 ast_els.append(cur_ast)
 
@@ -303,7 +316,11 @@ def merge_codegen_results(
                 **kwargs))
 
 
-def wrap_in_if(codegen_state, condition_exprs, inner):
+def wrap_in_if(
+            codegen_state: CodeGenerationState,
+            condition_exprs: Sequence[Expression],
+            inner: CodeGenerationResult[ASTType]
+        ) -> CodeGenerationResult[ASTType]:
     if condition_exprs:
         from pymbolic.mapper.stringifier import PREC_NONE
         from pymbolic.primitives import LogicalAnd
@@ -322,11 +339,15 @@ def wrap_in_if(codegen_state, condition_exprs, inner):
 
 # {{{ program generation top-level
 
-def generate_host_or_device_program(codegen_state, schedule_index):
+def generate_host_or_device_program(
+            codegen_state: CodeGenerationState,
+            schedule_index: int
+        ):
     ast_builder = codegen_state.ast_builder
     temp_decls = ast_builder.get_temporary_decls(codegen_state, schedule_index)
 
     from functools import partial
+    assert codegen_state.kernel.linearization is not None
 
     from loopy.codegen.control import build_loop_nest
     if codegen_state.is_generating_device_code:
@@ -346,9 +367,9 @@ def generate_host_or_device_program(codegen_state, schedule_index):
             or codegen_state.is_entrypoint):
         codegen_result = merge_codegen_results(
                 codegen_state,
-                ast_builder.generate_top_of_body(codegen_state)
-                + temp_decls
-                + [codegen_result],
+                [*ast_builder.generate_top_of_body(codegen_state),
+                *temp_decls,
+                codegen_result],
                 collapse=False)
 
         cur_prog = codegen_result.current_program(codegen_state)
@@ -363,12 +384,14 @@ def generate_host_or_device_program(codegen_state, schedule_index):
         if fdef_preambles:
             if codegen_state.is_generating_device_code:
                 codegen_result = codegen_result.copy(
-                        device_preambles=(
-                            codegen_result.device_preambles + tuple(fdef_preambles)))
+                        device_preambles=[
+                            *codegen_result.device_preambles,
+                            *fdef_preambles])
             else:
                 codegen_result = codegen_result.copy(
-                        host_preambles=(
-                            codegen_result.host_preambles + tuple(fdef_preambles)))
+                        host_preambles=[
+                            *codegen_result.host_preambles,
+                             *fdef_preambles])
 
         codegen_result = codegen_result.with_new_program(
                 codegen_state,

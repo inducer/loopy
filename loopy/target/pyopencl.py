@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from loopy.target.c import CompyteDTypeRegistryWrapper, DTypeRegistry
-
 
 """OpenCL target integrated with PyOpenCL."""
 
@@ -26,7 +24,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
 import logging
 from typing import TYPE_CHECKING, Any, cast
 from warnings import warn
@@ -35,6 +32,7 @@ import numpy as np
 from constantdict import constantdict
 from typing_extensions import override
 
+import genpy
 import pymbolic.primitives as p
 from cgen import (
     Block,
@@ -59,6 +57,7 @@ from loopy.kernel.data import (
 )
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.schedule import CallKernel
+from loopy.target.c import CompyteDTypeRegistryWrapper, DTypeRegistry
 from loopy.target.opencl import (
     ExpressionToOpenCLCExpressionMapper,
     OpenCLCASTBuilder,
@@ -831,14 +830,17 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     Return("_lpy_evt"),
                     ]))
 
+    @override
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> tuple[Sequence[tuple[str, str]], genpy.Generable | None]:
+            codegen_result: CodeGenerationResult[Any], schedule_index: int
+            ) -> tuple[
+                Sequence[tuple[str, str]],
+                genpy.Generable | None]:
         # no such thing in Python
         return [], None
 
-    def _get_global_temporaries(self, codegen_state):
+    def _get_global_temporaries(self, codegen_state: CodeGenerationState):
         from loopy.kernel.data import AddressSpace
 
         return sorted(
@@ -846,7 +848,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             if tv.address_space == AddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    @override
+    def get_temporary_decls(self,
+                codegen_state: CodeGenerationState,
+                schedule_index: int
+            ):
         from genpy import Assign, Comment, Line
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
@@ -855,8 +861,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not global_temporaries:
             return []
 
-        allocated_var_names = []
-        code_lines = []
+        allocated_var_names: list[str] = []
+        code_lines: list[genpy.Generable] = []
         code_lines.append(Line())
         code_lines.append(Comment("{{{ allocate global temporaries"))
         code_lines.append(Line())
@@ -867,7 +873,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     # NB: This does not prevent all zero-size allocations,
                     # as sizes are parametric, and allocation size
                     # could turn out to be zero at runtime.
-                    nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
+                    nbytes_str = ecm(tv.nbytes, PREC_NONE, type_context="i")
                     allocated_var_names.append(tv.name)
                     code_lines.append(Assign(tv.name,
                                              f"allocator({nbytes_str})"))
@@ -1062,7 +1068,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     def get_function_definition(
             self,
             codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult,
+            codegen_result: CodeGenerationResult[Generable],
             schedule_index: int,
             function_decl: Generable,
             function_body: Generable,
@@ -1144,7 +1150,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[Generable], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 
