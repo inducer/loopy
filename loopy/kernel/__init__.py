@@ -77,7 +77,15 @@ from loopy.typing import fset_union, not_none
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterator, Mapping, Sequence, Set
+    from collections.abc import (
+        Callable,
+        Collection,
+        Hashable,
+        Iterator,
+        Mapping,
+        Sequence,
+        Set,
+    )
 
     from pymbolic import ArithmeticExpression, Expression
 
@@ -470,7 +478,7 @@ class LoopKernel(Taggable):
 
         return result
 
-    def get_inames_domain(self, inames: str | Set[str]) -> isl.BasicSet:
+    def get_inames_domain(self, inames: str | Collection[str]) -> isl.BasicSet:
         if not inames:
             return self.combine_domains(())
 
@@ -532,8 +540,8 @@ class LoopKernel(Taggable):
         return list(root_to_leaf.values())
 
     @memoize_method
-    def _get_inames_domain_backend(self, inames):
-        domain_indices = set()
+    def _get_inames_domain_backend(self, inames: Collection[InameStr]):
+        domain_indices: set[int] = set()
         for leaf_dom_idx in self.get_leaf_domain_indices(inames):
             domain_indices.add(leaf_dom_idx)
             domain_indices.update(self.all_parents_per_domain()[leaf_dom_idx])
@@ -621,7 +629,7 @@ class LoopKernel(Taggable):
         return result
 
     @memoize_method
-    def _remove_inames_for_shared_hw_axes(self, cond_inames):
+    def _remove_inames_for_shared_hw_axes(self, cond_inames: Set[InameStr]):
         """
         See if cond_inames contains references to two (or more) inames that
         boil down to the same tag. If so, exclude them. (We shouldn't be writing
@@ -629,7 +637,7 @@ class LoopKernel(Taggable):
         the other inames as well.)
         """
 
-        tag_key_uses = defaultdict(list)
+        tag_key_uses: dict[Hashable, list[InameStr]] = defaultdict(list)
 
         from loopy.kernel.data import HardwareConcurrentTag
 
@@ -643,7 +651,7 @@ class LoopKernel(Taggable):
                 key for key, user_inames in tag_key_uses.items()
                 if len(user_inames) > 1}
 
-        multi_use_inames = set()
+        multi_use_inames: set[InameStr] = set()
         for iname in cond_inames:
             tags = self.iname_tags_of_type(iname, HardwareConcurrentTag)
             if tags:

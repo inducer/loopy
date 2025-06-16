@@ -66,6 +66,11 @@ References
 
 Mostly things that Sphinx (our documentation tool) should resolve but won't.
 
+.. class:: ASTType
+
+    A type variable, representing an AST node. For now, either :class:`cgen.Generable`
+    or :class:`genpy.Generable`.
+
 .. class:: constantdict
 
     See :class:`constantdict.constantdict`.

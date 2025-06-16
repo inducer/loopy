@@ -24,8 +24,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from dataclasses import dataclass, replace
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeVar, final
 
 import islpy as isl
 
@@ -43,13 +44,21 @@ from loopy.schedule import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Collection, Hashable, Sequence, Set
+
+    from pymbolic import Expression
+
     from loopy.codegen import CodeGenerationState
+    from loopy.kernel import LoopKernel
+    from loopy.typing import InameStr
+
+_EMPTY_INT_FROZENSET: frozenset[int] = frozenset()
 
 
 def generate_code_for_sched_index(
             codegen_state: CodeGenerationState,
             sched_index: int
-        ) -> CodeGenerationResult:
+        ) -> CodeGenerationResult[Any] | None:
     kernel = codegen_state.kernel
     assert kernel.linearization is not None
 
@@ -175,7 +184,12 @@ def generate_code_for_sched_index(
                 % type(sched_item))
 
 
-def get_required_predicates(kernel, sched_index):
+def get_required_predicates(
+            kernel: LoopKernel,
+            sched_index: int
+        ) -> frozenset[Expression]:
+    assert kernel.linearization is not None
+
     result = None
     for _, sched_item in generate_sub_sched_items(kernel.linearization, sched_index):
         if isinstance(sched_item, Barrier):
@@ -197,14 +211,21 @@ def get_required_predicates(kernel, sched_index):
     return result
 
 
-def group_by(entry, key, merge):
-    if not entry:
-        return entry
+T = TypeVar("T")
 
-    result = []
-    previous = entry[0]
 
-    for item in entry[1:]:
+def group_by(
+            seq: Sequence[T],
+            key: Callable[[T], Hashable],
+            merge: Callable[[T, T], T]
+        ) -> Sequence[T]:
+    if not seq:
+        return seq
+
+    result: list[T] = []
+    previous = seq[0]
+
+    for item in seq[1:]:
         if key(previous) == key(item):
             previous = merge(previous, item)
 
@@ -216,11 +237,15 @@ def group_by(entry, key, merge):
     return result
 
 
-def build_loop_nest(codegen_state, schedule_index):
+def build_loop_nest(
+            codegen_state: CodeGenerationState,
+            schedule_index: int,
+        ):
     # Most of the complexity of this function goes towards finding groups of
     # instructions that can be nested inside a shared conditional.
 
     kernel = codegen_state.kernel
+    assert kernel.linearization is not None
 
     # If the AST builder does not implement conditionals, we can save us
     # some work about hoisting conditionals and directly go into recursion.
@@ -235,7 +260,7 @@ def build_loop_nest(codegen_state, schedule_index):
 
     # i.e. go up to the next LeaveLoop, and skip over inner loops.
 
-    my_sched_indices = []
+    my_sched_indices: list[int] = []
 
     i = schedule_index
     while i < codegen_state.schedule_index_end:
@@ -266,15 +291,12 @@ def build_loop_nest(codegen_state, schedule_index):
 
     # {{{ pass 2: find admissible conditional inames for each sibling schedule item
 
-    from pytools import ImmutableRecord
-
-    class ScheduleIndexInfo(ImmutableRecord):
-        """
-        .. attribute:: schedule_index
-        .. attribute:: admissible_cond_inames
-        .. attribute:: required_predicates
-        .. attribute:: used_inames_within
-        """
+    @dataclass(frozen=True)
+    class ScheduleIndexInfo:
+        schedule_indices: Sequence[int]
+        admissible_cond_inames: Set[InameStr]
+        required_predicates: frozenset[Expression]
+        used_inames_within: Set[InameStr]
 
     from loopy.codegen.bounds import get_usable_inames_for_conditional
     from loopy.schedule import find_used_inames_within
@@ -297,11 +319,10 @@ def build_loop_nest(codegen_state, schedule_index):
                 sii.admissible_cond_inames,
                 sii.required_predicates,
                 sii.used_inames_within),
-            merge=lambda sii1, sii2: sii1.copy(
+            merge=lambda sii1, sii2: replace(sii1,
                 schedule_indices=(
-                    sii1.schedule_indices
-                    +
-                    sii2.schedule_indices)))
+                    [*sii1.schedule_indices,
+                    *sii2.schedule_indices])))
 
     # }}}
 
@@ -309,13 +330,14 @@ def build_loop_nest(codegen_state, schedule_index):
 
     from pytools import memoize_method
 
+    @final
     class BoundsCheckCache:
-        def __init__(self, kernel, impl_domain):
+        def __init__(self, kernel: LoopKernel, impl_domain: isl.Set):
             self.kernel = kernel
             self.impl_domain = impl_domain
 
         @memoize_method
-        def __call__(self, check_inames):
+        def __call__(self, check_inames: Collection[InameStr]):
             if not check_inames:
                 return []
 
@@ -325,11 +347,14 @@ def build_loop_nest(codegen_state, schedule_index):
             from loopy.codegen.bounds import get_approximate_convex_bounds_checks
             # Each instruction individually gets its bounds checks,
             # so we can safely overapproximate here.
-            return get_approximate_convex_bounds_checks(domain,
+            return get_approximate_convex_bounds_checks(domain.to_set(),
                     check_inames, self.impl_domain, self.kernel.cache_manager)
 
-    def build_insn_group(sched_index_info_entries, codegen_state,
-            done_group_lengths=frozenset()):
+    def build_insn_group(
+                sched_index_info_entries: Sequence[ScheduleIndexInfo],
+                codegen_state: CodeGenerationState,
+                done_group_lengths: frozenset[int] = _EMPTY_INT_FROZENSET
+            ) -> list[CodeGenerationResult[Any]]:
         """
         :arg done_group_lengths: A set of group lengths (integers) that grows
             from empty to include the longest found group and downwards with every
@@ -369,7 +394,7 @@ def build_loop_nest(codegen_state, schedule_index):
         bounds_check_cache = BoundsCheckCache(
                 kernel, codegen_state.implemented_domain)
 
-        found_hoists = []
+        found_hoists: list[tuple[int, Sequence[isl.Constraint], Set[Expression]]] = []
 
         candidate_group_length = 1
         while candidate_group_length <= len(sched_index_info_entries):
@@ -442,7 +467,7 @@ def build_loop_nest(codegen_state, schedule_index):
             is_empty = False
         else:
             is_empty = check_set.is_empty()
-            new_codegen_state = codegen_state.intersect(check_set)
+            new_codegen_state = codegen_state.intersect(check_set.to_set())
 
         if pred_checks:
             new_codegen_state = new_codegen_state.copy(
@@ -450,12 +475,12 @@ def build_loop_nest(codegen_state, schedule_index):
                     | pred_checks)
 
         if is_empty:
-            result = []
+            result: list[CodeGenerationResult[Any]] = []
         else:
             if group_length == 1:
                 # group only contains starting schedule item
-                def gen_code(inner_codegen_state):
-                    result = []
+                def gen_code(inner_codegen_state: CodeGenerationState):
+                    result: list[CodeGenerationResult[Any]] = []
                     for i in origin_si_entry.schedule_indices:
                         inner = generate_code_for_sched_index(
                             inner_codegen_state, i)
@@ -467,7 +492,7 @@ def build_loop_nest(codegen_state, schedule_index):
 
             else:
                 # recurse with a bigger done_group_lengths
-                def gen_code(inner_codegen_state):
+                def gen_code(inner_codegen_state: CodeGenerationState):
                     return build_insn_group(
                             sched_index_info_entries[0:group_length],
                             inner_codegen_state,
@@ -481,7 +506,9 @@ def build_loop_nest(codegen_state, schedule_index):
 
                 prev_gen_code = gen_code
 
-                def gen_code(inner_codegen_state):  # pylint: disable=function-redefined
+                def gen_code(
+                            inner_codegen_state: CodeGenerationState
+                        ) -> CodeGenerationResult[Any]:
                     condition_exprs = ([
                             constraint_to_cond_expr(cns)
                             for cns in bounds_checks]
@@ -489,10 +516,10 @@ def build_loop_nest(codegen_state, schedule_index):
 
                     prev_result = prev_gen_code(inner_codegen_state)
 
-                    return [wrap_in_if(
+                    return wrap_in_if(
                         inner_codegen_state,
                         condition_exprs,
-                        merge_codegen_results(codegen_state, prev_result))]
+                        merge_codegen_results(codegen_state, prev_result))
 
                 cannot_vectorize = False
                 if new_codegen_state.vectorization_info is not None:
@@ -505,7 +532,7 @@ def build_loop_nest(codegen_state, schedule_index):
                             break
 
                 if cannot_vectorize:
-                    def gen_code_wrapper(inner_codegen_state):
+                    def gen_code_wrapper(inner_codegen_state: CodeGenerationState):
                         # gen_code returns a list, but this needs to return a
                         # GeneratedCode instance.
 
@@ -513,7 +540,7 @@ def build_loop_nest(codegen_state, schedule_index):
 
                     result = [new_codegen_state.unvectorize(gen_code_wrapper)]
                 else:
-                    result = gen_code(new_codegen_state)
+                    result = [gen_code(new_codegen_state)]
 
             else:
                 result = gen_code(new_codegen_state)

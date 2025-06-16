@@ -340,7 +340,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[Generable], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
@@ -534,7 +534,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 return Statement("atomicAdd(&{}, {})".format(
                     lhs_expr_code, rhs_expr_code))
             else:
-                from cgen import Assign, Block, DoWhile
+                from cgen import Assign, Block, DoWhile, Line
 
                 from loopy.target.c import POD
                 old_val_var = codegen_state.var_name_generator("loopy_old_val")
@@ -582,7 +582,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                     POD(self, NumpyType(lhs_dtype.dtype),
                         new_val_var),
                     DoWhile(
-                        "atomicCAS("
+                        Line("atomicCAS("
                         "%(cast_str)s&(%(lhs_expr)s), "
                         "%(old_val)s, "
                         "%(new_val)s"
@@ -592,7 +592,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                             "lhs_expr": lhs_expr_code,
                             "old_val": old_val,
                             "new_val": new_val,
-                            },
+                            }),
                         Block([
                             Assign(old_val_var, lhs_expr_code),
                             Assign(new_val_var, rhs_expr_code),

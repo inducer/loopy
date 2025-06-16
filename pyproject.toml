@@ -35,7 +35,7 @@ dependencies = [
     # https://github.com/inducer/loopy/pull/419
     "numpy>=1.19",
 
-    "cgen>=2016.1",
+    "cgen>=2025.1",
     "islpy>=2025.2.5",
     "codepy>=2017.1",
     "colorama",
@@ -191,6 +191,7 @@ reportPrivateUsage = "none"
 # - numpy scalar types are reported as incomplete (because of "any" precision)
 reportUnknownVariableType = "none"
 
+reportUnusedParameter = "hint"
 reportUnreachable = "hint"
 reportUnnecessaryComparison = "hint"
 
@@ -213,10 +214,10 @@ exclude = [
 
 [[tool.basedpyright.executionEnvironments]]
 root = "test"
-reportUnknownArgumentType = "none"
-reportUnknownVariableType = "none"
+reportUnknownArgumentType = "hint"
+reportUnknownVariableType = "hint"
 reportMissingParameterType = "none"
 reportAttributeAccessIssue = "none"
 reportMissingImports = "none"
 reportArgumentType = "hint"
-
+reportUnknownMemberType = "hint"

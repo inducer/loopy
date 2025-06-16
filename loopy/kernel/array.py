@@ -506,7 +506,7 @@ def parse_array_dim_tags(
 
 def convert_computed_to_fixed_dim_tags(
             name: str,
-            num_user_axes: int | None,  # pyright: ignore[reportUnusedParameter]
+            num_user_axes: int | None,
             num_target_axes: int,
             shape: ShapeType | type[auto] | None,
             dim_tags: Sequence[ArrayDimImplementationTag],
