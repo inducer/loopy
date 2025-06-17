@@ -132,11 +132,3 @@ def set_union(iterable: Iterable[Iterable[T]]):
 
 def fset_union(iterable: Iterable[Iterable[T]]):
     return cast("frozenset[T]", frozenset()).union(*iterable)
-
-
-def set_intersection(iterable: Iterable[Iterable[T]]):
-    return cast("set[T]", set()).intersection(*iterable)
-
-
-def fset_intersection(iterable: Iterable[Iterable[T]]):
-    return cast("frozenset[T]", frozenset()).intersection(*iterable)
