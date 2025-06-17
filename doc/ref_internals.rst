@@ -66,6 +66,15 @@ References
 
 Mostly things that Sphinx (our documentation tool) should resolve but won't.
 
+.. class:: EllipsisType
+
+    See :data:`types.EllipsisType`.
+
+.. class:: ToTagSetConvertible
+
+    An iterable of :class:`~pytools.tag.Tag` instances, a single :class:`~pytools.tag.Tag`,
+    or *None*.
+
 .. class:: ASTType
 
     A type variable, representing an AST node. For now, either :class:`cgen.Generable`
@@ -102,3 +111,8 @@ Mostly things that Sphinx (our documentation tool) should resolve but won't.
 .. class:: PwAff
 
     See :class:`islpy.PwAff`.
+
+.. class:: BasicSet
+
+    See :class:`islpy.BasicSet`.
+
