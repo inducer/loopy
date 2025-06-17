@@ -2568,7 +2568,7 @@ class PrimeAdder(IdentityMapper[[]]):
 def get_access_map(
             domain: isl.Set,
             subscript: tuple[Expression, ...],
-            assumptions: isl.Set | None = None,
+            assumptions: isl.BasicSet | None = None,
             shape: ShapeType | None = None,
             allowed_constant_names: Collection[str] | None = None
         ) -> isl.Map:
@@ -2734,7 +2734,7 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
 
         try:
             access_map = get_access_map(
-                    domain.to_set(), subscript, self.kernel.assumptions.to_set(),
+                    domain.to_set(), subscript, self.kernel.assumptions,
                     shape=cast("ShapeType | None", descriptor.shape)
                         if self._overestimate else None,
                     allowed_constant_names=self.kernel.get_unwritten_value_args())
