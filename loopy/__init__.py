@@ -23,6 +23,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import os
+from typing import TYPE_CHECKING
+
+from pytools import strtobool
 
 from loopy.auto_test import auto_test_vs_ref
 from loopy.codegen import PreambleInfo, generate_body, generate_code, generate_code_v2
@@ -211,6 +215,10 @@ from loopy.type_inference import infer_unknown_types
 from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible, to_loopy_type
 from loopy.typing import auto
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 __all__ = [
@@ -495,11 +503,6 @@ def register_symbol_manglers(kernel, manglers):
 
 # {{{ cache control
 
-import os
-
-from pytools import strtobool
-
-
 # Caching is enabled by default, but can be disabled by setting
 # the environment variables LOOPY_NO_CACHE or CG_NO_CACHE to a
 # 'true' value.
@@ -674,10 +677,10 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
 
 # {{{ default target
 
-_DEFAULT_TARGET = None
+_DEFAULT_TARGET: Callable[[], TargetBase] | None = None
 
 
-def set_default_target(target):
+def set_default_target(target: Callable[[], TargetBase] | None):
     # deliberately undocumented for now
     global _DEFAULT_TARGET
     _DEFAULT_TARGET = target
