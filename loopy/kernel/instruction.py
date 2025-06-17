@@ -52,7 +52,7 @@ from pytools.tag import Tag, Taggable, tag_dataclass
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import LinearSubscript, SubArrayRef
 from loopy.tools import Optional as LoopyOptional
-from loopy.types import LoopyType
+from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
 
 
 if TYPE_CHECKING:
@@ -962,7 +962,8 @@ class Assignment(MultiAssignmentBase):
                  predicates: frozenset[str] | None = None,
                  tags: frozenset[Tag] | None = None,
                  temp_var_type:
-                    type[_not_provided] | LoopyOptional[LoopyType] | LoopyType | None
+                    type[_not_provided]
+                        | LoopyOptional[ToLoopyTypeConvertible | None]
                     = _not_provided,
                  atomicity: tuple[VarAtomicity, ...] = (),
                  *,
@@ -1337,14 +1338,16 @@ def modify_assignee_for_array_call(
 def make_assignment(assignees: tuple[Assignable, ...],
                     expression: Expression,
                     temp_var_types: (
-                        Sequence[LoopyType | None] | None) = None,
+                        Sequence[ToLoopyTypeConvertible | None] | None) = None,
                     **kwargs: Any) -> Assignment | CallInstruction:
 
-    if temp_var_types is not None:
-        tv_types: Sequence[
-            LoopyType | LoopyOptional[LoopyType | None] | None] = temp_var_types
-    else:
+    tv_types: Sequence[LoopyOptional[ToLoopyTypeConvertible] | None]
+    if temp_var_types is None:
         tv_types = (LoopyOptional(),) * len(assignees)
+    else:
+        tv_types = [
+            t if isinstance(t, LoopyOptional) else LoopyOptional(t)
+            for t in temp_var_types]
 
     if len(assignees) != 1 or is_array_call(assignees, expression):
         atomicity = kwargs.pop("atomicity", ())
@@ -1364,7 +1367,7 @@ def make_assignment(assignees: tuple[Assignable, ...],
             return CallInstruction(
                     assignees=assignees,
                     expression=expression,
-                    temp_var_types=temp_var_types,
+                    temp_var_types=tv_types,
                     **kwargs)
         else:
             # In the case of an array call, it is important to have each
@@ -1750,13 +1753,19 @@ def _get_insn_hash_key(insn):
 # {{{ _check_and_fix_temp_var_type
 
 def _check_and_fix_temp_var_type(
-            temp_var_type: Any,  # pyright: ignore[reportAny]
+            temp_var_type:
+                type[_not_provided]
+                | ToLoopyTypeConvertible
+                | LoopyOptional[None]
+                | LoopyOptional[ToLoopyTypeConvertible],
             stacklevel: int = 2
         ) -> LoopyOptional[LoopyType | None]:
     """Check temp_var_type for deprecated usage, and convert to the right value.
     """
 
     import loopy as lp
+
+    assert temp_var_type is not _not_provided
 
     if temp_var_type is None:
         warn("temp_var_type should be Optional() if no temporary, not None. "
@@ -1774,9 +1783,12 @@ def _check_and_fix_temp_var_type(
         warn("temp_var_type should be an instance of Optional. "
              "Other values for temp_var_type will be disallowed soon.",
              DeprecationWarning, stacklevel=1 + stacklevel)
-        return lp.Optional(temp_var_type)  # pyright: ignore[reportAny]
+        return lp.Optional(to_loopy_type(temp_var_type))
 
-    return temp_var_type
+    if not temp_var_type.has_value:
+        return LoopyOptional()
+    else:
+        return LoopyOptional(to_loopy_type(temp_var_type.value, allow_none=True))
 
 # }}}
 
