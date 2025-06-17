@@ -65,13 +65,13 @@ from loopy.translation_unit import (
     TUnitOrKernelT,
     for_each_kernel,
 )
+from loopy.typing import fset_union, set_union
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence, Set
+    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 
-    import pymbolic.primitives as p
-    from pymbolic import ArithmeticExpression, Expression
+    from pymbolic import ArithmeticExpression
     from pytools.tag import Tag
 
     from loopy.types import ToLoopyTypeConvertible
@@ -725,7 +725,7 @@ def show_dependency_graph(*args, **kwargs):
 def is_domain_dependent_on_inames(kernel: LoopKernel,
         domain_index: int, inames: Set[str]) -> bool:
     dom = kernel.domains[domain_index]
-    dom_parameters = set(dom.get_var_names(dim_type.param))
+    dom_parameters = set(dom.get_var_names_not_none(dim_type.param))
 
     # {{{ check for parenthood by loop bound iname
 
@@ -2038,7 +2038,7 @@ def find_aliasing_equivalence_classes(kernel):
 
 # {{{ direction helper tools
 
-def infer_args_are_input_output(kernel):
+def infer_args_are_input_output(kernel: LoopKernel):
     """
     Returns a copy of *kernel* with the attributes ``is_input`` and
     ``is_output`` of the arguments set.
@@ -2094,22 +2094,22 @@ def infer_args_are_input_output(kernel):
 
 # {{{ CallablesIDCollector
 
-class CallablesIDCollector(CombineMapper):
+class CallablesIDCollector(CombineMapper[frozenset[CallableId], []]):
     """
     Mapper to collect function identifiers of all resolved callables in an
     expression.
     """
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, frozenset())
+    @override
+    def combine(self, values: Iterable[frozenset[CallableId]]):
+        return fset_union(values)
 
     def map_resolved_function(self, expr):
         return frozenset([expr.name])
 
-    def map_constant(self, expr):
+    def map_constant(self, expr: object):
         return frozenset()
 
-    def map_kernel(self, kernel):
+    def map_kernel(self, kernel: LoopKernel) -> frozenset[CallableId]:
         callables_in_insn = frozenset()
 
         for insn in kernel.instructions:
@@ -2244,9 +2244,7 @@ class _IndexCollector(CombineMapper[Set[tuple[Expression, ...]], []]):
     def combine(self,
                 values: Iterable[Set[tuple[Expression, ...]]]
             ) -> Set[tuple[Expression, ...]]:
-        import operator
-        from functools import reduce
-        return reduce(operator.or_, values, set())
+        return set_union(values)
 
     @override
     def map_subscript(self, expr: p.Subscript) -> Set[tuple[Expression, ...]]:
@@ -2269,7 +2267,7 @@ class _IndexCollector(CombineMapper[Set[tuple[Expression, ...]], []]):
         return frozenset()
 
 
-def _union_amaps(amaps):
+def _union_amaps(amaps: Sequence[isl.Map]):
     import islpy as isl
     return reduce(isl.Map.union, amaps[1:], amaps[0])
 
@@ -2290,7 +2288,8 @@ def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
 
     amaps = [
         get_access_map(
-            kernel.get_inames_domain(insn.within_inames), idx, kernel.assumptions
+            kernel.get_inames_domain(insn.within_inames).to_set(),
+            idx, kernel.assumptions
         )
         for idx in indices
     ]
