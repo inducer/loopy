@@ -55,6 +55,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+K = TypeVar("K")
+V = TypeVar("V")
+
+
+T_co = TypeVar("T_co", covariant=True)
+
+
 def update_persistent_hash(obj, key_hash, key_builder):
     """
     Custom hash computation function for use with
@@ -381,10 +388,6 @@ class _PickledObjectWithEqAndPersistentHashKeys(_PickledObject):
 
 # {{{ lazily unpickling dictionary
 
-K = TypeVar("K")
-V = TypeVar("V")
-
-
 class LazilyUnpicklingDict(abc.MutableMapping[K, V]):
     """A dictionary-like object which lazily unpickles its values.
     """
@@ -548,7 +551,7 @@ class _no_value:  # noqa
     pass
 
 
-class Optional(Generic[V]):
+class Optional(Generic[T_co]):
     """A wrapper for an optionally present object.
 
     .. attribute:: has_value
@@ -561,14 +564,14 @@ class Optional(Generic[V]):
     """
 
     has_value: bool
-    _value: V
+    _value: T_co
 
     __slots__: ClassVar[tuple[str, ...]] = ("_value", "has_value")
 
-    def __init__(self, value: V | type[_no_value] = _no_value):
+    def __init__(self, value: T_co | type[_no_value] = _no_value):
         self.has_value = value is not _no_value
         if self.has_value:
-            self._value = cast("V", value)
+            self._value = cast("T_co", value)
 
     @override
     def __str__(self) -> str:
