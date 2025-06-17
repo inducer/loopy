@@ -678,7 +678,7 @@ class PyOpenCLTarget(OpenCLTarget):
             tv = codegen_state.kernel.temporary_variables[tv_name]
             if not tv.base_storage:
                 if tv.nbytes:
-                    nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
+                    nbytes_str = ecm(tv.nbytes, PREC_NONE, type_context="i")
                     allocation_code_lines.append(Assign(tv.name,
                                              f"allocator({nbytes_str})"))
                 else:
@@ -876,27 +876,6 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         return []
-
-    def get_temporary_allocation(
-            self,
-            codegen_state: CodeGenerationState,
-            temporary_variable_names: frozenset[str]
-        ) -> genpy.Suite:
-        from genpy import Assign, Suite
-        from pymbolic.mapper.stringifier import PREC_NONE
-        kernel = codegen_state.kernel
-        ecm = self.get_expression_to_code_mapper(codegen_state)
-        allocation_code_lines: list[Assign] = []
-        for tv_name in temporary_variable_names:
-            tv = kernel.temporary_variables[tv_name]
-            if not tv.base_storage:
-                if tv.nbytes:
-                    nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
-                    allocation_code_lines.append(Assign(tv.name,
-                                             f"allocator({nbytes_str})"))
-                else:
-                    allocation_code_lines.append(Assign(tv.name, "None"))
-        return Suite(allocation_code_lines)
 
     def get_kernel_call(
             self, codegen_state: CodeGenerationState,

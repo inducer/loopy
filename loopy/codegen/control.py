@@ -57,7 +57,7 @@ _EMPTY_INT_FROZENSET: frozenset[int] = frozenset()
 
 def get_temporary_decl_locations(
         codegen_state: CodeGenerationState
-    ) -> tuple[map[int, set[str]], map[int, set[str]]]:
+    ) -> tuple[dict[int, set[str]], dict[int, set[str]]]:
     from loopy.kernel.data import AddressSpace
     from loopy.schedule.tools import (
         get_block_boundaries,
@@ -122,7 +122,10 @@ def get_temporary_decl_locations(
         new_storage_variables = set()
         for new_tv_name in new_temp_variables:
             new_tv = kernel.temporary_variables[new_tv_name]
-            storage_var = new_tv_name if new_tv.base_storage == None else new_tv.base_storage
+            if new_tv.base_storage is None:
+                storage_var = new_tv_name
+            else:
+                storage_var = new_tv.base_storage
             new_storage_variables.add(storage_var)
 
         return (seen_sv | new_storage_variables, new_storage_variables - seen_sv)
@@ -216,7 +219,10 @@ def generate_code_for_sched_index(
                     glob_grid, loc_grid),
                 suffixes
             ]
-            return merge_codegen_results(codegen_state, [r for r in results if r is not None])
+            return merge_codegen_results(
+                codegen_state,
+                [r for r in results if r is not None]
+            )
         else:
             # do not generate host code for non-entrypoint kernels
             return codegen_result
@@ -264,7 +270,9 @@ def generate_code_for_sched_index(
             get_temporary_decl_at_index(codegen_state, sched_index)
         )
         results = [prefixes, func(codegen_state, sched_index), suffixes]
-        return merge_codegen_results(codegen_state, [r for r in results if r is not None])
+        return merge_codegen_results(
+            codegen_state, [r for r in results if r is not None]
+        )
 
     elif isinstance(sched_item, Barrier):
         # {{{ emit barrier code
