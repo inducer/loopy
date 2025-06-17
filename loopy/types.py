@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, overload
 
 import numpy as np
 from typing_extensions import override
@@ -251,10 +251,31 @@ ToLoopyTypeConvertible: TypeAlias = """(
     | None)"""
 
 
+@overload
 def to_loopy_type(dtype: ToLoopyTypeConvertible,
-                  allow_auto: bool = False, allow_none: bool = False,
-                  for_atomic: bool = False
-                  ) -> type[auto] | LoopyType | None:
+          *, allow_auto: bool = False,
+          allow_none: Literal[False] = False,
+          for_atomic: Literal[False] = False,
+      ) -> LoopyType: ...
+
+@overload
+def to_loopy_type(dtype: ToLoopyTypeConvertible,
+          *, allow_auto: bool = False,
+          allow_none: bool = False,
+          for_atomic: Literal[False] = False,
+      ) -> LoopyType | None: ...
+
+@overload
+def to_loopy_type(dtype: ToLoopyTypeConvertible,
+          *, allow_auto: Literal[True], allow_none: bool = False,
+          for_atomic: bool = False
+      ) -> type[auto] | LoopyType | None: ...
+
+
+def to_loopy_type(dtype: ToLoopyTypeConvertible,
+            allow_auto: bool = False, allow_none: bool = False,
+            for_atomic: bool = False
+        ) -> type[auto] | LoopyType | None:
     if dtype is None:
         if allow_none:
             return None
