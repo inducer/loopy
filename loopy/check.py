@@ -72,7 +72,7 @@ from loopy.translation_unit import (
     check_each_kernel,
 )
 from loopy.type_inference import TypeReader
-from loopy.typing import auto, not_none
+from loopy.typing import auto, not_none, set_union
 
 
 if TYPE_CHECKING:
@@ -1110,10 +1110,10 @@ def _check_variable_access_ordered_inner(kernel: LoopKernel) -> None:
         address_space = _get_address_space(kernel, var)
         eq_class = aliasing_equiv_classes[var]
 
-        readers = set.union(
-                *[rmap.get(eq_name, set()) for eq_name in eq_class])
-        writers = set.union(
-                *[wmap.get(eq_name, set()) for eq_name in eq_class])
+        readers = set_union(
+                rmap.get(eq_name, set()) for eq_name in eq_class)
+        writers = set_union(
+                wmap.get(eq_name, set()) for eq_name in eq_class)
 
         for writer in writers:
             required_deps = (readers | writers) - {writer}
@@ -1679,7 +1679,7 @@ def _get_sub_array_ref_swept_range(
     return get_access_map(
                           domain.to_set(),
                           sar.swept_inames,
-                          kernel.assumptions.to_set()).range()
+                          kernel.assumptions).range()
 
 
 def _are_sub_array_refs_equivalent(

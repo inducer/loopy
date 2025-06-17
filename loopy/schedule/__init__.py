@@ -1490,7 +1490,7 @@ def _generate_loop_schedules_internal(
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
             from islpy import dim_type
             iname_home_domain_params = set(
-                    iname_home_domain.get_var_names(dim_type.param))
+                    iname_home_domain.get_var_names_not_none(dim_type.param))
 
             # The previous check should have ensured this is true, because
             # the loop_nest_around_map takes the domain dependency graph into
