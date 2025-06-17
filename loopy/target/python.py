@@ -247,7 +247,6 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
         return result
 
     @override
-    @override
     def get_expression_to_code_mapper(self, codegen_state: CodeGenerationState):
         return ExpressionToPythonMapper(codegen_state)
 
