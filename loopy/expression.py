@@ -36,7 +36,6 @@ from loopy.symbolic import simplify_using_aff
 
 if TYPE_CHECKING:
     from loopy.kernel import LoopKernel
-    from loopy.kernel.data import Iname
     from loopy.symbolic import LinearSubscript, Reduction
 
 
@@ -77,12 +76,12 @@ class VectorizabilityChecker(Mapper[bool, []]):
 
     def __init__(self,
                 kernel: LoopKernel,
-                vec_iname: Iname,
+                vec_iname: str,
                 vec_iname_length: int
             ) -> None:
-        self.kernel = kernel
-        self.vec_iname = vec_iname
-        self.vec_iname_length = vec_iname_length
+        self.kernel: LoopKernel = kernel
+        self.vec_iname: str = vec_iname
+        self.vec_iname_length: int = vec_iname_length
 
     def map_sum(self, expr: p.Sum) -> bool:
         return any(self.rec(child) for child in expr.children)

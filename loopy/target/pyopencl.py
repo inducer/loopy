@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from loopy.target.c import CompyteDTypeRegistryWrapper, DTypeRegistry
-
 
 """OpenCL target integrated with PyOpenCL."""
 
@@ -26,7 +24,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
 import logging
 from typing import TYPE_CHECKING, Any, cast
 from warnings import warn
@@ -35,6 +32,7 @@ import numpy as np
 from constantdict import constantdict
 from typing_extensions import override
 
+import genpy
 import pymbolic.primitives as p
 from cgen import (
     Block,
@@ -58,13 +56,8 @@ from loopy.kernel.data import (
     ValueArg,
 )
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.schedule import (
-    CallKernel,
-    EnterLoop,
-    LeaveLoop,
-    ReturnFromKernel,
-    ScheduleItem,
-)
+from loopy.schedule import CallKernel
+from loopy.target.c import CompyteDTypeRegistryWrapper, DTypeRegistry
 from loopy.target.opencl import (
     ExpressionToOpenCLCExpressionMapper,
     OpenCLCASTBuilder,
@@ -826,14 +819,17 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     Return("_lpy_evt"),
                     ]))
 
+    @override
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> tuple[Sequence[tuple[str, str]], genpy.Generable | None]:
+            codegen_result: CodeGenerationResult[Any], schedule_index: int
+            ) -> tuple[
+                Sequence[tuple[str, str]],
+                genpy.Generable | None]:
         # no such thing in Python
         return [], None
 
-    def _get_global_temporaries(self, codegen_state):
+    def _get_global_temporaries(self, codegen_state: CodeGenerationState):
         from loopy.kernel.data import AddressSpace
 
         return sorted(
@@ -1215,7 +1211,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     def get_function_definition(
             self,
             codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult,
+            codegen_result: CodeGenerationResult[Generable],
             schedule_index: int,
             function_decl: Generable,
             function_body: Generable,
@@ -1297,7 +1293,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[Generable], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 

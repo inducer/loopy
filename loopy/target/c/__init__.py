@@ -56,16 +56,22 @@ from loopy.kernel.data import (
     ArrayArg,
     ConstantArg,
     ImageArg,
+    KernelArgument,
     TemporaryVariable,
     ValueArg,
 )
 from loopy.kernel.function_interface import ScalarCallable
-from loopy.kernel.instruction import CallInstruction
+from loopy.kernel.instruction import (
+    Assignable,
+    Assignment,
+    CallInstruction,
+    VarAtomicity,
+)
 from loopy.symbolic import IdentityMapper
 from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
 from loopy.tools import remove_common_indentation
-from loopy.types import LoopyType, NumpyType, to_loopy_type
-from loopy.typing import auto
+from loopy.types import AtomicType, LoopyType, NumpyType, to_loopy_type
+from loopy.typing import InameStr, auto
 
 
 if TYPE_CHECKING:
@@ -878,10 +884,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     # {{{ library
 
+    @override
     def symbol_manglers(self):
         return (
                 [*super().symbol_manglers(), c_symbol_mangler])
 
+    @override
     def preamble_generators(self):
         return (
                 [*super().preamble_generators(),
@@ -889,6 +897,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                           preamble_info, self.preamble_function_qualifier)])
 
     @property
+    @override
     def known_callables(self):
         callables = super().known_callables
         callables.update(get_c_callables())
@@ -898,10 +907,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     # {{{ code generation
 
+    @override
     def get_function_definition(
             self,
             codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult,
+            codegen_result: CodeGenerationResult[Generable],
             schedule_index: int,
             function_decl: Generable,
             function_body: Generable
@@ -954,9 +964,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         else:
             return Collection([*result, Line(), fbody])
 
-    def get_function_declaration(
-            self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+    @override
+    def get_function_declaration(self,
+                codegen_state: CodeGenerationState,
+                codegen_result: CodeGenerationResult[Generable],
+                schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 
@@ -993,6 +1005,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                             is_written=arg_name in written_names)
                         for arg_name in passed_names]))
 
+    @override
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
             gsize: tuple[Expression, ...],
@@ -1095,17 +1108,20 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         return result
 
     @property
+    @override
     def ast_block_class(self):
         from cgen import Block
         return Block
 
     @property
+    @override
     def ast_block_scope_class(self):
         return ScopingBlock
 
     # }}}
 
     @property
+    @override
     def ast_module(self):
         import cgen
         return cgen
@@ -1161,8 +1177,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         return arg_decl
 
-    def get_array_arg_declarator(
-            self, arg: ArrayArg, is_written: bool) -> Declarator:
+    def get_array_arg_declarator(self, arg: ArrayArg, is_written: bool) -> Declarator:
         from cgen import RestrictPointer
         arg_decl: Declarator = RestrictPointer(
                 self.wrap_decl_for_address_space(
@@ -1173,8 +1188,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         return arg_decl
 
-    def get_constant_arg_declarator(
-            self, arg: ConstantArg) -> Declarator:
+    def get_constant_arg_declarator(self, arg: ConstantArg) -> Declarator:
         from cgen import RestrictPointer
         return Const(self.wrap_decl_for_address_space(
             RestrictPointer(
@@ -1260,7 +1274,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     # }}}
 
-    def emit_assignment(self, codegen_state, insn):
+    @override
+    def emit_assignment(self,
+                codegen_state: CodeGenerationState,
+                insn: Assignment
+            ) -> Generable:
         kernel = codegen_state.kernel
         ecm = codegen_state.expression_to_code_mapper
 
@@ -1287,6 +1305,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
 
         if isinstance(insn.assignee, p.Lookup):
+            assert isinstance(lhs_dtype, NumpyType)
             lhs_dtype = to_loopy_type(lhs_dtype.numpy_dtype[insn.assignee.name])
 
         if lhs_atomicity is None:
@@ -1298,15 +1317,17 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                         needed_dtype=lhs_dtype))
 
         elif isinstance(lhs_atomicity, AtomicInit):
+            assert isinstance(lhs_dtype, AtomicType)
             codegen_state.seen_atomic_dtypes.add(lhs_dtype)
-            return codegen_state.ast_builder.emit_atomic_init(
+            return self.emit_atomic_init(
                     codegen_state, lhs_atomicity, lhs_var,
                     insn.assignee, insn.expression,
                     lhs_dtype, rhs_type_context)
 
         elif isinstance(lhs_atomicity, AtomicUpdate):
+            assert isinstance(lhs_dtype, AtomicType)
             codegen_state.seen_atomic_dtypes.add(lhs_dtype)
-            return codegen_state.ast_builder.emit_atomic_update(
+            return self.emit_atomic_update(
                     codegen_state, lhs_atomicity, lhs_var,
                     insn.assignee, insn.expression,
                     lhs_dtype, rhs_type_context)
@@ -1315,11 +1336,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             raise ValueError("unexpected lhs atomicity type: %s"
                     % type(lhs_atomicity).__name__)
 
-    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype):
-        raise NotImplementedError("atomic updates in %s" % type(self).__name__)
-
-    def emit_tuple_assignment(self, codegen_state, insn):
+    def emit_tuple_assignment(self,
+                codegen_state: CodeGenerationState,
+                insn: MultiAssignmentBase,
+            ):
+        assert isinstance(insn.expression, p.Call)
         ecm = codegen_state.expression_to_code_mapper
 
         from cgen import Assign, block_if_necessary
@@ -1342,6 +1363,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         return block_if_necessary(assignments)
 
+    @override
     def emit_multiple_assignment(self,
             codegen_state: CodeGenerationState,
             insn: MultiAssignmentBase):
@@ -1374,11 +1396,19 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                     CExpression(self.get_c_expression_to_code_mapper(),
                                 in_knl_callable_as_call))
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner, hints):
+    @override
+    def emit_sequential_loop(self,
+                codegen_state: CodeGenerationState,
+                iname: InameStr,
+                iname_dtype: LoopyType,
+                lbound: Expression,
+                ubound: Expression,
+                inner: Generable,
+                hints: Sequence[Generable],
+            ) -> Generable:
         ecm = codegen_state.expression_to_code_mapper
 
-        from cgen import For, InlineInitializer
+        from cgen import For, InlineInitializer, Line
         from pymbolic import var
         from pymbolic.mapper.stringifier import PREC_NONE
         from pymbolic.primitives import Comparison
@@ -1393,7 +1423,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                         "<=",
                         ubound),
                     PREC_NONE, "i"),
-                "++%s" % iname,
+                Line("++%s" % iname),
                 inner)
 
         if hints:
@@ -1437,6 +1467,26 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     def emit_if(self, condition_str, ast):
         from cgen import If
         return If(condition_str, ast)
+
+    def emit_atomic_init(self,
+                codegen_state: CodeGenerationState,
+                lhs_atomicity: VarAtomicity,
+                lhs_var: TemporaryVariable | KernelArgument,
+                lhs_expr: Assignable,
+                rhs_expr: Expression,
+                lhs_dtype: AtomicType,
+                rhs_type_context: str | None) -> Generable:
+        raise NotImplementedError
+
+    def emit_atomic_update(self,
+                codegen_state: CodeGenerationState,
+                lhs_atomicity: VarAtomicity,
+                lhs_var: TemporaryVariable | KernelArgument,
+                lhs_expr: Assignable,
+                rhs_expr: Expression,
+                lhs_dtype: AtomicType,
+                rhs_type_context: str | None) -> Generable:
+        raise NotImplementedError
 
     # }}}
 

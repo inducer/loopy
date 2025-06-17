@@ -46,13 +46,13 @@ from pytools import ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, warn
-from loopy.kernel.function_interface import CallableKernel
+from loopy.kernel.function_interface import CallableKernel, InKernelCallable
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from pymbolic import Expression
 
@@ -60,8 +60,8 @@ if TYPE_CHECKING:
     from loopy.codegen.tools import CodegenOperationCacheManager
     from loopy.kernel import LoopKernel
     from loopy.library.reduction import ReductionOpFunction
-    from loopy.target import TargetBase
-    from loopy.translation_unit import CallablesTable, TranslationUnit
+    from loopy.target import ASTType, TargetBase
+    from loopy.translation_unit import CallableId, CallablesTable, TranslationUnit
     from loopy.types import LoopyType
 
 
@@ -163,7 +163,7 @@ class CodeGenerationState:
     i.e. all constraints that have been enforced so far.
     """
 
-    implemented_predicates: frozenset[str | Expression]
+    implemented_predicates: frozenset[Expression]
 
     # /!\ mutable
     seen_dtypes: set[LoopyType]
@@ -232,7 +232,11 @@ class CodeGenerationState:
         return self.copy_and_assign(iname, expr).copy(
                 implemented_domain=new_impl_domain)
 
-    def try_vectorized(self, what, func):
+    def try_vectorized(self,
+                what: str,
+                func: Callable[[CodeGenerationState],
+                    CodeGenerationResult[ASTType] | None]
+            ):
         """If *self* is in a vectorizing state (:attr:`vectorization_info` is
         not None), tries to call func (which must be a callable accepting a
         single :class:`CodeGenerationState` argument). If this fails with
@@ -255,11 +259,14 @@ class CodeGenerationState:
 
             return self.unvectorize(func)
 
-    def unvectorize(self, func):
+    def unvectorize(self,
+                func: Callable[[CodeGenerationState],
+                    CodeGenerationResult[ASTType] | None],
+            ):
         vinf = self.vectorization_info
         assert vinf is not None
 
-        result = []
+        result: list[CodeGenerationResult[ASTType]] = []
         novec_self = self.copy(vectorization_info=None)
 
         for i in range(vinf.length):
@@ -270,6 +277,8 @@ class CodeGenerationState:
 
             if isinstance(generated, list):
                 result.extend(generated)
+            elif generated is None:
+                pass
             else:
                 result.append(generated)
 
@@ -288,7 +297,7 @@ class CodeGenerationState:
 
 code_gen_cache: WriteOncePersistentDict[
     TranslationUnit,
-    CodeGenerationResult
+    CodeGenerationResult[Any]
 ] = WriteOncePersistentDict(
          "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
          key_builder=LoopyKeyBuilder(),
@@ -322,7 +331,7 @@ def generate_code_for_a_single_kernel(
             callables_table: CallablesTable,
             target: TargetBase,
             is_entrypoint: bool,
-        ) -> CodeGenerationResult:
+        ) -> CodeGenerationResult[Any]:
     """
     :returns: a :class:`CodeGenerationResult`
 
@@ -430,7 +439,7 @@ def generate_code_for_a_single_kernel(
     return codegen_result
 
 
-def diverge_callee_entrypoints(program):
+def diverge_callee_entrypoints(t_unit: TranslationUnit):
     """
     If a :class:`loopy.kernel.function_interface.CallableKernel` is both an
     entrypoint and a callee, then rename the callee.
@@ -440,18 +449,19 @@ def diverge_callee_entrypoints(program):
         make_callable_name_generator,
         rename_resolved_functions_in_a_single_kernel,
     )
-    callable_ids = get_reachable_resolved_callable_ids(program.callables_table,
-                                                       program.entrypoints)
+    callable_ids = get_reachable_resolved_callable_ids(t_unit.callables_table,
+                                                       t_unit.entrypoints)
 
-    new_callables = {}
-    todo_renames = {}
+    new_callables: dict[CallableId, InKernelCallable] = {}
+    todo_renames: dict[CallableId, str] = {}
 
-    vng = make_callable_name_generator(program.callables_table)
+    vng = make_callable_name_generator(t_unit.callables_table)
 
-    for clbl_id in callable_ids & program.entrypoints:
+    for clbl_id in callable_ids & t_unit.entrypoints:
+        assert isinstance(clbl_id, str)
         todo_renames[clbl_id] = vng(based_on=clbl_id)
 
-    for name, clbl in program.callables_table.items():
+    for name, clbl in t_unit.callables_table.items():
         if name in todo_renames:
             name = todo_renames[name]
 
@@ -463,7 +473,7 @@ def diverge_callee_entrypoints(program):
 
         new_callables[name] = clbl
 
-    return program.copy(callables_table=constantdict.constantdict(new_callables))
+    return t_unit.copy(callables_table=constantdict.constantdict(new_callables))
 
 
 @dataclass(frozen=True)
@@ -528,7 +538,7 @@ class TranslationUnitCodeGenerationResult:
                     self.host_programs.values()))
 
 
-def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult:
+def generate_code_v2(t_unit: TranslationUnit) -> CodeGenerationResult[Any]:
     # {{{ cache retrieval
 
     from loopy import ABORT_ON_CACHE_MISS, CACHING_ENABLED
@@ -660,7 +670,7 @@ def generate_code(kernel, device=None):
 
 # {{{ generate function body
 
-def generate_body(kernel):
+def generate_body(kernel: TranslationUnit):
     codegen_result = generate_code_v2(kernel)
 
     if len(codegen_result.device_programs) != 1:

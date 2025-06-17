@@ -1,8 +1,6 @@
 """OpenCL target independent of PyOpenCL."""
 from __future__ import annotations
 
-from loopy.typing import not_none
-
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -32,12 +30,18 @@ import numpy as np
 from constantdict import constantdict
 from typing_extensions import Self, override
 
-from pymbolic import var
+from pymbolic import Expression, var
 from pytools import memoize_method
 
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag, VectorArrayDimTag
-from loopy.kernel.data import AddressSpace, ConstantArg, ImageArg
+from loopy.kernel.data import (
+    AddressSpace,
+    ConstantArg,
+    ImageArg,
+    KernelArgument,
+    TemporaryVariable,
+)
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.target.c import (
     CFamilyASTBuilder,
@@ -47,7 +51,8 @@ from loopy.target.c import (
     DTypeRegistryWrapper,
 )
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.types import LoopyType, NumpyType
+from loopy.types import AtomicNumpyType, AtomicType, LoopyType, NumpyType
+from loopy.typing import not_none
 
 
 if TYPE_CHECKING:
@@ -57,6 +62,7 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel.instruction import Assignable, VarAtomicity
     from loopy.translation_unit import CallablesInferenceContext
 
 
@@ -683,7 +689,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[Generable], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
@@ -827,8 +833,15 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
     # {{{ atomics
 
-    def emit_atomic_init(self, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+    @override
+    def emit_atomic_init(self,
+                codegen_state: CodeGenerationState,
+                lhs_atomicity: VarAtomicity,
+                lhs_var: TemporaryVariable | KernelArgument,
+                lhs_expr: Assignable,
+                rhs_expr: Expression,
+                lhs_dtype: AtomicType,
+                rhs_type_context: str | None) -> Generable:
         # for the CL1 flavor, this is as simple as a regular update with whatever
         # the RHS value is...
 
@@ -843,8 +856,17 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
         else:
             return Line("__attribute__((opencl_unroll_hint))")
 
-    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+    @override
+    def emit_atomic_update(self,
+                codegen_state: CodeGenerationState,
+                lhs_atomicity: VarAtomicity,
+                lhs_var: TemporaryVariable | KernelArgument,
+                lhs_expr: Assignable,
+                rhs_expr: Expression,
+                lhs_dtype: AtomicType,
+                rhs_type_context: str | None) -> Generable:
+
+        assert isinstance(lhs_dtype, AtomicNumpyType)
         from pymbolic.mapper.stringifier import PREC_NONE
 
         # FIXME: Could detect operations, generate atomic_{add,...} when
@@ -852,7 +874,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
 
         if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
                 np.int32, np.int64, np.float32, np.float64]:
-            from cgen import Assign, Block, DoWhile
+            from cgen import Assign, Block, DoWhile, Line
 
             from loopy.target.c import POD
             old_val_var = codegen_state.var_name_generator("loopy_old_val")
@@ -933,7 +955,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 POD(self, NumpyType(lhs_dtype.dtype),
                     new_val_var),
                 DoWhile(
-                    "%(func_name)s("
+                    Line("%(func_name)s("
                     "%(cast_str)s&(%(lhs_expr)s), "
                     "%(old_val)s, "
                     "%(new_val)s"
@@ -944,7 +966,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                         "lhs_expr": lhs_expr_code,
                         "old_val": old_val,
                         "new_val": new_val,
-                        },
+                        }),
                     Block([
                         Assign(old_val_var, lhs_expr_code),
                         Assign(new_val_var, rhs_expr_code),

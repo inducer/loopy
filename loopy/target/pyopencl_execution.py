@@ -35,7 +35,7 @@ from pytools.codegen import CodeGenerator, Indentation
 
 from loopy.kernel.data import ArrayArg
 from loopy.target.execution import ExecutionWrapperGeneratorBase, ExecutorBase
-from loopy.typing import Expression, integer_expr_or_err
+from loopy.typing import integer_expr_or_err
 
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,9 @@ if TYPE_CHECKING:
 
     from constantdict import constantdict
 
+    import genpy
     import pyopencl as cl
+    from pymbolic import Expression
 
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
@@ -268,7 +270,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     # }}}
 
     def generate_host_code(
-                self, gen: CodeGenerator, codegen_result: CodeGenerationResult
+                self, gen: CodeGenerator,
+                codegen_result: CodeGenerationResult[genpy.Generable]
             ) -> None:
         gen.add_to_preamble(codegen_result.host_code())
 

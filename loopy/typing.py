@@ -36,13 +36,17 @@ THE SOFTWARE.
 """
 
 
-from typing import TypeAlias, TypeVar
+from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
 
 import numpy as np
 from typing_extensions import TypeIs
 
 from pymbolic.primitives import ExpressionNode
 from pymbolic.typing import ArithmeticExpression, Expression, Integer
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 # The Fortran parser may insert dimensions of 'None', but I'd like to phase
@@ -95,3 +99,19 @@ ElT = TypeVar("ElT")
 def assert_tuple(obj: tuple[ElT, ...] | object) -> tuple[ElT, ...]:
     assert isinstance(obj, tuple)
     return obj
+
+
+def set_union(iterable: Iterable[Iterable[T]]):
+    return cast("set[T]", set()).union(*iterable)
+
+
+def fset_union(iterable: Iterable[Iterable[T]]):
+    return cast("frozenset[T]", frozenset()).union(*iterable)
+
+
+def set_intersection(iterable: Iterable[Iterable[T]]):
+    return cast("set[T]", set()).intersection(*iterable)
+
+
+def fset_intersection(iterable: Iterable[Iterable[T]]):
+    return cast("frozenset[T]", frozenset()).intersection(*iterable)
