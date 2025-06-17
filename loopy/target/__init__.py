@@ -190,6 +190,24 @@ class TargetBase(ABC):
         """
         raise NotImplementedError()
 
+    def get_temporary_allocation(
+            self, codegen_state: CodeGenerationState,
+            temporary_variables: frozenset[str]
+        ) -> Any:
+        """
+        :returns: code that will allocate the specified temporary variables
+        """
+        raise NotImplementedError()
+
+    def get_temporary_deallocation(
+            self, codegen_state: CodeGenerationState,
+            temporary_variables: frozenset[str]
+        ) -> Any:
+        """
+        :returns: code that will free the specified temporary variables
+        """
+        raise NotImplementedError()
+
 
 @dataclass(frozen=True)
 class ASTBuilderBase(Generic[ASTType], ABC):

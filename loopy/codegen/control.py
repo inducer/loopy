@@ -49,10 +49,128 @@ if TYPE_CHECKING:
     from pymbolic import Expression
 
     from loopy.codegen import CodeGenerationState
-    from loopy.kernel import LoopKernel
+    from loopy.kernel import LoopKernel, ScheduleItem
     from loopy.typing import InameStr
 
 _EMPTY_INT_FROZENSET: frozenset[int] = frozenset()
+
+
+def get_temporary_decl_locations(
+        codegen_state: CodeGenerationState
+    ) -> tuple[map[int, set[str]], map[int, set[str]]]:
+    from loopy.kernel.data import AddressSpace
+    from loopy.schedule.tools import (
+        get_block_boundaries,
+        temporaries_read_in_subkernel,
+        temporaries_written_in_subkernel,
+    )
+
+    kernel = codegen_state.kernel
+    assert kernel.linearization is not None
+    sched_index = 0
+
+    global_temporaries = (
+        tv for tv in codegen_state.kernel.temporary_variables.values()
+        if tv.address_space == AddressSpace.GLOBAL
+    )
+
+    # Collapse into blocks
+    def get_temporaries_in_bounds(
+            linearization: Sequence[ScheduleItem],
+            lower_bound: int,
+            upper_bound: int
+        ) -> frozenset[str]:
+        temporaries: frozenset[str] = frozenset()
+        for sched_index in range(lower_bound, upper_bound+1):
+            sched_item = linearization[sched_index]
+            if isinstance(sched_item, CallKernel):
+                temporaries = (
+                    temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
+                    | temporaries_read_in_subkernel(
+                        kernel, sched_item.kernel_name
+                    )
+                    | (temporaries)
+                )
+        return temporaries & global_temporaries
+
+    block_boundaries = get_block_boundaries(kernel.linearization)
+
+    bounds: dict[int, frozenset[str]] = {}
+    sched_index = 0
+    while sched_index < codegen_state.schedule_index_end:
+        sched_item = kernel.linearization[sched_index]
+        if isinstance(sched_item, EnterLoop) or isinstance(sched_item, CallKernel):
+            if isinstance(sched_item, CallKernel):
+                block_end = block_boundaries[sched_index]
+                accessed_temporaries = (
+                    temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
+                    | temporaries_read_in_subkernel(
+                        kernel, sched_item.kernel_name
+                    )
+                )
+            else:
+                block_end = block_boundaries[sched_index]
+                accessed_temporaries = get_temporaries_in_bounds(
+                    kernel.linearization, sched_index, block_end
+                )
+            bounds[sched_index] = accessed_temporaries
+            sched_index = block_end + 1
+        else:
+            sched_index += 1
+
+    def update_seen_storage_vars(seen_sv, new_temp_variables):
+        new_storage_variables = set()
+        for new_tv_name in new_temp_variables:
+            new_tv = kernel.temporary_variables[new_tv_name]
+            storage_var = new_tv_name if new_tv.base_storage == None else new_tv.base_storage
+            new_storage_variables.add(storage_var)
+
+        return (seen_sv | new_storage_variables, new_storage_variables - seen_sv)
+    # forward pass for first accesses
+    first_accesses: dict[int, set[str]] = {}
+    seen_storage_variables = set()
+    for sched_index in range(0, codegen_state.schedule_index_end):
+        if (sched_index not in bounds):
+            continue
+        sched_item = kernel.linearization[sched_index]
+        new_temporary_variables = bounds[sched_index]
+        seen_storage_variables, new_storage_variables = update_seen_storage_vars(
+            seen_storage_variables, new_temporary_variables
+        )
+
+        if (len(new_storage_variables) > 0):
+            first_accesses[sched_index] = new_storage_variables
+
+    last_accesses: dict[int, set[str]] = {}
+    seen_storage_variables = set()
+    for sched_index in range(codegen_state.schedule_index_end-1, -1, -1):
+        if (sched_index not in bounds):
+            continue
+        sched_item = kernel.linearization[sched_index]
+        new_temporary_variables = bounds[sched_index]
+        seen_storage_variables, new_storage_variables = update_seen_storage_vars(
+            seen_storage_variables, new_temporary_variables
+        )
+
+        if (len(new_storage_variables) > 0):
+            last_accesses[sched_index] = new_storage_variables
+    return (first_accesses, last_accesses)
+
+
+def get_temporary_decl_at_index(
+        codegen_state: CodeGenerationState, sched_index: int
+    ) -> tuple[Any, Any]:
+    first_accesses, last_accesses = get_temporary_decl_locations(codegen_state)
+    prefixes, suffixes = None, None
+    if sched_index in first_accesses:
+        prefixes = codegen_state.ast_builder.target.get_temporary_allocation(
+            codegen_state, first_accesses[sched_index]
+        )
+    if sched_index in last_accesses:
+        suffixes = codegen_state.ast_builder.target.get_temporary_deallocation(
+            codegen_state, last_accesses[sched_index]
+        )
+    return (prefixes, suffixes)
 
 
 def generate_code_for_sched_index(
@@ -86,31 +204,19 @@ def generate_code_for_sched_index(
                     get_insn_ids_for_block_at(kernel.linearization, sched_index),
                     codegen_state.callables_table)
 
-            from loopy.target.pyopencl import PyOpenCLPythonASTBuilder
-            if isinstance(codegen_state.ast_builder, PyOpenCLPythonASTBuilder):
-                prefix, postfix = (
-                    codegen_state.ast_builder
-                    .get_temporary_decl_at_index(codegen_state, sched_index)
-                )
-                results = [
-                    prefix,
-                    codegen_result,
-                    codegen_state.ast_builder.get_kernel_call(
-                        codegen_state,
-                        sched_item.kernel_name,
-                        glob_grid, loc_grid),
-                    postfix
-                ]
-                return merge_codegen_results(codegen_state, results)
-
-            return merge_codegen_results(codegen_state, [
+            prefixes, suffixes = (
+                get_temporary_decl_at_index(codegen_state, sched_index)
+            )
+            results = [
+                prefixes,
                 codegen_result,
-
                 codegen_state.ast_builder.get_kernel_call(
                     codegen_state,
                     sched_item.kernel_name,
-                    glob_grid, loc_grid)
-                ])
+                    glob_grid, loc_grid),
+                suffixes
+            ]
+            return merge_codegen_results(codegen_state, [r for r in results if r is not None])
         else:
             # do not generate host code for non-entrypoint kernels
             return codegen_result
@@ -154,16 +260,11 @@ def generate_code_for_sched_index(
                     "for '%s', tagged '%s'"
                     % (sched_item.iname, ", ".join(str(tag) for tag in tags)))
 
-        from loopy.target.pyopencl import PyOpenCLPythonASTBuilder
-        if isinstance(codegen_state.ast_builder, PyOpenCLPythonASTBuilder):
-            prefix, postfix = (
-                codegen_state.ast_builder
-                .get_temporary_decl_at_index(codegen_state, sched_index)
-            )
-            results = [prefix, func(codegen_state, sched_index), postfix]
-            return merge_codegen_results(codegen_state, results)
-
-        return func(codegen_state, sched_index)
+        prefixes, suffixes = (
+            get_temporary_decl_at_index(codegen_state, sched_index)
+        )
+        results = [prefixes, func(codegen_state, sched_index), suffixes]
+        return merge_codegen_results(codegen_state, [r for r in results if r is not None])
 
     elif isinstance(sched_item, Barrier):
         # {{{ emit barrier code

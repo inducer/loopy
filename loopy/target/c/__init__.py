@@ -538,6 +538,15 @@ class CFamilyTarget(TargetBase):
         # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
+    @override
+    def get_temporary_allocation(self, codegen_state, temporary_variables):
+        from cgen import Comment
+        return Comment("Do nothing")
+
+    @override
+    def get_temporary_deallocation(self, codegen_state, temporary_variables):
+        from cgen import Comment
+        return Comment("Do nothing")
     # }}}
 
 
