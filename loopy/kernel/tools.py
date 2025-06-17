@@ -24,7 +24,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import dataclasses
 import itertools
 import logging
@@ -35,6 +34,7 @@ from sys import intern
 from typing import (
     TYPE_CHECKING,
     Concatenate,
+    Generic,
     ParamSpec,
     TypeVar,
     cast,
@@ -79,6 +79,9 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+T = TypeVar("T")
 
 
 # {{{ add and infer argument dtypes
@@ -1958,7 +1961,7 @@ def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, frozenset[str
 
 # {{{ find aliasing equivalence classes
 
-class DisjointSets:
+class DisjointSets(Generic[T]):
     """
     .. automethod:: __getitem__
     .. automethod:: find_leader_or_create_group
@@ -1969,10 +1972,10 @@ class DisjointSets:
     # https://en.wikipedia.org/wiki/Disjoint-set_data_structure
 
     def __init__(self):
-        self.leader_to_group = {}
-        self.element_to_leader = {}
+        self.leader_to_group: dict[T, set[T]] = {}
+        self.element_to_leader: dict[T, T] = {}
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: T):
         """
         :arg item: A representative of an equivalence class.
         :returns: the equivalence class, given as a set of elements
@@ -1984,7 +1987,7 @@ class DisjointSets:
         else:
             return self.leader_to_group[leader]
 
-    def find_leader_or_create_group(self, el):
+    def find_leader_or_create_group(self, el: T):
         try:
             return self.element_to_leader[el]
         except KeyError:
@@ -1994,7 +1997,7 @@ class DisjointSets:
         self.leader_to_group[el] = {el}
         return el
 
-    def union(self, a, b):
+    def union(self, a: T, b: T):
         leader_a = self.find_leader_or_create_group(a)
         leader_b = self.find_leader_or_create_group(b)
 
@@ -2009,7 +2012,7 @@ class DisjointSets:
         self.leader_to_group[leader_a].update(self.leader_to_group[leader_b])
         del self.leader_to_group[leader_b]
 
-    def union_many(self, relation):
+    def union_many(self, relation: Iterable[tuple[T, T]]):
         """
         :arg relation: an iterable of 2-tuples enumerating the elements of the
             relation. The relation is assumed to be an equivalence relation
@@ -2027,8 +2030,8 @@ class DisjointSets:
         return self
 
 
-def find_aliasing_equivalence_classes(kernel):
-    return DisjointSets().union_many(
+def find_aliasing_equivalence_classes(kernel: LoopKernel):
+    return DisjointSets[str]().union_many(
             (tv.base_storage, tv.name)
             for tv in kernel.temporary_variables.values()
             if tv.base_storage is not None)
