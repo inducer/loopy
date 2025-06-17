@@ -69,8 +69,8 @@ def get_temporary_decl_locations(
     assert kernel.linearization is not None
     sched_index = 0
 
-    global_temporaries = (
-        tv for tv in codegen_state.kernel.temporary_variables.values()
+    global_temporaries = frozenset(
+        tv.name for tv in codegen_state.kernel.temporary_variables.values()
         if tv.address_space == AddressSpace.GLOBAL
     )
 
