@@ -99,7 +99,7 @@ _ISL_KEYWORDS = frozenset("""
         floord mod ceil floor""".split())
 
 
-def _gather_isl_identifiers(s):
+def _gather_isl_identifiers(s: str):
     return set(_IDENTIFIER_RE.findall(s)) - _ISL_KEYWORDS
 
 
@@ -2470,7 +2470,7 @@ def make_function(
     # does something.
     knl = add_inferred_inames(knl)
     from loopy.transform.parameter import fix_parameters
-    knl = fix_parameters(knl, **fixed_parameters)
+    knl = fix_parameters(knl, within=None, **fixed_parameters)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:

@@ -99,6 +99,7 @@ if TYPE_CHECKING:
     from loopy.kernel.data import KernelArgument, SubstitutionRule, TemporaryVariable
     from loopy.kernel.instruction import InstructionBase
     from loopy.library.reduction import ReductionOperation, ReductionOpFunction
+    from loopy.match import ConcreteMatchable, RuleStack, StackMatch
     from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible
 
 
@@ -1151,7 +1152,7 @@ class ExpansionState:
     """
     kernel: LoopKernel
     instruction: InstructionBase
-    stack: tuple[tuple[str, Tag], ...]
+    stack: tuple[ConcreteMatchable, ...]
     arg_context: Mapping[str, Expression]
 
     def __post_init__(self) -> None:
@@ -1325,7 +1326,7 @@ class SubstitutionRuleMappingContext:
 
         return renamed_result, renames
 
-    def finish_kernel(self, kernel):
+    def finish_kernel(self, kernel: LoopKernel):
         new_substs, renames = self._get_new_substitutions_and_renames()
         if not renames:
             return kernel.copy(substitutions=new_substs)
@@ -1405,8 +1406,9 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
         rec_arguments = self.rec(arguments, expn_state, *args, **kwargs)
         assert isinstance(rec_arguments, tuple)
 
+        from loopy.match import ConcreteMatchable
         new_expn_state = expn_state.copy(
-                stack=(*expn_state.stack, (name, tags)),
+                stack=(*expn_state.stack, ConcreteMatchable(name, tags)),
                 arg_context=self.make_new_arg_context(
                     name, rule.arguments, rec_arguments, expn_state.arg_context))
 
@@ -1443,8 +1445,12 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
     def map_instruction(self, kernel, insn):
         return insn
 
-    def map_kernel(self, kernel: LoopKernel, within=lambda *args: True,
-            map_args: bool = True, map_tvs: bool = True) -> LoopKernel:
+    def map_kernel(self,
+                kernel: LoopKernel,
+                within: StackMatch = lambda knl, insn, stack: True,
+                map_args: bool = True,
+                map_tvs: bool = True
+            ) -> LoopKernel:
         new_insns = [
             # While subst rules are not allowed in assignees, the mapper
             # may perform tasks entirely unrelated to subst rules, so
@@ -1513,13 +1519,19 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
         :meth:`SubstitutionRuleMappingContext.finish_kernel` to perform any
         renaming mandated by the rule expression divergences.
     """
-    def __init__(self, rule_mapping_context, subst_func, within):
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                subst_func,
+                within: StackMatch):
         super().__init__(rule_mapping_context)
 
         self.subst_func = subst_func
-        self._within = within
+        self._within: StackMatch = within
 
-    def within(self, kernel, instruction, stack):
+    def within(self,
+                kernel: LoopKernel,
+                instruction: InstructionBase | None,
+                stack: RuleStack):
         if instruction is None:
             # always perform substitutions on expressions not coming from
             # instructions.
@@ -1527,6 +1539,7 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
         else:
             return self._within(kernel, instruction, stack)
 
+    @override
     def map_variable(self, expr: Variable, expn_state: ExpansionState) -> Expression:
         if (expr.name in expn_state.arg_context
                 or not self.within(
@@ -1544,16 +1557,21 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
 
 
 class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper[[]]):
-    def __init__(self, rule_mapping_context, rules, within):
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                rules,
+                within: StackMatch):
         super().__init__(rule_mapping_context)
 
         self.rules = rules
         self.within = within
 
+    @override
     def map_subst_rule(
                 self, name: str, tags, arguments, expn_state: ExpansionState
             ) -> Expression:
-        new_stack = (*expn_state.stack, (name, tags))
+        from loopy.match import ConcreteMatchable
+        new_stack = (*expn_state.stack, ConcreteMatchable(name, tags))
 
         if self.within(expn_state.kernel, expn_state.instruction, new_stack):
             # expand
