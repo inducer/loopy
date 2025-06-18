@@ -37,8 +37,9 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 if TYPE_CHECKING:
+    from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import InstructionBase
-    from loopy.match import ToMatchConvertible
+    from loopy.match import RuleStack, ToMatchConvertible
 
 
 logger = logging.getLogger(__name__)
@@ -413,7 +414,10 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
             lhs_name, assigning_insn_ids,
             usage_to_definition, extra_arguments, within)
 
-    def _accesses_lhs(kernel, insn, *args):
+    def _accesses_lhs(
+            kernel: LoopKernel,
+            insn: InstructionBase,
+            stack: RuleStack):
         return lhs_name in insn.read_dependency_names()
 
     kernel = rule_mapping_context.finish_kernel(
