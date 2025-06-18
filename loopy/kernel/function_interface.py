@@ -924,15 +924,16 @@ class CallableKernel(InKernelCallable):
         for arg in subkernel.args:
             kw = arg.name
             if isinstance(arg, ArrayBase):
-                new_arg_id_to_descr[kw] = (
+                new_arg_descriptor = (
                         ArrayArgDescriptor(shape=arg.shape,
                                            dim_tags=arg.dim_tags,
                                            address_space=arg.address_space))
             else:
                 assert isinstance(arg, ValueArg)
-                new_arg_id_to_descr[kw] = ValueArgDescriptor()
+                new_arg_descriptor = ValueArgDescriptor()
 
-            new_arg_id_to_descr[kw_to_pos[kw]] = new_arg_id_to_descr[kw]
+            # FIXME: Should decide what the canonical arg identifiers are
+            new_arg_id_to_descr[kw_to_pos[kw]] = new_arg_descriptor
 
         # }}}
 
