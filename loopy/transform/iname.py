@@ -50,7 +50,7 @@ from loopy.typing import not_none
 if TYPE_CHECKING:
     from loopy.kernel.data import GroupInameTag, LocalInameTag, ToInameTagConvertible
     from loopy.kernel.instruction import InstructionBase
-    from loopy.match import ToMatchConvertible, ToStackMatchConvertible
+    from loopy.match import RuleStack, ToMatchConvertible, ToStackMatchConvertible
     from loopy.typing import InameStr
 
 
@@ -2542,8 +2542,11 @@ def rename_inames(
 
     from loopy.kernel.instruction import MultiAssignmentBase
 
-    def does_insn_involve_iname(kernel, insn, *args):
-        return (not isinstance(insn, MultiAssignmentBase)
+    def does_insn_involve_iname(
+            kernel: LoopKernel,
+            insn: InstructionBase,
+            stack: RuleStack):
+        return bool(not isinstance(insn, MultiAssignmentBase)
                 or frozenset(old_inames) & insn.dependency_names()
                 or frozenset(old_inames) & insn.reduction_inames())
 

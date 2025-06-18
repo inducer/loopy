@@ -24,11 +24,17 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 import islpy as isl
 
 from loopy.kernel import LoopKernel
 from loopy.symbolic import RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext
 from loopy.translation_unit import for_each_kernel
+
+
+if TYPE_CHECKING:
+    from loopy.match import ToStackMatchConvertible
 
 
 __doc__ = """
@@ -71,14 +77,21 @@ def assume(kernel: LoopKernel, assumptions: str | isl.Set | isl.BasicSet) -> Loo
 
 # {{{ fix_parameter
 
-def _fix_parameter(kernel, name, value, within=None):
-    def process_set(s):
+def _fix_parameter(
+            kernel: LoopKernel,
+            name: str,
+            value: int | float,
+            within: ToStackMatchConvertible = None):
+    def process_set(s: isl.BasicSet):
         var_dict = s.get_var_dict()
 
         try:
             dt, idx = var_dict[name]
         except KeyError:
             return s
+
+        if not isinstance(value, int):
+            raise ValueError(f"parameter '{name}' is used in a set, must be an integer")
 
         value_aff = isl.Aff.zero_on_domain(s.space) + value
 
@@ -141,7 +154,11 @@ def _fix_parameter(kernel, name, value, within=None):
 
 
 @for_each_kernel
-def fix_parameters(kernel, **value_dict):
+def fix_parameters(
+        kernel: LoopKernel,
+        *, within: ToStackMatchConvertible = None,
+        **value_dict: int | float,
+    ):
     """Fix the values of the arguments to specific constants.
 
     *value_dict* consists of *name*/*value* pairs, where *name* will be fixed
@@ -149,8 +166,6 @@ def fix_parameters(kernel, **value_dict):
     :ref:`arguments`.
     """
     assert isinstance(kernel, LoopKernel)
-
-    within = value_dict.pop("within", None)
 
     for name, value in value_dict.items():
         kernel = _fix_parameter(kernel, name, value, within)

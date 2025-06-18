@@ -979,7 +979,7 @@ def get_partial_loop_nest_tree(kernel: LoopKernel) -> LoopNestTree:
         for insn in kernel.instructions}
 
     root: InameStrSet = frozenset()
-    tree = Tree.from_root(root)
+    tree = Tree[InameStrSet].from_root(root)
 
     # mapping from iname to the innermost loop nest they are part of in *tree*.
     iname_to_tree_node_id: dict[InameStr, InameStrSet] = {}
@@ -1049,7 +1049,7 @@ def get_partial_loop_nest_tree(kernel: LoopKernel) -> LoopNestTree:
 
 def _get_iname_to_tree_node_id_from_partial_loop_nest_tree(
             tree: LoopNestTree,
-        ) -> Mapping[str, frozenset[str]]:
+        ) -> Mapping[InameStr, frozenset[str]]:
     """
     Returns the mapping from the iname to the *tree*'s node that it was a part
     of.

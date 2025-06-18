@@ -187,6 +187,10 @@ from loopy.transform.instruction import (
     simplify_indices,
     tag_instructions,
 )
+from loopy.transform.loop_fusion import (
+    get_kennedy_unweighted_fusion_candidates,
+    rename_inames_in_batch,
+)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 from loopy.transform.padding import (
     add_padding,
@@ -336,6 +340,7 @@ __all__ = [
     "get_dot_dependency_graph",
     "get_global_barrier_order",
     "get_iname_duplication_options",
+    "get_kennedy_unweighted_fusion_candidates",
     "get_mem_access_map",
     "get_one_linearized_kernel",
     "get_one_scheduled_kernel",
@@ -382,6 +387,7 @@ __all__ = [
     "rename_callable",
     "rename_iname",
     "rename_inames",
+    "rename_inames_in_batch",
     "replace_instruction_ids",
     "save_and_reload_temporaries",
     "set_argument_order",
