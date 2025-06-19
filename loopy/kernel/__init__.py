@@ -59,7 +59,6 @@ from pytools import (
 )
 from pytools.tag import Tag, Taggable, TagT
 
-import loopy.codegen
 import loopy.kernel.data  # to help out Sphinx
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
@@ -73,7 +72,7 @@ from loopy.kernel.data import (
 )
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import fset_union, not_none
+from loopy.typing import PreambleGenerator, SymbolMangler, fset_union, not_none
 
 
 if TYPE_CHECKING:
@@ -81,7 +80,6 @@ if TYPE_CHECKING:
         Callable,
         Collection,
         Hashable,
-        Iterator,
         Mapping,
         Sequence,
         Set,
@@ -187,13 +185,8 @@ class LoopKernel(Taggable):
     name: str = "loopy_kernel"
 
     preambles: Sequence[tuple[str, str]] = ()
-    preamble_generators: Sequence[
-        Callable[
-                [loopy.codegen.PreambleInfo],
-                Iterator[tuple[str, str]]]
-            ] = ()
-    symbol_manglers: Sequence[
-            Callable[[LoopKernel, str], tuple[LoopyType, str] | None]] = ()
+    preamble_generators: Sequence[PreambleGenerator] = ()
+    symbol_manglers: Sequence[SymbolMangler] = ()
     linearization: Sequence[ScheduleItem] | None = None
     iname_slab_increments: constantdict[InameStr, tuple[int, int]] = field(
             default_factory=constantdict)
@@ -212,7 +205,7 @@ class LoopKernel(Taggable):
     with non-parallel implementation tags.
     """
 
-    applied_iname_rewrites: tuple[dict[InameStr, Expression], ...] = ()
+    applied_iname_rewrites: Sequence[Mapping[InameStr, Expression]] = ()
     """
     A list of past substitution dictionaries that
     were applied to the kernel. These are stored so that they may be repeated

@@ -52,12 +52,13 @@ if TYPE_CHECKING:
 
     from constantdict import constantdict
 
+    from pymbolic import Expression
+
     from loopy.codegen.result import GeneratedProgram
     from loopy.kernel import LoopKernel
     from loopy.kernel.data import ArrayArg
     from loopy.schedule.tools import KernelArgInfo
     from loopy.translation_unit import TranslationUnit
-    from loopy.typing import Expression
 
 
 logger = logging.getLogger(__name__)

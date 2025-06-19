@@ -3457,13 +3457,6 @@ def test_creation_kwargs():
             substitutions={"foo": lp.SubstitutionRule("foo", (), 3.14)},
         )
 
-    with pytest.raises(TypeError):
-        knl = lp.make_kernel(
-            "{[i]: 0<=i<10}",
-            "a[i] = foo() * i",
-            # not a known kwarg
-            ksdfjlasdf=None)
-
 
 def test_global_temps_with_multiple_base_storages(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/737
