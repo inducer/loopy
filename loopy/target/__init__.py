@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from loopy.translation_unit import CallableId, CallablesTable, TranslationUnit
     from loopy.types import LoopyType
     from loopy.typing import InameStr
+    from loopy.kernel.tools import TemporaryVariable
 
 
 ASTType = TypeVar("ASTType")
@@ -190,24 +191,6 @@ class TargetBase(ABC):
         """
         raise NotImplementedError()
 
-    def get_temporary_allocation(
-            self, codegen_state: CodeGenerationState,
-            temporary_variables: frozenset[str]
-        ) -> Any:
-        """
-        :returns: code that will allocate the specified temporary variables
-        """
-        raise NotImplementedError()
-
-    def get_temporary_deallocation(
-            self, codegen_state: CodeGenerationState,
-            temporary_variables: frozenset[str]
-        ) -> Any:
-        """
-        :returns: code that will free the specified temporary variables
-        """
-        raise NotImplementedError()
-
 
 @dataclass(frozen=True)
 class ASTBuilderBase(Generic[ASTType], ABC):
@@ -268,6 +251,16 @@ class ASTBuilderBase(Generic[ASTType], ABC):
     def get_temporary_decls(self, codegen_state: CodeGenerationState,
             schedule_index: int) -> ASTType:
         raise NotImplementedError
+
+    def get_temporary_var_declarator(self,
+            codegen_state: CodeGenerationState,
+            temp_var: TemporaryVariable) -> ASTType:
+        raise NotImplementedError()
+    
+    def get_temporary_var_deallocator(self,
+            codegen_state: CodeGenerationState,
+            temp_var: TemporaryVariable) -> ASTType:
+        raise NotImplementedError()
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
@@ -381,6 +374,12 @@ class DummyHostASTBuilder(ASTBuilderBase[None]):
         return _DummyExpressionToCodeMapper()
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize):
+        return None
+    
+    def get_temporary_var_declarator(self, codegen_state, temp_var):
+        return None
+    
+    def get_temporary_var_deallocator(self, codegen_state, temp_var):
         return None
 
     @property

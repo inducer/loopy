@@ -663,40 +663,6 @@ class PyOpenCLTarget(OpenCLTarget):
         from loopy.target.pyopencl_execution import PyOpenCLExecutor
         return PyOpenCLExecutor(context, t_unit, entrypoint=entrypoint)
 
-    @override
-    def get_temporary_allocation(
-            self, codegen_state: CodeGenerationState,
-            temporary_variables: frozenset[str]
-        ) -> genpy.Suite:
-        from genpy import Assign, Suite
-        from pymbolic.mapper.stringifier import PREC_NONE
-
-        from loopy.target.python import ExpressionToPythonMapper
-        ecm = ExpressionToPythonMapper(codegen_state)
-        allocation_code_lines: list[Assign] = []
-        for tv_name in temporary_variables:
-            tv = codegen_state.kernel.temporary_variables[tv_name]
-            if not tv.base_storage:
-                if tv.nbytes:
-                    nbytes_str = ecm(tv.nbytes, PREC_NONE, type_context="i")
-                    allocation_code_lines.append(Assign(tv.name,
-                                             f"allocator({nbytes_str})"))
-                else:
-                    allocation_code_lines.append(Assign(tv.name, "None"))
-        return Suite(allocation_code_lines)
-
-    @override
-    def get_temporary_deallocation(
-            self, codegen_state: CodeGenerationState,
-            temporary_variables: frozenset[str]
-        ) -> genpy.Suite:
-        from genpy import Statement, Suite
-        deallocation_code_lines: list[Statement] = []
-        for tv_name in temporary_variables:
-            deallocation_code_lines.append(
-                Statement(f"if {tv_name} is not None: {tv_name}.release()")
-            )
-        return Suite(deallocation_code_lines)
 
 # }}}
 
@@ -874,9 +840,42 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             if tv.address_space == AddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    @override
+    def get_temporary_decls(self,
+                codegen_state: CodeGenerationState,
+                schedule_index: int
+            ):
         return []
 
+    @override
+    def get_temporary_var_declarator(self,
+                codegen_state: CodeGenerationState,
+                temp_var: TemporaryVariable
+            ) -> Generable:
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from genpy import Assign, Suite
+        ecm = self.get_expression_to_code_mapper(codegen_state)
+
+        if not temp_var.base_storage:
+            if temp_var.nbytes:
+                # NB: This does not prevent all zero-size allocations,
+                # as sizes are parametric, and allocation size
+                # could turn out to be zero at runtime.
+                nbytes_str = ecm(temp_var.nbytes, PREC_NONE, type_context="i")
+                return Assign(temp_var.name, f"allocator({nbytes_str})")
+            else:
+                return Assign(temp_var.name, "None")
+
+        return Suite()
+    
+    @override
+    def get_temporary_var_deallocator(
+            self, codegen_state: CodeGenerationState,
+            temp_var: TemporaryVariable
+        ) -> Generable:
+        from genpy import Statement, Suite
+        return Statement(f"if {temp_var.name} is not None: {temp_var.name}.release()")
+    
     def get_kernel_call(
             self, codegen_state: CodeGenerationState,
             subkernel_name: str,

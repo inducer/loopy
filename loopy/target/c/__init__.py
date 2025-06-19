@@ -43,6 +43,7 @@ from cgen import (
     Initializer,
     NestedDeclarator,
     Pointer,
+    Comment
 )
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic import Expression
@@ -538,15 +539,6 @@ class CFamilyTarget(TargetBase):
         # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
-    @override
-    def get_temporary_allocation(self, codegen_state, temporary_variables):
-        from cgen import Comment
-        return Comment("Do nothing")
-
-    @override
-    def get_temporary_deallocation(self, codegen_state, temporary_variables):
-        from cgen import Comment
-        return Comment("Do nothing")
     # }}}
 
 
@@ -1249,6 +1241,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             raise ValueError(f"unexpected type of argument '{passed_name}': "
                     f"'{type(var_descr)}'")
 
+    @override
     def get_temporary_var_declarator(self,
             codegen_state: CodeGenerationState,
             temp_var: TemporaryVariable) -> Declarator:
@@ -1281,6 +1274,9 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         return self.wrap_decl_for_address_space(temp_var_decl,
                 temp_var.address_space)
 
+    @override
+    def get_temporary_var_deallocator(self, codegen_state, temp_var):
+        return Comment("Dynamic freeing of temp_var not supported")
     # }}}
 
     @override

@@ -166,13 +166,25 @@ def get_temporary_decl_at_index(
     first_accesses, last_accesses = get_temporary_decl_locations(codegen_state)
     prefixes, suffixes = None, None
     if sched_index in first_accesses:
-        prefixes = codegen_state.ast_builder.target.get_temporary_allocation(
-            codegen_state, first_accesses[sched_index]
-        )
+        prefix_lines = []
+        for tv_name in first_accesses[sched_index]:
+            prefix_lines.append(
+                codegen_state.ast_builder.get_temporary_var_declarator(
+                    codegen_state,
+                    codegen_state.kernel.temporary_variables[tv_name]
+                )
+            )
+        prefixes = codegen_state.ast_builder.ast_block_class(prefix_lines)
     if sched_index in last_accesses:
-        suffixes = codegen_state.ast_builder.target.get_temporary_deallocation(
-            codegen_state, last_accesses[sched_index]
-        )
+        suffix_lines = []
+        for tv_name in last_accesses[sched_index]:
+            suffix_lines.append(
+                codegen_state.ast_builder.get_temporary_var_deallocator(
+                    codegen_state,
+                    codegen_state.kernel.temporary_variables[tv_name]
+                )
+            )
+        suffixes = codegen_state.ast_builder.ast_block_class(suffix_lines)
     return (prefixes, suffixes)
 
 
