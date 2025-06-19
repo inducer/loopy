@@ -59,12 +59,12 @@ if TYPE_CHECKING:
     from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
+    from loopy.kernel.data import TemporaryVariable
     from loopy.target.c import DTypeRegistry
     from loopy.target.execution import ExecutorBase
     from loopy.translation_unit import CallableId, CallablesTable, TranslationUnit
     from loopy.types import LoopyType
     from loopy.typing import InameStr
-    from loopy.kernel.tools import TemporaryVariable
 
 
 ASTType = TypeVar("ASTType")
@@ -256,7 +256,7 @@ class ASTBuilderBase(Generic[ASTType], ABC):
             codegen_state: CodeGenerationState,
             temp_var: TemporaryVariable) -> ASTType:
         raise NotImplementedError()
-    
+
     def get_temporary_var_deallocator(self,
             codegen_state: CodeGenerationState,
             temp_var: TemporaryVariable) -> ASTType:
@@ -375,10 +375,10 @@ class DummyHostASTBuilder(ASTBuilderBase[None]):
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize):
         return None
-    
+
     def get_temporary_var_declarator(self, codegen_state, temp_var):
         return None
-    
+
     def get_temporary_var_deallocator(self, codegen_state, temp_var):
         return None
 

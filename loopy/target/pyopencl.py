@@ -851,9 +851,9 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_temporary_var_declarator(self,
                 codegen_state: CodeGenerationState,
                 temp_var: TemporaryVariable
-            ) -> Generable:
-        from pymbolic.mapper.stringifier import PREC_NONE
+            ) -> genpy.Generable:
         from genpy import Assign, Suite
+        from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
         if not temp_var.base_storage:
@@ -867,15 +867,15 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 return Assign(temp_var.name, "None")
 
         return Suite()
-    
+
     @override
     def get_temporary_var_deallocator(
             self, codegen_state: CodeGenerationState,
             temp_var: TemporaryVariable
-        ) -> Generable:
-        from genpy import Statement, Suite
+        ) -> genpy.Generable:
+        from genpy import Statement
         return Statement(f"if {temp_var.name} is not None: {temp_var.name}.release()")
-    
+
     def get_kernel_call(
             self, codegen_state: CodeGenerationState,
             subkernel_name: str,

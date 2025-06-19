@@ -37,13 +37,13 @@ import pymbolic.primitives as p
 from cgen import (
     Block,
     Collection,
+    Comment,
     Const,
     Declarator,
     Generable,
     Initializer,
     NestedDeclarator,
     Pointer,
-    Comment
 )
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic import Expression
@@ -1275,8 +1275,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 temp_var.address_space)
 
     @override
-    def get_temporary_var_deallocator(self, codegen_state, temp_var):
-        return Comment("Dynamic freeing of temp_var not supported")
+    def get_temporary_var_deallocator(self,
+                codegen_state: CodeGenerationState,
+                temp_var: TemporaryVariable
+            ) -> Generable:
+        return Comment("Dynamic freeing of temp vars not supported")
     # }}}
 
     @override
