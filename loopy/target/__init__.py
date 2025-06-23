@@ -262,6 +262,11 @@ class ASTBuilderBase(Generic[ASTType], ABC):
             temp_var: TemporaryVariable) -> ASTType:
         raise NotImplementedError()
 
+    def get_temporary_decl_at_index(
+            self, codegen_state: CodeGenerationState,
+            sched_index: int) -> tuple[ASTType, ASTType]:
+        raise NotImplementedError()
+
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
             gsize: tuple[Expression, ...],
@@ -381,6 +386,11 @@ class DummyHostASTBuilder(ASTBuilderBase[None]):
 
     def get_temporary_var_deallocator(self, codegen_state, temp_var):
         return None
+
+    def get_temporary_decl_at_index(
+            self, codegen_state,
+            sched_index):
+        return (None, None)
 
     @property
     def ast_block_class(self):

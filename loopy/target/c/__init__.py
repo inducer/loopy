@@ -1108,6 +1108,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         return result
 
+    @override
+    def get_temporary_decl_at_index(
+            self, codegen_state: CodeGenerationState, sched_index: int
+            ):
+        return (self.ast_block_class(), self.ast_block_class())
+
     @property
     @override
     def ast_block_class(self):

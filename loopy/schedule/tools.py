@@ -176,6 +176,107 @@ def supporting_temporary_names(
 
     return frozenset(result)
 
+
+def get_temporary_decl_blocks(
+        kernel: LoopKernel
+    ) -> tuple[dict[int, set[str]], dict[int, set[str]]]:
+    from loopy.kernel.data import AddressSpace
+    from loopy.schedule import CallKernel, EnterLoop
+
+    assert kernel.linearization is not None
+
+    global_temporaries = frozenset(
+        tv.name for tv in kernel.temporary_variables.values()
+        if tv.address_space == AddressSpace.GLOBAL
+    )
+
+    # Collapse into blocks
+    def get_temporaries_in_bounds(
+            linearization: Sequence[ScheduleItem],
+            lower_bound: int,
+            upper_bound: int
+        ) -> frozenset[str]:
+        temporaries: frozenset[str] = frozenset()
+        for sched_index in range(lower_bound, upper_bound+1):
+            sched_item = linearization[sched_index]
+            if isinstance(sched_item, CallKernel):
+                temporaries = (
+                    temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
+                    | temporaries_read_in_subkernel(
+                        kernel, sched_item.kernel_name
+                    )
+                    | (temporaries)
+                )
+        return temporaries & global_temporaries
+
+    block_boundaries = get_block_boundaries(kernel.linearization)
+
+    bounds: dict[int, frozenset[str]] = {}
+    sched_index = 0
+    while sched_index < len(kernel.linearization):
+        sched_item = kernel.linearization[sched_index]
+        if isinstance(sched_item, EnterLoop) or isinstance(sched_item, CallKernel):
+            if isinstance(sched_item, CallKernel):
+                block_end = block_boundaries[sched_index]
+                accessed_temporaries = (
+                    temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
+                    | temporaries_read_in_subkernel(
+                        kernel, sched_item.kernel_name
+                    )
+                )
+            else:
+                block_end = block_boundaries[sched_index]
+                accessed_temporaries = get_temporaries_in_bounds(
+                    kernel.linearization, sched_index, block_end
+                )
+            bounds[sched_index] = accessed_temporaries
+            sched_index = block_end + 1
+        else:
+            sched_index += 1
+
+    def update_seen_storage_vars(
+            seen_sv: frozenset[str],
+            new_temp_variables: frozenset[str]
+        ) -> tuple[frozenset[str], frozenset[str]]:
+        new_storage_variables: set[str] = set()
+        for new_tv_name in new_temp_variables:
+            new_tv = kernel.temporary_variables[new_tv_name]
+            if new_tv.base_storage is None:
+                storage_var = new_tv_name
+            else:
+                storage_var = new_tv.base_storage
+            new_storage_variables.add(storage_var)
+        new_sv = frozenset(new_storage_variables)
+        return (seen_sv | new_sv, new_sv - seen_sv)
+    # forward pass for first accesses
+    first_accesses: dict[int, frozenset[str]] = {}
+    seen_storage_variables: frozenset[str] = frozenset()
+    for sched_index in range(0, len(kernel.linearization)):
+        if (sched_index not in bounds):
+            continue
+        sched_item = kernel.linearization[sched_index]
+        new_temporary_variables = bounds[sched_index]
+        seen_storage_variables, new_storage_variables = update_seen_storage_vars(
+            seen_storage_variables, new_temporary_variables
+        )
+
+        if (len(new_storage_variables) > 0):
+            first_accesses[sched_index] = new_storage_variables
+
+    last_accesses: dict[int, frozenset[str]] = {}
+    seen_storage_variables: frozenset[str] = frozenset()
+    for sched_index in range(len(kernel.linearization)-1, -1, -1):
+        if (sched_index not in bounds):
+            continue
+        sched_item = kernel.linearization[sched_index]
+        new_temporary_variables = bounds[sched_index]
+        seen_storage_variables, new_storage_variables = update_seen_storage_vars(
+            seen_storage_variables, new_temporary_variables
+        )
+
+        if (len(new_storage_variables) > 0):
+            last_accesses[sched_index] = new_storage_variables
+    return (first_accesses, last_accesses)
 # }}}
 
 

@@ -848,6 +848,35 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         return []
 
     @override
+    def get_temporary_decl_at_index(
+            self, codegen_state: CodeGenerationState, sched_index: int
+        ):
+        from loopy.schedule.tools import get_temporary_decl_blocks
+        first_accesses, last_accesses = get_temporary_decl_blocks(codegen_state.kernel)
+        prefixes, suffixes = self.ast_block_class(), self.ast_block_class()
+        if sched_index in first_accesses:
+            prefix_lines: list[genpy.Generable] = []
+            for tv_name in first_accesses[sched_index]:
+                prefix_lines.append(
+                    self.get_temporary_var_declarator(
+                        codegen_state,
+                        codegen_state.kernel.temporary_variables[tv_name]
+                    )
+                )
+            prefixes = self.ast_block_class(prefix_lines)
+        if sched_index in last_accesses:
+            suffix_lines: list[genpy.Generable] = []
+            for tv_name in last_accesses[sched_index]:
+                suffix_lines.append(
+                    self.get_temporary_var_deallocator(
+                        codegen_state,
+                        codegen_state.kernel.temporary_variables[tv_name]
+                    )
+                )
+            suffixes = self.ast_block_class(suffix_lines)
+        return (prefixes, suffixes)
+
+    @override
     def get_temporary_var_declarator(self,
                 codegen_state: CodeGenerationState,
                 temp_var: TemporaryVariable
