@@ -3692,6 +3692,56 @@ def test_long_kernel():
     t_unit = lp.preprocess_kernel(t_unit)
     lp.get_one_linearized_kernel(t_unit.default_entrypoint, t_unit.callables_table)
 
+def test_temporary_memory_allocation(ctx_factory: cl.CtxFactory):
+    from pyopencl.tools import MemoryPool, ImmediateAllocator
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+    n = 16
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n}",
+            """
+            for i
+                <> b[i] = a[i]
+                ... gbarrier
+                <> c[i] = b[i] + 1
+                ... gbarrier
+                <> d[i] = c[i] + 1
+                ... gbarrier
+                <> e[i] = d[i] + 1
+                ... gbarrier
+                <> f[i] = e[i] + 1
+                ... gbarrier
+                <> g[i] = f[i] + 1
+                ... gbarrier
+                <> h[i] = g[i] + 1
+                ... gbarrier
+                <> j[i] = h[i] + 1
+                ... gbarrier
+                <> k[i] = j[i] + 1
+                ... gbarrier
+                <> l[i] = k[i] + 1
+                ... gbarrier
+                <> m[i] = l[i] + 1
+                ... gbarrier
+                
+                out[i] = m[i]
+            end
+            """, seq_dependencies=True)
+
+    knl = lp.add_and_infer_dtypes(knl,
+            {"a": np.float32, "out": np.float32, "n": np.int32})
+
+    temp_vars = ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'j', 'k', 'l', 'm']
+    knl = lp.set_temporary_address_space(knl, temp_vars, "global")
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    mem_pool_alloc = MemoryPool(ImmediateAllocator(cq))
+
+    knl(cq, a=np.arange(n, dtype=np.float32), allocator=mem_pool_alloc)
+    assert mem_pool_alloc.managed_bytes < (len(temp_vars) * 4 * n)
 
 @pytest.mark.filterwarnings("error:.*:loopy.LoopyWarning")
 def test_loop_imperfect_nest_priorities_in_v2_scheduler():
