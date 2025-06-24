@@ -395,7 +395,7 @@ class AddressSpace(IntEnum):
 
 # {{{ arguments
 
-class KernelArgument(ImmutableRecord):
+class KernelArgument(ImmutableRecord, Taggable):
     """Base class for all argument types.
 
     .. attribute:: name
