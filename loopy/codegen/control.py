@@ -100,6 +100,7 @@ def generate_code_for_sched_index(
                     glob_grid, loc_grid),
                 suffixes
             ]
+            results = [r for r in results if r is not None]
             return merge_codegen_results(codegen_state, results)
         else:
             # do not generate host code for non-entrypoint kernels
@@ -150,6 +151,7 @@ def generate_code_for_sched_index(
             )
         )
         results = [prefixes, func(codegen_state, sched_index), suffixes]
+        results = [r for r in results if r is not None]
         return merge_codegen_results(codegen_state, results)
 
     elif isinstance(sched_item, Barrier):

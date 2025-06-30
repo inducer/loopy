@@ -264,7 +264,7 @@ class ASTBuilderBase(Generic[ASTType], ABC):
 
     def get_temporary_decl_at_index(
             self, codegen_state: CodeGenerationState,
-            sched_index: int) -> tuple[ASTType, ASTType]:
+            sched_index: int) -> tuple[ASTType | None, ASTType | None]:
         raise NotImplementedError()
 
     def get_kernel_call(self, codegen_state: CodeGenerationState,
