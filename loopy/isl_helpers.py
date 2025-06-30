@@ -231,7 +231,7 @@ def simplify_pw_aff(pw_aff, context=None):
 def static_extremum_of_pw_aff(
             pw_aff: isl.PwAff,
             constants_only: bool,
-            set_method: Callable[[isl.PwAff, isl.PwAff], isl.Set],
+            set_method: Callable[[isl.PwAff, isl.Aff | isl.PwAff], isl.Set],
             what: str,
             context: isl.Set | isl.BasicSet | None,
         ) -> isl.Aff:
