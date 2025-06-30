@@ -381,15 +381,25 @@ class DummyHostASTBuilder(ASTBuilderBase[None]):
     def get_kernel_call(self, codegen_state, name, gsize, lsize):
         return None
 
-    def get_temporary_var_declarator(self, codegen_state, temp_var):
+    @override
+    def get_temporary_var_declarator(
+        self, codegen_state: CodeGenerationState,
+        temp_var: TemporaryVariable
+    ) -> None:
         return None
 
-    def get_temporary_var_deallocator(self, codegen_state, temp_var):
+    @override
+    def get_temporary_var_deallocator(
+        self, codegen_state: CodeGenerationState,
+        temp_var: TemporaryVariable
+    ) -> None:
         return None
 
+    @override
     def get_temporary_decl_at_index(
-            self, codegen_state,
-            sched_index):
+        self, codegen_state: CodeGenerationState,
+        sched_index: int
+    ) -> tuple[None, None]:
         return (None, None)
 
     @property

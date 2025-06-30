@@ -1111,7 +1111,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
     @override
     def get_temporary_decl_at_index(
             self, codegen_state: CodeGenerationState, sched_index: int
-            ):
+            ) -> tuple[Generable, Generable]:
         return (self.ast_block_class(), self.ast_block_class())
 
     @property

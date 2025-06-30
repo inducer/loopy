@@ -850,7 +850,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     @override
     def get_temporary_decl_at_index(
             self, codegen_state: CodeGenerationState, sched_index: int
-        ):
+        ) -> tuple[genpy.Generable, genpy.Generable]:
         from loopy.schedule.tools import get_temporary_decl_blocks
         first_accesses, last_accesses = get_temporary_decl_blocks(codegen_state.kernel)
         prefixes, suffixes = self.ast_block_class(), self.ast_block_class()

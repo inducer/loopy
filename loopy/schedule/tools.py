@@ -179,7 +179,7 @@ def supporting_temporary_names(
 
 def get_temporary_decl_blocks(
         kernel: LoopKernel
-    ) -> tuple[dict[int, set[str]], dict[int, set[str]]]:
+    ) -> tuple[dict[int, frozenset[str]], dict[int, frozenset[str]]]:
     from loopy.kernel.data import AddressSpace
     from loopy.schedule import CallKernel, EnterLoop
 
@@ -235,10 +235,11 @@ def get_temporary_decl_blocks(
             sched_index += 1
 
     def update_seen_storage_vars(
-            seen_sv: frozenset[str],
+            seen_sv: set[str],
             new_temp_variables: frozenset[str]
-        ) -> tuple[frozenset[str], frozenset[str]]:
+        ) -> frozenset[str]:
         new_storage_variables: set[str] = set()
+        past_sv = frozenset(seen_sv)
         for new_tv_name in new_temp_variables:
             new_tv = kernel.temporary_variables[new_tv_name]
             if new_tv.base_storage is None:
@@ -246,17 +247,18 @@ def get_temporary_decl_blocks(
             else:
                 storage_var = new_tv.base_storage
             new_storage_variables.add(storage_var)
+            seen_sv.add(storage_var)
         new_sv = frozenset(new_storage_variables)
-        return (seen_sv | new_sv, new_sv - seen_sv)
+        return new_sv - past_sv
     # forward pass for first accesses
     first_accesses: dict[int, frozenset[str]] = {}
-    seen_storage_variables: frozenset[str] = frozenset()
+    seen_storage_variables: set[str] = set()
     for sched_index in range(0, len(kernel.linearization)):
         if (sched_index not in bounds):
             continue
         sched_item = kernel.linearization[sched_index]
         new_temporary_variables = bounds[sched_index]
-        seen_storage_variables, new_storage_variables = update_seen_storage_vars(
+        new_storage_variables = update_seen_storage_vars(
             seen_storage_variables, new_temporary_variables
         )
 
@@ -264,13 +266,13 @@ def get_temporary_decl_blocks(
             first_accesses[sched_index] = new_storage_variables
 
     last_accesses: dict[int, frozenset[str]] = {}
-    seen_storage_variables: frozenset[str] = frozenset()
+    seen_storage_variables.clear()
     for sched_index in range(len(kernel.linearization)-1, -1, -1):
         if (sched_index not in bounds):
             continue
         sched_item = kernel.linearization[sched_index]
         new_temporary_variables = bounds[sched_index]
-        seen_storage_variables, new_storage_variables = update_seen_storage_vars(
+        new_storage_variables = update_seen_storage_vars(
             seen_storage_variables, new_temporary_variables
         )
 
