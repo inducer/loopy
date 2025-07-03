@@ -531,7 +531,7 @@ def auto_test_vs_ref(
         logger.info("%s (ref): run done" % ref_entrypoint)
 
         ref_evt.wait()
-        ref_elapsed_event = 1e-9*(ref_evt.profile.END-ref_evt.profile.START)
+        ref_elapsed_event = 1e-9*(ref_evt.profile.end-ref_evt.profile.start)
 
         break
 
@@ -649,8 +649,8 @@ def auto_test_vs_ref(
                 - 1e-9*events[0].profile.START) \
                 / timing_rounds
         try:
-            elapsed_event_marker = ((1e-9*evt_end.profile.START
-                        - 1e-9*evt_start.profile.START)
+            elapsed_event_marker = ((1e-9*evt_end.profile.start
+                        - 1e-9*evt_start.profile.start)
                     / timing_rounds)
         except cl.RuntimeError:
             elapsed_event_marker = None
