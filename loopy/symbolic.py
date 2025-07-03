@@ -149,6 +149,10 @@ References
 
     See :data:`pymbolic.typing.Expression`.
 
+.. class:: ArithmeticExpression
+
+    See :data:`pymbolic.ArithmeticExpression`.
+
 .. class:: _Expression
 
     See :class:`pymbolic.primitives.ExpressionNode`.
@@ -2165,8 +2169,8 @@ def simplify_via_aff(expr):
 @memoize_on_first_arg
 def simplify_using_aff(
             kernel: LoopKernel,
-            expr: Expression
-        ) -> Expression:
+            expr: ArithmeticExpression
+        ) -> ArithmeticExpression:
     """
     Simplifies *expr* on *kernel*'s domain.
 

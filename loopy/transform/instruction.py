@@ -23,17 +23,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from typing_extensions import override
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-from loopy.symbolic import RuleAwareIdentityMapper
+from loopy.symbolic import (
+    ExpansionState,
+    RuleAwareIdentityMapper,
+    SubstitutionRuleMappingContext,
+)
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from pymbolic import ArithmeticExpression
+    from pymbolic.primitives import Subscript
 
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import ToMatchConvertible
@@ -41,19 +50,23 @@ if TYPE_CHECKING:
 
 # {{{ find_instructions
 
-def find_instructions_in_single_kernel(kernel, insn_match):
+def find_instructions_in_single_kernel(
+            kernel: LoopKernel,
+            insn_match: ToMatchConvertible):
     assert isinstance(kernel, LoopKernel)
     from loopy.match import parse_match
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
 
 
-def find_instructions(program, insn_match):
+def find_instructions(
+            program: LoopKernel | TranslationUnit,
+            insn_match: ToMatchConvertible):
     if isinstance(program, LoopKernel):
         return find_instructions_in_single_kernel(program, insn_match)
 
     assert isinstance(program, TranslationUnit)
-    insns = []
+    insns: list[InstructionBase] = []
     for in_knl_callable in program.callables_table.values():
         if isinstance(in_knl_callable, CallableKernel):
             insns += (find_instructions_in_single_kernel(
@@ -495,18 +508,22 @@ def uniquify_instruction_ids(kernel):
 # {{{ simplify indices
 
 class IndexSimplifier(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, kernel):
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                kernel: LoopKernel):
         super().__init__(rule_mapping_context)
-        self.kernel = kernel
+        self.kernel: LoopKernel = kernel
 
-    def map_subscript(self, expr, expn_state):
+    @override
+    def map_subscript(self, expr: Subscript, expn_state: ExpansionState):
         from pymbolic.primitives import Subscript
 
         from loopy.symbolic import simplify_using_aff
 
-        new_indices = tuple(simplify_using_aff(self.kernel,
-                                               self.rec(idx, expn_state))
-                            for idx in expr.index_tuple)
+        new_indices = tuple(
+                simplify_using_aff(self.kernel,
+                       self.rec_arith(cast("ArithmeticExpression", idx), expn_state))
+                for idx in expr.index_tuple)
 
         return Subscript(self.rec(expr.aggregate, expn_state),
                          new_indices)

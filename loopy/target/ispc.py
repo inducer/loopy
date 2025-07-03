@@ -33,7 +33,7 @@ from typing_extensions import Never, override
 
 import pymbolic.primitives as p
 from cgen import Collection, Const, Declarator, Generable
-from pymbolic import var
+from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.stringifier import PREC_NONE
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_method
@@ -182,7 +182,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
                 subscript, = access_info.subscripts
                 result = var(access_info.array_name)[
-                        var("programIndex") + self.rec(lsize*subscript, "i")]
+                        var("programIndex") + self.rec_arith(lsize*subscript, "i")]
 
                 if access_info.vector_index is not None:
                     return self.kernel.target.add_vector_access(
@@ -487,7 +487,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         % type(ary).__name)
 
             index_tuple = tuple(
-                    simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
+                    simplify_using_aff(kernel, cast("ArithmeticExpression", idx))
+                    for idx in lhs.index_tuple)
 
             access_info = get_access_info(kernel, ary, index_tuple,
                     lambda expr: cast("int",
