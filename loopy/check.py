@@ -34,7 +34,7 @@ from typing_extensions import override
 
 import islpy as isl
 from islpy import dim_type
-from pymbolic.primitives import Variable, is_arithmetic_expression
+from pymbolic.primitives import AlgebraicLeaf, Variable, is_arithmetic_expression
 from pytools import memoize_method
 
 from loopy.diagnostic import (
@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     import pymbolic.primitives as p
+    from pymbolic import ArithmeticExpression
     from pymbolic.typing import Expression
 
     from loopy.kernel import LoopKernel
@@ -696,16 +697,18 @@ def _align_and_intersect_with_caller_assumption(callee_assumptions,
                                 caller_assumptions)
 
 
-def _mark_variables_from_caller(expr):
+def _mark_variables_from_caller(expr: ArithmeticExpression):
     import pymbolic.primitives as prim
 
     from loopy.symbolic import SubstitutionMapper
 
-    def subst_func(x):
+    def subst_func(x: AlgebraicLeaf):
         if isinstance(x, prim.Variable):
             return prim.Variable(f"_lp_caller_{x.name}")
 
-    return SubstitutionMapper(subst_func)(expr)
+    res = SubstitutionMapper(subst_func)(expr)
+    assert is_arithmetic_expression(res)
+    return res
 
 # }}}
 
