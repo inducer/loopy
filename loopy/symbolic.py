@@ -69,7 +69,6 @@ from pymbolic.mapper.constant_folder import (
 )
 from pymbolic.mapper.dependency import (
     CachedDependencyMapper as DependencyMapperBase,
-    DependenciesT,
 )
 from pymbolic.mapper.evaluator import CachedEvaluationMapper as EvaluationMapperBase
 from pymbolic.mapper.flattener import FlattenMapper as FlattenMapperBase
@@ -93,6 +92,7 @@ from loopy.typing import InsnId, ShapeType, not_none
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 
+    from pymbolic.mapper.dependency import Dependencies
     from pymbolic.typing import ArithmeticOrExpressionT
 
     from loopy.kernel import LoopKernel
@@ -148,6 +148,10 @@ References
 .. class:: Expression
 
     See :data:`pymbolic.typing.Expression`.
+
+.. class:: ArithmeticExpression
+
+    See :data:`pymbolic.ArithmeticExpression`.
 
 .. class:: _Expression
 
@@ -506,19 +510,19 @@ class DependencyMapper(DependencyMapperBase[P]):
     def map_group_hw_index(
                 self,
                 expr: GroupHardwareAxisIndex, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         return set()
 
     def map_local_hw_index(
                 self,
                 expr: LocalHardwareAxisIndex, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         return set()
 
     def map_call(
                 self,
                 expr: p.Call, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         # Loopy does not have first-class functions. Do not descend
         # into 'function' attribute of Call.
         return self.rec(expr.parameters, *args, **kwargs)
@@ -526,14 +530,14 @@ class DependencyMapper(DependencyMapperBase[P]):
     def map_reduction(
                 self,
                 expr: Reduction, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         deps = self.rec(expr.expr, *args, **kwargs)
         return deps - {Variable(iname) for iname in expr.inames}
 
     def map_tagged_variable(
                 self,
                 expr: TaggedVariable, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         return {expr}
 
     def map_loopy_function_identifier(self, expr, *args: P.args, **kwargs: P.kwargs):
@@ -1069,7 +1073,7 @@ class DependencyMapperWithReductionInames(DependencyMapper[P]):
     def map_reduction(
                 self,
                 expr: Reduction, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         self.reduction_inames.update(expr.inames)
         return super().map_reduction(expr, *args, **kwargs)
 
@@ -2165,8 +2169,8 @@ def simplify_via_aff(expr):
 @memoize_on_first_arg
 def simplify_using_aff(
             kernel: LoopKernel,
-            expr: Expression
-        ) -> Expression:
+            expr: ArithmeticExpression
+        ) -> ArithmeticExpression:
     """
     Simplifies *expr* on *kernel*'s domain.
 

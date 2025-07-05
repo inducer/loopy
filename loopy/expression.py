@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pymbolic import ArithmeticExpression
+
 
 __copyright__ = "Copyright (C) 2012-15 Andreas Kloeckner"
 
@@ -22,7 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -121,7 +123,9 @@ class VectorizabilityChecker(Mapper[bool, []]):
 
         index = expr.index_tuple
 
-        index = tuple(simplify_using_aff(self.kernel, idx_i) for idx_i in index)
+        index = tuple(
+            simplify_using_aff(self.kernel, cast("ArithmeticExpression", idx_i))
+            for idx_i in index)
 
         from pymbolic.primitives import Variable
 

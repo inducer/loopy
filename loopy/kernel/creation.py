@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 from constantdict import constantdict
+from typing_extensions import override
 
 import islpy as isl
 from islpy import dim_type
@@ -62,7 +63,14 @@ from loopy.target import TargetBase
 from loopy.tools import Optional, intern_frozenset_of_ids
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.types import NumpyType
-from loopy.typing import InameStr, PreambleGenerator, SymbolMangler, auto, not_none
+from loopy.typing import (
+    InameStr,
+    PreambleGenerator,
+    SymbolMangler,
+    auto,
+    is_integer,
+    not_none,
+)
 
 
 if TYPE_CHECKING:
@@ -71,7 +79,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import DTypeLike
 
-    from pymbolic import Expression
+    from pymbolic import ArithmeticExpression, Expression
     from pytools.tag import ToTagSetConvertible
 
     from loopy.options import Options
@@ -1873,16 +1881,13 @@ def apply_single_writer_dependency_heuristic(kernel, warn_if_used=True,
 
 # {{{ slice to sub array ref
 
-def normalize_slice_params(slice, dimension_length):
+def normalize_slice_params(slice: Slice, dimension_length: ArithmeticExpression):
     """
     Returns the normalized slice parameters ``(start, stop, step)``.
 
     :arg slice: An instance of :class:`pymbolic.primitives.Slice`.
     :arg dimension_length: Length of the axis being sliced.
     """
-    from numbers import Integral
-
-    from pymbolic.primitives import Slice
 
     assert isinstance(slice, Slice)
     start, stop, step = slice.start, slice.stop, slice.step
@@ -1909,14 +1914,14 @@ def normalize_slice_params(slice, dimension_length):
 
     # }}}
 
-    if not isinstance(step, Integral):
+    if not is_integer(step):
         raise LoopyError("Non-integral step sizes lead to non-affine domains =>"
                          " not supported")
 
     return start, stop, step
 
 
-class SliceToInameReplacer(IdentityMapper):
+class SliceToInameReplacer(IdentityMapper[[]]):
     """
     Converts slices to instances of :class:`loopy.symbolic.SubArrayRef`.
 
@@ -1944,8 +1949,11 @@ class SliceToInameReplacer(IdentityMapper):
         self.var_name_gen = knl.get_var_name_generator()
         super().__init__()
 
-    def map_subscript(self, expr):
+    @override
+    def map_subscript(self, expr: Subscript):
         subscript_iname_bounds = {}
+
+        assert isinstance(expr.aggregate, Variable)
 
         new_index = []
         swept_inames = []
@@ -1982,7 +1990,8 @@ class SliceToInameReplacer(IdentityMapper):
 
         return result
 
-    def map_call(self, expr):
+    @override
+    def map_call(self, expr: Call):
 
         def _convert_array_to_slices(arg):
             # FIXME: We do not support something like A[1] should point to the

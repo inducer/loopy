@@ -557,6 +557,8 @@ def convert_computed_to_fixed_dim_tags(
 
     new_dim_tags = list(dim_tags)
 
+    stride_so_far: ArithmeticExpression | None
+
     for target_axis in range(num_target_axes):
         if vector_dim is None:
             stride_so_far = 1
@@ -610,9 +612,9 @@ def convert_computed_to_fixed_dim_tags(
                     stride_so_far *= shape_axis
 
                 if dim_tag.pad_to is not None:
-                    from pytools import div_ceil
+                    assert stride_so_far is not None
                     stride_so_far = (
-                            div_ceil(stride_so_far, dim_tag.pad_to)
+                            -(-stride_so_far // dim_tag.pad_to)
                             * stride_so_far)
 
             elif isinstance(dim_tag, FixedStrideArrayDimTag):
@@ -1238,10 +1240,10 @@ def get_strides(array: ArrayBase) -> tuple[Expression, ...]:
 class AccessInfo(ImmutableRecord):
     array_name: str
     vector_index: int | None
-    subscripts: tuple[Expression, ...]
+    subscripts: tuple[ArithmeticExpression, ...]
 
 
-def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
+def _apply_offset(sub: ArithmeticExpression, ary: ArrayBase) -> ArithmeticExpression:
     """
     Helper for :func:`get_access_info`.
     Augments *ary*'s subscript index expression (*sub*) with its offset info.
@@ -1278,7 +1280,7 @@ def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
 
 def get_access_info(kernel: LoopKernel,
             ary: ArrayArg | TemporaryVariable,
-            index: Expression | tuple[Expression, ...],
+            index: ArithmeticExpression | tuple[ArithmeticExpression, ...],
             eval_expr: Callable[[Expression], int],
             vectorization_info: VectorizationInfo | None
         ) -> AccessInfo:
@@ -1334,7 +1336,7 @@ def get_access_info(kernel: LoopKernel,
     num_target_axes = ary.num_target_axes()
 
     vector_index = None
-    subscripts: list[Expression] = [0] * num_target_axes
+    subscripts: list[ArithmeticExpression] = [0] * num_target_axes
 
     vector_size = ary.vector_size(kernel.target)
 

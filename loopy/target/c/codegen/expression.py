@@ -202,7 +202,7 @@ class ExpressionToCExpressionMapper(IdentityMapper[[str]]):
                                 arg,
                                 var(expr.name),
                                 simplify_using_aff(
-                                    self.kernel, self.rec(subscript, "i")))
+                                    self.kernel, self.rec_arith(subscript, "i")))
                         return result
                     else:
                         return var(expr.name)[0]
@@ -320,7 +320,7 @@ class ExpressionToCExpressionMapper(IdentityMapper[[str]]):
                         ary,
                         make_var(access_info.array_name),
                         simplify_using_aff(
-                            self.kernel, self.rec(subscript, "i")))
+                            self.kernel, self.rec_arith(subscript, "i")))
 
             if access_info.vector_index is not None:
                 return self.codegen_state.ast_builder.add_vector_access(
@@ -465,8 +465,8 @@ class ExpressionToCExpressionMapper(IdentityMapper[[str]]):
         from loopy.symbolic import Literal
 
         if isinstance(expr, (complex, np.complexfloating)):
-            real = self.rec(expr.real, type_context)
-            imag = self.rec(expr.imag, type_context)
+            real = self.rec_arith(expr.real, type_context)
+            imag = self.rec_arith(expr.imag, type_context)
             iota = p.Variable("I" if "I" not in self.kernel.all_variable_names()
                     else "_Complex_I")
             return real + imag*iota
