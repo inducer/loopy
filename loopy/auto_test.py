@@ -613,7 +613,7 @@ def auto_test_vs_ref(
 
                 need_check = False
 
-    events = []
+    events: list[cl.Event] = []
     queue.finish()
 
     logger.info("%s: warmup done" % (test_entrypoint))
@@ -645,8 +645,8 @@ def auto_test_vs_ref(
         evt_start.wait()
         evt_end.wait()
 
-        elapsed_event = (1e-9*events[-1].profile.END
-                - 1e-9*events[0].profile.START) \
+        elapsed_event = (1e-9*events[-1].profile.end
+                - 1e-9*events[0].profile.start) \
                 / timing_rounds
         try:
             elapsed_event_marker = ((1e-9*evt_end.profile.start
