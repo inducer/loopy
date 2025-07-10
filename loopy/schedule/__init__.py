@@ -29,13 +29,14 @@ from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
     Any,
+    Literal,
     TypeVar,
 )
 
 from constantdict import constantdict
 
 import islpy as isl
-from pytools import ImmutableRecord, MinRecursionLimit, ProcessLogger
+from pytools import MinRecursionLimit, ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
@@ -1680,7 +1681,8 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
 
 # {{{ barrier insertion/verification
 
-class DependencyRecord(ImmutableRecord):
+@dataclass(frozen=True)
+class DependencyRecord:
     """
     .. attribute:: source
 
@@ -1704,13 +1706,11 @@ class DependencyRecord(ImmutableRecord):
         "global" or "local"
     """
 
-    def __init__(self, source, target, dep_descr, variable, var_kind):
-        ImmutableRecord.__init__(self,
-                source=source,
-                target=target,
-                dep_descr=dep_descr,
-                variable=variable,
-                var_kind=var_kind)
+    source: InstructionBase
+    target: InstructionBase
+    dep_descr: str
+    variable: str
+    var_kind: Literal["global", "local"]
 
 
 class DependencyTracker:
