@@ -64,10 +64,7 @@ def _rename_temporaries(kernel, suffix, all_identifiers):
 
     new_temporaries = {}
     for tv in kernel.temporary_variables.values():
-        if tv.name in all_identifiers:
-            new_tv_name = vng(tv.name+suffix)
-        else:
-            new_tv_name = tv.name
+        new_tv_name = vng(tv.name + suffix) if tv.name in all_identifiers else tv.name
 
         if new_tv_name != tv.name:
             var_renames[tv.name] = var(new_tv_name)

@@ -216,10 +216,7 @@ def get_required_predicates(
             raise RuntimeError("unexpected schedule item type: %s"
                     % type(sched_item))
 
-        if result is None:
-            result = my_preds
-        else:
-            result = result & my_preds
+        result = my_preds if result is None else result & my_preds
 
     if result is None:
         result = frozenset()
@@ -292,10 +289,7 @@ def build_loop_nest(
             assert i <= codegen_state.schedule_index_end, \
                     "schedule block extends beyond schedule_index_end"
 
-        elif isinstance(sched_item, Barrier):
-            i += 1
-
-        elif isinstance(sched_item, RunInstruction):
+        elif isinstance(sched_item, (Barrier, RunInstruction)):
             i += 1
         else:
             raise RuntimeError("unexpected schedule item type: %s"

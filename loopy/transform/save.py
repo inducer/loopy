@@ -23,16 +23,23 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import contextlib
 import logging
 from dataclasses import dataclass
 from functools import cached_property
+from typing import TYPE_CHECKING, cast, final
 
 from constantdict import constantdict
 
-from pytools import Record, memoize_method
+from pytools import memoize_method
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel.data import AddressSpace, Iname
+from loopy.kernel.data import (
+    AddressSpace,
+    AxisTag,
+    Iname,
+    TemporaryVariable,
+)
 from loopy.schedule import (
     Barrier,
     CallKernel,
@@ -42,7 +49,17 @@ from loopy.schedule import (
     RunInstruction,
 )
 from loopy.schedule.tools import get_block_boundaries
-from loopy.typing import auto
+from loopy.typing import InameStr, auto, not_none
+
+
+if TYPE_CHECKING:
+    from collections.abc import Collection, Sequence
+
+    from pymbolic import ArithmeticExpression, Expression
+    from pytools.tag import Tag
+
+    from loopy.kernel import LoopKernel
+    from loopy.translation_unit import CallablesTable, TranslationUnit
 
 
 logger = logging.getLogger(__name__)
@@ -70,21 +87,21 @@ class LivenessResult(dict[int, InstructionLivenessResult]):
                    for idx in range(nscheditems))
 
 
+@final
 class LivenessAnalysis:
-
-    def __init__(self, kernel):
+    def __init__(self, kernel: LoopKernel):
         self.kernel = kernel
-        self.schedule = kernel.linearization
+        self.linearization = not_none(kernel.linearization)
 
     @memoize_method
     def get_successor_relation(self):
         successors = {}
-        block_bounds = get_block_boundaries(self.kernel.linearization)
+        block_bounds = get_block_boundaries(self.linearization)
 
         for idx, (item, next_item) in enumerate(zip(
-                reversed(self.schedule),
-                reversed([*self.schedule, None]))):
-            sched_idx = len(self.schedule) - idx - 1
+                reversed(self.linearization),
+                reversed([*self.linearization, None]))):
+            sched_idx = len(self.linearization) - idx - 1
 
             # Look at next_item
             if next_item is None:
@@ -115,10 +132,10 @@ class LivenessAnalysis:
         return successors
 
     def get_gen_and_kill_sets(self):
-        gen = {idx: set() for idx in range(len(self.schedule))}
-        kill = {idx: set() for idx in range(len(self.schedule))}
+        gen = {idx: set() for idx in range(len(self.linearization))}
+        kill = {idx: set() for idx in range(len(self.linearization))}
 
-        for sched_idx, sched_item in enumerate(self.schedule):
+        for sched_idx, sched_item in enumerate(self.linearization):
             if not isinstance(sched_item, RunInstruction):
                 continue
             insn = self.kernel.id_to_insn[sched_item.insn_id]
@@ -151,14 +168,14 @@ class LivenessAnalysis:
         gen, kill = self.get_gen_and_kill_sets()
 
         # Fixed point iteration for liveness analysis
-        lr = LivenessResult.make_empty(len(self.schedule))
+        lr = LivenessResult.make_empty(len(self.linearization))
 
         prev_lr = None
 
         while prev_lr != lr:
             from copy import deepcopy
             prev_lr = deepcopy(lr)
-            for idx in range(len(self.schedule) - 1, -1, -1):
+            for idx in range(len(self.linearization) - 1, -1, -1):
                 for succ in successors[idx]:
                     lr[idx].live_out.update(lr[succ].live_in)
                 lr[idx].live_in = gen[idx] | (lr[idx].live_out - kill[idx])
@@ -170,19 +187,19 @@ class LivenessAnalysis:
     def print_liveness(self):
         print(75 * "-")
         print("LIVE IN:")
-        for sched_idx in range(len(self.schedule)):
+        for sched_idx in range(len(self.linearization)):
             print("{item}: {{{vars}}}".format(
                 item=sched_idx,
                 vars=", ".join(sorted(self[sched_idx].live_in))))
         print(75 * "-")
         print("LIVE OUT:")
-        for sched_idx in range(len(self.schedule)):
+        for sched_idx in range(len(self.linearization)):
             print("{item}: {{{vars}}}".format(
                 item=sched_idx,
                 vars=", ".join(sorted(self[sched_idx].live_out))))
         print(75 * "-")
 
-    def __getitem__(self, sched_idx):
+    def __getitem__(self, sched_idx: int):
         """
         :arg insn: An instruction name or instance of
             :class:`loopy.instruction.InstructionBase`
@@ -196,57 +213,58 @@ class LivenessAnalysis:
 
 # {{{ save and reload implementation
 
+@dataclass(frozen=True)
+class _PromotedTemporary:
+    """
+    .. attribute:: name
+
+        The name of the new temporary.
+
+    .. attribute:: orig_temporary_name
+
+        The name of original temporary variable object.
+
+    .. attribute:: hw_dims
+
+        A list of expressions, to be added in front of the shape
+        of the promoted temporary value, corresponding to
+        hardware dimensions
+
+    .. attribute:: hw_tags
+
+        The tags for the inames associated with hw_dims
+
+    .. attribute:: non_hw_dims
+
+        A list of expressions, to be added in front of the shape
+        of the promoted temporary value, corresponding to
+        non-hardware dimensions
+    """
+    name: str
+    orig_temporary_name: str
+    hw_dims: Sequence[ArithmeticExpression]
+    hw_tags: frozenset[Tag]
+    non_hw_dims: Sequence[ArithmeticExpression]
+
+    def as_kernel_temporary(self, kernel: LoopKernel):
+        temporary = kernel.temporary_variables[self.orig_temporary_name]
+        from loopy.kernel.data import TemporaryVariable
+        return TemporaryVariable(
+            name=self.name,
+            dtype=temporary.dtype,
+            address_space=AddressSpace.GLOBAL,
+            shape=self.new_shape)
+
+    @property
+    def new_shape(self):
+        return (*self.hw_dims, *self.non_hw_dims)
+
+
+@final
 class TemporarySaver:
-
-    class PromotedTemporary(Record):
-        """
-        .. attribute:: name
-
-            The name of the new temporary.
-
-        .. attribute:: orig_temporary_name
-
-            The name of original temporary variable object.
-
-        .. attribute:: hw_dims
-
-            A list of expressions, to be added in front of the shape
-            of the promoted temporary value, corresponding to
-            hardware dimensions
-
-        .. attribute:: hw_tags
-
-            The tags for the inames associated with hw_dims
-
-        .. attribute:: non_hw_dims
-
-            A list of expressions, to be added in front of the shape
-            of the promoted temporary value, corresponding to
-            non-hardware dimensions
-        """
-
-        __slots__ = """
-                name
-                orig_temporary_name
-                hw_dims
-                hw_tags
-                non_hw_dims""".split()
-
-        def as_kernel_temporary(self, kernel):
-            temporary = kernel.temporary_variables[self.orig_temporary_name]
-            from loopy.kernel.data import TemporaryVariable
-            return TemporaryVariable(
-                name=self.name,
-                dtype=temporary.dtype,
-                address_space=AddressSpace.GLOBAL,
-                shape=self.new_shape)
-
-        @property
-        def new_shape(self):
-            return self.hw_dims + self.non_hw_dims
-
-    def __init__(self, kernel, callables_table):
+    def __init__(self, kernel: LoopKernel, callables_table: CallablesTable):
         self.kernel = kernel
+        self.linearization = not_none(self.kernel.linearization)
         self.callables_table = callables_table
         self.var_name_gen = kernel.get_var_name_generator()
         self.insn_name_gen = kernel.get_instruction_id_generator()
@@ -255,7 +273,7 @@ class TemporarySaver:
         from collections import defaultdict
         self.insns_to_insert = []
         self.insns_to_update = {}
-        self.updated_iname_objs = constantdict()
+        self.updated_iname_objs: constantdict[InameStr, Iname] = constantdict()
         self.updated_temporary_variables = {}
 
         # temporary name -> save or reload insn ids
@@ -294,17 +312,13 @@ class TemporarySaver:
         subkernel_insns = get_subkernel_to_insn_id_map(self.kernel)[subkernel]
 
         for name in aliasing_names:
-            try:
+            with contextlib.suppress(KeyError):
                 accessing_insns_in_subkernel |= (
                         self.kernel.reader_map()[name] & subkernel_insns)
-            except KeyError:
-                pass
 
-            try:
+            with contextlib.suppress(KeyError):
                 accessing_insns_in_subkernel |= (
                         self.kernel.writer_map()[name] & subkernel_insns)
-            except KeyError:
-                pass
 
         return frozenset(accessing_insns_in_subkernel)
 
@@ -325,7 +339,7 @@ class TemporarySaver:
     def subkernel_to_slice_indices(self):
         result = {}
 
-        for sched_item_idx, sched_item in enumerate(self.kernel.linearization):
+        for sched_item_idx, sched_item in enumerate(self.linearization):
             if isinstance(sched_item, CallKernel):
                 start_idx = sched_item_idx
             elif isinstance(sched_item, ReturnFromKernel):
@@ -339,7 +353,7 @@ class TemporarySaver:
         within_subkernel = False
         result = {}
 
-        for sched_item in self.kernel.linearization:
+        for sched_item in self.linearization:
             if isinstance(sched_item, CallKernel):
                 within_subkernel = True
                 result[sched_item.kernel_name] = frozenset(current_outer_inames)
@@ -363,22 +377,26 @@ class TemporarySaver:
                 item.synchronization_kind == "global"
 
         try:
-            pre_barrier = next(item for item in
-                self.kernel.linearization[subkernel_start::-1]
-                if is_global_barrier(item)).originating_insn_id
+            pre_barrier = cast("Barrier",
+                next(item for item in
+                    self.linearization[subkernel_start::-1]
+                    if is_global_barrier(item))).originating_insn_id
         except StopIteration:
             pre_barrier = None
 
         try:
-            post_barrier = next(item for item in
-                self.kernel.linearization[subkernel_end:]
-                if is_global_barrier(item)).originating_insn_id
+            post_barrier = cast("Barrier",
+                next(item for item in
+                    self.linearization[subkernel_end:]
+                    if is_global_barrier(item))).originating_insn_id
         except StopIteration:
             post_barrier = None
 
         return (pre_barrier, post_barrier)
 
-    def get_hw_axis_sizes_and_tags_for_save_slot(self, temporary):
+    def get_hw_axis_sizes_and_tags_for_save_slot(self,
+                temporary: TemporaryVariable
+            ) -> tuple[tuple[Expression, ...], Collection[Tag]]:
         """
         This is used for determining the amount of global storage needed for saving
         and restoring the temporary across kernel calls, due to hardware
@@ -395,7 +413,7 @@ class TemporarySaver:
         group_tags = None
         local_tags = None
 
-        def _sortedtags(tags):
+        def _sortedtags(tags: Sequence[AxisTag]):
             return sorted(tags, key=lambda tag: tag.axis)
 
         for insn_id in accessor_insn_ids:
@@ -494,7 +512,7 @@ class TemporarySaver:
             # Scalar not in hardware: ensure at least one dimension.
             non_hw_dims = (1,)
 
-        backing_temporary = self.PromotedTemporary(
+        backing_temporary = _PromotedTemporary(
             name=self.var_name_gen(temporary.name + "_save_slot"),
             orig_temporary_name=temporary.name,
             hw_dims=hw_dims,
@@ -740,7 +758,10 @@ class TemporarySaver:
 
 # {{{ auto save and reload across kernel calls
 
-def save_and_reload_temporaries(program, entrypoint=None):
+def save_and_reload_temporaries(
+            t_unit: TranslationUnit,
+            entrypoint: str | None = None,
+        ):
     """
     Add instructions to save and reload temporary variables that are live
     across kernel calls.
@@ -764,24 +785,24 @@ def save_and_reload_temporaries(program, entrypoint=None):
     :returns: The resulting kernel
     """
     if entrypoint is None:
-        if len(program.entrypoints) != 1:
+        if len(t_unit.entrypoints) != 1:
             raise LoopyError("Missing argument 'entrypoint'.")
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
-    knl = program[entrypoint]
+    knl = t_unit[entrypoint]
 
     from loopy.preprocess import preprocess_program
 
     if not knl.linearization:
-        program = preprocess_program(program)
+        t_unit = preprocess_program(t_unit)
         from loopy.schedule import get_one_linearized_kernel
-        knl = get_one_linearized_kernel(program[entrypoint],
-                program.callables_table)
+        knl = get_one_linearized_kernel(t_unit[entrypoint],
+                t_unit.callables_table)
 
     assert knl.linearization is not None
 
     liveness = LivenessAnalysis(knl)
-    saver = TemporarySaver(knl, program.callables_table)
+    saver = TemporarySaver(knl, t_unit.callables_table)
 
     from loopy.schedule.tools import (
         temporaries_read_in_subkernel,
@@ -822,7 +843,7 @@ def save_and_reload_temporaries(program, entrypoint=None):
                         .format(temporary, sched_item.kernel_name))
                 saver.save(temporary, sched_item.kernel_name)
 
-    return program.with_kernel(saver.finish())
+    return t_unit.with_kernel(saver.finish())
 
 # }}}
 

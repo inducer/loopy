@@ -348,20 +348,14 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
                 raise LoopyError("may not specify 'C' array order with explicit "
                         "layout nesting level")
 
-            if ta_nesting_levels:
-                nesting_level = min(ta_nesting_levels)-1
-            else:
-                nesting_level = 0
+            nesting_level = min(ta_nesting_levels) - 1 if ta_nesting_levels else 0
 
         elif tag in ["f", "F"]:
             if nesting_level is not None:
                 raise LoopyError("may not specify 'C' array order with explicit "
                         "layout nesting level")
 
-            if ta_nesting_levels:
-                nesting_level = max(ta_nesting_levels)+1
-            else:
-                nesting_level = 0
+            nesting_level = max(ta_nesting_levels) + 1 if ta_nesting_levels else 0
 
         elif tag == "":
             if nesting_level is None:
@@ -651,10 +645,7 @@ def _parse_shape_or_strides(
     if x is auto:
         return auto
 
-    if not isinstance(x, str):
-        x_parsed = x
-    else:
-        x_parsed = parse(x)
+    x_parsed = x if not isinstance(x, str) else parse(x)
 
     if isinstance(x_parsed, list):
         raise ValueError("shape can't be a list")
@@ -666,10 +657,7 @@ def _parse_shape_or_strides(
         x_tup = (cast("Expression", x_parsed),)
 
     def parse_arith(x: Expression | str) -> ArithmeticExpression:
-        if isinstance(x, str):
-            res = parse(x)
-        else:
-            res = x
+        res = parse(x) if isinstance(x, str) else x
 
         # The Fortran parser may do this, but this is (deliberately) outside
         # the behavior allowed by types, because the hope is to phase it out.
@@ -1028,10 +1016,7 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         assert self.dtype is not lp.auto
 
-        if self.dtype is None:
-            type_str = "<auto/runtime>"
-        else:
-            type_str = str(self.dtype)
+        type_str = "<auto/runtime>" if self.dtype is None else str(self.dtype)
 
         info_entries.append("type: %s" % type_str)
 

@@ -280,9 +280,8 @@ def generate_call_code(codegen_state, insn):
 
     # {{{ vectorization handling
 
-    if codegen_state.vectorization_info:
-        if insn.atomicity:
-            raise UnvectorizableError("atomic operation")
+    if codegen_state.vectorization_info and insn.atomicity:
+        raise UnvectorizableError("atomic operation")
 
     # }}}
 

@@ -24,6 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+import contextlib
 import re
 from collections import defaultdict
 from collections.abc import Set
@@ -1809,7 +1810,7 @@ class LoopyParser(ParserBase):
 
     def parse_postfix(self, pstate, min_precedence, left_exp):
         from pymbolic.parser import _PREC_CALL, _closebracket
-        if pstate.next_tag() is _open_dbl_bracket and _PREC_CALL > min_precedence:
+        if pstate.next_tag() is _open_dbl_bracket and min_precedence < _PREC_CALL:
             pstate.advance()
             pstate.expect_not_end()
             left_exp = LinearSubscript(
@@ -2637,10 +2638,8 @@ def get_access_map(
             shape_aff = None
 
             if shape is not None and shape[idim] is not None:
-                try:
+                with contextlib.suppress(ExpressionToAffineConversionError):
                     shape_aff = guarded_aff_from_expr(access_map.space, shape[idim])
-                except ExpressionToAffineConversionError:
-                    pass
 
             if shape_aff is None:
                 # failed to convert shape[idim] to aff
@@ -2962,9 +2961,7 @@ def is_tuple_of_expressions_equal(
             b: Expression | None,
         ) -> bool:
     if a is None or b is None:
-        if a is None and b is None:
-            return True
-        return False
+        return bool(a is None and b is None)
 
     if not isinstance(a, tuple):
         a = (a,)

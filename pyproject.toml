@@ -102,6 +102,7 @@ extend-select = [
     "RUF",  # ruff
     "FA",
     "TC",
+    "SIM",
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
@@ -110,6 +111,7 @@ extend-ignore = [
     "E402", # module level import not at the top of file
     "E226", # missing whitespace around operator
     "N817", # CamelCase `SubstitutionRuleMappingContext` imported as acronym `SRMC`
+    "SIM102", # combine if statements
 
     # FIXME
     "UP031", # .format instead of %s

@@ -930,9 +930,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 elif (
                         isinstance(lhs_var, ArrayArg)
                         and
-                        lhs_var.address_space == AddressSpace.LOCAL):
-                    var_kind = "__local"
-                elif (
+                        lhs_var.address_space == AddressSpace.LOCAL) or (
                         isinstance(lhs_var, TemporaryVariable)
                         and lhs_var.address_space == AddressSpace.LOCAL):
                     var_kind = "__local"

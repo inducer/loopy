@@ -100,8 +100,7 @@ def merge_loop_domains(kernel):
 
                 if (
                         outer_domain_idx in all_parents_per_domain[inner_domain_idx]
-                        and not
-                        outer_domain_idx == parents_per_domain[inner_domain_idx]):
+                        and outer_domain_idx != parents_per_domain[inner_domain_idx]):
                     # Outer domain is not a direct parent of the inner
                     # domain. Unable to merge.
                     continue

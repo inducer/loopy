@@ -193,10 +193,7 @@ class CodeGenerationResult(Generic[ASTType]):
     def current_program(
             self, codegen_state: CodeGenerationState) -> GeneratedProgram:
         if codegen_state.is_generating_device_code:
-            if self.device_programs:
-                result = self.device_programs[-1]
-            else:
-                result = None
+            result = self.device_programs[-1] if self.device_programs else None
         else:
             result = self.host_program
 
