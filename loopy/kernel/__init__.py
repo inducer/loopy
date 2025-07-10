@@ -72,7 +72,7 @@ from loopy.kernel.data import (
 )
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import PreambleGenerator, SymbolMangler, fset_union, not_none
+from loopy.typing import InsnId, PreambleGenerator, SymbolMangler, fset_union, not_none
 
 
 if TYPE_CHECKING:
@@ -612,8 +612,8 @@ class LoopKernel(Taggable):
         return insn.within_inames
 
     @memoize_method
-    def iname_to_insns(self):
-        result = {
+    def iname_to_insns(self) -> Mapping[InameStr, Set[InsnId]]:
+        result: dict[InameStr, set[InsnId]] = {
                 iname: set() for iname in self.all_inames()}
         for insn in self.instructions:
             for iname in insn.within_inames:
@@ -692,7 +692,7 @@ class LoopKernel(Taggable):
     # {{{ read and written variables
 
     @memoize_method
-    def reader_map(self):
+    def reader_map(self) -> Mapping[str, Set[InsnId]]:
         """
         :return: a dict that maps variable names to ids of insns that read that
           variable.
@@ -710,7 +710,7 @@ class LoopKernel(Taggable):
         return result
 
     @memoize_method
-    def writer_map(self):
+    def writer_map(self) -> Mapping[str, Set[InsnId]]:
         """
         :return: a dict that maps variable names to ids of insns that write
             to that variable.
