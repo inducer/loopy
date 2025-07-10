@@ -795,10 +795,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
             return False
         if insn.groups != template_insn.groups:
             return False
-        if insn.conflicts_with_groups != template_insn.conflicts_with_groups:
-            return False
-
-        return True
+        return insn.conflicts_with_groups == template_insn.conflicts_with_groups
 
     # }}}
 
@@ -1059,10 +1056,9 @@ def _generate_loop_schedules_internal(
 
     debug_mode = False
 
-    if debug is not None:
-        if (debug.debug_length is not None
-                and len(sched_state.schedule) >= debug.debug_length):
-            debug_mode = True
+    if debug is not None and (debug.debug_length is not None
+            and len(sched_state.schedule) >= debug.debug_length):
+        debug_mode = True
 
     if debug_mode:
         if debug.wrote_status == 2:
@@ -2439,10 +2435,10 @@ def get_one_linearized_kernel(
             logger.debug(f"{kernel.name}: schedule cache miss")
 
     if not from_cache:
-        with ProcessLogger(logger, "%s: schedule" % kernel.name):
-            with MinRecursionLimitForScheduling(kernel):
-                result = _get_one_linearized_kernel_inner(kernel,
-                        callables_table)
+        with ProcessLogger(logger, "%s: schedule" % kernel.name), \
+                MinRecursionLimitForScheduling(kernel):
+            result = _get_one_linearized_kernel_inner(kernel,
+                    callables_table)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)  # pylint: disable=possibly-used-before-assignment

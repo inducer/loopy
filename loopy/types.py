@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import contextlib
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, overload
 
@@ -291,14 +292,6 @@ def to_loopy_type(dtype: ToLoopyTypeConvertible,
 
     numpy_dtype = None
 
-    if dtype is not None:
-        try:
-            # We're playing fast and loose here, and mypy is onto us. It has a
-            # point.
-            numpy_dtype = np.dtype(dtype)  # type: ignore
-        except Exception:
-            pass
-
     if isinstance(dtype, LoopyType):
         if for_atomic:
             if isinstance(dtype, NumpyType):
@@ -309,7 +302,12 @@ def to_loopy_type(dtype: ToLoopyTypeConvertible,
 
         return dtype
 
-    elif numpy_dtype is not None:
+    with contextlib.suppress(Exception):
+        # We're playing fast and loose here, and mypy is onto us. It has a
+        # point.
+        numpy_dtype = np.dtype(dtype)  # type: ignore
+
+    if numpy_dtype is not None:
         if for_atomic:
             return AtomicNumpyType(numpy_dtype)
         else:

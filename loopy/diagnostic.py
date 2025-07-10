@@ -76,10 +76,7 @@ def warn_with_kernel(
     text += (" (add '%s' to silenced_warnings kernel attribute to disable)"
             % id)
 
-    if stacklevel is None:
-        stacklevel = 2
-    else:
-        stacklevel = stacklevel + 1
+    stacklevel = 2 if stacklevel is None else stacklevel + 1
     from warnings import warn
     warn(f"in kernel {kernel.name}: {text}", type, stacklevel=stacklevel)
 

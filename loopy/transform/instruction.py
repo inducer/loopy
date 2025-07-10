@@ -151,10 +151,7 @@ def add_dependency(kernel, insn_match, depends_on):
     def add_dep(insn):
         new_deps = insn.depends_on
         matched[0] = True
-        if new_deps is None:
-            new_deps = added_deps
-        else:
-            new_deps = new_deps | added_deps
+        new_deps = added_deps if new_deps is None else new_deps | added_deps
 
         return insn.copy(depends_on=new_deps)
 
@@ -246,10 +243,7 @@ def remove_instructions(kernel, insn_ids):
             continue
 
         # transitively propagate dependencies
-        if insn.depends_on is None:
-            depends_on = frozenset()
-        else:
-            depends_on = insn.depends_on
+        depends_on = frozenset() if insn.depends_on is None else insn.depends_on
 
         if ((not (depends_on & insn_ids))
                 and insn.no_sync_with == frozenset()):

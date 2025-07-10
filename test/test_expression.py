@@ -91,10 +91,7 @@ def make_random_fp_expression(prefix, var_values, size, use_complex):
     size[0] += 1
     if v < 500 and size[0] < 40:
         term_count = randrange(2, 5)
-        if randrange(2) < 1:
-            cls = p.Sum
-        else:
-            cls = p.Product
+        cls = p.Sum if randrange(2) < 1 else p.Product
         return cls(tuple(
             make_random_fp_expression(prefix, var_values, size, use_complex)
             for i in range(term_count)))
@@ -137,10 +134,7 @@ def make_random_int_expression(prefix, var_values, size, nonneg):
     from random import randrange
 
     import pymbolic.primitives as p
-    if size[0] < 10:
-        v = randrange(800)
-    else:
-        v = randrange(1000)
+    v = randrange(800) if size[0] < 10 else randrange(1000)
 
     size[0] += 1
 
@@ -151,10 +145,7 @@ def make_random_int_expression(prefix, var_values, size, nonneg):
         return p.Variable(var_name)
     elif v < 200 and size[0] < 40:
         term_count = randrange(2, 5)
-        if randrange(2) < 1:
-            cls = p.Sum
-        else:
-            cls = p.Product
+        cls = p.Sum if randrange(2) < 1 else p.Product
         return cls(tuple(
             make_random_int_expression(
                 prefix, var_values, size, nonneg=nonneg)

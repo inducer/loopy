@@ -117,49 +117,46 @@ class PyOpenCLCallable(ScalarCallable):
 
         dtype = arg_id_to_dtype[0]
 
-        if name in ["real", "imag", "abs"]:
-            if dtype.is_complex():
-                if dtype.numpy_dtype == np.complex64:
-                    tpname = "cfloat"
-                elif dtype.numpy_dtype == np.complex128:
-                    tpname = "cdouble"
-                else:
-                    raise LoopyTypeError(f"unexpected complex type '{dtype}'")
+        if name in ["real", "imag", "abs"] and dtype.is_complex():
+            if dtype.numpy_dtype == np.complex64:
+                tpname = "cfloat"
+            elif dtype.numpy_dtype == np.complex128:
+                tpname = "cdouble"
+            else:
+                raise LoopyTypeError(f"unexpected complex type '{dtype}'")
 
-                return (
-                        self.copy(name_in_target=f"{tpname}_{name}",
-                            arg_id_to_dtype=constantdict({
-                                0: dtype,
-                                -1: NumpyType(np.dtype(dtype.numpy_dtype.type(0).real))
-                                })),
-                        clbl_inf_ctx)
+            return (
+                    self.copy(name_in_target=f"{tpname}_{name}",
+                        arg_id_to_dtype=constantdict({
+                            0: dtype,
+                            -1: NumpyType(np.dtype(dtype.numpy_dtype.type(0).real))
+                            })),
+                    clbl_inf_ctx)
 
-        if name in ["real", "imag", "conj"]:
-            if not dtype.is_complex():
-                tpname = dtype.numpy_dtype.type.__name__
-                return (
-                        self.copy(
-                            name_in_target=f"_lpy_{name}_{tpname}",
-                            arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
-                        clbl_inf_ctx)
+        if name in ["real", "imag", "conj"] and not dtype.is_complex():
+            tpname = dtype.numpy_dtype.type.__name__
+            return (
+                    self.copy(
+                        name_in_target=f"_lpy_{name}_{tpname}",
+                        arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
+                    clbl_inf_ctx)
 
         if name in ["sqrt", "exp", "log",
                 "sin", "cos", "tan",
                 "sinh", "cosh", "tanh",
-                "conj"]:
-            if dtype.is_complex():
-                # function parameters are complex.
-                if dtype.numpy_dtype == np.complex64:
-                    tpname = "cfloat"
-                elif dtype.numpy_dtype == np.complex128:
-                    tpname = "cdouble"
-                else:
-                    raise LoopyTypeError("unexpected complex type '%s'" % dtype)
+                "conj"] and dtype.is_complex():
+            # function parameters are complex.
+            if dtype.numpy_dtype == np.complex64:
+                tpname = "cfloat"
+            elif dtype.numpy_dtype == np.complex128:
+                tpname = "cdouble"
+            else:
+                raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
-                return (
-                        self.copy(name_in_target=f"{tpname}_{name}",
-                            arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
-                        clbl_inf_ctx)
+            return (
+                    self.copy(name_in_target=f"{tpname}_{name}",
+                        arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
+                    clbl_inf_ctx)
 
             # fall back to pure OpenCL for real-valued arguments
 
@@ -450,8 +447,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         n_dtype = self.infer_type(expr.numerator).numpy_dtype
         d_dtype = self.infer_type(expr.denominator).numpy_dtype
         tgt_dtype = self.infer_type(expr)
-        n_complex = "c" == n_dtype.kind
-        d_complex = "c" == d_dtype.kind
+        n_complex = n_dtype.kind == "c"
+        d_complex = d_dtype.kind == "c"
 
         if not self.allow_complex or (not (n_complex or d_complex)):
             return super().map_quotient(expr, type_context)

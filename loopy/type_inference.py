@@ -1162,10 +1162,9 @@ def infer_unknown_types(
 
             vars_not_inferred = tvs_not_inferred | args_not_inferred
 
-            if vars_not_inferred:
-                if expect_completion:
-                    raise LoopyError("could not determine type of"
-                            f" '{vars_not_inferred.pop()}' of kernel '{e}'.")
+            if vars_not_inferred and expect_completion:
+                raise LoopyError("could not determine type of"
+                        f" '{vars_not_inferred.pop()}' of kernel '{e}'.")
 
     return clbl_inf_ctx.finish_program(t_unit)
 

@@ -452,12 +452,12 @@ def parse_match(expr: ToMatchConvertible) -> MatchExpressionBase:
 
             next_tag = pstate.next_tag()
 
-            if next_tag is _and and _PREC_AND > min_precedence:
+            if next_tag is _and and min_precedence < _PREC_AND:
                 pstate.advance()
                 left_query = And(
                         (left_query, inner_parse(pstate, _PREC_AND)))
                 did_something = True
-            elif next_tag is _or and _PREC_OR > min_precedence:
+            elif next_tag is _or and min_precedence < _PREC_OR:
                 pstate.advance()
                 left_query = Or(
                         (left_query, inner_parse(pstate, _PREC_OR)))
@@ -554,11 +554,7 @@ class StackWildcardMatchComponent(StackMatchComponent):
     inner_match: StackMatchComponent
 
     def __call__(self, kernel: LoopKernel, stack: Sequence[Matchable]) -> bool:
-        for i in range(0, len(stack)):
-            if self.inner_match(kernel, stack[i:]):
-                return True
-
-        return False
+        return any(self.inner_match(kernel, stack[i:]) for i in range(0, len(stack)))
 
 # }}}
 

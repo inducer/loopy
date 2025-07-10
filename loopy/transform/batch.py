@@ -24,11 +24,17 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 import islpy as isl
 
-from loopy.kernel.data import ArrayArg, ValueArg
+from loopy.kernel.data import ArrayArg, TemporaryVariable, ValueArg
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 from loopy.translation_unit import for_each_kernel
+
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
 
 
 __doc__ = """
@@ -40,7 +46,10 @@ __doc__ = """
 
 # {{{ to_batched
 
-def temp_needs_batching_if_not_sequential(tv, batch_varying_args):
+def temp_needs_batching_if_not_sequential(
+            tv: TemporaryVariable,
+            batch_varying_args: Collection[str]
+        ):
     from loopy.kernel.data import AddressSpace
     if tv.name in batch_varying_args:
         return True
@@ -48,10 +57,8 @@ def temp_needs_batching_if_not_sequential(tv, batch_varying_args):
         # do not batch read_only temps  if not in
         # `batch_varying_args`
         return False
-    if tv.address_space == AddressSpace.PRIVATE:
-        # do not batch private temps if not in `batch_varying args`
-        return False
-    return True
+    # do not batch private temps if not in `batch_varying args`
+    return tv.address_space != AddressSpace.PRIVATE
 
 
 class _BatchVariableChanger(RuleAwareIdentityMapper):

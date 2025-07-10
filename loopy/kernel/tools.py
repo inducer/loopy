@@ -61,6 +61,7 @@ from loopy.kernel.instruction import (
 from loopy.symbolic import CombineMapper
 from loopy.translation_unit import (
     CallableId,
+    CallablesTable,
     TranslationUnit,
     TUnitOrKernelT,
     for_each_kernel,
@@ -883,7 +884,12 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 # }}}
 
 
-def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
+def assign_automatic_axes(
+            kernel: LoopKernel,
+            callables_table: CallablesTable,
+            axis: int = 0,
+            local_size: tuple[int, ...] | None = None,
+        ):
     logger.debug("%s: assign automatic axes" % kernel.name)
     # TODO: do the tag removal rigorously, might be easier after switching
     # to set() from tuple()
@@ -899,8 +905,9 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
     # copies.
 
     if local_size is None:
-        _, local_size = kernel.get_grid_size_upper_bounds_as_exprs(
+        _, local_size_exprs = kernel.get_grid_size_upper_bounds_as_exprs(
                 callables_table, ignore_auto=True)
+        local_size = cast("tuple[int]", local_size_exprs)
 
     # {{{ axis assignment helper function
 
@@ -915,7 +922,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
-            new_inames = kernel.inames.copy()
+            new_inames = dict(kernel.inames)
             new_inames[iname] = kernel.inames[iname].copy(
                     tags=frozenset(tag
                         for tag in kernel.inames[iname].tags
@@ -980,15 +987,12 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         if not kernel.iname_tags_of_type(iname, AutoLocalInameTagBase):
             raise LoopyError("trying to reassign '%s'" % iname)
 
-        if new_tag:
-            new_tag_set = frozenset([new_tag])
-        else:
-            new_tag_set = frozenset()
+        new_tag_set = frozenset([new_tag]) if new_tag else frozenset()
         new_tags = (
                 frozenset(tag for tag in kernel.inames[iname].tags
                     if not isinstance(tag, AutoLocalInameTagBase))
                 | new_tag_set)
-        new_inames = kernel.inames.copy()
+        new_inames = dict(kernel.inames)
         new_inames[iname] = kernel.inames[iname].copy(tags=new_tags)
         return assign_automatic_axes(kernel.copy(inames=new_inames),
                 callables_table, axis=recursion_axis, local_size=local_size)
@@ -1607,10 +1611,7 @@ def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
     lines = []
     current_inames: list[set[str]] = [set()]
 
-    if uniform_arrow_length:
-        indent_level = [1]
-    else:
-        indent_level = [0]
+    indent_level = [1] if uniform_arrow_length else [0]
 
     indent_increment = 2
 

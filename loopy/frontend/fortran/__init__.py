@@ -200,10 +200,7 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
             require_leading_newline=False,
             ignore_lines_starting_with="#")
 
-    if transform_code_context is None:
-        proc_dict = {}
-    else:
-        proc_dict = transform_code_context.copy()
+    proc_dict = {} if transform_code_context is None else transform_code_context.copy()
 
     import numpy as np
 
@@ -219,10 +216,7 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     from os.path import abspath, dirname
 
     infile_dirname = dirname(filename)
-    if infile_dirname:
-        infile_dirname = abspath(infile_dirname)
-    else:
-        infile_dirname = getcwd()
+    infile_dirname = abspath(infile_dirname) if infile_dirname else getcwd()
 
     import sys
     prev_sys_path = sys.path

@@ -348,10 +348,7 @@ class ExpressionToCExpressionMapper(IdentityMapper[[str]]):
 
             else:
                 # GlobalArg
-                if arg.offset:
-                    offset = Variable(arg.offset)
-                else:
-                    offset = 0
+                offset = Variable(arg.offset) if arg.offset else 0
 
                 return self.make_subscript(
                         arg,

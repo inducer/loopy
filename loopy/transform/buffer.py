@@ -233,10 +233,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
         raise ValueError("variable '%s' not found" % var_name)
 
     from loopy.kernel.data import ArrayBase
-    if isinstance(var_descr, ArrayBase):
-        var_shape = var_descr.shape
-    else:
-        var_shape = ()
+    var_shape = var_descr.shape if isinstance(var_descr, ArrayBase) else ()
 
     if temporary_scope is None:
         import loopy as lp

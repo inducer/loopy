@@ -266,9 +266,9 @@ class CCompiler:
                  include_dirs=None, library_dirs=None, defines=None,
                  source_suffix="c"):
         if cflags is None:
-            cflags = "-std=c99 -O3 -fPIC".split()
+            cflags = ["-std=c99", "-O3", "-fPIC"]
         if ldflags is None:
-            ldflags = "-shared".split()
+            ldflags = ["-shared"]
         if libraries is None:
             libraries = []
         if include_dirs is None:
@@ -295,8 +295,8 @@ class CCompiler:
                 self.toolchain = GCCToolchain(
                     cc="gcc",
                     ld="ld",
-                    cflags="-std=c99 -O3 -fPIC".split(),
-                    ldflags="-shared".split(),
+                    cflags=["-std=c99", "-O3", "-fPIC"],
+                    ldflags=["-shared"],
                     libraries=[],
                     library_dirs=[],
                     defines=[],
@@ -456,11 +456,8 @@ class CompiledCKernel:
         args_ = []
         for arg, arg_t in zip(args, self._fn.argtypes):
             if hasattr(arg, "ctypes"):
-                if arg.size == 0:
-                    # TODO eliminate unused arguments from kernel
-                    arg_ = arg_t(0.0)
-                else:
-                    arg_ = arg.ctypes.data_as(arg_t)
+                # TODO eliminate unused arguments from kernel
+                arg_ = arg_t(0.0) if arg.size == 0 else arg.ctypes.data_as(arg_t)
             else:
                 arg_ = arg_t(arg)
             args_.append(arg_)
