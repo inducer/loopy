@@ -94,9 +94,9 @@ logger = logging.getLogger(__name__)
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
 # source: check_keywords() in isl_stream.c, ISL version 0.17
-_ISL_KEYWORDS = frozenset("""
-        exists and or implies not infty infinity NaN min max rat true false ceild
-        floord mod ceil floor""".split())
+_ISL_KEYWORDS = frozenset([
+        "exists", "and", "or", "implies", "not", "infty", "infinity", "NaN", "min",
+        "max", "rat", "true", "false", "ceild", "floord", "mod", "ceil", "floor"])
 
 
 def _gather_isl_identifiers(s: str):
@@ -1211,10 +1211,9 @@ class ArgumentGuesser:
         from loopy.kernel.data import ArrayBase
         from loopy.symbolic import get_dependencies
         for arg in kernel_args:
-            if isinstance(arg, ArrayBase):
-                if isinstance(arg.shape, tuple):
-                    self.all_names.update(
-                            get_dependencies(arg.shape))
+            if isinstance(arg, ArrayBase) and isinstance(arg.shape, tuple):
+                self.all_names.update(
+                        get_dependencies(arg.shape))
 
         new_arg_names = (self.all_names | self.all_params) - not_new_arg_names
 
@@ -1312,10 +1311,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             return self.expr_to_var[expr.child]
         except KeyError:
             from loopy.symbolic import TypedCSE
-            if isinstance(expr, TypedCSE):
-                dtype = expr.dtype
-            else:
-                dtype = None
+            dtype = expr.dtype if isinstance(expr, TypedCSE) else None
 
             child = self.rec(expr.child, additional_inames)
             from pymbolic.primitives import Variable
@@ -1630,10 +1626,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
         if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
             var_names.append(arg.name)
 
-    if var_names:
-        shapes = guess_var_shape(kernel, var_names)
-    else:
-        shapes = []
+    shapes = guess_var_shape(kernel, var_names) if var_names else []
 
     count = 0
     for arg in kernel.args:
@@ -1897,20 +1890,17 @@ def normalize_slice_params(slice: Slice, dimension_length: ArithmeticExpression)
     if step is None:
         step = 1
 
+    if not isinstance(step, int):
+        raise ValueError("step must be an integer")
+
     if step == 0:
         raise LoopyError("Slice cannot have 0 step size.")
 
     if start is None:
-        if step > 0:
-            start = 0
-        else:
-            start = dimension_length-1
+        start = 0 if step > 0 else dimension_length - 1
 
     if stop is None:
-        if step > 0:
-            stop = dimension_length
-        else:
-            stop = -1
+        stop = dimension_length if step > 0 else -1
 
     # }}}
 

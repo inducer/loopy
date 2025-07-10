@@ -683,9 +683,7 @@ def infer_arg_descr(t_unit: TranslationUnit) -> TranslationUnit:
 
     for e in t_unit.entrypoints:
         def _tuple_or_none(s):
-            if isinstance(s, tuple):
-                return s
-            elif s in [None, auto]:
+            if isinstance(s, tuple) or s in [None, auto]:
                 return s
             else:
                 return s,

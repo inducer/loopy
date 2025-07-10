@@ -372,10 +372,7 @@ class LoopKernel(Taggable):
             if discard_level_count:
                 iname_set_stack = iname_set_stack[:-discard_level_count]
 
-            if result:
-                parent = len(result)-1
-            else:
-                parent = None
+            parent = len(result) - 1 if result else None
 
             for _i in range(discard_level_count):
                 assert parent is not None
@@ -384,10 +381,7 @@ class LoopKernel(Taggable):
             # found this domain's parent
             result.append(parent)
 
-            if iname_set_stack:
-                parent_inames = iname_set_stack[-1]
-            else:
-                parent_inames = set()
+            parent_inames = iname_set_stack[-1] if iname_set_stack else set()
             iname_set_stack.append(parent_inames | inames)
 
         return result
@@ -1002,10 +996,7 @@ class LoopKernel(Taggable):
             sorted_axes = sorted(size_dict.keys())
 
             while sorted_axes:
-                if sorted_axes:
-                    cur_axis = sorted_axes.pop(0)
-                else:
-                    cur_axis = None
+                cur_axis = sorted_axes.pop(0) if sorted_axes else None
 
                 assert cur_axis is not None
 
@@ -1231,10 +1222,7 @@ class LoopKernel(Taggable):
 
         kernel = self
 
-        if use_separators:
-            sep = [75*"-"]
-        else:
-            sep = []
+        sep = [75 * "-"] if use_separators else []
 
         if "name" in what:
             lines.extend(sep)
@@ -1262,10 +1250,7 @@ class LoopKernel(Taggable):
             for iname in natsorted(kernel.all_inames()):
                 tags = kernel.iname_tags(iname)
 
-                if not tags:
-                    tags_str = "None"
-                else:
-                    tags_str = ", ".join(str(tag) for tag in tags)
+                tags_str = "None" if not tags else ", ".join(str(tag) for tag in tags)
 
                 line = f"{iname}: {tags_str}"
                 lines.append(line)

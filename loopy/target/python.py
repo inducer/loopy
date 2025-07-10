@@ -139,7 +139,7 @@ class ExpressionToPythonMapper(StringifyMapper[[]]):
 
         str_parameters = None
         number_of_assignees = len([
-                                  key for key in not_none(clbl.arg_id_to_dtype).keys()
+                                  key for key in not_none(clbl.arg_id_to_dtype)
                                   if cast("int", key) < 0])
 
         if number_of_assignees != 1:

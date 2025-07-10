@@ -303,10 +303,7 @@ class _InameRemover(IdentityMapper[[bool]]):
                 self.var_name_to_remove_indices[name] = remove_indices
 
             if new_index:
-                if len(new_index) == 1:
-                    new_index = new_index[0]
-                else:
-                    new_index = tuple(new_index)
+                new_index = new_index[0] if len(new_index) == 1 else tuple(new_index)
                 return expr.aggregate[new_index]
             else:
                 return expr.aggregate

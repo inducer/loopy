@@ -209,7 +209,7 @@ def test_random123(ctx_factory: cl.CtxFactory, tp):
 
     out = out.get()
     assert (out < 1).all()
-    assert (0 <= out).all()
+    assert (out >= 0).all()
 
 
 def test_tuple(ctx_factory: cl.CtxFactory):

@@ -115,10 +115,7 @@ def build_per_access_storage_to_domain_map(
         cns = isl.Constraint.equality_from_aff(cns_aff)
 
         cns_map = isl.BasicMap.from_constraint(cns)
-        if stor2sweep is None:
-            stor2sweep = cns_map
-        else:
-            stor2sweep = stor2sweep.intersect(cns_map)
+        stor2sweep = cns_map if stor2sweep is None else stor2sweep.intersect(cns_map)
 
     if stor2sweep is not None:
         stor2sweep = stor2sweep.move_dims(

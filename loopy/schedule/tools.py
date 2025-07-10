@@ -60,6 +60,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import contextlib
 import enum
 import itertools
 from dataclasses import dataclass
@@ -261,10 +262,8 @@ def _process_args_for_arg_info(
         if used_only and not (arg.name in args_read or arg.name in args_written):
             continue
 
-        try:
+        with contextlib.suppress(KeyError):
             args_expected.remove(arg.name)
-        except KeyError:
-            pass
 
         # Disregard the original array if it had a sep-tagged axis.
         if isinstance(arg, ArrayArg):
@@ -339,9 +338,8 @@ def get_subkernel_arg_info(
 
         if _should_temp_var_be_passed(tv):
             if tv.base_storage:
-                if tv_name in tvs_written:
-                    if tv_name in tvs_written:
-                        tvs_written.add(tv.base_storage)
+                if tv_name in tvs_written and tv_name in tvs_written:
+                    tvs_written.add(tv.base_storage)
             else:
                 passed_temporaries.append(tv.name)
 

@@ -725,7 +725,7 @@ def precompute_for_single_kernel(
 
         storage_axis_names.append(name)
         if name not in preexisting_precompute_inames:
-            iname_tag = storage_axis_to_tag.get(tag_lookup_saxis, None)
+            iname_tag = storage_axis_to_tag.get(tag_lookup_saxis)
             if iname_tag is None:
                 iname_tag = default_tag
             if iname_tag is not None:
@@ -917,10 +917,7 @@ def precompute_for_single_kernel(
     for i, (arg_name, base_index) in enumerate(
             zip(storage_axis_names, abm.storage_base_indices)):
         is_length_1 = arg_name not in non1_storage_axis_names
-        if is_length_1:
-            arg = 0
-        else:
-            arg = var(arg_name)
+        arg = 0 if is_length_1 else var(arg_name)
 
         # FIXME: Hacky workaround, remove when no longer needed.
         # Some transform code in the mirgecom transform stack

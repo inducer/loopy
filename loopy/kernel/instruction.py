@@ -289,12 +289,9 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # within_inames_is_final is deprecated and will be removed in version 2017.x.
 
-    fields: ClassVar[set[str]] = set("id depends_on_is_final "
-            "groups conflicts_with_groups "
-            "no_sync_with "
-            "predicates "
-            "within_inames_is_final within_inames "
-            "priority".split())
+    fields: ClassVar[set[str]] = {"id", "depends_on_is_final", "groups",
+        "conflicts_with_groups", "no_sync_with", "predicates",
+        "within_inames_is_final", "within_inames", "priority"}
 
     def __init__(self,
                  id: str | None,
@@ -624,13 +621,7 @@ def _get_assignee_var_name(expr: Assignable) -> str:
     if isinstance(expr, Variable):
         return expr.name
 
-    elif isinstance(expr, Subscript):
-        agg = expr.aggregate
-        assert isinstance(agg, Variable)
-
-        return agg.name
-
-    elif isinstance(expr, LinearSubscript):
+    elif isinstance(expr, (Subscript, LinearSubscript)):
         agg = expr.aggregate
         assert isinstance(agg, Variable)
 
@@ -656,9 +647,7 @@ def _get_assignee_subscript_deps(expr: Expression) -> frozenset[str]:
 
     if isinstance(expr, Variable):
         return frozenset()
-    elif isinstance(expr, Subscript):
-        return get_dependencies(expr.index)
-    elif isinstance(expr, LinearSubscript):
+    elif isinstance(expr, (Subscript, LinearSubscript)):
         return get_dependencies(expr.index)
     elif isinstance(expr, SubArrayRef):
         return get_dependencies(expr.subscript.index) - (
@@ -944,7 +933,7 @@ class Assignment(MultiAssignmentBase):
     atomicity: tuple[VarAtomicity, ...]
 
     fields = MultiAssignmentBase.fields | \
-            set("assignee temp_var_type atomicity".split())
+            {"assignee", "temp_var_type", "atomicity"}
 
     def __init__(self,
                  assignee: str | Assignable,
@@ -1038,10 +1027,7 @@ class Assignment(MultiAssignmentBase):
             if new_pred is not pred:
                 changed_predicates = True
             predicates.append(new_pred)
-        if changed_predicates:
-            predicates = frozenset(predicates)
-        else:
-            predicates = self.predicates
+        predicates = frozenset(predicates) if changed_predicates else self.predicates
 
         if assignee is self.assignee and expression is self.expression and \
                 predicates is self.predicates:
@@ -1117,7 +1103,7 @@ class CallInstruction(MultiAssignmentBase):
     expression: p.Call
 
     fields = MultiAssignmentBase.fields | \
-            set("assignees temp_var_types".split())
+            {"assignees", "temp_var_types"}
 
     def __init__(self,
             assignees: tuple[Assignable, ...] | str,
@@ -1221,10 +1207,7 @@ class CallInstruction(MultiAssignmentBase):
             if new_pred is not pred:
                 changed_predicates = True
             predicates.append(new_pred)
-        if changed_predicates:
-            predicates = frozenset(predicates)
-        else:
-            predicates = self.predicates
+        predicates = frozenset(predicates) if changed_predicates else self.predicates
 
         if len(assignees) == len(self.assignees) and \
                 all(assignee is orig_assignee for assignee, orig_assignee in
@@ -1300,11 +1283,9 @@ def is_array_call(assignees, expression):
         return False
 
     for par in expression.parameters+assignees:
-        if isinstance(par, SubArrayRef):
+        if isinstance(par, SubArrayRef) or (
+                isinstance(par, Subscript) and subscript_contains_slice(par)):
             return True
-        elif isinstance(par, Subscript):
-            if subscript_contains_slice(par):
-                return True
 
     # did not encounter SubArrayRef/Slice, hence must be a normal call
     return False
@@ -1446,7 +1427,7 @@ class CInstruction(InstructionBase):
     """
 
     fields = InstructionBase.fields | \
-            set("iname_exprs code read_variables assignees".split())
+            {"iname_exprs", "code", "read_variables", "assignees"}
 
     def __init__(self,
             iname_exprs, code,
