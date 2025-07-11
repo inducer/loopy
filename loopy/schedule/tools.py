@@ -277,7 +277,7 @@ def get_temporary_decl_blocks(
             seen_storage_variables, new_temporary_variables
         )
 
-        if (len(new_storage_variables) > 0):
+        if new_storage_variables:
             last_accesses[sched_index] = new_storage_variables
     return (first_accesses, last_accesses)
 # }}}
