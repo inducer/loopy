@@ -178,9 +178,14 @@ def supporting_temporary_names(
     return frozenset(result)
 
 
-def get_temporary_decl_blocks(
+def get_sched_index_to_first_and_last_used(
         kernel: LoopKernel
     ) -> tuple[dict[int, frozenset[str]], dict[int, frozenset[str]]]:
+    """
+    Returns the tuple (first_used, last_used), where first_used is a dict such that
+    first_used[sched_index] is the set of all temporary variable names first used at sched_index.
+    Likewise, last_used[sched_index] is the set of all temporary variable names last used at sched_index.
+    """
     from loopy.kernel.data import AddressSpace
     from loopy.schedule import CallKernel, EnterLoop
 

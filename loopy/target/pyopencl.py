@@ -848,8 +848,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_temporary_decl_at_index(
             self, codegen_state: CodeGenerationState, sched_index: int
         ) -> tuple[genpy.Generable | None, genpy.Generable | None]:
-        from loopy.schedule.tools import get_temporary_decl_blocks
-        first_accesses, last_accesses = get_temporary_decl_blocks(codegen_state.kernel)
+        from loopy.schedule.tools import get_sched_index_to_first_and_last_used
+        first_accesses, last_accesses = get_sched_index_to_first_and_last_used(codegen_state.kernel)
         prefixes, suffixes = None, None
         if sched_index in first_accesses:
             prefix_lines: list[genpy.Generable] = []
@@ -900,6 +900,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             temp_var: TemporaryVariable
         ) -> genpy.Generable:
         from genpy import Statement
+        # Zero-size temporaries allocate as None, tolerate that.
+        # https://documen.tician.de/pyopencl/tools.html#pyopencl.tools.ImmediateAllocator
         return Statement(f"if {temp_var.name} is not None: {temp_var.name}.release()")
 
     def get_kernel_call(
@@ -908,10 +910,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             gsize: tuple[Expression, ...], lsize: tuple[Expression, ...]
             ) -> genpy.Suite:
         from genpy import Assert, Assign, Comment, Line, Suite
-        from pymbolic.mapper.stringifier import PREC_NONE
 
         kernel = codegen_state.kernel
-        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         from loopy.schedule.tools import get_subkernel_arg_info
         skai = get_subkernel_arg_info(kernel, subkernel_name)
