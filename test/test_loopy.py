@@ -3731,17 +3731,20 @@ def test_temporary_memory_allocation(ctx_factory: cl.CtxFactory):
             """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
-            {"a": np.float32, "out": np.float32, "n": np.int32})
+            {"a": np.float32})
 
-    temp_vars = ["b", "c", "d", "e", "f", "g", "h", "j", "k", "l", "m"]
+    temp_vars = list(knl.default_entrypoint.temporary_variables)
     knl = lp.set_temporary_address_space(knl, temp_vars, "global")
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
     mem_pool_alloc = MemoryPool(ImmediateAllocator(cq))
 
-    knl(cq, a=np.arange(n, dtype=np.float32), allocator=mem_pool_alloc)
-    assert mem_pool_alloc.managed_bytes < (len(temp_vars) * 4 * n)
+    a = np.arange(n, dtype=np.float32)
+    knl(cq, a=a, allocator=mem_pool_alloc)
+    
+    # FIXME This relies on the memory pool not freeing any memory it allocates
+    assert mem_pool_alloc.managed_bytes < len(temp_vars) * a.nbytes
 
 
 @pytest.mark.filterwarnings("error:.*:loopy.LoopyWarning")
