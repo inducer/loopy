@@ -3742,7 +3742,7 @@ def test_temporary_memory_allocation(ctx_factory: cl.CtxFactory):
 
     a = np.arange(n, dtype=np.float32)
     knl(cq, a=a, allocator=mem_pool_alloc)
-    
+
     # FIXME This relies on the memory pool not freeing any memory it allocates
     assert mem_pool_alloc.managed_bytes < len(temp_vars) * a.nbytes
 

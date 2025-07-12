@@ -182,9 +182,12 @@ def get_sched_index_to_first_and_last_used(
         kernel: LoopKernel
     ) -> tuple[dict[int, frozenset[str]], dict[int, frozenset[str]]]:
     """
-    Returns the tuple (first_used, last_used), where first_used is a dict such that
-    first_used[sched_index] is the set of all temporary variable names first used at sched_index.
-    Likewise, last_used[sched_index] is the set of all temporary variable names last used at sched_index.
+    Returns the tuple (first_used, last_used), where first_used is
+    a dict such that first_used[sched_index] is the set of all temporary
+    variable names first used at sched_index.
+
+    Likewise, last_used[sched_index] is the set of all temporary variable names
+    last used at sched_index.
     """
     from loopy.kernel.data import AddressSpace
     from loopy.schedule import CallKernel, EnterLoop
@@ -221,7 +224,7 @@ def get_sched_index_to_first_and_last_used(
     sched_index = 0
     while sched_index < len(kernel.linearization):
         sched_item = kernel.linearization[sched_index]
-        if isinstance(sched_item, EnterLoop) or isinstance(sched_item, CallKernel):
+        if isinstance(sched_item, (EnterLoop, CallKernel)):
             if isinstance(sched_item, CallKernel):
                 block_end = block_boundaries[sched_index]
                 accessed_temporaries = (
