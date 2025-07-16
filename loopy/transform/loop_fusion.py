@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, cast, final
 from constantdict import constantdict
 from typing_extensions import override
 
-from pytools import memoize_on_first_arg
+from pytools import fset_union, memoize_on_first_arg
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
@@ -42,7 +42,6 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     SubstitutionRuleMappingContext,
 )
-from loopy.typing import InsnId, fset_union
 
 
 if TYPE_CHECKING:
@@ -51,7 +50,7 @@ if TYPE_CHECKING:
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import RuleStack
     from loopy.schedule.tools import LoopNestTree
-    from loopy.typing import InameStr, InameStrSet
+    from loopy.typing import InameStr, InameStrSet, InsnId
 
 
 __doc__ = """
