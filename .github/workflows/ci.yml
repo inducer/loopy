@@ -194,8 +194,7 @@ jobs:
                 # patch so exception messages get shown
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/ec5470a7d8587b6e1f336f3ef1d0ece5e26f236a/firedrake-debug-patch.diff | patch -p1
 
-                sed -i 's/@mpiexec/@mpiexec --oversubscribe/' Makefile
-                make check
+                firedrake-check --mpiexec 'mpiexec --oversubscribe -n'
 
     validate_cff:
             name: Validate CITATION.cff
