@@ -135122,14 +135122,6 @@
                 }
             },
             {
-                "code": "reportMissingTypeStubs",
-                "range": {
-                    "startColumn": 9,
-                    "endColumn": 22,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportUnknownMemberType",
                 "range": {
                     "startColumn": 7,
@@ -135188,16 +135180,16 @@
             {
                 "code": "reportAny",
                 "range": {
-                    "startColumn": 31,
-                    "endColumn": 42,
+                    "startColumn": 37,
+                    "endColumn": 41,
                     "lineCount": 1
                 }
             },
             {
                 "code": "reportAny",
                 "range": {
-                    "startColumn": 31,
-                    "endColumn": 42,
+                    "startColumn": 37,
+                    "endColumn": 41,
                     "lineCount": 1
                 }
             },
