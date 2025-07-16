@@ -54,7 +54,7 @@ def test_assume():
     assert "if" not in code
 
 
-def test_divisibility_assumption(ctx_factory):
+def test_divisibility_assumption(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -225,7 +225,7 @@ def test_dependent_loop_bounds_4():
         lp.generate_code_v2(loopy_knl)
 
 
-def test_independent_multi_domain(ctx_factory):
+def test_independent_multi_domain(ctx_factory: cl.CtxFactory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -261,7 +261,7 @@ def test_independent_multi_domain(ctx_factory):
     assert (b == 2).all()
 
 
-def test_equality_constraints(ctx_factory):
+def test_equality_constraints(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
 
@@ -297,7 +297,7 @@ def test_equality_constraints(ctx_factory):
             parameters={"n": n}, print_ref_code=True)
 
 
-def test_stride(ctx_factory):
+def test_stride(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
 
@@ -323,7 +323,8 @@ def test_stride(ctx_factory):
             parameters={"n": n})
 
 
-def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
+def test_domain_dependency_via_existentially_quantified_variable(
+        ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
 

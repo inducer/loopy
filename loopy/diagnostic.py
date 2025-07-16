@@ -24,7 +24,13 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 from pytools import MovedFunctionDeprecationWrapper
+
+
+if TYPE_CHECKING:
+    from loopy.kernel import LoopKernel
 
 
 # {{{ warnings
@@ -55,7 +61,13 @@ class DirectCallUncachedWarning(LoopyWarning):
 # }}}
 
 
-def warn_with_kernel(kernel, id, text, type=LoopyWarning, stacklevel=None):
+def warn_with_kernel(
+            kernel: LoopKernel,
+            id: str,
+            text: str,
+            type: type[LoopyWarning] = LoopyWarning,
+            stacklevel: int | None = None
+        ) -> None:
     from fnmatch import fnmatchcase
     for sw in kernel.silenced_warnings:
         if fnmatchcase(id, sw):
@@ -64,10 +76,7 @@ def warn_with_kernel(kernel, id, text, type=LoopyWarning, stacklevel=None):
     text += (" (add '%s' to silenced_warnings kernel attribute to disable)"
             % id)
 
-    if stacklevel is None:
-        stacklevel = 2
-    else:
-        stacklevel = stacklevel + 1
+    stacklevel = 2 if stacklevel is None else stacklevel + 1
     from warnings import warn
     warn(f"in kernel {kernel.name}: {text}", type, stacklevel=stacklevel)
 

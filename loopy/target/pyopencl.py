@@ -24,14 +24,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-
 import logging
-from typing import TYPE_CHECKING, Any, Sequence, cast
+from typing import TYPE_CHECKING, Any, cast
 from warnings import warn
 
 import numpy as np
 from constantdict import constantdict
+from typing_extensions import override
 
+import genpy
 import pymbolic.primitives as p
 from cgen import (
     Block,
@@ -56,27 +57,34 @@ from loopy.kernel.data import (
 )
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.schedule import CallKernel
+from loopy.target.c import CompyteDTypeRegistryWrapper, DTypeRegistry
 from loopy.target.opencl import (
     ExpressionToOpenCLCExpressionMapper,
     OpenCLCASTBuilder,
     OpenCLTarget,
 )
 from loopy.target.python import PythonASTBuilderBase
-from loopy.types import NumpyType
+from loopy.types import LoopyType, NumpyType
 
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     import genpy
     import pyopencl as cl
+    from pymbolic import Expression
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
     from loopy.target.pyopencl_execution import PyOpenCLExecutor
-    from loopy.translation_unit import FunctionIdT, TranslationUnit
-    from loopy.typing import Expression
+    from loopy.translation_unit import (
+        CallableId,
+        CallablesInferenceContext,
+        TranslationUnit,
+    )
 
 
 # {{{ pyopencl function scopers
@@ -86,11 +94,16 @@ class PyOpenCLCallable(ScalarCallable):
     Records information about the callables which are not covered by
     :class:`loopy.target.opencl.OpenCLCallable`
     """
-    def with_types(self, arg_id_to_dtype, callables_table):
+    @override
+    def with_types(self,
+                   arg_id_to_dtype: Mapping[int | str, LoopyType],
+                   clbl_inf_ctx: CallablesInferenceContext,
+               ) -> tuple[ScalarCallable, CallablesInferenceContext]:
 
         name = self.name
 
         for id in arg_id_to_dtype:
+            assert isinstance(id, int)
             # since all the below functions are single arg.
             if not -1 <= id <= 0:
                 raise LoopyError(f"{name} can only take one argument")
@@ -100,53 +113,50 @@ class PyOpenCLCallable(ScalarCallable):
             # callable
             return (
                     self.copy(arg_id_to_dtype=constantdict(arg_id_to_dtype)),
-                    callables_table)
+                    clbl_inf_ctx)
 
         dtype = arg_id_to_dtype[0]
 
-        if name in ["real", "imag", "abs"]:
-            if dtype.is_complex():
-                if dtype.numpy_dtype == np.complex64:
-                    tpname = "cfloat"
-                elif dtype.numpy_dtype == np.complex128:
-                    tpname = "cdouble"
-                else:
-                    raise LoopyTypeError(f"unexpected complex type '{dtype}'")
+        if name in ["real", "imag", "abs"] and dtype.is_complex():
+            if dtype.numpy_dtype == np.complex64:
+                tpname = "cfloat"
+            elif dtype.numpy_dtype == np.complex128:
+                tpname = "cdouble"
+            else:
+                raise LoopyTypeError(f"unexpected complex type '{dtype}'")
 
-                return (
-                        self.copy(name_in_target=f"{tpname}_{name}",
-                            arg_id_to_dtype=constantdict({
-                                0: dtype,
-                                -1: NumpyType(np.dtype(dtype.numpy_dtype.type(0).real))
-                                })),
-                        callables_table)
+            return (
+                    self.copy(name_in_target=f"{tpname}_{name}",
+                        arg_id_to_dtype=constantdict({
+                            0: dtype,
+                            -1: NumpyType(np.dtype(dtype.numpy_dtype.type(0).real))
+                            })),
+                    clbl_inf_ctx)
 
-        if name in ["real", "imag", "conj"]:
-            if not dtype.is_complex():
-                tpname = dtype.numpy_dtype.type.__name__
-                return (
-                        self.copy(
-                            name_in_target=f"_lpy_{name}_{tpname}",
-                            arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
-                        callables_table)
+        if name in ["real", "imag", "conj"] and not dtype.is_complex():
+            tpname = dtype.numpy_dtype.type.__name__
+            return (
+                    self.copy(
+                        name_in_target=f"_lpy_{name}_{tpname}",
+                        arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
+                    clbl_inf_ctx)
 
         if name in ["sqrt", "exp", "log",
                 "sin", "cos", "tan",
                 "sinh", "cosh", "tanh",
-                "conj"]:
-            if dtype.is_complex():
-                # function parameters are complex.
-                if dtype.numpy_dtype == np.complex64:
-                    tpname = "cfloat"
-                elif dtype.numpy_dtype == np.complex128:
-                    tpname = "cdouble"
-                else:
-                    raise LoopyTypeError("unexpected complex type '%s'" % dtype)
+                "conj"] and dtype.is_complex():
+            # function parameters are complex.
+            if dtype.numpy_dtype == np.complex64:
+                tpname = "cfloat"
+            elif dtype.numpy_dtype == np.complex128:
+                tpname = "cdouble"
+            else:
+                raise LoopyTypeError("unexpected complex type '%s'" % dtype)
 
-                return (
-                        self.copy(name_in_target=f"{tpname}_{name}",
-                            arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
-                        callables_table)
+            return (
+                    self.copy(name_in_target=f"{tpname}_{name}",
+                        arg_id_to_dtype=constantdict({0: dtype, -1: dtype})),
+                    clbl_inf_ctx)
 
             # fall back to pure OpenCL for real-valued arguments
 
@@ -155,7 +165,7 @@ class PyOpenCLCallable(ScalarCallable):
                 arg_id_to_dtype=self.arg_id_to_dtype,
                 arg_id_to_descr=self.arg_id_to_descr,
                 name_in_target=self.name_in_target).with_types(
-                        arg_id_to_dtype, callables_table)
+                        arg_id_to_dtype, clbl_inf_ctx)
 
     def generate_preambles(self, target):
         name = self.name_in_target
@@ -224,7 +234,7 @@ def pyopencl_preamble_generator(preamble_info):
 # {{{ expression mapper
 
 class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper):
-    def complex_type_name(self, dtype):
+    def complex_type_name(self, dtype: LoopyType):
         from loopy.types import NumpyType
         if not isinstance(dtype, NumpyType):
             raise LoopyError("'%s' is not a complex type" % dtype)
@@ -246,7 +256,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         else:
             return super().wrap_in_typecast(actual_type, needed_type, s)
 
-    def map_sum(self, expr, type_context):
+    @override
+    def map_sum(self, expr: p.Sum, type_context: str) -> Expression:
         # I've added 'type_context == "i"' because of the following
         # idiotic corner case: Code generation for subscripts comes
         # through here, and it may involve variables that we know
@@ -272,9 +283,9 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             for child in expr.children:
                 rhs_is_complex = self.infer_type(child).is_complex()
                 if rhs_is_complex:
-                    child_val = self.rec(child, type_context, tgt_dtype)
+                    child_val = self.rec_arith(child, type_context, tgt_dtype)
                 else:
-                    child_val = self.rec(child, type_context)
+                    child_val = self.rec_arith(child, type_context)
 
                 if result is None:
                     result = child_val
@@ -287,6 +298,9 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 else:
                     result = p.Sum((result, child_val))
                 lhs_is_complex = lhs_is_complex or rhs_is_complex
+
+            assert result is not None
+
             return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
@@ -354,7 +368,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             else:
                 return complex_sum
 
-    def map_product(self, expr, type_context):
+    @override
+    def map_product(self, expr: p.Product, type_context: str) -> Expression:
         # I've added 'type_context == "i"' because of the following
         # idiotic corner case: Code generation for subscripts comes
         # through here, and it may involve variables that we know
@@ -377,9 +392,9 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             for child in expr.children:
                 rhs_is_complex = self.infer_type(child).is_complex()
                 if rhs_is_complex:
-                    child_val = self.rec(child, type_context, tgt_dtype)
+                    child_val = self.rec_arith(child, type_context, tgt_dtype)
                 else:
-                    child_val = self.rec(child, type_context)
+                    child_val = self.rec_arith(child, type_context)
 
                 if result is None:
                     result = child_val
@@ -392,6 +407,9 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 else:
                     result = p.Product((result, child_val))
                 lhs_is_complex = lhs_is_complex or rhs_is_complex
+
+            assert result is not None
+
             return result
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
@@ -424,12 +442,13 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             else:
                 return complex_prd
 
-    def map_quotient(self, expr, type_context):
+    @override
+    def map_quotient(self, expr: p.Quotient, type_context: str):
         n_dtype = self.infer_type(expr.numerator).numpy_dtype
         d_dtype = self.infer_type(expr.denominator).numpy_dtype
         tgt_dtype = self.infer_type(expr)
-        n_complex = "c" == n_dtype.kind
-        d_complex = "c" == d_dtype.kind
+        n_complex = n_dtype.kind == "c"
+        d_complex = d_dtype.kind == "c"
 
         if not self.allow_complex or (not (n_complex or d_complex)):
             return super().map_quotient(expr, type_context)
@@ -447,7 +466,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                     self.rec(expr.numerator, type_context, tgt_dtype),
                     self.rec(expr.denominator, type_context, tgt_dtype))
 
-    def map_constant(self, expr, type_context):
+    @override
+    def map_constant(self, expr: object, type_context: str):
         if isinstance(expr, (complex, np.complexfloating)):
             try:
                 dtype = expr.dtype
@@ -473,7 +493,8 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         return super().map_constant(expr, type_context)
 
-    def map_power(self, expr, type_context):
+    @override
+    def map_power(self, expr: p.Power, type_context: str):
         tgt_dtype = self.infer_type(expr)
         base_dtype = self.infer_type(expr.base)
         exponent_dtype = self.infer_type(expr.exponent)
@@ -483,7 +504,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
 
         if expr.exponent in [2, 3, 4]:
             value = expr.base
-            for _i in range(expr.exponent-1):
+            for _i in range(cast("int", expr.exponent)-1):
                 value = value * expr.base
             return self.rec(value, type_context)
         else:
@@ -569,9 +590,11 @@ class PyOpenCLTarget(OpenCLTarget):
 
     # {{{ types
 
-    def get_dtype_registry(self):
+    @override
+    def get_dtype_registry(self) -> DTypeRegistry:
         from pyopencl.compyte.dtypes import TYPE_REGISTRY
-        result = TYPE_REGISTRY
+
+        result = CompyteDTypeRegistryWrapper(TYPE_REGISTRY)
 
         from loopy.target.opencl import (
             DTypeRegistryWrapperWithCL1Atomics,
@@ -625,7 +648,7 @@ class PyOpenCLTarget(OpenCLTarget):
     # and mypy doesn't like it.
     def get_kernel_executor(self, t_unit: TranslationUnit,  # type: ignore[override]
                             queue_or_context: cl.CommandQueue | cl.Context,
-                            *args: Any, entrypoint: FunctionIdT, **kwargs: Any
+                            *args: Any, entrypoint: CallableId, **kwargs: Any
                             ) -> PyOpenCLExecutor:
         from pyopencl import CommandQueue
         if isinstance(queue_or_context, CommandQueue):
@@ -765,6 +788,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     """A Python host AST builder for integration with PyOpenCL.
     """
 
+    target: PyOpenCLTarget
+
     # {{{ code generation guts
 
     def get_function_definition(
@@ -802,14 +827,17 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     Return("_lpy_evt"),
                     ]))
 
+    @override
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
-            ) -> tuple[Sequence[tuple[str, str]], genpy.Generable | None]:
+            codegen_result: CodeGenerationResult[Any], schedule_index: int
+            ) -> tuple[
+                Sequence[tuple[str, str]],
+                genpy.Generable | None]:
         # no such thing in Python
         return [], None
 
-    def _get_global_temporaries(self, codegen_state):
+    def _get_global_temporaries(self, codegen_state: CodeGenerationState):
         from loopy.kernel.data import AddressSpace
 
         return sorted(
@@ -817,7 +845,11 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             if tv.address_space == AddressSpace.GLOBAL),
             key=lambda tv: tv.name)
 
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    @override
+    def get_temporary_decls(self,
+                codegen_state: CodeGenerationState,
+                schedule_index: int
+            ):
         from genpy import Assign, Comment, Line
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
@@ -826,8 +858,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not global_temporaries:
             return []
 
-        allocated_var_names = []
-        code_lines = []
+        allocated_var_names: list[str] = []
+        code_lines: list[genpy.Generable] = []
         code_lines.append(Line())
         code_lines.append(Comment("{{{ allocate global temporaries"))
         code_lines.append(Line())
@@ -838,7 +870,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     # NB: This does not prevent all zero-size allocations,
                     # as sizes are parametric, and allocation size
                     # could turn out to be zero at runtime.
-                    nbytes_str = ecm(tv.nbytes, PREC_NONE, "i")
+                    nbytes_str = ecm(tv.nbytes, PREC_NONE, type_context="i")
                     allocated_var_names.append(tv.name)
                     code_lines.append(Assign(tv.name,
                                              f"allocator({nbytes_str})"))
@@ -1026,12 +1058,14 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     """A C device AST builder for integration with PyOpenCL.
     """
 
+    target: PyOpenCLTarget
+
     # {{{ function decl/def, with arg overflow handling
 
     def get_function_definition(
             self,
             codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult,
+            codegen_result: CodeGenerationResult[Generable],
             schedule_index: int,
             function_decl: Generable,
             function_body: Generable,
@@ -1113,7 +1147,7 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[Generable], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 

@@ -1,6 +1,8 @@
 """CUDA target independent of PyCUDA."""
 from __future__ import annotations
 
+from loopy.typing import not_none
+
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -24,7 +26,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -48,6 +50,8 @@ from loopy.types import NumpyType
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
 
@@ -318,6 +322,7 @@ def cuda_preamble_generator(preamble_info):
 # {{{ ast builder
 
 class CUDACASTBuilder(CFamilyASTBuilder):
+    target: CudaTarget
 
     preamble_function_qualifier = "inline __device__"
 
@@ -335,7 +340,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[Generable], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         preambles, fdecl = super().get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
@@ -433,7 +438,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
 
         vec_size = ary.vector_length()
         if vec_size > 1:
-            dtype = self.target.vector_dtype(dtype, vec_size)
+            dtype = self.target.vector_dtype(not_none(dtype), vec_size)
 
         if ary.dim_tags:
             for dim_tag in ary.dim_tags:
@@ -529,7 +534,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 return Statement("atomicAdd(&{}, {})".format(
                     lhs_expr_code, rhs_expr_code))
             else:
-                from cgen import Assign, Block, DoWhile
+                from cgen import Assign, Block, DoWhile, Line
 
                 from loopy.target.c import POD
                 old_val_var = codegen_state.var_name_generator("loopy_old_val")
@@ -577,7 +582,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                     POD(self, NumpyType(lhs_dtype.dtype),
                         new_val_var),
                     DoWhile(
-                        "atomicCAS("
+                        Line("atomicCAS("
                         "%(cast_str)s&(%(lhs_expr)s), "
                         "%(old_val)s, "
                         "%(new_val)s"
@@ -587,7 +592,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                             "lhs_expr": lhs_expr_code,
                             "old_val": old_val,
                             "new_val": new_val,
-                            },
+                            }),
                         Block([
                             Assign(old_val_var, lhs_expr_code),
                             Assign(new_val_var, rhs_expr_code),

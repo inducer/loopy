@@ -25,15 +25,17 @@ THE SOFTWARE.
 
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
+from typing_extensions import override
 
 import islpy as isl
 from islpy import dim_type
-from pymbolic.primitives import Variable, is_arithmetic_expression
-from pytools import memoize_method
+from pymbolic.primitives import AlgebraicLeaf, Variable, is_arithmetic_expression
+from pytools import memoize_method, set_union
 
 from loopy.diagnostic import (
     LoopyError,
@@ -43,17 +45,16 @@ from loopy.diagnostic import (
 )
 from loopy.kernel.array import (
     ArrayBase,
+    ArrayDimImplementationTag,
     FixedStrideArrayDimTag,
     SeparateArrayArrayDimTag,
 )
 from loopy.kernel.data import (
     AddressSpace,
     ArrayArg,
-    ArrayDimImplementationTag,
     AxisTag,
     InameImplementationTag,
     TemporaryVariable,
-    auto,
 )
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (
@@ -65,17 +66,20 @@ from loopy.kernel.instruction import (
 )
 from loopy.symbolic import CombineMapper, ResolvedFunction, SubArrayRef, WalkMapper
 from loopy.translation_unit import (
+    CallableId,
     CallablesTable,
     TranslationUnit,
     check_each_kernel,
 )
 from loopy.type_inference import TypeReader
-from loopy.typing import not_none
+from loopy.typing import auto, not_none
 
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    import pymbolic.primitives as p
+    from pymbolic import ArithmeticExpression
     from pymbolic.typing import Expression
 
     from loopy.kernel import LoopKernel
@@ -115,7 +119,7 @@ __doc__ = """
 
 # {{{ sanity checks run before preprocessing
 
-def check_identifiers_in_subst_rules(knl):
+def check_identifiers_in_subst_rules(knl: LoopKernel):
     """Substitution rules may only refer to kernel-global quantities or their
     own arguments.
     """
@@ -136,7 +140,7 @@ def check_identifiers_in_subst_rules(knl):
                        ", ".join(deps-rule_allowed_identifiers)))
 
 
-class UnresolvedCallCollector(CombineMapper):
+class UnresolvedCallCollector(CombineMapper[frozenset[CallableId], []]):
     """
     Collects all the unresolved calls within a kernel.
 
@@ -656,7 +660,7 @@ def check_for_data_dependent_parallel_bounds(kernel: LoopKernel) -> None:
     from loopy.kernel.data import ConcurrentTag
 
     for i, dom in enumerate(kernel.domains):
-        dom_inames = set(dom.get_var_names(dim_type.set))
+        dom_inames = set(dom.get_var_names_not_none(dim_type.set))
         par_inames = {
                 iname for iname in dom_inames
                 if kernel.iname_tags_of_type(iname, ConcurrentTag)}
@@ -693,24 +697,28 @@ def _align_and_intersect_with_caller_assumption(callee_assumptions,
                                 caller_assumptions)
 
 
-def _mark_variables_from_caller(expr):
+def _mark_variables_from_caller(expr: ArithmeticExpression):
     import pymbolic.primitives as prim
 
     from loopy.symbolic import SubstitutionMapper
 
-    def subst_func(x):
+    def subst_func(x: AlgebraicLeaf):
         if isinstance(x, prim.Variable):
             return prim.Variable(f"_lp_caller_{x.name}")
 
-    return SubstitutionMapper(subst_func)(expr)
+    res = SubstitutionMapper(subst_func)(expr)
+    assert is_arithmetic_expression(res)
+    return res
 
 # }}}
 
 
-class _AccessCheckMapper(WalkMapper):
-    def __init__(self, kernel, callables_table):
-        self.kernel = kernel
-        self.callables_table = callables_table
+@dataclass
+class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
+    kernel: LoopKernel
+    callables_table: CallablesTable
+
+    def __post_init__(self) -> None:
         super().__init__()
 
     @memoize_method
@@ -719,14 +727,20 @@ class _AccessCheckMapper(WalkMapper):
         return make_slab(space, iname, start, stop)
 
     @memoize_method
-    def _get_access_range(self, domain, subscript):
-        from loopy.symbolic import UnableToDetermineAccessRangeError, get_access_map
+    def _get_access_range(
+                self,
+                domain: isl.Set,
+                subscript: tuple[Expression, ...]
+            ):
+        from loopy.diagnostic import UnableToDetermineAccessRangeError
+        from loopy.symbolic import get_access_map
         try:
             return get_access_map(domain, subscript).range()
         except UnableToDetermineAccessRangeError:
             return None
 
-    def map_subscript(self, expr, domain, insn_id):
+    @override
+    def map_subscript(self, expr: p.Subscript, domain: isl.Set, insn_id: str):
         WalkMapper.map_subscript(self, expr, domain, insn_id)
 
         from pymbolic.primitives import Variable
@@ -742,6 +756,7 @@ class _AccessCheckMapper(WalkMapper):
             shape = tv.shape
 
         if shape is not None:
+            assert isinstance(shape, tuple)
             subscript = expr.index
 
             if not isinstance(subscript, tuple):
@@ -787,7 +802,8 @@ class _AccessCheckMapper(WalkMapper):
                         " establish '%s' is a subset of '%s')."
                         % (expr, insn_id, access_range, shape_domain))
 
-    def map_if(self, expr, domain, insn_id):
+    @override
+    def map_if(self, expr: p. If, domain: isl.Set, insn_id: str):
         from loopy.symbolic import condition_to_set
         then_set = condition_to_set(domain.space, expr.condition)
         if then_set is None:
@@ -800,7 +816,8 @@ class _AccessCheckMapper(WalkMapper):
         self.rec(expr.then, domain & then_set, insn_id)
         self.rec(expr.else_, domain & else_set, insn_id)
 
-    def map_call(self, expr, domain, insn_id):
+    @override
+    def map_call(self, expr: p.Call, domain: isl.Set, insn_id: str):
         # perform access checks on the call arguments
         super().map_call(expr, domain, insn_id)
 
@@ -817,7 +834,9 @@ class _AccessCheckMapper(WalkMapper):
             and isinstance(self.callables_table[expr.function.name],
                            CallableKernel)):
 
-            subkernel = self.callables_table[expr.function.name].subkernel
+            subkernel = cast(
+                             "CallableKernel",
+                             self.callables_table[expr.function.name]).subkernel
 
             # The plan here is to add the constraints coming from the values
             # args passed at a call-site as assumptions to the callee. To avoid
@@ -835,8 +854,8 @@ class _AccessCheckMapper(WalkMapper):
 
             kw_space = isl.Space.create_from_names(
                 subkernel.isl_context, set=[],
-                params=(get_dependencies(tuple(kwargs.values()))
-                        | set(kwargs.keys())))
+                params=[*get_dependencies(tuple(kwargs.values())),
+                        *kwargs.keys()])
 
             extra_assumptions = isl.BasicSet.universe(kw_space).params()
 
@@ -894,7 +913,7 @@ def _check_bounds_inner(kernel: LoopKernel, callables_table: CallablesTable) -> 
             domain, assumptions = isl.align_two(domain, kernel.assumptions)
             domain_with_assumptions = domain & assumptions
 
-        def run_acm(expr):
+        def run_acm(expr: Expression):
             acm(expr, domain_with_assumptions, insn.id)  # noqa: B023
             return expr
 
@@ -1091,10 +1110,10 @@ def _check_variable_access_ordered_inner(kernel: LoopKernel) -> None:
         address_space = _get_address_space(kernel, var)
         eq_class = aliasing_equiv_classes[var]
 
-        readers = set.union(
-                *[rmap.get(eq_name, set()) for eq_name in eq_class])
-        writers = set.union(
-                *[wmap.get(eq_name, set()) for eq_name in eq_class])
+        readers = set_union(
+                rmap.get(eq_name, set()) for eq_name in eq_class)
+        writers = set_union(
+                wmap.get(eq_name, set()) for eq_name in eq_class)
 
         for writer in writers:
             required_deps = (readers | writers) - {writer}
@@ -1111,16 +1130,14 @@ def _check_variable_access_ordered_inner(kernel: LoopKernel) -> None:
     # {{{ compute rev_depends, depends_on
 
     # depends_on: mapping from insn_ids to their dependencies
-    depends_on: dict[str, set[str]] = {
-        not_none(insn.id): set() for insn in kernel.instructions}
+    depends_on: dict[str, set[str]] = {insn.id: set() for insn in kernel.instructions}
     # rev_depends: mapping from insn_ids to their reverse deps.
-    rev_depends: dict[str, set[str]] = {
-        not_none(insn.id): set() for insn in kernel.instructions}
+    rev_depends: dict[str, set[str]] = {insn.id: set() for insn in kernel.instructions}
 
     for insn in kernel.instructions:
-        depends_on[not_none(insn.id)].update(insn.depends_on)
+        depends_on[insn.id].update(insn.depends_on)
         for dep in insn.depends_on:
-            rev_depends[dep].add(not_none(insn.id))
+            rev_depends[dep].add(insn.id)
 
     # }}}
 
@@ -1588,7 +1605,7 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(
 def check_that_all_insns_are_scheduled(kernel: LoopKernel) -> None:
     assert kernel.linearization is not None
 
-    all_schedulable_insns = {not_none(insn.id) for insn in kernel.instructions}
+    all_schedulable_insns = {insn.id for insn in kernel.instructions}
     from loopy.schedule import sched_item_to_insn_id
     scheduled_insns = {
         insn_id
@@ -1659,7 +1676,10 @@ def _get_sub_array_ref_swept_range(
     from loopy.symbolic import get_access_map
     domain = kernel.get_inames_domain(frozenset({iname_var.name
                                                  for iname_var in sar.swept_inames}))
-    return get_access_map(domain, sar.swept_inames, kernel.assumptions).range()
+    return get_access_map(
+                          domain.to_set(),
+                          sar.swept_inames,
+                          kernel.assumptions).range()
 
 
 def _are_sub_array_refs_equivalent(
@@ -1719,6 +1739,7 @@ def _validate_kernel_call_insn(
             call_insn: CallInstruction,
             callee: LoopKernel
         ) -> None:
+    assert isinstance(call_insn.expression.function, ResolvedFunction)
     assert call_insn.expression.function.name == callee.name
     from loopy.kernel.array import ArrayBase
     from loopy.symbolic import SubArrayRef
@@ -1874,7 +1895,7 @@ def pre_codegen_checks(t_unit: TranslationUnit) -> None:
 
 def check_implemented_domains(
             kernel: LoopKernel,
-            implemented_domains: Mapping[str, isl.Set],
+            implemented_domains: Mapping[str, Sequence[isl.Set]],
             code: str | None = None,
         ) -> bool:
     from islpy import align_two, dim_type
@@ -1920,7 +1941,7 @@ def check_implemented_domains(
                 non_lid_inames, [dim_type.set])
 
         insn_domain = kernel.get_inames_domain(insn_inames)
-        insn_parameters = frozenset(insn_domain.get_var_names(dim_type.param))
+        insn_parameters = frozenset(insn_domain.get_var_names_not_none(dim_type.param))
         assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
         desired_domain = ((insn_domain & assumptions)
             .project_out_except(insn_inames, [dim_type.set])
@@ -1941,10 +1962,10 @@ def check_implemented_domains(
             d_minus_i = desired_domain - insn_impl_domain
 
             parameter_inames = {
-                    insn_domain.get_dim_name(dim_type.param, i)
+                    not_none(insn_domain.get_dim_name(dim_type.param, i))
                     for i in range(insn_impl_domain.dim(dim_type.param))}
 
-            lines = []
+            lines: list[str] = []
             for bigger, smaller, diff_set, gist_domain in [
                     ("implemented", "desired", i_minus_d,
                         desired_domain.gist(insn_impl_domain)),
@@ -1963,7 +1984,7 @@ def check_implemented_domains(
                 # lines.append("point desired: %s" % (pt_set <= desired_domain))
 
                 iname_to_dim = pt.get_space().get_var_dict()
-                point_axes = []
+                point_axes: list[str] = []
                 for iname in insn_inames | parameter_inames:
                     tp, dim = iname_to_dim[iname]
                     point_axes.append("%s=%d" % (

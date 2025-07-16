@@ -468,9 +468,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         if kind and not length:
             length = kind
-        elif length and not kind:
-            pass
-        elif not length and not kind:
+        elif (length and not kind) or (not length and not kind):
             pass
         else:
             raise RuntimeError("both length and kind specified")

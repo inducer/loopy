@@ -565,7 +565,7 @@ Consider this example:
     #define lid(N) ((int) get_local_id(N))
     ...
       for (int i_outer = 0; i_outer <= -1 + (15 + n) / 16; ++i_outer)
-        for (int i_inner = 0; i_inner <= ((-17 + n + -16 * i_outer >= 0) ? 15 : -1 + n + -16 * i_outer); ++i_inner)
+        for (int i_inner = 0; i_inner <= ((-16 + n + -16 * i_outer >= 0) ? 15 : -1 + n + -16 * i_outer); ++i_inner)
           a[16 * i_outer + i_inner] = (float) (0.0f);
     ...
 
@@ -595,7 +595,7 @@ relation to loop nesting. For example, it's perfectly possible to request
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_inner = 0; i_inner <= ((-17 + n >= 0) ? 15 : -1 + n); ++i_inner)
+      for (int i_inner = 0; i_inner <= ((-16 + n >= 0) ? 15 : -1 + n); ++i_inner)
         for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + (15 + n + 15 * i_inner) / 16; ++i_outer)
           a[16 * i_outer + i_inner] = (float) (0.0f);
     ...
@@ -822,7 +822,7 @@ enabling some cost savings:
       }
       /* final slab for 'i_outer' */
       {
-        int const i_outer = -1 + n + -1 * ((3 * n) / 4);
+        int const i_outer = loopy_floor_div_pos_b_int32(-1 + n, 4);
     <BLANKLINE>
         if (i_outer >= 0)
         {
@@ -1319,7 +1319,7 @@ The kernel translates into two OpenCL kernels.
      int tmp;
    <BLANKLINE>
      tmp = tmp_save_slot[16 * gid(0) + lid(0)];
-     arr[(1 + lid(0) + gid(0) * 16) % n] = tmp;
+     arr[(lid(0) + gid(0) * 16 + 1) % n] = tmp;
    }
 
 Now we can execute the kernel.

@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from warnings import warn
 
 import numpy as np
@@ -36,6 +36,8 @@ from loopy.kernel.array import get_strides
 
 if TYPE_CHECKING:
     import pyopencl.array as cla
+
+    from loopy.types import NumpyType
 
 
 AUTO_TEST_SKIP_RUN = False
@@ -142,7 +144,7 @@ def make_ref_args(kernel, queue, parameters):
                         "testing" % arg.name)
 
             shape = evaluate_shape(arg.shape, parameters)
-            dtype = arg.dtype
+            dtype = cast("NumpyType", arg.dtype).dtype
 
             is_output = arg.is_output
 
@@ -529,7 +531,7 @@ def auto_test_vs_ref(
         logger.info("%s (ref): run done" % ref_entrypoint)
 
         ref_evt.wait()
-        ref_elapsed_event = 1e-9*(ref_evt.profile.END-ref_evt.profile.START)
+        ref_elapsed_event = 1e-9*(ref_evt.profile.end-ref_evt.profile.start)
 
         break
 
@@ -611,7 +613,7 @@ def auto_test_vs_ref(
 
                 need_check = False
 
-    events = []
+    events: list[cl.Event] = []
     queue.finish()
 
     logger.info("%s: warmup done" % (test_entrypoint))
@@ -643,12 +645,12 @@ def auto_test_vs_ref(
         evt_start.wait()
         evt_end.wait()
 
-        elapsed_event = (1e-9*events[-1].profile.END
-                - 1e-9*events[0].profile.START) \
+        elapsed_event = (1e-9*events[-1].profile.end
+                - 1e-9*events[0].profile.start) \
                 / timing_rounds
         try:
-            elapsed_event_marker = ((1e-9*evt_end.profile.START
-                        - 1e-9*evt_start.profile.START)
+            elapsed_event_marker = ((1e-9*evt_end.profile.start
+                        - 1e-9*evt_start.profile.start)
                     / timing_rounds)
         except cl.RuntimeError:
             elapsed_event_marker = None

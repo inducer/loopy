@@ -35,6 +35,7 @@ from pyopencl.tools import (  # noqa: F401
 )
 
 import loopy as lp
+from loopy.translation_unit import TranslationUnit
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 
 
@@ -66,7 +67,7 @@ def check_float4(result, ref_result):
                 ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
 
 
-def test_axpy(ctx_factory):
+def test_axpy(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     n = 3145182
@@ -98,14 +99,15 @@ def test_axpy(ctx_factory):
 
         seq_knl = knl
 
-        def variant_cpu(knl):
+        def variant_cpu(knl: TranslationUnit):
             unroll = 16
             block_size = unroll*4096
             knl = lp.split_iname(knl, "i", block_size, outer_tag="g.0", slabs=(0, 1))
             knl = lp.split_iname(knl, "i_inner", unroll, inner_tag="unr")
+            knl = lp.prioritize_loops(knl, "i_outer, i_inner_outer, i_inner_inner")
             return knl
 
-        def variant_gpu(knl):
+        def variant_gpu(knl: TranslationUnit):
             unroll = 4
             block_size = 256
             knl = lp.split_iname(knl, "i", unroll*block_size,
@@ -123,7 +125,7 @@ def test_axpy(ctx_factory):
                     blacklist_ref_vendors=["Advanced Micro"])
 
 
-def test_transpose(ctx_factory):
+def test_transpose(ctx_factory: cl.CtxFactory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     order = "C"
@@ -157,7 +159,7 @@ def test_transpose(ctx_factory):
             parameters={})
 
 
-def test_plain_matrix_mul(ctx_factory):
+def test_plain_matrix_mul(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     order = "C"
 
@@ -198,7 +200,7 @@ def test_plain_matrix_mul(ctx_factory):
                 parameters={"n": n}, check_result=check)
 
 
-def test_variable_size_matrix_mul(ctx_factory):
+def test_variable_size_matrix_mul(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     if (not ctx.devices[0].image_support
@@ -238,7 +240,7 @@ def test_variable_size_matrix_mul(ctx_factory):
             parameters={"n": n})
 
 
-def test_funny_shape_matrix_mul(ctx_factory):
+def test_funny_shape_matrix_mul(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     n = get_suitable_size(ctx)
@@ -281,7 +283,7 @@ def test_funny_shape_matrix_mul(ctx_factory):
             parameters={"n": n, "m": m, "ell": ell})
 
 
-def test_rank_one(ctx_factory):
+def test_rank_one(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "F"
@@ -374,7 +376,7 @@ def test_rank_one(ctx_factory):
                 parameters={"n": n})
 
 
-def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
+def test_troublesome_premagma_fermi_matrix_mul(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
@@ -413,7 +415,7 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
             parameters={})
 
 
-def test_intel_matrix_mul(ctx_factory):
+def test_intel_matrix_mul(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
@@ -465,7 +467,7 @@ def test_intel_matrix_mul(ctx_factory):
             parameters={})
 
 
-def test_magma_fermi_matrix_mul(ctx_factory):
+def test_magma_fermi_matrix_mul(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
@@ -517,7 +519,7 @@ def test_magma_fermi_matrix_mul(ctx_factory):
             parameters={}, blacklist_ref_vendors="pocl")
 
 
-def test_image_matrix_mul(ctx_factory):
+def test_image_matrix_mul(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
@@ -563,7 +565,7 @@ def test_image_matrix_mul(ctx_factory):
             parameters={}, print_ref_code=True)
 
 
-def no_test_image_matrix_mul_ilp(ctx_factory):
+def no_test_image_matrix_mul_ilp(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
@@ -610,7 +612,7 @@ def no_test_image_matrix_mul_ilp(ctx_factory):
             parameters={})
 
 
-def test_fancy_matrix_mul(ctx_factory):
+def test_fancy_matrix_mul(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
 
@@ -647,7 +649,7 @@ def test_fancy_matrix_mul(ctx_factory):
             parameters={"n": n})
 
 
-def test_small_batched_matvec(ctx_factory):
+def test_small_batched_matvec(ctx_factory: cl.CtxFactory):
     dtype = np.float32
     ctx = ctx_factory()
 

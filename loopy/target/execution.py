@@ -30,9 +30,6 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Mapping,
-    Sequence,
     cast,
 )
 
@@ -58,6 +55,8 @@ from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping, Sequence
+
     from loopy.schedule.tools import KernelArgInfo
     from loopy.translation_unit import TranslationUnit
 

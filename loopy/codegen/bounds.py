@@ -31,16 +31,22 @@ from islpy import dim_type
 
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from loopy.codegen.tools import CodegenOperationCacheManager
     from loopy.kernel import LoopKernel
+    from loopy.kernel.tools import SetOperationCacheManager
+    from loopy.typing import InameStr
 
 
 # {{{ approximate, convex bounds check generator
 
-def get_approximate_convex_bounds_checks(domain, check_inames,
-        implemented_domain, op_cache_manager):
-    if isinstance(domain, isl.BasicSet):
-        domain = isl.Set.from_basic_set(domain)
+def get_approximate_convex_bounds_checks(
+            domain: isl.Set,
+            check_inames: Collection[InameStr],
+            implemented_domain: isl.Set,
+            op_cache_manager: SetOperationCacheManager
+        ):
     domain = domain.remove_redundancies()
     result = op_cache_manager.eliminate_except(domain, check_inames,
             (dim_type.set,))

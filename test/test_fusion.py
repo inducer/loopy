@@ -31,7 +31,7 @@ from pyopencl.tools import (  # noqa: F401
 import loopy as lp
 
 
-def test_two_kernel_fusion(ctx_factory):
+def test_two_kernel_fusion(ctx_factory: cl.CtxFactory):
     """
     A simple fusion test of two sets of instructions.
     """
@@ -56,7 +56,7 @@ def test_two_kernel_fusion(ctx_factory):
     np.testing.assert_allclose(out.get(), np.arange(100, 110))
 
 
-def test_write_block_matrix_fusion(ctx_factory):
+def test_write_block_matrix_fusion(ctx_factory: cl.CtxFactory):
     """
     A slightly more complicated fusion test, where all
     sub-kernels write into the same global matrix, but

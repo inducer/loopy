@@ -97,7 +97,7 @@ def main():
                     # "--opt=fast-math",
                     # "--opt=disable-fma",
                     ]
-                    + (["--addressing=64"] if INDEX_DTYPE == np.int64 else [])
+                    + (["--addressing=64"] if np.int64 == INDEX_DTYPE else [])
                     ),
                 # ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
                 quiet=False,

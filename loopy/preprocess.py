@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 import logging
-from typing import TYPE_CHECKING, Iterable, List, TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,8 @@ from loopy.type_inference import infer_unknown_types
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from loopy.kernel import LoopKernel
     from loopy.kernel.array import ArrayDimImplementationTag
     from loopy.typing import Expression
@@ -199,7 +201,7 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
                 sep_axis_indices_set=sep_axis_indices_set,
                 subarray_names=constantdict({
                     ind: vng(f"{arg.name}_s{'_'.join(str(i) for i in ind)}")
-                    for ind in np.ndindex(*cast("List[int]", sep_shape))}))
+                    for ind in np.ndindex(*cast("list[int]", sep_shape))}))
 
         new_args.append(arg.copy(_separation_info=sep_info))
 
@@ -681,9 +683,7 @@ def infer_arg_descr(t_unit: TranslationUnit) -> TranslationUnit:
 
     for e in t_unit.entrypoints:
         def _tuple_or_none(s):
-            if isinstance(s, tuple):
-                return s
-            elif s in [None, auto]:
+            if isinstance(s, tuple) or s in [None, auto]:
                 return s
             else:
                 return s,
@@ -700,7 +700,8 @@ def infer_arg_descr(t_unit: TranslationUnit) -> TranslationUnit:
             else:
                 raise NotImplementedError()
         new_callable, clbl_inf_ctx = t_unit.callables_table[e].with_descrs(
-                arg_id_to_descr, clbl_inf_ctx)
+                # FIXME: Keyword args are at best half-implemented
+                arg_id_to_descr, clbl_inf_ctx)  # pyright: ignore[reportArgumentType]
         clbl_inf_ctx, _new_name = clbl_inf_ctx.with_callable(e, new_callable,
                                                             is_entrypoint=True)
 
@@ -711,7 +712,7 @@ def infer_arg_descr(t_unit: TranslationUnit) -> TranslationUnit:
 
 # {{{  inline_kernels_with_gbarriers
 
-def inline_kernels_with_gbarriers(program):
+def inline_kernels_with_gbarriers(program: TranslationUnit):
     from pytools.graph import compute_topological_order
 
     from loopy.kernel.instruction import BarrierInstruction

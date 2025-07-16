@@ -258,7 +258,7 @@ def test_optional():
 
     opt = Optional(1)
     assert opt.has_value
-    assert 1 == opt.value
+    assert opt.value == 1
 
     assert Optional(1) == Optional(1)
     assert Optional(1) != Optional(2)

@@ -24,6 +24,7 @@ THE SOFTWARE.
 """
 
 
+import contextlib
 import os
 import re
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -352,10 +353,8 @@ def make_options(options_arg):
             if kv_match is not None:
                 key = kv_match.group(1)
                 val = kv_match.group(2)
-                try:
+                with contextlib.suppress(ValueError):
                     val = int(val)
-                except ValueError:
-                    pass
 
                 ioptions_args[key] = val
             else:

@@ -59,7 +59,7 @@ class ContainsFloorDiv(lp.symbolic.CombineMapper):
 
 
 @pytest.mark.parametrize("fix_parameters", (True, False))
-def test_chunk_iname(ctx_factory, fix_parameters):
+def test_chunk_iname(ctx_factory: cl.CtxFactory, fix_parameters):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -83,7 +83,7 @@ def test_chunk_iname(ctx_factory, fix_parameters):
         lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 130})
 
 
-def test_collect_common_factors(ctx_factory):
+def test_collect_common_factors(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -106,7 +106,7 @@ def test_collect_common_factors(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"n": 13})
 
 
-def test_to_batched(ctx_factory):
+def test_to_batched(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -138,7 +138,7 @@ def test_to_batched(ctx_factory):
     assert np.linalg.norm(out1-out2) < 1e-15
 
 
-def test_to_batched_temp(ctx_factory):
+def test_to_batched_temp(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     rng = np.random.default_rng(seed=42)
 
@@ -176,7 +176,7 @@ def test_to_batched_temp(ctx_factory):
             parameters={"a": a, "x": x, "n": 5, "nbatches": 7})
 
 
-def test_add_barrier(ctx_factory):
+def test_add_barrier(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -205,7 +205,7 @@ def test_add_barrier(ctx_factory):
     assert (np.linalg.norm(out-2*a.T) < 1e-16)
 
 
-def test_rename_argument(ctx_factory):
+def test_rename_argument(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -236,7 +236,7 @@ def test_fusion():
     print(knl)
 
 
-def test_alias_temporaries(ctx_factory):
+def test_alias_temporaries(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -270,7 +270,7 @@ def test_alias_temporaries(ctx_factory):
             parameters={"n": 30})
 
 
-def test_vectorize(ctx_factory):
+def test_vectorize(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -298,7 +298,7 @@ def test_vectorize(ctx_factory):
             parameters={"n": 30})
 
 
-def test_extract_subst(ctx_factory):
+def test_extract_subst(ctx_factory: cl.CtxFactory):
     prog = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
@@ -315,7 +315,7 @@ def test_extract_subst(ctx_factory):
     assert insn.expression == parse("bsquare(23) + bsquare(25)")
 
 
-def test_join_inames(ctx_factory):
+def test_join_inames(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -337,7 +337,7 @@ def test_join_inames(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
 
 
-def test_tag_data_axes(ctx_factory):
+def test_tag_data_axes(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -408,7 +408,7 @@ def test_affine_map_inames():
     print(knl)
 
 
-def test_precompute_confusing_subst_arguments(ctx_factory):
+def test_precompute_confusing_subst_arguments(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     prog = lp.make_kernel(
@@ -437,7 +437,7 @@ def test_precompute_confusing_subst_arguments(ctx_factory):
             parameters={"n": 12345})
 
 
-def test_precompute_nested_subst(ctx_factory):
+def test_precompute_nested_subst(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     prog = lp.make_kernel(
@@ -475,7 +475,7 @@ def test_precompute_nested_subst(ctx_factory):
             parameters={"n": 12345})
 
 
-def test_precompute_with_preexisting_inames(ctx_factory):
+def test_precompute_with_preexisting_inames(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -615,7 +615,7 @@ def test_split_iname_only_if_in_within():
             assert insn.within_inames == frozenset({"i"})
 
 
-def test_nested_substs_in_insns(ctx_factory):
+def test_nested_substs_in_insns(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     import loopy as lp
 
@@ -660,7 +660,7 @@ def _ensure_dim_names_match_and_align(obj_map, tgt_map):
     return align_spaces(obj_map, tgt_map)
 
 
-def test_map_domain_vs_split_iname(ctx_factory):
+def test_map_domain_vs_split_iname(ctx_factory: cl.CtxFactory):
 
     # {{{ Make kernel
 
@@ -740,7 +740,7 @@ def test_map_domain_vs_split_iname(ctx_factory):
 
 # {{{ test_map_domain_transform_map_validity_and_errors
 
-def test_map_domain_transform_map_validity_and_errors(ctx_factory):
+def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory):
 
     # {{{ Make kernel
 
@@ -950,7 +950,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory):
 # }}}
 
 
-def test_diamond_tiling(ctx_factory, interactive=False):
+def test_diamond_tiling(ctx_factory: cl.CtxFactory, interactive=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1002,7 +1002,7 @@ def test_diamond_tiling(ctx_factory, interactive=False):
                     })
 
 
-def test_extract_subst_with_iname_deps_in_templ(ctx_factory):
+def test_extract_subst_with_iname_deps_in_templ(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
             "{[i, j, k]: 0<=i<100 and 0<=j,k<5}",
             """
@@ -1051,7 +1051,7 @@ def test_prefetch_local_into_private():
             knl, "s_mat", "j", temporary_name="p_mat", default_tag="for")
 
 
-def test_add_inames_for_unused_hw_axes(ctx_factory):
+def test_add_inames_for_unused_hw_axes(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     dtype = np.float32
     order = "F"
@@ -1104,7 +1104,7 @@ def test_add_inames_for_unused_hw_axes(ctx_factory):
             parameters={"n": n})
 
 
-def test_rename_argument_of_domain_params(ctx_factory):
+def test_rename_argument_of_domain_params(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
             "{[i, j]: 0<=i<n and 0<=j<m}",
             """
@@ -1124,7 +1124,7 @@ def test_rename_argument_of_domain_params(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx_factory(), knl, parameters={"M": 10, "N": 4})
 
 
-def test_rename_argument_with_auto_stride(ctx_factory):
+def test_rename_argument_with_auto_stride(ctx_factory: cl.CtxFactory):
     from loopy.kernel.array import FixedStrideArrayDimTag
 
     ctx = ctx_factory()
@@ -1239,7 +1239,7 @@ def test_remove_instructions_with_recursive_deps():
     assert knl.id_to_insn["insn0"].depends_on == frozenset()
 
 
-def test_prefetch_with_within(ctx_factory):
+def test_prefetch_with_within(ctx_factory: cl.CtxFactory):
     t_unit = lp.make_kernel(
             ["{[j]: 0<=j<256}",
              "{[i, k]: 0<=i<100 and 0<=k<128}"],
@@ -1272,7 +1272,7 @@ def test_prefetch_with_within(ctx_factory):
     lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
 
 
-def test_privatize_with_nonzero_lbound(ctx_factory):
+def test_privatize_with_nonzero_lbound(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1382,7 +1382,7 @@ def test_privatize_unprivatize_roundtrip():
     assert knl1 == lp.privatize_temporaries_with_inames(knl2, {"imatrix"}, {"acc"})
 
 
-def test_simplify_indices_when_inlining(ctx_factory):
+def test_simplify_indices_when_inlining(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     twice = lp.make_function(
         "{[i, j]: 0<=i<10 and 0<=j<4}",
@@ -1411,7 +1411,7 @@ def test_simplify_indices_when_inlining(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, inlined_knl)
 
 
-def test_simplify_indices(ctx_factory):
+def test_simplify_indices(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     knl = lp.make_kernel(
         "{[j]: 0<=j<10}",
@@ -1435,7 +1435,7 @@ def test_simplify_indices(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, simplified_knl)
 
 
-def test_precompute_does_not_lead_to_dep_cycle(ctx_factory):
+def test_precompute_does_not_lead_to_dep_cycle(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/498
     ctx = ctx_factory()
 
@@ -1468,7 +1468,7 @@ def test_rename_inames_redn():
     assert "ifused" in t_unit.default_entrypoint.all_inames()
 
 
-def test_rename_inames(ctx_factory):
+def test_rename_inames(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1482,7 +1482,7 @@ def test_rename_inames(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, ref_knl)
 
 
-def test_buffer_array_preserves_rev_deps(ctx_factory):
+def test_buffer_array_preserves_rev_deps(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/546
     ctx = ctx_factory()
     knl = lp.make_kernel(
@@ -1506,7 +1506,7 @@ def test_buffer_array_preserves_rev_deps(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-def test_rename_inames_existing_ok(ctx_factory):
+def test_rename_inames_existing_ok(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1521,7 +1521,7 @@ def test_rename_inames_existing_ok(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, ref_knl)
 
 
-def test_precompute_with_gbarrier(ctx_factory):
+def test_precompute_with_gbarrier(ctx_factory: cl.CtxFactory):
     # See https://github.com/inducer/loopy/issues/543
     ctx = ctx_factory()
 
@@ -1548,7 +1548,7 @@ def test_precompute_with_gbarrier(ctx_factory):
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
-def test_buffer_array_with_within(ctx_factory):
+def test_buffer_array_with_within(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     t_unit = lp.make_kernel(
@@ -1581,7 +1581,7 @@ def test_redn_iname_unique_preserves_metadata():
     assert t_unit.default_entrypoint.inames["i_0"].tags_of_type(FooTag)  # fails
 
 
-def test_prefetch_to_same_temp_var(ctx_factory):
+def test_prefetch_to_same_temp_var(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     # loopy.git<=5d83454 would raise with a dtype mismatch during the second
@@ -1622,7 +1622,7 @@ def test_prefetch_to_same_temp_var(ctx_factory):
     lp.auto_test_vs_ref(ref_tunit, ctx, t_unit)
 
 
-def test_concatenate_arrays(ctx_factory):
+def test_concatenate_arrays(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     t_unit = lp.make_kernel(
@@ -1714,7 +1714,7 @@ def test_precompute_lets_inner_length1_inames_live():
             == parse("(e_inner + e_outer*16) / i_0"))
 
 
-def test_duplicate_iname_not_read_only_nested(ctx_factory):
+def test_duplicate_iname_not_read_only_nested(ctx_factory: cl.CtxFactory):
     # See <https://github.com/inducer/loopy/issues/859>
     ctx = ctx_factory()
     t_unit = lp.make_kernel(

@@ -50,7 +50,7 @@ from loopy.symbolic import (
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
 )
-from loopy.translation_unit import FunctionIdT, TranslationUnit, for_each_kernel
+from loopy.translation_unit import CallableId, TranslationUnit, for_each_kernel
 
 
 if TYPE_CHECKING:
@@ -122,7 +122,7 @@ def merge(translation_units: Sequence[TranslationUnit]) -> TranslationUnit:
 
     # }}}
 
-    callables_table: dict[FunctionIdT, InKernelCallable] = {}
+    callables_table: dict[CallableId, InKernelCallable] = {}
     for trans_unit in translation_units:
         callables_table.update(trans_unit.callables_table)
 
@@ -520,7 +520,10 @@ def _inline_single_callable_kernel(caller_kernel, callee_kernel):
 
 # FIXME This should take a 'within' parameter to be able to only inline
 # *some* calls to a kernel, but not others.
-def inline_callable_kernel(translation_unit, function_name):
+def inline_callable_kernel(
+            translation_unit: TranslationUnit,
+            function_name: CallableId,
+        ) -> TranslationUnit:
     """
     Returns a copy of *translation_unit* with the callable kernel
     named *function_name* inlined at all call-sites.

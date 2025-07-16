@@ -28,7 +28,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Sequence
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 from codepy.jit import compile_from_string
@@ -48,14 +48,17 @@ from loopy.types import LoopyType
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
     from constantdict import constantdict
+
+    from pymbolic import Expression
 
     from loopy.codegen.result import GeneratedProgram
     from loopy.kernel import LoopKernel
     from loopy.kernel.data import ArrayArg
     from loopy.schedule.tools import KernelArgInfo
     from loopy.translation_unit import TranslationUnit
-    from loopy.typing import Expression
 
 
 logger = logging.getLogger(__name__)
@@ -263,9 +266,9 @@ class CCompiler:
                  include_dirs=None, library_dirs=None, defines=None,
                  source_suffix="c"):
         if cflags is None:
-            cflags = "-std=c99 -O3 -fPIC".split()
+            cflags = ["-std=c99", "-O3", "-fPIC"]
         if ldflags is None:
-            ldflags = "-shared".split()
+            ldflags = ["-shared"]
         if libraries is None:
             libraries = []
         if include_dirs is None:
@@ -285,15 +288,15 @@ class CCompiler:
                 # missing compiler python was built with (likely, Conda)
                 # use a default GCCToolchain
                 logger = logging.getLogger(__name__)
-                logger.warn("Default toolchain guessed from python config "
+                logger.warning("Default toolchain guessed from python config "
                             "not found, replacing with default GCCToolchain.")
                 # this is ugly, but I'm not sure there's a clean way to copy the
                 # default args
                 self.toolchain = GCCToolchain(
                     cc="gcc",
                     ld="ld",
-                    cflags="-std=c99 -O3 -fPIC".split(),
-                    ldflags="-shared".split(),
+                    cflags=["-std=c99", "-O3", "-fPIC"],
+                    ldflags=["-shared"],
                     libraries=[],
                     library_dirs=[],
                     defines=[],
@@ -453,11 +456,8 @@ class CompiledCKernel:
         args_ = []
         for arg, arg_t in zip(args, self._fn.argtypes):
             if hasattr(arg, "ctypes"):
-                if arg.size == 0:
-                    # TODO eliminate unused arguments from kernel
-                    arg_ = arg_t(0.0)
-                else:
-                    arg_ = arg.ctypes.data_as(arg_t)
+                # TODO eliminate unused arguments from kernel
+                arg_ = arg_t(0.0) if arg.size == 0 else arg.ctypes.data_as(arg_t)
             else:
                 arg_ = arg_t(arg)
             args_.append(arg_)

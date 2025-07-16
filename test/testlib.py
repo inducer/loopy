@@ -1,19 +1,22 @@
+from dataclasses import dataclass
+
 import numpy as np
 from constantdict import constantdict
 
 import loopy as lp
+from loopy.kernel import LoopKernel
 
 
 # {{{ test_barrier_in_overridden_get_grid_size_expanded_kernel
 
+@dataclass
 class GridOverride:
-    def __init__(self, clean, vecsize):
-        self.clean = clean
-        self.vecsize = vecsize
+    clean: LoopKernel
+    vecsize: int
 
     def __call__(self, insn_ids, callables_table, ignore_auto=True):
         gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids,
-                callables_table, ignore_auto)
+                callables_table, ignore_auto=ignore_auto)
         return gsize, (self.vecsize,)
 
 # }}}

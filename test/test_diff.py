@@ -38,7 +38,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def test_diff(ctx_factory):
+def test_diff(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)

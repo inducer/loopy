@@ -28,10 +28,11 @@ __doc__ = """
 .. autofunction:: concatenate_arrays
 """
 
-from typing import Sequence
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+import pymbolic.primitives as p
 import pymbolic.primitives as prim
 from pytools import all_equal
 
@@ -39,6 +40,10 @@ from loopy.kernel import LoopKernel
 from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, auto
 from loopy.symbolic import SubstitutionRuleMappingContext
 from loopy.translation_unit import for_each_kernel
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @for_each_kernel
@@ -105,14 +110,14 @@ def concatenate_arrays(
 
     from loopy.transform.padding import SubscriptRewriter
 
-    def modify_array_access(expr):
+    def modify_array_access(expr: p.Subscript):
         idx = expr.index
         if not isinstance(idx, tuple):
             idx = (idx,)
         idx = list(idx)
-        idx[axis_nr] += offsets[expr.aggregate.name]
+        idx[axis_nr] += offsets[cast("p.Variable", expr.aggregate).name]
 
-        return new_aggregate.index(tuple(idx))
+        return new_aggregate[tuple(idx)]
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)

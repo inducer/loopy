@@ -270,6 +270,12 @@ Instructions
 Assignment objects
 ^^^^^^^^^^^^^^^^^^
 
+.. currentmodule:: loopy.kernel.instruction
+
+.. class:: Assignable
+
+.. currentmodule:: loopy
+
 .. autoclass:: Assignment
 
 .. _assignment-syntax:

@@ -26,14 +26,14 @@ THE SOFTWARE.
 
 import operator
 from functools import reduce
-from typing import TYPE_CHECKING, Iterable, Sequence, cast
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
-from typing_extensions import Never
+from typing_extensions import Never, override
 
 import pymbolic.primitives as p
 from cgen import Collection, Const, Declarator, Generable
-from pymbolic import var
+from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.stringifier import PREC_NONE
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_method
@@ -51,16 +51,20 @@ from loopy.symbolic import (
 )
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.typing import InameStr, not_none
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
+    from pymbolic import Expression
+
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import Assignment
     from loopy.schedule import CallKernel
     from loopy.types import LoopyType
-    from loopy.typing import Expression
 
 
 class IsVaryingMapper(CombineMapper[bool, []]):
@@ -178,7 +182,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
                 subscript, = access_info.subscripts
                 result = var(access_info.array_name)[
-                        var("programIndex") + self.rec(lsize*subscript, "i")]
+                        var("programIndex") + self.rec_arith(lsize*subscript, "i")]
 
                 if access_info.vector_index is not None:
                     return self.kernel.target.add_vector_access(
@@ -281,7 +285,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[Generable], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         name = codegen_result.current_program(codegen_state).name
         kernel = codegen_state.kernel
@@ -483,7 +487,8 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                         % type(ary).__name)
 
             index_tuple = tuple(
-                    simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
+                    simplify_using_aff(kernel, cast("ArithmeticExpression", idx))
+                    for idx in lhs.index_tuple)
 
             access_info = get_access_info(kernel, ary, index_tuple,
                     lambda expr: cast("int",
@@ -519,7 +524,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 # to perform a vector store.
                 registry = codegen_state.ast_builder.target.get_dtype_registry()
                 rhs_code = var("(varying "
-                           f"{registry.dtype_to_ctype(lhs_dtype)}"
+                           f"{registry.dtype_to_ctype(not_none(lhs_dtype))}"
                            f") ({rhs_code})")
 
             from cgen import Statement
@@ -535,11 +540,19 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from cgen import Assign
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner, hints):
+    @override
+    def emit_sequential_loop(self,
+                codegen_state: CodeGenerationState,
+                iname: InameStr,
+                iname_dtype: LoopyType,
+                lbound: Expression,
+                ubound: Expression,
+                inner: Generable,
+                hints: Sequence[Generable],
+            ) -> Generable:
         ecm = codegen_state.expression_to_code_mapper
 
-        from cgen import For, InlineInitializer
+        from cgen import For, InlineInitializer, Line
         from cgen.ispc import ISPCUniform
         from pymbolic.mapper.stringifier import PREC_NONE
 
@@ -552,11 +565,11 @@ class ISPCASTBuilder(CFamilyASTBuilder):
                 ecm(
                     p.Comparison(var(iname), "<=", ubound),
                     PREC_NONE, "i"),
-                "++%s" % iname,
+                Line("++%s" % iname),
                 inner)
 
         if hints:
-            return Collection([*list(hints), loop])
+            return Collection([*hints, loop])
         else:
             return loop
 

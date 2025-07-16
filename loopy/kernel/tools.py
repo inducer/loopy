@@ -24,21 +24,34 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import dataclasses
 import itertools
 import logging
 import sys
+from collections.abc import Set
 from functools import reduce
 from sys import intern
-from typing import TYPE_CHECKING, AbstractSet, Mapping, Sequence
+from typing import (
+    TYPE_CHECKING,
+    Concatenate,
+    Generic,
+    ParamSpec,
+    TypeVar,
+    cast,
+)
 
 import numpy as np
+from typing_extensions import deprecated, override
 
 import islpy as isl
+import pymbolic.primitives as p
 from islpy import dim_type
-from pytools import memoize_on_first_arg, natsorted
+from pymbolic import Expression
+from pytools import fset_union, memoize_on_first_arg, natsorted, set_union
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
+from loopy.kernel.data import KernelArgument, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (
     CInstruction,
@@ -46,16 +59,29 @@ from loopy.kernel.instruction import (
     _DataObliviousInstruction,
 )
 from loopy.symbolic import CombineMapper
-from loopy.translation_unit import TranslationUnit, TUnitOrKernelT, for_each_kernel
+from loopy.translation_unit import (
+    CallableId,
+    CallablesTable,
+    TranslationUnit,
+    TUnitOrKernelT,
+    for_each_kernel,
+)
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+
+    from pymbolic import ArithmeticExpression
     from pytools.tag import Tag
 
     from loopy.types import ToLoopyTypeConvertible
+    from loopy.typing import InameStr, ShapeType
 
 
 logger = logging.getLogger(__name__)
+
+
+T = TypeVar("T")
 
 
 # {{{ add and infer argument dtypes
@@ -349,49 +375,76 @@ def find_all_insn_inames(kernel):
 
 # {{{ set operation cache
 
-def _eliminate_except(set_, except_inames, dts):
+SetLikeT = TypeVar("SetLikeT", isl.Set, isl.BasicSet)
+
+
+def _eliminate_except(
+            set_: SetLikeT,
+            except_inames: Collection[str],
+            dts: Sequence[dim_type]
+        ) -> SetLikeT:
     return set_.eliminate_except(except_inames, dts)
 
 
-def _get_dim_max(set_, idx):
+def _get_dim_max(set_: isl.BasicSet | isl.Set, idx: int):
+    if isinstance(set_, isl.BasicSet):
+        set_ = set_.to_set()
     return set_.dim_max(idx)
 
 
-def _get_dim_min(set_, idx):
+def _get_dim_min(set_: isl.BasicSet | isl.Set, idx: int):
+    if isinstance(set_, isl.BasicSet):
+        set_ = set_.to_set()
     return set_.dim_min(idx)
 
 
+ResultT = TypeVar("ResultT")
+P = ParamSpec("P")
+
+
 class SetOperationCacheManager:
+    cache: dict[int, list[tuple[isl.Set | isl.BasicSet, object]]]
+
     def __init__(self):
-        # mapping: set hash -> [(set, result)]
         self.cache = {}
 
-    def op(self, set_, op, args):
+    def op(self,
+           set_: isl.Set | isl.BasicSet,
+           op: Callable[Concatenate[isl.Set | isl.BasicSet, P], ResultT],
+           *args: P.args,
+           **kwargs: P.kwargs) -> ResultT:
+        assert not kwargs
+
         hashval = hash((set_, op, args))
         bucket = self.cache.setdefault(hashval, [])
 
+        cmp_set = set_.to_set() if isinstance(set_, isl.BasicSet) else set_
         for bkt_set, result in bucket:
-            if set_.plain_is_equal(bkt_set):
-                return result
+            if cmp_set.plain_is_equal(bkt_set):
+                return cast("ResultT", result)
 
-        result = op(set_, *args)
+        result = op(set_, *args, **kwargs)
         bucket.append((set_, result))
         return result
 
-    def dim_min(self, set_, *args):
+    def dim_min(self, set_: isl.Set | isl.BasicSet, axis: int):
         if set_.plain_is_empty():
             raise LoopyError("domain '%s' is empty" % set_)
 
-        return self.op(set_, _get_dim_min, args)
+        return self.op(set_, _get_dim_min, axis)
 
-    def dim_max(self, set_, *args):
+    def dim_max(self, set_: isl.Set | isl.BasicSet, axis: int) -> isl.PwAff:
         if set_.plain_is_empty():
             raise LoopyError("domain '%s' is empty" % set_)
 
-        return self.op(set_, _get_dim_max, args)
+        return self.op(set_, _get_dim_max, axis)
 
-    def eliminate_except(self, set_, *args):
-        return self.op(set_, _eliminate_except, args)
+    def eliminate_except(self,
+             set_: SetLikeT,
+             except_inames: Collection[str],
+             dts: Sequence[dim_type]) -> SetLikeT:
+        # FIXME: I can't figure out how to teach the type system what's going on.
+        return self.op(set_, _eliminate_except, except_inames, dts)  # pyright: ignore[reportReturnType, reportArgumentType]
 
     def base_index_and_length(self, set_, iname, context=None,
             n_allowed_params_in_length=None):
@@ -431,7 +484,7 @@ class SetOperationCacheManager:
             base_index = pw_aff_to_expr(base_index_aff)
 
             length = find_max_of_pwaff_with_params(
-                    upper_bound_pw_aff - base_index_aff + 1,
+                    upper_bound_pw_aff - isl.PwAff.from_aff(base_index_aff) + 1,
                     n_allowed_params_in_length)
             length = pw_aff_to_expr(static_max_of_pw_aff(
                     length, constants_only=False,
@@ -450,7 +503,7 @@ class SetOperationCacheManager:
         base_index = pw_aff_to_expr(base_index_aff)
 
         length = find_max_of_pwaff_with_params(
-                upper_bound_pw_aff - base_index_aff + 1,
+                upper_bound_pw_aff - isl.PwAff.from_aff(base_index_aff) + 1,
                 n_allowed_params_in_length)
         length = pw_aff_to_expr(static_max_of_pw_aff(
                 length, constants_only=False,
@@ -471,7 +524,10 @@ class DomainChanger:
     .. note: Does not perform an in-place change!
     """
 
-    def __init__(self, kernel, inames):
+    kernel: LoopKernel
+    leaf_domain_index: int | None
+
+    def __init__(self, kernel: LoopKernel, inames: Collection[InameStr]):
         """
         :arg inames: a non-mutable iterable
         """
@@ -485,17 +541,23 @@ class DomainChanger:
                         "of your current operation ambiguous." % ", ".join(inames))
 
             self.leaf_domain_index, = ldi
-            self.domain = kernel.domains[self.leaf_domain_index]
 
         else:
-            self.domain = kernel.combine_domains(())
             self.leaf_domain_index = None
 
-    def get_original_domain(self):
-        return self.kernel.domains[self.leaf_domain_index]
+    @property
+    def domain(self):
+        if self.leaf_domain_index is None:
+            return self.kernel.combine_domains(())
+        else:
+            return self.kernel.domains[self.leaf_domain_index]
 
-    def get_domains_with(self, replacement):
-        result = self.kernel.domains[:]
+    @deprecated("use .domain instead")
+    def get_original_domain(self):
+        return self.domain
+
+    def get_domains_with(self, replacement: isl.BasicSet):
+        result = list(self.kernel.domains)
         if self.leaf_domain_index is not None:
             result[self.leaf_domain_index] = replacement
         else:
@@ -503,7 +565,7 @@ class DomainChanger:
 
         return result
 
-    def get_kernel_with(self, replacement):
+    def get_kernel_with(self, replacement: isl.BasicSet):
         return self.kernel.copy(
                 domains=self.get_domains_with(replacement),
 
@@ -664,9 +726,9 @@ def show_dependency_graph(*args, **kwargs):
 # {{{ is domain dependent on inames
 
 def is_domain_dependent_on_inames(kernel: LoopKernel,
-        domain_index: int, inames: AbstractSet[str]) -> bool:
+        domain_index: int, inames: Set[str]) -> bool:
     dom = kernel.domains[domain_index]
-    dom_parameters = set(dom.get_var_names(dim_type.param))
+    dom_parameters = set(dom.get_var_names_not_none(dim_type.param))
 
     # {{{ check for parenthood by loop bound iname
 
@@ -821,7 +883,12 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 # }}}
 
 
-def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
+def assign_automatic_axes(
+            kernel: LoopKernel,
+            callables_table: CallablesTable,
+            axis: int = 0,
+            local_size: tuple[int, ...] | None = None,
+        ):
     logger.debug("%s: assign automatic axes" % kernel.name)
     # TODO: do the tag removal rigorously, might be easier after switching
     # to set() from tuple()
@@ -837,8 +904,9 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
     # copies.
 
     if local_size is None:
-        _, local_size = kernel.get_grid_size_upper_bounds_as_exprs(
+        _, local_size_exprs = kernel.get_grid_size_upper_bounds_as_exprs(
                 callables_table, ignore_auto=True)
+        local_size = cast("tuple[int]", local_size_exprs)
 
     # {{{ axis assignment helper function
 
@@ -853,7 +921,7 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         except isl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
-            new_inames = kernel.inames.copy()
+            new_inames = dict(kernel.inames)
             new_inames[iname] = kernel.inames[iname].copy(
                     tags=frozenset(tag
                         for tag in kernel.inames[iname].tags
@@ -918,15 +986,12 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
         if not kernel.iname_tags_of_type(iname, AutoLocalInameTagBase):
             raise LoopyError("trying to reassign '%s'" % iname)
 
-        if new_tag:
-            new_tag_set = frozenset([new_tag])
-        else:
-            new_tag_set = frozenset()
+        new_tag_set = frozenset([new_tag]) if new_tag else frozenset()
         new_tags = (
                 frozenset(tag for tag in kernel.inames[iname].tags
                     if not isinstance(tag, AutoLocalInameTagBase))
                 | new_tag_set)
-        new_inames = kernel.inames.copy()
+        new_inames = dict(kernel.inames)
         new_inames[iname] = kernel.inames[iname].copy(tags=new_tags)
         return assign_automatic_axes(kernel.copy(inames=new_inames),
                 callables_table, axis=recursion_axis, local_size=local_size)
@@ -1006,11 +1071,14 @@ def assign_automatic_axes(kernel, callables_table, axis=0, local_size=None):
 # {{{ array modifier
 
 class ArrayChanger:
-    def __init__(self, kernel, array_name):
+    kernel: LoopKernel
+    array_name: str
+
+    def __init__(self, kernel: LoopKernel, array_name: str):
         self.kernel = kernel
         self.array_name = array_name
 
-    def get(self):
+    def get(self) -> TemporaryVariable | KernelArgument:
         ary_name = self.array_name
         if ary_name in self.kernel.temporary_variables:
             result = self.kernel.temporary_variables[ary_name]
@@ -1025,17 +1093,21 @@ class ArrayChanger:
 
         return result
 
-    def with_changed_array(self, new_array):
+    def with_changed_array(self,
+                new_array: KernelArgument | TemporaryVariable
+            ) -> LoopKernel:
         knl = self.kernel
         ary_name = self.array_name
 
         if ary_name in knl.temporary_variables:
-            new_tv = knl.temporary_variables.copy()
+            assert isinstance(new_array, TemporaryVariable)
+            new_tv = dict(knl.temporary_variables)
             new_tv[ary_name] = new_array
             return knl.copy(temporary_variables=new_tv)
 
         elif ary_name in knl.arg_dict:
-            new_args = []
+            assert isinstance(new_array, KernelArgument)
+            new_args: list[KernelArgument] = []
             for arg in knl.args:
                 if arg.name == ary_name:
                     new_args.append(new_array)
@@ -1052,14 +1124,17 @@ class ArrayChanger:
 
 # {{{ guess_var_shape
 
-def guess_var_shape(kernel, var_names):
+def guess_var_shape(
+            kernel: LoopKernel,
+            var_names: Sequence[str]
+        ) -> Sequence[ShapeType | None]:
     from loopy.symbolic import BatchedAccessMapMapper, SubstitutionRuleExpander
 
     armap = BatchedAccessMapMapper(kernel, var_names)
 
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
-    def run_through_armap(expr):
+    def run_through_armap(expr: Expression) -> Expression:
         armap(submap(expr), insn.within_inames)
         return expr
 
@@ -1077,7 +1152,7 @@ def guess_var_shape(kernel, var_names):
                 "The following error occurred: %s"
                 % (",".join(var_names), str(e))) from e
 
-    result = []
+    result: list[ShapeType | None] = []
     for var_name in var_names:
         access_range = armap.get_access_range(var_name)
         bad_subscripts = armap.bad_subscripts[var_name]
@@ -1092,7 +1167,8 @@ def guess_var_shape(kernel, var_names):
                                     str(i) for i in bad_subscripts)))
 
                 n_axes_in_subscripts = {
-                        len(sub.index_tuple) for sub in bad_subscripts}
+                        len(cast("p.Subscript", sub).index_tuple)
+                        for sub in bad_subscripts}
 
                 if len(n_axes_in_subscripts) != 1:
                     raise RuntimeError("subscripts of '%s' with differing "
@@ -1116,7 +1192,7 @@ def guess_var_shape(kernel, var_names):
             from loopy.isl_helpers import static_max_of_pw_aff
             from loopy.symbolic import pw_aff_to_expr
 
-            shape = []
+            shape: Sequence[ArithmeticExpression] | None = []
             for i in range(access_range.dim(dim_type.set)):
                 try:
                     shape.append(
@@ -1534,10 +1610,7 @@ def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
     lines = []
     current_inames: list[set[str]] = [set()]
 
-    if uniform_arrow_length:
-        indent_level = [1]
-    else:
-        indent_level = [0]
+    indent_level = [1] if uniform_arrow_length else [0]
 
     indent_increment = 2
 
@@ -1888,7 +1961,7 @@ def get_subkernel_extra_inames(kernel: LoopKernel) -> Mapping[str, frozenset[str
 
 # {{{ find aliasing equivalence classes
 
-class DisjointSets:
+class DisjointSets(Generic[T]):
     """
     .. automethod:: __getitem__
     .. automethod:: find_leader_or_create_group
@@ -1899,10 +1972,10 @@ class DisjointSets:
     # https://en.wikipedia.org/wiki/Disjoint-set_data_structure
 
     def __init__(self):
-        self.leader_to_group = {}
-        self.element_to_leader = {}
+        self.leader_to_group: dict[T, set[T]] = {}
+        self.element_to_leader: dict[T, T] = {}
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: T):
         """
         :arg item: A representative of an equivalence class.
         :returns: the equivalence class, given as a set of elements
@@ -1914,7 +1987,7 @@ class DisjointSets:
         else:
             return self.leader_to_group[leader]
 
-    def find_leader_or_create_group(self, el):
+    def find_leader_or_create_group(self, el: T):
         try:
             return self.element_to_leader[el]
         except KeyError:
@@ -1924,7 +1997,7 @@ class DisjointSets:
         self.leader_to_group[el] = {el}
         return el
 
-    def union(self, a, b):
+    def union(self, a: T, b: T):
         leader_a = self.find_leader_or_create_group(a)
         leader_b = self.find_leader_or_create_group(b)
 
@@ -1939,7 +2012,7 @@ class DisjointSets:
         self.leader_to_group[leader_a].update(self.leader_to_group[leader_b])
         del self.leader_to_group[leader_b]
 
-    def union_many(self, relation):
+    def union_many(self, relation: Iterable[tuple[T, T]]):
         """
         :arg relation: an iterable of 2-tuples enumerating the elements of the
             relation. The relation is assumed to be an equivalence relation
@@ -1957,8 +2030,8 @@ class DisjointSets:
         return self
 
 
-def find_aliasing_equivalence_classes(kernel):
-    return DisjointSets().union_many(
+def find_aliasing_equivalence_classes(kernel: LoopKernel):
+    return DisjointSets[str]().union_many(
             (tv.base_storage, tv.name)
             for tv in kernel.temporary_variables.values()
             if tv.base_storage is not None)
@@ -1968,7 +2041,7 @@ def find_aliasing_equivalence_classes(kernel):
 
 # {{{ direction helper tools
 
-def infer_args_are_input_output(kernel):
+def infer_args_are_input_output(kernel: LoopKernel):
     """
     Returns a copy of *kernel* with the attributes ``is_input`` and
     ``is_output`` of the arguments set.
@@ -2024,22 +2097,22 @@ def infer_args_are_input_output(kernel):
 
 # {{{ CallablesIDCollector
 
-class CallablesIDCollector(CombineMapper):
+class CallablesIDCollector(CombineMapper[frozenset[CallableId], []]):
     """
     Mapper to collect function identifiers of all resolved callables in an
     expression.
     """
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, frozenset())
+    @override
+    def combine(self, values: Iterable[frozenset[CallableId]]):
+        return fset_union(values)
 
     def map_resolved_function(self, expr):
         return frozenset([expr.name])
 
-    def map_constant(self, expr):
+    def map_constant(self, expr: object):
         return frozenset()
 
-    def map_kernel(self, kernel):
+    def map_kernel(self, kernel: LoopKernel) -> frozenset[CallableId]:
         callables_in_insn = frozenset()
 
         for insn in kernel.instructions:
@@ -2084,7 +2157,10 @@ def get_resolved_callable_ids_called_by_knl(knl, callables, recursive=True):
 
 # {{{ get_call_graph
 
-def get_call_graph(t_unit, only_kernel_callables=False):
+def get_call_graph(
+            t_unit: TranslationUnit,
+            only_kernel_callables: bool = False
+        ) -> Mapping[CallableId, Set[CallableId]]:
     """
     Returns a mapping from a callable name to the calls seen in it.
 
@@ -2102,7 +2178,7 @@ def get_call_graph(t_unit, only_kernel_callables=False):
                               if isinstance(clbl, CallableKernel))
 
     # stores a mapping from caller -> "direct"" callees
-    call_graph = {}
+    call_graph: dict[CallableId, frozenset[CallableId]] = {}
 
     for name, clbl in t_unit.callables_table.items():
         if (not isinstance(clbl, CallableKernel)
@@ -2156,5 +2232,73 @@ def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
     lower_bound = static_min_of_pw_aff(bounds.lower_bound_pw_aff,
                                        constants_only=False)
     return lower_bound
+
+
+# {{{ get access map from an instruction
+
+@dataclasses.dataclass
+class _IndexCollector(CombineMapper[Set[tuple[Expression, ...]], []]):
+    var: str
+
+    def __post_init__(self) -> None:
+        super().__init__()
+
+    @override
+    def combine(self,
+                values: Iterable[Set[tuple[Expression, ...]]]
+            ) -> Set[tuple[Expression, ...]]:
+        return set_union(values)
+
+    @override
+    def map_subscript(self, expr: p.Subscript) -> Set[tuple[Expression, ...]]:
+        assert isinstance(expr.aggregate, p.Variable)
+        if expr.aggregate.name == self.var:
+            return (super().map_subscript(expr) | frozenset([expr.index_tuple]))
+        else:
+            return super().map_subscript(expr)
+
+    @override
+    def map_algebraic_leaf(
+                    self, expr: p.AlgebraicLeaf,
+                ) -> frozenset[tuple[Expression, ...]]:
+        return frozenset()
+
+    @override
+    def map_constant(
+                    self, expr: object
+                ) -> frozenset[tuple[Expression, ...]]:
+        return frozenset()
+
+
+def _union_amaps(amaps: Sequence[isl.Map]):
+    import islpy as isl
+    return reduce(isl.Map.union, amaps[1:], amaps[0])
+
+
+def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
+    from loopy.match import Id
+    from loopy.symbolic import get_access_map
+    from loopy.transform.subst import expand_subst
+
+    insn = kernel.id_to_insn[insn_id]
+
+    kernel = expand_subst(kernel, within=Id(insn_id))
+    indices = tuple(
+        _IndexCollector(var)(
+            (insn.expression, insn.assignees, tuple(insn.predicates))
+        )
+    )
+
+    amaps = [
+        get_access_map(
+            kernel.get_inames_domain(insn.within_inames).to_set(),
+            idx, kernel.assumptions
+        )
+        for idx in indices
+    ]
+
+    return _union_amaps(amaps)
+
+# }}}
 
 # vim: foldmethod=marker

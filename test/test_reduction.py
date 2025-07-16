@@ -41,7 +41,7 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-def test_nonsense_reduction(ctx_factory):
+def test_nonsense_reduction():
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
@@ -56,7 +56,25 @@ def test_nonsense_reduction(ctx_factory):
         knl = lp.preprocess_kernel(knl)
 
 
-def test_empty_reduction(ctx_factory):
+def test_simple_reduction(ctx_factory: cl.CtxFactory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<100}",
+            """
+                a = sum(i, 2)
+                """,
+            )
+
+    knl = lp.realize_reduction(knl)
+    print(knl)
+    _evt, (a,) = knl(queue)
+
+    assert (a.get() == 200).all()
+
+
+def test_empty_reduction(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -77,7 +95,7 @@ def test_empty_reduction(ctx_factory):
     assert (a.get() == 0).all()
 
 
-def test_nested_dependent_reduction(ctx_factory):
+def test_nested_dependent_reduction(ctx_factory: cl.CtxFactory):
     dtype = np.dtype(np.int32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -169,7 +187,7 @@ def test_recursive_nested_dependent_reduction():
 
 
 @pytest.mark.parametrize("size", [128, 5, 113, 67, 1])
-def test_local_parallel_reduction(ctx_factory, size):
+def test_local_parallel_reduction(ctx_factory: cl.CtxFactory, size):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -202,7 +220,7 @@ def test_local_parallel_reduction(ctx_factory, size):
 
 
 @pytest.mark.parametrize("size", [1000])
-def test_global_parallel_reduction(ctx_factory, size):
+def test_global_parallel_reduction(ctx_factory: cl.CtxFactory, size):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -241,7 +259,7 @@ def test_global_parallel_reduction(ctx_factory, size):
 
 
 @pytest.mark.parametrize("size", [1000])
-def test_global_mc_parallel_reduction(ctx_factory, size):
+def test_global_mc_parallel_reduction(ctx_factory: cl.CtxFactory, size):
     ctx = ctx_factory()
 
     if cl.version.VERSION < (2016, 2):
@@ -280,7 +298,7 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
             ref_knl, ctx, knl, parameters={"n": size})
 
 
-def test_argmax(ctx_factory):
+def test_argmax(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -303,7 +321,7 @@ def test_argmax(ctx_factory):
     assert max_idx == np.where(np.abs(a) == max_val)[-1]
 
 
-def test_simul_reduce(ctx_factory):
+def test_simul_reduce(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -330,7 +348,7 @@ def test_simul_reduce(ctx_factory):
     ("min", np.min),
     ("max", np.max),
     ])
-def test_reduction_library(ctx_factory, op_name, np_op):
+def test_reduction_library(ctx_factory: cl.CtxFactory, op_name, np_op):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -348,7 +366,7 @@ def test_reduction_library(ctx_factory, op_name, np_op):
     assert np.allclose(res, np_op(a, axis=1))
 
 
-def test_split_reduction(ctx_factory):
+def test_split_reduction(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
             "{[i,j,k]: 0<=i,j,k<n}",
             """
@@ -363,7 +381,7 @@ def test_split_reduction(ctx_factory):
     # FIXME: finish test
 
 
-def test_double_sum_made_unique(ctx_factory):
+def test_double_sum_made_unique(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -387,7 +405,7 @@ def test_double_sum_made_unique(ctx_factory):
     assert b.get() == ref
 
 
-def test_parallel_multi_output_reduction(ctx_factory):
+def test_parallel_multi_output_reduction(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
                 "{[i]: 0<=i<128}",
                 """
@@ -429,7 +447,7 @@ def test_reduction_with_conditional():
     assert code.index("if") < code.index("for")
 
 
-def test_any_all(ctx_factory):
+def test_any_all(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
 
@@ -447,7 +465,7 @@ def test_any_all(ctx_factory):
     assert not out_dict["out2"].get()
 
 
-def test_reduction_without_inames(ctx_factory):
+def test_reduction_without_inames(ctx_factory: cl.CtxFactory):
     """Ensure that reductions with no inames get rewritten to the element
     being reduced over. This was sometimes erroneously eliminated because
     reduction realization used the generation of new statements as a criterion
@@ -468,7 +486,7 @@ def test_reduction_without_inames(ctx_factory):
     assert out_dict["out"].get() == 5
 
 
-def test_reduction_in_conditional(ctx_factory):
+def test_reduction_in_conditional(ctx_factory: cl.CtxFactory):
     # https://github.com/inducer/loopy/issues/533#issuecomment-1028472366
     ctx = ctx_factory()
     cq = cl.CommandQueue(ctx)
@@ -488,7 +506,7 @@ def test_reduction_in_conditional(ctx_factory):
     assert (out == 45).all()
 
 
-def test_realize_reduction_insn_id_filter_list(ctx_factory):
+def test_realize_reduction_insn_id_filter_list(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     t_unit = lp.make_kernel(

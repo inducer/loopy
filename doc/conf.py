@@ -2,7 +2,7 @@ import os
 from urllib.request import urlopen
 
 
-_conf_url = "https://raw.githubusercontent.com/inducer/sphinxconfig/main/sphinxconfig.py"
+_conf_url = "https://tiker.net/sphinxconfig-v0.py"
 with urlopen(_conf_url) as _inf:
     exec(compile(_inf.read(), _conf_url, "exec"), globals())
 
@@ -31,6 +31,7 @@ intersphinx_mapping = {
         "islpy": ("https://documen.tician.de/islpy", None),
         "pyopencl": ("https://documen.tician.de/pyopencl", None),
         "cgen": ("https://documen.tician.de/cgen", None),
+        "genpy": ("https://documen.tician.de/genpy", None),
         "pymbolic": ("https://documen.tician.de/pymbolic", None),
         "constantdict": ("https://matthiasdiener.github.io/constantdict/", None),
         }

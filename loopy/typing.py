@@ -4,6 +4,20 @@
 .. autodata:: InameStr
 .. autodata:: InameStrSet
 
+.. autodata:: SymbolMangler
+    :noindex:
+
+.. class:: SymbolMangler
+
+    See above.
+
+.. autodata:: PreambleGenerator
+    :noindex:
+
+.. class:: PreambleGenerator
+
+    See above.
+
 .. currentmodule:: loopy
 
 .. autoclass:: auto
@@ -36,22 +50,39 @@ THE SOFTWARE.
 """
 
 
-from typing import Tuple, TypeVar
+from typing import TYPE_CHECKING, TypeAlias, TypeVar
 
 import numpy as np
-from typing_extensions import TypeAlias, TypeIs
+from typing_extensions import TypeIs
 
 from pymbolic.primitives import ExpressionNode
 from pymbolic.typing import ArithmeticExpression, Expression, Integer
 
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
+    from loopy.codegen import PreambleInfo
+    from loopy.kernel import LoopKernel
+    from loopy.types import LoopyType
+
+
 # The Fortran parser may insert dimensions of 'None', but I'd like to phase
 # that out, so we're not encoding that in the type.
-ShapeType: TypeAlias = Tuple[ArithmeticExpression, ...]
+ShapeType: TypeAlias = tuple[ArithmeticExpression, ...]
 StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str
 InameStrSet: TypeAlias = frozenset[InameStr]
+
+InsnId: TypeAlias = str
+
+PreambleGenerator: TypeAlias = """Callable[
+                            [PreambleInfo],
+                            Iterator[tuple[str, str]]]"""
+
+SymbolMangler: TypeAlias = "Callable[[LoopKernel, str], tuple[LoopyType, str] | None]"
+
 
 
 class auto:  # noqa

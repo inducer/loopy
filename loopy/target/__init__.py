@@ -38,28 +38,38 @@ THE SOFTWARE.
 """
 
 
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
     Generic,
-    Sequence,
     TypeVar,
 )
 
+from typing_extensions import override
+
 
 if TYPE_CHECKING:
-    from loopy.codegen import CodeGenerationState
+    from collections.abc import Callable, Iterator, Sequence
+
+    from pymbolic import Expression
+
+    from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.target.c import DTypeRegistry
     from loopy.target.execution import ExecutorBase
-    from loopy.translation_unit import FunctionIdT, TranslationUnit
-    from loopy.typing import Expression
+    from loopy.translation_unit import CallableId, CallablesTable, TranslationUnit
+    from loopy.types import LoopyType
+    from loopy.typing import InameStr
 
 
 ASTType = TypeVar("ASTType")
 
 
-class TargetBase:
+class TargetBase(ABC):
     """Base class for all targets, i.e. different combinations of code that
     loopy can generate.
 
@@ -71,6 +81,9 @@ class TargetBase:
     hash_fields: ClassVar[tuple[str, ...]] = ()
     comparison_fields: ClassVar[tuple[str, ...]] = ()
 
+    _hash_value: int
+
+    @override
     def __hash__(self):
         # NOTE: _hash_value may vanish during pickling
         if getattr(self, "_hash_value", None) is None:
@@ -103,13 +116,19 @@ class TargetBase:
 
     # {{{ preprocess
 
-    def preprocess(self, kernel):
+    def preprocess(self, kernel: LoopKernel):
         return kernel
 
-    def pre_codegen_entrypoint_check(self, kernel, callables_table):
+    def pre_codegen_entrypoint_check(self,  # noqa: B027
+                kernel: LoopKernel,
+                callables_table: CallablesTable
+            ) -> None:
         pass
 
-    def pre_codegen_callable_check(self, kernel, callables_table):
+    def pre_codegen_callable_check(self,  # noqa: B027
+            kernel: LoopKernel,
+            callables_table: CallablesTable,
+            ) -> None:
         pass
 
     # }}}
@@ -140,13 +159,13 @@ class TargetBase:
 
     # {{{ types
 
-    def get_dtype_registry(self):
+    def get_dtype_registry(self) -> DTypeRegistry:
         raise NotImplementedError()
 
-    def is_vector_dtype(self, dtype):
+    def is_vector_dtype(self, dtype: LoopyType) -> bool:
         raise NotImplementedError()
 
-    def vector_dtype(self, base, count):
+    def vector_dtype(self, base: LoopyType, count: int) -> LoopyType:
         raise NotImplementedError()
 
     def alignment_requirement(self, type_decl):
@@ -163,7 +182,7 @@ class TargetBase:
         raise NotImplementedError()
 
     def get_kernel_executor(
-            self, t_unit: TranslationUnit, *args, entrypoint: FunctionIdT,
+            self, t_unit: TranslationUnit, *args, entrypoint: CallableId,
             **kwargs) -> ExecutorBase:
         """
         :returns: an immutable type to be used as the cache key for
@@ -172,12 +191,12 @@ class TargetBase:
         raise NotImplementedError()
 
 
-class ASTBuilderBase(Generic[ASTType]):
+@dataclass(frozen=True)
+class ASTBuilderBase(Generic[ASTType], ABC):
     """An interface for generating (host or device) ASTs.
     """
 
-    def __init__(self, target) -> None:
-        self.target = target
+    target: TargetBase
 
     # {{{ library
 
@@ -194,7 +213,11 @@ class ASTBuilderBase(Generic[ASTType]):
     def symbol_manglers(self):
         return []
 
-    def preamble_generators(self):
+    def preamble_generators(self) -> Sequence[
+            Callable[
+                    [PreambleInfo],
+                    Iterator[tuple[str, str]]]
+                ]:
         return []
 
     # }}}
@@ -207,14 +230,15 @@ class ASTBuilderBase(Generic[ASTType]):
 
     def get_function_definition(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult,
+            codegen_result: CodeGenerationResult[ASTType],
             schedule_index: int, function_decl: ASTType, function_body: ASTType
             ) -> ASTType:
         raise NotImplementedError
 
+    @abstractmethod
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[ASTType], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], ASTType | None]:
         """Returns preambles and the AST for the function declaration."""
         raise NotImplementedError
@@ -238,9 +262,11 @@ class ASTBuilderBase(Generic[ASTType]):
         raise NotImplementedError()
 
     @property
+    @abstractmethod
     def ast_block_scope_class(self):
         raise NotImplementedError()
 
+    @abstractmethod
     def get_expression_to_code_mapper(self, codegen_state: CodeGenerationState):
         raise NotImplementedError()
 
@@ -254,14 +280,21 @@ class ASTBuilderBase(Generic[ASTType]):
         """
         raise NotImplementedError()
 
-    def emit_assignment(self, codegen_state, insn):
+    def emit_assignment(self, codegen_state, insn) -> ASTType:
         raise NotImplementedError()
 
     def emit_multiple_assignment(self, codegen_state, insn):
         raise NotImplementedError()
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner, hints):
+    def emit_sequential_loop(self,
+                codegen_state: CodeGenerationState,
+                iname: InameStr,
+                iname_dtype: LoopyType,
+                lbound: Expression,
+                ubound: Expression,
+                inner: ASTType,
+                hints: Sequence[ASTType],
+            ) -> ASTType:
         raise NotImplementedError()
 
     def emit_unroll_hint(self, value):
@@ -291,7 +324,7 @@ class ASTBuilderBase(Generic[ASTType]):
 
     # }}}
 
-    def process_ast(self, node):
+    def process_ast(self, node: ASTType):
         return node
 
 

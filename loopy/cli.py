@@ -130,10 +130,7 @@ def main():
         from os.path import abspath, dirname
 
         infile_dirname = dirname(args.infile)
-        if infile_dirname:
-            infile_dirname = abspath(infile_dirname)
-        else:
-            infile_dirname = getcwd()
+        infile_dirname = abspath(infile_dirname) if infile_dirname else getcwd()
 
         sys.path.append(infile_dirname)
 
@@ -198,10 +195,7 @@ def main():
     t_unit = lp.preprocess_kernel(t_unit)
     cgr = lp.generate_code_v2(t_unit)
 
-    if args.outfile is not None:
-        outfile = args.outfile
-    else:
-        outfile = "-"
+    outfile = args.outfile if args.outfile is not None else "-"
 
     code = cgr.device_code()
 

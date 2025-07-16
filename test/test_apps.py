@@ -25,9 +25,7 @@ import logging
 import numpy as np
 import pytest
 
-import pyopencl as cl  # noqa: F401
-import pyopencl.clmath
-import pyopencl.clrandom  # noqa: F401
+import pyopencl as cl
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -42,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 # {{{ convolutions
 
-def test_convolution(ctx_factory):
+def test_convolution(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     dtype = np.float32
@@ -107,7 +105,7 @@ def test_convolution(ctx_factory):
                     })
 
 
-def test_convolution_with_nonzero_base(ctx_factory):
+def test_convolution_with_nonzero_base(ctx_factory: cl.CtxFactory):
     # This is kept alive as a test for domains that don't start at zero.
     # These are a bad idea for split_iname, which places its origin at zero
     # and therefore produces a first block that is odd-sized.
@@ -305,7 +303,7 @@ def test_rob_stroud_bernstein_full():
     print(lp.generate_code_v2(knl))
 
 
-def test_stencil(ctx_factory):
+def test_stencil(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     # n=32 causes corner case behavior in size calculations for temporary (a
@@ -353,7 +351,7 @@ def test_stencil(ctx_factory):
                 op_count=[n*n], op_label=["cells"])
 
 
-def test_stencil_with_overfetch(ctx_factory):
+def test_stencil_with_overfetch(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -427,7 +425,7 @@ def test_sum_factorization():
     print(knl)
 
 
-def test_lbm(ctx_factory):
+def test_lbm(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     # D2Q4Q4Q4 lattice Boltzmann scheme for the shallow water equations
@@ -522,7 +520,7 @@ def test_fd_demo():
     assert "double" not in code
 
 
-def test_fd_1d(ctx_factory):
+def test_fd_1d(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -542,7 +540,7 @@ def test_fd_1d(ctx_factory):
             parameters={"n": 2048})
 
 
-def test_poisson_fem(ctx_factory):
+def test_poisson_fem(ctx_factory: cl.CtxFactory):
     # Stolen from Peter Coogan and Rob Kirby for FEM assembly
     ctx = ctx_factory()
 
