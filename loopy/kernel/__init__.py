@@ -53,6 +53,7 @@ import islpy as isl
 from islpy import dim_type
 from pytools import (
     UniqueNameGenerator,
+    fset_union,
     generate_unique_names,
     memoize_method,
     natsorted,
@@ -72,7 +73,7 @@ from loopy.kernel.data import (
 )
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import InsnId, PreambleGenerator, SymbolMangler, fset_union, not_none
+from loopy.typing import InsnId, PreambleGenerator, SymbolMangler, not_none
 
 
 if TYPE_CHECKING:

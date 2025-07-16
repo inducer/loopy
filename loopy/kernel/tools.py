@@ -47,7 +47,7 @@ import islpy as isl
 import pymbolic.primitives as p
 from islpy import dim_type
 from pymbolic import Expression
-from pytools import memoize_on_first_arg, natsorted
+from pytools import fset_union, memoize_on_first_arg, natsorted, set_union
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
@@ -66,7 +66,6 @@ from loopy.translation_unit import (
     TUnitOrKernelT,
     for_each_kernel,
 )
-from loopy.typing import fset_union, set_union
 
 
 if TYPE_CHECKING:

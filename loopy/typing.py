@@ -50,7 +50,7 @@ THE SOFTWARE.
 """
 
 
-from typing import TYPE_CHECKING, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, TypeAlias, TypeVar
 
 import numpy as np
 from typing_extensions import TypeIs
@@ -60,7 +60,7 @@ from pymbolic.typing import ArithmeticExpression, Expression, Integer
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Iterator
+    from collections.abc import Callable, Iterator
 
     from loopy.codegen import PreambleInfo
     from loopy.kernel import LoopKernel
@@ -124,11 +124,3 @@ ElT = TypeVar("ElT")
 def assert_tuple(obj: tuple[ElT, ...] | object) -> tuple[ElT, ...]:
     assert isinstance(obj, tuple)
     return obj
-
-
-def set_union(iterable: Iterable[Iterable[T]]):
-    return cast("set[T]", set()).union(*iterable)
-
-
-def fset_union(iterable: Iterable[Iterable[T]]):
-    return cast("frozenset[T]", frozenset()).union(*iterable)
