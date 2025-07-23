@@ -69166,8 +69166,8 @@
             {
                 "code": "reportUnknownMemberType",
                 "range": {
-                    "startColumn": 32,
-                    "endColumn": 43,
+                    "startColumn": 39,
+                    "endColumn": 50,
                     "lineCount": 1
                 }
             },
