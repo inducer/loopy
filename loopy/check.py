@@ -35,7 +35,7 @@ from typing_extensions import override
 import islpy as isl
 from islpy import dim_type
 from pymbolic.primitives import AlgebraicLeaf, Variable, is_arithmetic_expression
-from pytools import memoize_method
+from pytools import memoize_method, set_union
 
 from loopy.diagnostic import (
     LoopyError,
@@ -72,7 +72,7 @@ from loopy.translation_unit import (
     check_each_kernel,
 )
 from loopy.type_inference import TypeReader
-from loopy.typing import auto, not_none, set_union
+from loopy.typing import auto, not_none
 
 
 if TYPE_CHECKING:

@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Utilities",
 ]
 dependencies = [
-    "pytools>=2025.1.6",
+    "pytools>=2025.2.2",
     "pymbolic>=2024.2.2",
     "genpy>=2016.1.2",
 

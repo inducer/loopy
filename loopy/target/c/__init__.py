@@ -76,11 +76,11 @@ from loopy.typing import InameStr, auto
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from numpy.typing import DTypeLike
 
-    from loopy.codegen import CodeGenerationState
+    from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import MultiAssignmentBase
@@ -210,7 +210,7 @@ class InfOrNanInExpressionRecorder(IdentityMapper[[]]):
         return super().map_nan(expr)
 
 
-def c99_preamble_generator(preamble_info):
+def c99_preamble_generator(preamble_info: PreambleInfo) -> Iterator[tuple[str, str]]:
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
         yield ("10_stdint", """
             #include <stdint.h>
@@ -236,7 +236,12 @@ def c99_preamble_generator(preamble_info):
     # }}}
 
 
-def _preamble_generator(preamble_info, func_qualifier="inline"):
+def _preamble_generator(
+            preamble_info: PreambleInfo,
+            func_qualifier: str = "static inline"
+        ) -> Iterator[tuple[str, str]]:
+    assert isinstance(preamble_info.kernel.target, CFamilyTarget)
+
     integer_type_names = ["int8", "int16", "int32", "int64"]
 
     def_integer_types_macro = ("03_def_integer_types", r"""
@@ -334,7 +339,7 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
                         }""")
 
             yield (f"07_{func.c_name}", f"""
-            inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
+            static inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
               {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.M)}
@@ -779,7 +784,7 @@ class CMathCallable(ScalarCallable):
             dtype = self.arg_id_to_dtype[0]
             ctype = target.dtype_to_typename(dtype)
             yield (f"08_c_{self.name_in_target}", f"""
-            inline static int {self.name_in_target}({ctype} x) {{
+            static inline static int {self.name_in_target}({ctype} x) {{
               return 0;
             }}""")
 
@@ -878,7 +883,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     target: CFamilyTarget
 
-    preamble_function_qualifier: ClassVar[str] = "inline"
+    preamble_function_qualifier: ClassVar[str] = "static inline"
 
     # {{{ library
 

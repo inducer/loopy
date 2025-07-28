@@ -70,12 +70,12 @@ from typing import TYPE_CHECKING, TypeAlias
 from constantdict import constantdict
 
 import islpy as isl
-from pytools import memoize_method, memoize_on_first_arg
+from pytools import fset_union, memoize_method, memoize_on_first_arg
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
 from loopy.schedule.tree import Tree
-from loopy.typing import InameStr, InameStrSet, fset_union, not_none
+from loopy.typing import InameStr, InameStrSet, not_none
 
 
 if TYPE_CHECKING:
