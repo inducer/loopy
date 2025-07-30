@@ -66,6 +66,13 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
 exclude = [
+  "/loopy/target/c/compyte/.*",
+  "/.test*.yml",
+  "/asv*.json",
+  "/MEMO",
+  "/requirements.txt",
+  "/.ci*",
+  "/.git*",
   "/.git*",
   "/doc/_build",
   "/run-*.sh",
