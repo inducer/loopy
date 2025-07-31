@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "loopy"
-version = "2025.1"
+version = "2025.2"
 description = "A code generator for array-based code on CPUs and GPUs"
 readme = "README.rst"
 license = "MIT"
@@ -66,6 +66,13 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
 exclude = [
+  "/loopy/target/c/compyte/.*",
+  "/.test*.yml",
+  "/asv*.json",
+  "/MEMO",
+  "/requirements.txt",
+  "/.ci*",
+  "/.git*",
   "/.git*",
   "/doc/_build",
   "/run-*.sh",
