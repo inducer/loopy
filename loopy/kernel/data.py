@@ -119,9 +119,7 @@ def _names_from_expr(expr: Expression | str | None) -> frozenset[str]:
         return frozenset({expr})
     elif isinstance(expr, ExpressionNode):
         return frozenset(cast("Variable", v).name for v in dep_mapper(expr))
-    elif expr is None:
-        return frozenset()
-    elif isinstance(expr, Number):
+    elif expr is None or isinstance(expr, Number):
         return frozenset()
     else:
         raise ValueError(f"unexpected value of expression-like object: '{expr}'")
@@ -169,14 +167,12 @@ def filter_iname_tags_by_type(
         else:
             return tag_type.__name__
 
-    if max_num is not None:
-        if len(result) > max_num:
-            raise LoopyError("cannot have more than {} tags "
-                    "of type(s): {}".format(max_num, strify_tag_type()))
-    if min_num is not None:
-        if len(result) < min_num:
-            raise LoopyError("must have more than {} tags "
-                    "of type(s): {}".format(max_num, strify_tag_type()))
+    if max_num is not None and len(result) > max_num:
+        raise LoopyError("cannot have more than {} tags "
+                "of type(s): {}".format(max_num, strify_tag_type()))
+    if min_num is not None and len(result) < min_num:
+        raise LoopyError("must have more than {} tags "
+                "of type(s): {}".format(max_num, strify_tag_type()))
 
     return result
 
@@ -399,7 +395,7 @@ class AddressSpace(IntEnum):
 
 # {{{ arguments
 
-class KernelArgument(ImmutableRecord):
+class KernelArgument(ImmutableRecord, Taggable):
     """Base class for all argument types.
 
     .. attribute:: name
@@ -629,10 +625,7 @@ class ValueArg(KernelArgument, Taggable):
         import loopy as lp
         assert self.dtype is not lp.auto
 
-        if self.dtype is None:
-            type_str = "<auto/runtime>"
-        else:
-            type_str = str(self.dtype)
+        type_str = "<auto/runtime>" if self.dtype is None else str(self.dtype)
 
         return f"{self.name}: ValueArg, type: {type_str}"
 

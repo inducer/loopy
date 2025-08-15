@@ -1608,10 +1608,7 @@ def count(kernel, set: isl.Set, space: isl.Space | None = None) -> GuardedPwQPol
             length = isl.PwQPolynomial.from_pw_aff(length_pwaff)
             length = length.scale_down_val(stride)
 
-            if bset_count is None:
-                bset_count = length
-            else:
-                bset_count = bset_count * length
+            bset_count = length if bset_count is None else bset_count * length
 
             # {{{ rebuild check domain
 

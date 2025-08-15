@@ -53,13 +53,13 @@ import islpy as isl
 from islpy import dim_type
 from pytools import (
     UniqueNameGenerator,
+    fset_union,
     generate_unique_names,
     memoize_method,
     natsorted,
 )
 from pytools.tag import Tag, Taggable, TagT
 
-import loopy.codegen
 import loopy.kernel.data  # to help out Sphinx
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
@@ -73,11 +73,18 @@ from loopy.kernel.data import (
 )
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import not_none
+from loopy.typing import InsnId, PreambleGenerator, SymbolMangler, not_none
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterator, Mapping, Sequence, Set
+    from collections.abc import (
+        Callable,
+        Collection,
+        Hashable,
+        Mapping,
+        Sequence,
+        Set,
+    )
 
     from pymbolic import ArithmeticExpression, Expression
 
@@ -103,8 +110,8 @@ class KernelState(IntEnum):
 def _get_inames_from_domains(
             domains: Sequence[isl.Set | isl.BasicSet]
         ) -> Set[InameStr]:
-    return frozenset().union(*
-            (frozenset(dom.get_var_names(dim_type.set)) for dom in domains))
+    return fset_union(
+            frozenset(dom.get_var_names_not_none(dim_type.set)) for dom in domains)
 
 
 @dataclass(frozen=True)
@@ -179,13 +186,8 @@ class LoopKernel(Taggable):
     name: str = "loopy_kernel"
 
     preambles: Sequence[tuple[str, str]] = ()
-    preamble_generators: Sequence[
-        Callable[
-                [loopy.codegen.PreambleInfo],
-                Iterator[tuple[str, str]]]
-            ] = ()
-    symbol_manglers: Sequence[
-            Callable[[LoopKernel, str], tuple[LoopyType, str] | None]] = ()
+    preamble_generators: Sequence[PreambleGenerator] = ()
+    symbol_manglers: Sequence[SymbolMangler] = ()
     linearization: Sequence[ScheduleItem] | None = None
     iname_slab_increments: constantdict[InameStr, tuple[int, int]] = field(
             default_factory=constantdict)
@@ -204,7 +206,7 @@ class LoopKernel(Taggable):
     with non-parallel implementation tags.
     """
 
-    applied_iname_rewrites: tuple[dict[InameStr, Expression], ...] = ()
+    applied_iname_rewrites: Sequence[Mapping[InameStr, Expression]] = ()
     """
     A list of past substitution dictionaries that
     were applied to the kernel. These are stored so that they may be repeated
@@ -348,7 +350,7 @@ class LoopKernel(Taggable):
         from loopy.kernel.tools import is_domain_dependent_on_inames
 
         for dom_idx, dom in enumerate(self.domains):
-            inames = set(dom.get_var_names(dim_type.set))
+            inames = set(dom.get_var_names_not_none(dim_type.set))
 
             # This next domain may be nested inside the previous domain.
             # Or it may not, in which case we need to figure out how many
@@ -371,10 +373,7 @@ class LoopKernel(Taggable):
             if discard_level_count:
                 iname_set_stack = iname_set_stack[:-discard_level_count]
 
-            if result:
-                parent = len(result)-1
-            else:
-                parent = None
+            parent = len(result) - 1 if result else None
 
             for _i in range(discard_level_count):
                 assert parent is not None
@@ -383,10 +382,7 @@ class LoopKernel(Taggable):
             # found this domain's parent
             result.append(parent)
 
-            if iname_set_stack:
-                parent_inames = iname_set_stack[-1]
-            else:
-                parent_inames = set()
+            parent_inames = iname_set_stack[-1] if iname_set_stack else set()
             iname_set_stack.append(parent_inames | inames)
 
         return result
@@ -419,7 +415,7 @@ class LoopKernel(Taggable):
         return {
                 iname: i_domain
                 for i_domain, dom in enumerate(self.domains)
-                for iname in dom.get_var_names(dim_type.set)}
+                for iname in dom.get_var_names_not_none(dim_type.set)}
 
     def get_home_domain_index(self, iname: str) -> int:
         return self._get_home_domain_map()[iname]
@@ -470,7 +466,7 @@ class LoopKernel(Taggable):
 
         return result
 
-    def get_inames_domain(self, inames: str | Set[str]) -> isl.BasicSet:
+    def get_inames_domain(self, inames: str | Collection[str]) -> isl.BasicSet:
         if not inames:
             return self.combine_domains(())
 
@@ -532,8 +528,8 @@ class LoopKernel(Taggable):
         return list(root_to_leaf.values())
 
     @memoize_method
-    def _get_inames_domain_backend(self, inames):
-        domain_indices = set()
+    def _get_inames_domain_backend(self, inames: Collection[InameStr]):
+        domain_indices: set[int] = set()
         for leaf_dom_idx in self.get_leaf_domain_indices(inames):
             domain_indices.add(leaf_dom_idx)
             domain_indices.update(self.all_parents_per_domain()[leaf_dom_idx])
@@ -611,8 +607,8 @@ class LoopKernel(Taggable):
         return insn.within_inames
 
     @memoize_method
-    def iname_to_insns(self):
-        result = {
+    def iname_to_insns(self) -> Mapping[InameStr, Set[InsnId]]:
+        result: dict[InameStr, set[InsnId]] = {
                 iname: set() for iname in self.all_inames()}
         for insn in self.instructions:
             for iname in insn.within_inames:
@@ -621,7 +617,7 @@ class LoopKernel(Taggable):
         return result
 
     @memoize_method
-    def _remove_inames_for_shared_hw_axes(self, cond_inames):
+    def _remove_inames_for_shared_hw_axes(self, cond_inames: Set[InameStr]):
         """
         See if cond_inames contains references to two (or more) inames that
         boil down to the same tag. If so, exclude them. (We shouldn't be writing
@@ -629,7 +625,7 @@ class LoopKernel(Taggable):
         the other inames as well.)
         """
 
-        tag_key_uses = defaultdict(list)
+        tag_key_uses: dict[Hashable, list[InameStr]] = defaultdict(list)
 
         from loopy.kernel.data import HardwareConcurrentTag
 
@@ -643,7 +639,7 @@ class LoopKernel(Taggable):
                 key for key, user_inames in tag_key_uses.items()
                 if len(user_inames) > 1}
 
-        multi_use_inames = set()
+        multi_use_inames: set[InameStr] = set()
         for iname in cond_inames:
             tags = self.iname_tags_of_type(iname, HardwareConcurrentTag)
             if tags:
@@ -691,7 +687,7 @@ class LoopKernel(Taggable):
     # {{{ read and written variables
 
     @memoize_method
-    def reader_map(self):
+    def reader_map(self) -> Mapping[str, Set[InsnId]]:
         """
         :return: a dict that maps variable names to ids of insns that read that
           variable.
@@ -709,7 +705,7 @@ class LoopKernel(Taggable):
         return result
 
     @memoize_method
-    def writer_map(self):
+    def writer_map(self) -> Mapping[str, Set[InsnId]]:
         """
         :return: a dict that maps variable names to ids of insns that write
             to that variable.
@@ -724,14 +720,13 @@ class LoopKernel(Taggable):
 
     @memoize_method
     def get_read_variables(self) -> Set[str]:
-        result: set[str] = set()
-        for insn in self.instructions:
-            result.update(insn.read_dependency_names())
-
-        for domain in self.domains:
-            result.update(domain.get_var_names(dim_type.param))
-
-        return result
+        return fset_union(
+            insn.read_dependency_names()
+            for insn in self.instructions
+        ) | fset_union(
+            domain.get_var_names_not_none(dim_type.param)
+            for domain in self.domains
+        )
 
     def get_written_variables(self) -> Set[str]:
         try:
@@ -1002,10 +997,7 @@ class LoopKernel(Taggable):
             sorted_axes = sorted(size_dict.keys())
 
             while sorted_axes:
-                if sorted_axes:
-                    cur_axis = sorted_axes.pop(0)
-                else:
-                    cur_axis = None
+                cur_axis = sorted_axes.pop(0) if sorted_axes else None
 
                 assert cur_axis is not None
 
@@ -1231,10 +1223,7 @@ class LoopKernel(Taggable):
 
         kernel = self
 
-        if use_separators:
-            sep = [75*"-"]
-        else:
-            sep = []
+        sep = [75 * "-"] if use_separators else []
 
         if "name" in what:
             lines.extend(sep)
@@ -1262,10 +1251,7 @@ class LoopKernel(Taggable):
             for iname in natsorted(kernel.all_inames()):
                 tags = kernel.iname_tags(iname)
 
-                if not tags:
-                    tags_str = "None"
-                else:
-                    tags_str = ", ".join(str(tag) for tag in tags)
+                tags_str = "None" if not tags else ", ".join(str(tag) for tag in tags)
 
                 line = f"{iname}: {tags_str}"
                 lines.append(line)

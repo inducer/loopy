@@ -1,7 +1,4 @@
-# pyright: reportAny=false
-
 """UI for kernel creation."""
-
 
 from __future__ import annotations
 
@@ -30,11 +27,15 @@ THE SOFTWARE.
 
 import logging
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from sys import intern
-from typing import TYPE_CHECKING, Any, cast
+from types import EllipsisType
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
+from constantdict import constantdict
+from typing_extensions import override
 
 import islpy as isl
 from islpy import dim_type
@@ -46,17 +47,43 @@ from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel.array import FixedStrideArrayDimTag
 from loopy.kernel.data import (
     AddressSpace,
+    ArrayArg,
+    SubstitutionRule,
+    TemporaryVariable,
+    ValueArg,
+)
+from loopy.kernel.instruction import (
     Assignment,
     InstructionBase,
     MultiAssignmentBase,
-    SubstitutionRule,
-    ValueArg,
-    auto,
 )
+from loopy.options import Options
 from loopy.symbolic import IdentityMapper, SubArrayRef, WalkMapper
+from loopy.target import TargetBase
 from loopy.tools import Optional, intern_frozenset_of_ids
 from loopy.translation_unit import TranslationUnit, for_each_kernel
-from loopy.typing import not_none
+from loopy.types import NumpyType
+from loopy.typing import (
+    InameStr,
+    PreambleGenerator,
+    SymbolMangler,
+    auto,
+    is_integer,
+    not_none,
+)
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+    from types import EllipsisType
+
+    from numpy.typing import DTypeLike
+
+    from pymbolic import ArithmeticExpression, Expression
+    from pytools.tag import ToTagSetConvertible
+
+    from loopy.options import Options
+    from loopy.target import TargetBase
 
 
 logger = logging.getLogger(__name__)
@@ -67,12 +94,12 @@ logger = logging.getLogger(__name__)
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
 # source: check_keywords() in isl_stream.c, ISL version 0.17
-_ISL_KEYWORDS = frozenset("""
-        exists and or implies not infty infinity NaN min max rat true false ceild
-        floord mod ceil floor""".split())
+_ISL_KEYWORDS = frozenset([
+        "exists", "and", "or", "implies", "not", "infty", "infinity", "NaN", "min",
+        "max", "rat", "true", "false", "ceild", "floord", "mod", "ceil", "floor"])
 
 
-def _gather_isl_identifiers(s):
+def _gather_isl_identifiers(s: str):
     return set(_IDENTIFIER_RE.findall(s)) - _ISL_KEYWORDS
 
 
@@ -120,90 +147,6 @@ def _normalize_tags(tags):
 # }}}
 
 
-# {{{ expand defines
-
-WORD_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
-BRACE_RE = re.compile(r"\$\{([a-zA-Z0-9_]+)\}")
-
-
-def expand_defines(insn, defines, single_valued=True):
-    replacements = [()]
-
-    processed_defines = set()
-
-    for find_regexp, replace_pattern in [
-            (BRACE_RE, r"\$\{%s\}"),
-            (WORD_RE, r"\b%s\b"),
-            ]:
-
-        for match in find_regexp.finditer(insn):
-            define_name = match.group(1)
-
-            # {{{ don't process the same define multiple times
-
-            if define_name in processed_defines:
-                # already dealt with
-                continue
-
-            processed_defines.add(define_name)
-
-            # }}}
-
-            try:
-                value = defines[define_name]
-            except KeyError:
-                continue
-
-            if isinstance(value, list):
-                if single_valued:
-                    raise ValueError("multi-valued macro expansion "
-                            "not allowed "
-                            "in this context (when expanding '%s')" % define_name)
-
-                replacements = [
-                        (*rep, (replace_pattern % define_name, subval))
-                        for rep in replacements
-                        for subval in value
-                        ]
-            else:
-                replacements = [
-                        (*rep, (replace_pattern % define_name, value))
-                        for rep in replacements]
-
-    for rep in replacements:
-        rep_value = insn
-        for pattern, val in rep:
-            rep_value = re.sub(pattern, str(val), rep_value)
-
-        yield rep_value
-
-
-def expand_defines_in_expr(expr, defines):
-    if not defines:
-        return expr
-
-    from pymbolic.primitives import Variable
-
-    from loopy.symbolic import parse
-
-    def subst_func(var):
-        if isinstance(var, Variable):
-            try:
-                var_value = defines[var.name]
-            except KeyError:
-                return None
-            else:
-                return parse(str(var_value))
-        else:
-            return None
-
-    from loopy.symbolic import PartialEvaluationMapper, SubstitutionMapper
-    return PartialEvaluationMapper()(
-            SubstitutionMapper(subst_func)(expr))
-
-# }}}
-
-
 # {{{ instruction options
 
 def get_default_insn_options_dict():
@@ -225,10 +168,6 @@ def get_default_insn_options_dict():
 
 
 from collections import namedtuple
-
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
 
 
 _NosyncParseResult = namedtuple("_NosyncParseResult", "expr, scope")
@@ -703,7 +642,14 @@ def _count_open_paren_symbols(s):
     return result
 
 
-def parse_instructions(instructions, defines):
+def parse_instructions(
+            instructions: Sequence[
+                InstructionBase | SubstitutionRule | str
+            ] | str,
+        ) -> tuple[
+            Sequence[InstructionBase],
+            Sequence[InameStr],
+            Mapping[str, SubstitutionRule]]:
     if isinstance(instructions, str):
         instructions = [instructions]
 
@@ -803,21 +749,7 @@ def parse_instructions(instructions, defines):
     # }}}
 
     instructions = new_instructions
-    new_instructions = []
-
-    # {{{ pass 3: defines
-
-    for insn in instructions:
-        if isinstance(insn, InstructionBase):
-            new_instructions.append(insn)
-        else:
-            for sub_insn in expand_defines(insn, defines, single_valued=False):
-                new_instructions.append(sub_insn)
-
-    # }}}
-
-    instructions = new_instructions
-    new_instructions = []
+    del new_instructions
 
     inames_to_dup = []  # one for each parsed_instruction
 
@@ -828,6 +760,7 @@ def parse_instructions(instructions, defines):
             {"predicates": frozenset(),
                 "insn_predicates": frozenset()}]
 
+    new_instructions = []
     for insn in instructions:
         if isinstance(insn, InstructionBase):
             local_w_inames = insn_options_stack[-1]["within_inames"]
@@ -1075,7 +1008,7 @@ def _find_existentially_quantified_inames(dom_str):
     return {ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str)}
 
 
-def parse_domains(domains, defines):
+def parse_domains(domains):
     if isinstance(domains, (isl.BasicSet, str)):
         domains = [domains]
 
@@ -1084,10 +1017,7 @@ def parse_domains(domains, defines):
 
     for dom in domains:
         if isinstance(dom, str):
-            dom, = expand_defines(dom, defines)
-
-            # pylint warning is spurious
-            if not dom.lstrip().startswith("["):  # pylint: disable=no-member
+            if not dom.lstrip().startswith("["):
                 # i.e. if no parameters are already given
                 parameters = (_gather_isl_identifiers(dom)
                         - _find_inames_in_set(dom)
@@ -1281,10 +1211,9 @@ class ArgumentGuesser:
         from loopy.kernel.data import ArrayBase
         from loopy.symbolic import get_dependencies
         for arg in kernel_args:
-            if isinstance(arg, ArrayBase):
-                if isinstance(arg.shape, tuple):
-                    self.all_names.update(
-                            get_dependencies(arg.shape))
+            if isinstance(arg, ArrayBase) and isinstance(arg.shape, tuple):
+                self.all_names.update(
+                        get_dependencies(arg.shape))
 
         new_arg_names = (self.all_names | self.all_params) - not_new_arg_names
 
@@ -1382,10 +1311,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             return self.expr_to_var[expr.child]
         except KeyError:
             from loopy.symbolic import TypedCSE
-            if isinstance(expr, TypedCSE):
-                dtype = expr.dtype
-            else:
-                dtype = None
+            dtype = expr.dtype if isinstance(expr, TypedCSE) else None
 
             child = self.rec(expr.child, additional_inames)
             from pymbolic.primitives import Variable
@@ -1686,37 +1612,6 @@ def determine_shapes_of_temporaries(knl):
 # }}}
 
 
-# {{{ expand defines in shapes
-
-def expand_defines_in_shapes(kernel, defines):
-    if not defines:
-        return kernel
-
-    from loopy.kernel.array import ArrayBase
-    from loopy.kernel.creation import expand_defines_in_expr
-
-    def expr_map(expr):
-        return expand_defines_in_expr(expr, defines)
-
-    processed_args = []
-    for arg in kernel.args:
-        if isinstance(arg, ArrayBase):
-            arg = arg.map_exprs(expr_map)
-
-        processed_args.append(arg)
-
-    processed_temp_vars = {}
-    for tv in kernel.temporary_variables.values():
-        processed_temp_vars[tv.name] = tv.map_exprs(expr_map)
-
-    return kernel.copy(
-            args=processed_args,
-            temporary_variables=processed_temp_vars,
-            )
-
-# }}}
-
-
 # {{{ guess argument shapes
 
 def guess_arg_shape_if_requested(kernel, default_order):
@@ -1731,10 +1626,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
         if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
             var_names.append(arg.name)
 
-    if var_names:
-        shapes = guess_var_shape(kernel, var_names)
-    else:
-        shapes = []
+    shapes = guess_var_shape(kernel, var_names) if var_names else []
 
     count = 0
     for arg in kernel.args:
@@ -1982,16 +1874,13 @@ def apply_single_writer_dependency_heuristic(kernel, warn_if_used=True,
 
 # {{{ slice to sub array ref
 
-def normalize_slice_params(slice, dimension_length):
+def normalize_slice_params(slice: Slice, dimension_length: ArithmeticExpression):
     """
     Returns the normalized slice parameters ``(start, stop, step)``.
 
     :arg slice: An instance of :class:`pymbolic.primitives.Slice`.
     :arg dimension_length: Length of the axis being sliced.
     """
-    from numbers import Integral
-
-    from pymbolic.primitives import Slice
 
     assert isinstance(slice, Slice)
     start, stop, step = slice.start, slice.stop, slice.step
@@ -2001,31 +1890,28 @@ def normalize_slice_params(slice, dimension_length):
     if step is None:
         step = 1
 
+    if not isinstance(step, int):
+        raise ValueError("step must be an integer")
+
     if step == 0:
         raise LoopyError("Slice cannot have 0 step size.")
 
     if start is None:
-        if step > 0:
-            start = 0
-        else:
-            start = dimension_length-1
+        start = 0 if step > 0 else dimension_length - 1
 
     if stop is None:
-        if step > 0:
-            stop = dimension_length
-        else:
-            stop = -1
+        stop = dimension_length if step > 0 else -1
 
     # }}}
 
-    if not isinstance(step, Integral):
+    if not is_integer(step):
         raise LoopyError("Non-integral step sizes lead to non-affine domains =>"
                          " not supported")
 
     return start, stop, step
 
 
-class SliceToInameReplacer(IdentityMapper):
+class SliceToInameReplacer(IdentityMapper[[]]):
     """
     Converts slices to instances of :class:`loopy.symbolic.SubArrayRef`.
 
@@ -2053,8 +1939,11 @@ class SliceToInameReplacer(IdentityMapper):
         self.var_name_gen = knl.get_var_name_generator()
         super().__init__()
 
-    def map_subscript(self, expr):
+    @override
+    def map_subscript(self, expr: Subscript):
         subscript_iname_bounds = {}
+
+        assert isinstance(expr.aggregate, Variable)
 
         new_index = []
         swept_inames = []
@@ -2091,7 +1980,8 @@ class SliceToInameReplacer(IdentityMapper):
 
         return result
 
-    def map_call(self, expr):
+    @override
+    def map_call(self, expr: Call):
 
         def _convert_array_to_slices(arg):
             # FIXME: We do not support something like A[1] should point to the
@@ -2194,7 +2084,36 @@ def realize_slices_array_inputs_as_sub_array_refs(kernel):
 
 # {{{ make_function
 
-def make_function(domains, instructions, kernel_data=None, **kwargs):
+def make_function(
+            domains: str | Sequence[str | isl.BasicSet],
+            instructions: Sequence[
+                InstructionBase | SubstitutionRule | str
+            ] | str,
+            kernel_data: Sequence[
+                ValueArg | ArrayArg | TemporaryVariable | EllipsisType | str
+            ] | str = (...,),
+            *,
+            temporary_variables: Mapping[str, TemporaryVariable] | None = None,
+            substitutions: Mapping[str, SubstitutionRule] | None = None,
+            preambles: Sequence[tuple[str, str]] = (),
+            preamble_generators: Sequence[PreambleGenerator] = (),
+            default_order: Literal["C"] | Literal["F"] | type[auto] = "C",
+            default_offset: Literal[0] | type[auto] | None = None,
+            symbol_manglers: Sequence[SymbolMangler] = (),
+            assumptions: isl.BasicSet | str = "",
+            silenced_warnings: str | Sequence[str] = (),
+            options: str | Options = "",
+            target: TargetBase | None = None,
+            seq_dependencies: bool = False,
+            fixed_parameters: Mapping[str, int | float] | None = None,
+            lang_version: tuple[str | int, ...] | None = None,
+            index_dtype: DTypeLike | None = None,
+            tags: ToTagSetConvertible = None,
+            name: str | None = None,
+            loop_priority: frozenset[tuple[InameStr, ...]] | None = None,
+            iname_slab_increments: Mapping[InameStr, tuple[int, int]] | None = None,
+            applied_iname_rewrites: Sequence[Mapping[InameStr, Expression]] = (),
+        ) -> TranslationUnit:
     """User-facing kernel creation entrypoint.
 
     :arg domains:
@@ -2222,14 +2141,11 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
         May also contain :class:`TemporaryVariable` instances(which do not
         give rise to kernel-level arguments).
 
-        The string ``"..."`` may be passed as one of the entries
+        The ellipsis ``...`` may be passed as one of the entries
         of the list, in which case loopy will infer names, shapes,
         and types of arguments from the kernel code. It is
-        possible to just pass the list ``["..."]``, in which case
+        possible to just pass the list ``[...]`` (the default), in which case
         all arguments are inferred.
-
-        In Python 3, the string ``"..."`` may be spelled somewhat more sensibly
-        as just ``...`` (the ellipsis), for the same meaning.
 
         As an additional option, each argument may be specified as just a name
         (a string). This is useful to specify argument ordering. All other
@@ -2258,9 +2174,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
         on loop domain parameters. (an isl.Set or a string in
         :ref:`isl-syntax`.  If given as a string, only the CONDITIONS part of
         the set notation should be given.)
-    :arg local_sizes: A dictionary from integers to integers, mapping
-        workgroup axes to their sizes, e.g. *{0: 16}* forces axis 0 to be
-        length 16.
     :arg silenced_warnings: a list (or semicolon-separated string) or warnings
         to silence
     :arg options: an instance of :class:`loopy.Options` or an equivalent
@@ -2308,40 +2221,31 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     """
 
     creation_plog = ProcessLogger(
-            logger,
-            "%s: instantiate" % kwargs.get("name", "(unnamed)"))
-
-    if kernel_data is None:
-        kernel_data = [...]
-    defines = kwargs.pop("defines", {})
-    default_order = kwargs.pop("default_order", "C")
-    default_offset = kwargs.pop("default_offset", 0)
-    silenced_warnings = cast("Sequence[str]", kwargs.pop("silenced_warnings", []))
-    options = kwargs.pop("options", None)
-    flags = kwargs.pop("flags", None)
-    target = kwargs.pop("target", None)
-    seq_dependencies = kwargs.pop("seq_dependencies", False)
-    fixed_parameters = kwargs.pop("fixed_parameters", {})
-    assumptions = kwargs.pop("assumptions", None)
-
-    if defines:
-        from warnings import warn
-        warn("'defines' argument to make_kernel is deprecated. "
-                "Use lp.fix_parameters instead",
-                DeprecationWarning, stacklevel=2)
+            logger, f"{name if name else '(unnamed)'}%s: instantiate")
 
     if target is None:
         from loopy import _DEFAULT_TARGET
+        assert _DEFAULT_TARGET is not None
         target = _DEFAULT_TARGET()
 
-    if flags is not None:
-        if options is not None:
-            raise TypeError("may not pass both 'options' and 'flags'")
+    if temporary_variables is None:
+        temporary_variables = {}
+    if fixed_parameters is None:
+        fixed_parameters = {}
+    if loop_priority is None:
+        loop_priority = frozenset()
+    if substitutions is None:
+        substitutions = {}
+    if default_offset is None:
+        default_offset = 0
+    if iname_slab_increments is None:
+        iname_slab_increments = constantdict()
+    if preambles is None:
+        preambles = ()
 
-        from warnings import warn
-        warn("'flags' is deprecated. Use 'options' instead",
-                DeprecationWarning, stacklevel=2)
-        options = flags
+    if name is None:
+        from loopy.kernel import LoopKernel
+        name = LoopKernel.name
 
     from loopy.options import make_options
     options = make_options(options)
@@ -2354,7 +2258,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
             getattr(v, lvs): lvs
             for lvs in LANGUAGE_VERSION_SYMBOLS}
 
-    lang_version = kwargs.pop("lang_version", None)
     if lang_version is None:
         # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
 
@@ -2407,26 +2310,15 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     # {{{ separate temporary variables and arguments, take care of names with commas
 
-    from loopy.kernel.data import ArrayBase, TemporaryVariable
-
     if isinstance(kernel_data, str):
         kernel_data = kernel_data.split(",")
 
     kernel_args = []
-    temporary_variables = kwargs.pop("temporary_variables", {}).copy()
+    temporary_variables = dict(temporary_variables)
     for dat in kernel_data:
         if dat is Ellipsis or isinstance(dat, str):
             kernel_args.append(dat)
             continue
-
-        if isinstance(dat, ArrayBase) and isinstance(dat.shape, tuple):  # pylint: disable=no-member
-            new_shape = []
-            for shape_axis in dat.shape:  # pylint:disable=no-member
-                if shape_axis is not None:
-                    new_shape.append(expand_defines_in_expr(shape_axis, defines))
-                else:
-                    new_shape.append(shape_axis)
-            dat = dat.copy(shape=tuple(new_shape))  # pylint:disable=no-member
 
         for arg_name in dat.name.split(","):
             arg_name = arg_name.strip()
@@ -2443,8 +2335,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
     # }}}
 
-    instructions, inames_to_dup, substitutions = \
-            parse_instructions(instructions, defines)
+    instructions, inames_to_dup, inline_substitutions = parse_instructions(instructions)
 
     # {{{ find/create isl_context
 
@@ -2460,7 +2351,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
         temporary_variables[tv.name] = tv
     del cse_temp_vars
 
-    domains = parse_domains(domains, defines)
+    domains = parse_domains(domains)
 
     # {{{ process assumptions
 
@@ -2492,6 +2383,14 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     inames = {name: Iname(name, frozenset())
               for name in _get_inames_from_domains(domains)}
 
+    substitutions = constantdict(substitutions)
+    for sname, rule in inline_substitutions.items():
+        if sname in substitutions:
+            raise LoopyError(f"substitution rule '{sname}' declared both in-line "
+                             "and via substitutions argument")
+
+        substitutions = substitutions.set(sname, rule)
+
     arg_guesser = ArgumentGuesser(domains, instructions,
             temporary_variables, substitutions,
             default_offset)
@@ -2499,50 +2398,38 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     kernel_args = arg_guesser.convert_names_to_full_args(kernel_args)
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)
 
-    for name, rule in kwargs.pop("substitutions", {}).items():
-        if name in substitutions:
-            raise LoopyError(f"substitution rule '{name}' declared both in-line "
-                             "and via substitutions argument")
-
-        substitutions[name] = rule
-
-    kwargs["substitutions"] = substitutions
-
     from pytools.tag import check_tag_uniqueness, normalize_tags
-    tags = check_tag_uniqueness(normalize_tags(kwargs.pop("tags", frozenset())))
-
-    index_dtype = kwargs.pop("index_dtype", None)
-    if index_dtype is None:
-        index_dtype = np.int32
+    tags = check_tag_uniqueness(normalize_tags(tags))
 
     from loopy.types import to_loopy_type
-    index_dtype = to_loopy_type(index_dtype)
+    norm_index_dtype = to_loopy_type(
+                                    np.int32 if index_dtype is None else index_dtype)
+    assert isinstance(norm_index_dtype, NumpyType)
 
-    preambles = kwargs.pop("preambles", None)
-    if preambles is None:
-        preambles = ()
-    elif not isinstance(preambles, tuple):
+    if not isinstance(preambles, tuple):
         preambles = tuple(preambles)
 
-    preamble_generators = kwargs.pop("preamble_generators", None)
-    if preamble_generators is None:
-        preamble_generators = ()
-    elif not isinstance(preamble_generators, tuple):
+    if not isinstance(preamble_generators, tuple):
         preamble_generators = tuple(preamble_generators)
 
     from loopy.kernel import LoopKernel
     knl = LoopKernel(domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
+            substitutions=substitutions,
             silenced_warnings=frozenset(silenced_warnings),
             options=options,
             target=target,
             tags=tags,
             inames=inames,
             assumptions=assumptions,
-            index_dtype=index_dtype,
+            index_dtype=norm_index_dtype,
             preambles=preambles,
             preamble_generators=preamble_generators,
-            **kwargs)
+            symbol_manglers=symbol_manglers,
+            name=name,
+            iname_slab_increments=constantdict(iname_slab_increments),
+            applied_iname_rewrites=applied_iname_rewrites,
+            )
 
     from loopy.transform.instruction import uniquify_instruction_ids
     knl = uniquify_instruction_ids(knl)
@@ -2573,7 +2460,7 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     # does something.
     knl = add_inferred_inames(knl)
     from loopy.transform.parameter import fix_parameters
-    knl = fix_parameters(knl, **fixed_parameters)
+    knl = fix_parameters(knl, within=None, **fixed_parameters)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:
@@ -2602,7 +2489,6 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
     # -------------------------------------------------------------------------
     knl = determine_shapes_of_temporaries(knl)
 
-    knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
     knl = resolve_dependencies(knl)
@@ -2632,10 +2518,64 @@ def make_function(domains, instructions, kernel_data=None, **kwargs):
 
 # {{{ make_kernel
 
-def make_kernel(*args: Any, **kwargs: Any) -> TranslationUnit:
-    tunit = make_function(*args, **kwargs)
-    name, = tunit.callables_table
-    return tunit.with_entrypoints(name)
+def make_kernel(
+            domains: str | Sequence[str | isl.BasicSet],
+            instructions: Sequence[
+                InstructionBase | SubstitutionRule | str
+            ] | str,
+            kernel_data: Sequence[
+                ValueArg | ArrayArg | TemporaryVariable | EllipsisType | str
+            ] = (...,),
+            *,
+            temporary_variables: Mapping[str, TemporaryVariable] | None = None,
+            substitutions: Mapping[str, SubstitutionRule] | None = None,
+            preambles: Sequence[tuple[str, str]] = (),
+            preamble_generators: Sequence[PreambleGenerator] = (),
+            default_order: Literal["C"] | Literal["F"] | type[auto] = "C",
+            default_offset: Literal[0] | type[auto] | None = None,
+            symbol_manglers: Sequence[SymbolMangler] = (),
+            assumptions: isl.BasicSet | str = "",
+            silenced_warnings: str | Sequence[str] = (),
+            options: str | Options = "",
+            target: TargetBase | None = None,
+            seq_dependencies: bool = False,
+            fixed_parameters: Mapping[str, int | float] | None = None,
+            lang_version: tuple[str | int, ...] | None = None,
+            name: str | None = None,
+            tags: ToTagSetConvertible = None,
+            index_dtype: DTypeLike | None = None,
+            loop_priority: frozenset[tuple[InameStr, ...]] | None = None,
+            iname_slab_increments: Mapping[InameStr, tuple[int, int]] | None = None,
+            applied_iname_rewrites: Sequence[Mapping[InameStr, Expression]] = (),
+        ) -> TranslationUnit:
+    tunit = make_function(
+            domains,
+            instructions,
+            kernel_data,
+
+            temporary_variables=temporary_variables,
+            substitutions=substitutions,
+            preambles=preambles,
+            preamble_generators=preamble_generators,
+            default_order=default_order,
+            default_offset=default_offset,
+            symbol_manglers=symbol_manglers,
+            assumptions=assumptions,
+            silenced_warnings=silenced_warnings,
+            options=options,
+            target=target,
+            seq_dependencies=seq_dependencies,
+            fixed_parameters=fixed_parameters,
+            lang_version=lang_version,
+            name=name,
+            tags=tags,
+            index_dtype=index_dtype,
+            loop_priority=loop_priority,
+            iname_slab_increments=iname_slab_increments,
+            applied_iname_rewrites=applied_iname_rewrites,
+        )
+    cname, = tunit.callables_table
+    return tunit.with_entrypoints(cast("str", cname))
 
 
 make_kernel.__doc__ = make_function.__doc__

@@ -415,7 +415,7 @@ class TranslationUnit:
              "an object that holds longer-lived caches.",
              DirectCallUncachedWarning, stacklevel=2)
 
-        entrypoint = kwargs.get("entrypoint", None)
+        entrypoint = kwargs.get("entrypoint")
 
         if entrypoint is None:
             nentrypoints = len(self.entrypoints)

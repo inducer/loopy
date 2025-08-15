@@ -23,8 +23,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import contextlib
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, overload
 
 import numpy as np
 from typing_extensions import override
@@ -244,19 +245,39 @@ class OpaqueType(LoopyType):
 # }}}
 
 
-ToLoopyTypeConvertible: TypeAlias = (
+ToLoopyTypeConvertible: TypeAlias = """(
     type[auto]
-    | type[np.generic]
-    | np.dtype[Any]
+    | DTypeLike
     | LoopyType
     | str
-    | None)
+    | None)"""
+
+
+@overload
+def to_loopy_type(dtype: ToLoopyTypeConvertible,
+          *, allow_auto: bool = False,
+          allow_none: Literal[False] = False,
+          for_atomic: Literal[False] = False,
+      ) -> LoopyType: ...
+
+@overload
+def to_loopy_type(dtype: ToLoopyTypeConvertible,
+          *, allow_auto: bool = False,
+          allow_none: bool = False,
+          for_atomic: Literal[False] = False,
+      ) -> LoopyType | None: ...
+
+@overload
+def to_loopy_type(dtype: ToLoopyTypeConvertible,
+          *, allow_auto: Literal[True], allow_none: bool = False,
+          for_atomic: bool = False
+      ) -> type[auto] | LoopyType | None: ...
 
 
 def to_loopy_type(dtype: ToLoopyTypeConvertible,
-                  allow_auto: bool = False, allow_none: bool = False,
-                  for_atomic: bool = False
-                  ) -> type[auto] | LoopyType | None:
+            allow_auto: bool = False, allow_none: bool = False,
+            for_atomic: bool = False
+        ) -> type[auto] | LoopyType | None:
     if dtype is None:
         if allow_none:
             return None
@@ -272,14 +293,6 @@ def to_loopy_type(dtype: ToLoopyTypeConvertible,
 
     numpy_dtype = None
 
-    if dtype is not None:
-        try:
-            # We're playing fast and loose here, and mypy is onto us. It has a
-            # point.
-            numpy_dtype = np.dtype(dtype)  # type: ignore
-        except Exception:
-            pass
-
     if isinstance(dtype, LoopyType):
         if for_atomic:
             if isinstance(dtype, NumpyType):
@@ -290,7 +303,12 @@ def to_loopy_type(dtype: ToLoopyTypeConvertible,
 
         return dtype
 
-    elif numpy_dtype is not None:
+    with contextlib.suppress(Exception):
+        # We're playing fast and loose here, and mypy is onto us. It has a
+        # point.
+        numpy_dtype = np.dtype(dtype)  # type: ignore
+
+    if numpy_dtype is not None:
         if for_atomic:
             return AtomicNumpyType(numpy_dtype)
         else:

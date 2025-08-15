@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from loopy.typing import not_none
-
 
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
@@ -25,7 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
@@ -39,12 +36,11 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_method
 
 from loopy.symbolic import SubstitutionMapper, get_dependencies
+from loopy.typing import not_none
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-
-    from pymbolic import Expression
 
     from loopy.kernel import LoopKernel
 
@@ -84,10 +80,10 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 # {{{ construct storage->sweep map
 
 def build_per_access_storage_to_domain_map(
-        storage_axis_exprs: Sequence[Expression],
+        storage_axis_exprs: Sequence[ArithmeticExpression],
         domain: isl.BasicSet,
         storage_axis_names: Sequence[str],
-        prime_sweep_inames: Callable[[Expression], Expression]
+        prime_sweep_inames: Callable[[ArithmeticExpression], ArithmeticExpression]
         ) -> isl.BasicMap:
 
     map_space = domain.space
@@ -119,10 +115,7 @@ def build_per_access_storage_to_domain_map(
         cns = isl.Constraint.equality_from_aff(cns_aff)
 
         cns_map = isl.BasicMap.from_constraint(cns)
-        if stor2sweep is None:
-            stor2sweep = cns_map
-        else:
-            stor2sweep = stor2sweep.intersect(cns_map)
+        stor2sweep = cns_map if stor2sweep is None else stor2sweep.intersect(cns_map)
 
     if stor2sweep is not None:
         stor2sweep = stor2sweep.move_dims(
@@ -154,7 +147,7 @@ def build_global_storage_to_sweep_map(
             access_descriptors: Sequence[AccessDescriptor],
             domain_dup_sweep: isl.BasicSet,
             storage_axis_names: Sequence[str],
-            prime_sweep_inames: Callable[[Expression], Expression],
+            prime_sweep_inames: Callable[[ArithmeticExpression], ArithmeticExpression],
         ):
     # The storage map goes from storage axes to the domain.
     # The first len(arg_names) storage dimensions are the rule's arguments.
@@ -273,7 +266,7 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
                 access_descriptors,
                 domain_dup_sweep,
                 storage_axis_names,
-                self.prime_sweep_inames)
+                self.prime_sweep_inames.rec_arith)
 
         storage_base_indices, storage_shape = compute_bounds(
                 kernel, domain, self.stor2sweep, self.primed_sweep_inames,
@@ -402,7 +395,7 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
                 self.stor2sweep,
                 except_inames=frozenset(self.primed_sweep_inames)).domain()
 
-        arg_inames = set(global_s2s_par_dom.get_var_names(dim_type.param))
+        arg_inames = set(global_s2s_par_dom.get_var_names_not_none(dim_type.param))
 
         for arg in storage_axis_exprs:
             arg_inames.update(get_dependencies(arg))
@@ -423,7 +416,7 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
         stor2sweep = build_per_access_storage_to_domain_map(
                 storage_axis_exprs,
                 usage_domain, self.storage_axis_names,
-                self.prime_sweep_inames)
+                self.prime_sweep_inames.rec_arith)
 
         if stor2sweep is None:
             # happens if there are no indices

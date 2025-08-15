@@ -1206,7 +1206,9 @@ def test_inlining_does_not_require_barrier(inline: bool):
                 name="y", dtype=None,
                 shape=lp.auto),
             ],
-        iname_slab_increments={"j_outer": (0, 0)})
+        )
+    loopy_kernel_knl = loopy_kernel_knl.with_kernel(
+    loopy_kernel_knl.default_entrypoint.copy(iname_slab_increments={"j_outer": (0, 0)}))
 
     # }}}
 

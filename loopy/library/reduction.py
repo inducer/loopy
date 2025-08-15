@@ -31,7 +31,7 @@ from constantdict import constantdict
 from typing_extensions import override
 
 from pymbolic import ArithmeticExpression, Expression, var
-from pymbolic.primitives import expr_dataclass
+from pymbolic.primitives import expr_dataclass, is_arithmetic_expression
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.function_interface import ScalarCallable
@@ -205,6 +205,10 @@ class SumReductionOperation(ScalarReductionOperation):
              ) -> tuple[Expression, CallablesTable]:
         assert not isinstance(operand1, tuple)
         assert not isinstance(operand2, tuple)
+        if not is_arithmetic_expression(operand1):
+            raise ValueError("operand 1 must be arithmetic")
+        if not is_arithmetic_expression(operand2):
+            raise ValueError("operand 2 must be arithmetic")
         return operand1 + operand2, callables_table
 
 
@@ -232,6 +236,10 @@ class ProductReductionOperation(ScalarReductionOperation):
              ) -> tuple[Expression, CallablesTable]:
         assert not isinstance(operand1, tuple)
         assert not isinstance(operand2, tuple)
+        if not is_arithmetic_expression(operand1):
+            raise ValueError("operand 1 must be arithmetic")
+        if not is_arithmetic_expression(operand2):
+            raise ValueError("operand 2 must be arithmetic")
         return operand1 * operand2, callables_table
 
 

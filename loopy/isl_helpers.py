@@ -231,7 +231,7 @@ def simplify_pw_aff(pw_aff, context=None):
 def static_extremum_of_pw_aff(
             pw_aff: isl.PwAff,
             constants_only: bool,
-            set_method: Callable[[isl.PwAff, isl.PwAff], isl.Set],
+            set_method: Callable[[isl.PwAff, isl.Aff | isl.PwAff], isl.Set],
             what: str,
             context: isl.Set | isl.BasicSet | None,
         ) -> isl.Aff:
@@ -509,9 +509,8 @@ def project_out(set, inames):
 
 def obj_involves_variable(obj, var_name):
     loc = obj.get_var_dict().get(var_name)
-    if loc is not None:
-        if not obj.get_coefficient_val(*loc).is_zero():
-            return True
+    if loc is not None and not obj.get_coefficient_val(*loc).is_zero():
+        return True
 
     for idiv in obj.dim(dim_type.div):
         if obj_involves_variable(obj.get_div(idiv), var_name):

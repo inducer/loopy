@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import islpy as isl
 from islpy import dim_type
@@ -41,12 +41,16 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState
     from loopy.kernel import LoopKernel
+    from loopy.schedule import EnterLoop
     from loopy.typing import InameStr
 
 
 # {{{ conditional-reducing slab decomposition
 
-def get_slab_decomposition(kernel: LoopKernel, iname: InameStr):
+def get_slab_decomposition(
+            kernel: LoopKernel,
+            iname: InameStr
+        ) -> Sequence[tuple[str, isl.BasicSet]]:
     iname_domain = kernel.get_inames_domain(iname)
 
     if iname_domain.is_empty():
@@ -109,7 +113,7 @@ def get_slab_decomposition(kernel: LoopKernel, iname: InameStr):
         else:
             upper_slab = None
 
-        slabs = []
+        slabs: list[tuple[str, isl.BasicSet]] = []
 
         bulk_slab = isl.BasicSet.universe(space)
         if lower_bulk_bound is not None:
@@ -244,7 +248,7 @@ def intersect_kernel_with_slab(kernel, slab, iname):
 def set_up_hw_parallel_loops(
         codegen_state: CodeGenerationState, schedule_index: int,
         next_func,
-        hw_inames_left: Sequence[InameStr] | None = None) -> CodeGenerationResult:
+        hw_inames_left: Sequence[InameStr] | None = None) -> CodeGenerationResult[Any]:
     kernel = codegen_state.kernel
 
     assert kernel.linearization is not None
@@ -365,11 +369,17 @@ def set_up_hw_parallel_loops(
 
 # {{{ sequential loop
 
-def generate_sequential_loop_dim_code(codegen_state, sched_index, hints):
+def generate_sequential_loop_dim_code(
+            codegen_state: CodeGenerationState,
+            sched_index: int,
+            hints: Sequence[str]):
     kernel = codegen_state.kernel
 
     ecm = codegen_state.expression_to_code_mapper
-    loop_iname = kernel.linearization[sched_index].iname
+
+    assert kernel.linearization is not None
+
+    loop_iname = cast("EnterLoop", kernel.linearization[sched_index]).iname
 
     slabs = get_slab_decomposition(kernel, loop_iname)
 
@@ -401,7 +411,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index, hints):
 
         # move inames that are usable into parameters
         moved_inames = []
-        for das_iname in sorted(dom_and_slab.get_var_names(dim_type.set)):
+        for das_iname in sorted(dom_and_slab.get_var_names_not_none(dim_type.set)):
             if das_iname in usable_inames:
                 moved_inames.append(das_iname)
                 dt, idx = dom_and_slab.get_var_dict()[das_iname]

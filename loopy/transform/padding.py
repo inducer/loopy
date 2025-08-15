@@ -140,8 +140,6 @@ def split_array_dim(
         achng = ArrayChanger(kernel, array_name)
         ary = achng.get()
 
-        from pytools import div_ceil
-
         # {{{ adjust shape
 
         new_shape = ary.shape
@@ -149,7 +147,8 @@ def split_array_dim(
             new_shape = list(new_shape)
             axis_len = new_shape[axis]
             new_shape[axis] = count
-            outer_len = div_ceil(axis_len, count)
+            assert not isinstance(axis_len, complex)
+            outer_len = -(-axis_len // count)
 
             if order == "F":
                 new_shape.insert(axis+1, outer_len)

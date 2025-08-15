@@ -23,6 +23,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import os
+from typing import TYPE_CHECKING
+
+from pytools import strtobool
 
 from loopy.auto_test import auto_test_vs_ref
 from loopy.codegen import PreambleInfo, generate_body, generate_code, generate_code_v2
@@ -192,6 +196,10 @@ from loopy.transform.instruction import (
     simplify_indices,
     tag_instructions,
 )
+from loopy.transform.loop_fusion import (
+    get_kennedy_unweighted_fusion_candidates,
+    rename_inames_in_batch,
+)
 from loopy.transform.pack_and_unpack_args import pack_and_unpack_args_for_call
 from loopy.transform.padding import (
     add_padding,
@@ -220,6 +228,10 @@ from loopy.type_inference import infer_unknown_types
 from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible, to_loopy_type
 from loopy.typing import auto
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 __all__ = [
@@ -341,6 +353,7 @@ __all__ = [
     "get_dot_dependency_graph",
     "get_global_barrier_order",
     "get_iname_duplication_options",
+    "get_kennedy_unweighted_fusion_candidates",
     "get_mem_access_map",
     "get_one_linearized_kernel",
     "get_one_scheduled_kernel",
@@ -387,6 +400,7 @@ __all__ = [
     "rename_callable",
     "rename_iname",
     "rename_inames",
+    "rename_inames_in_batch",
     "replace_instruction_ids",
     "save_and_reload_temporaries",
     "set_argument_order",
@@ -507,11 +521,6 @@ def register_symbol_manglers(kernel, manglers):
 
 
 # {{{ cache control
-
-import os
-
-from pytools import strtobool
-
 
 # Caching is enabled by default, but can be disabled by setting
 # the environment variables LOOPY_NO_CACHE or CG_NO_CACHE to a
@@ -687,10 +696,10 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
 
 # {{{ default target
 
-_DEFAULT_TARGET = None
+_DEFAULT_TARGET: Callable[[], TargetBase] | None = None
 
 
-def set_default_target(target):
+def set_default_target(target: Callable[[], TargetBase] | None):
     # deliberately undocumented for now
     global _DEFAULT_TARGET
     _DEFAULT_TARGET = target

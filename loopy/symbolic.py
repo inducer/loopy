@@ -24,6 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+import contextlib
 import re
 from collections import defaultdict
 from collections.abc import Set
@@ -69,7 +70,6 @@ from pymbolic.mapper.constant_folder import (
 )
 from pymbolic.mapper.dependency import (
     CachedDependencyMapper as DependencyMapperBase,
-    DependenciesT,
 )
 from pymbolic.mapper.evaluator import CachedEvaluationMapper as EvaluationMapperBase
 from pymbolic.mapper.flattener import FlattenMapper as FlattenMapperBase
@@ -93,12 +93,14 @@ from loopy.typing import InsnId, ShapeType, not_none
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 
+    from pymbolic.mapper.dependency import Dependencies
     from pymbolic.typing import ArithmeticOrExpressionT
 
     from loopy.kernel import LoopKernel
     from loopy.kernel.data import KernelArgument, SubstitutionRule, TemporaryVariable
     from loopy.kernel.instruction import InstructionBase
     from loopy.library.reduction import ReductionOperation, ReductionOpFunction
+    from loopy.match import ConcreteMatchable, RuleStack, StackMatch
     from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible
 
 
@@ -150,6 +152,10 @@ References
 .. class:: Expression
 
     See :data:`pymbolic.typing.Expression`.
+
+.. class:: ArithmeticExpression
+
+    See :data:`pymbolic.ArithmeticExpression`.
 
 .. class:: _Expression
 
@@ -527,19 +533,19 @@ class DependencyMapper(DependencyMapperBase[P]):
     def map_group_hw_index(
                 self,
                 expr: GroupHardwareAxisIndex, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         return set()
 
     def map_local_hw_index(
                 self,
                 expr: LocalHardwareAxisIndex, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         return set()
 
     def map_call(
                 self,
                 expr: p.Call, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         # Loopy does not have first-class functions. Do not descend
         # into 'function' attribute of Call.
         return self.rec(expr.parameters, *args, **kwargs)
@@ -547,14 +553,14 @@ class DependencyMapper(DependencyMapperBase[P]):
     def map_reduction(
                 self,
                 expr: Reduction, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         deps = self.rec(expr.expr, *args, **kwargs)
         return deps - {Variable(iname) for iname in expr.inames}
 
     def map_tagged_variable(
                 self,
                 expr: TaggedVariable, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         return {expr}
 
     def map_loopy_function_identifier(self, expr, *args: P.args, **kwargs: P.kwargs):
@@ -1111,7 +1117,7 @@ class DependencyMapperWithReductionInames(DependencyMapper[P]):
     def map_reduction(
                 self,
                 expr: Reduction, *args: P.args, **kwargs: P.kwargs
-            ) -> DependenciesT:
+            ) -> Dependencies:
         self.reduction_inames.update(expr.inames)
         return super().map_reduction(expr, *args, **kwargs)
 
@@ -1189,7 +1195,7 @@ class ExpansionState:
     """
     kernel: LoopKernel
     instruction: InstructionBase
-    stack: tuple[tuple[str, Tag], ...]
+    stack: tuple[ConcreteMatchable, ...]
     arg_context: Mapping[str, Expression]
 
     def __post_init__(self) -> None:
@@ -1363,7 +1369,7 @@ class SubstitutionRuleMappingContext:
 
         return renamed_result, renames
 
-    def finish_kernel(self, kernel):
+    def finish_kernel(self, kernel: LoopKernel):
         new_substs, renames = self._get_new_substitutions_and_renames()
         if not renames:
             return kernel.copy(substitutions=new_substs)
@@ -1443,8 +1449,9 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
         rec_arguments = self.rec(arguments, expn_state, *args, **kwargs)
         assert isinstance(rec_arguments, tuple)
 
+        from loopy.match import ConcreteMatchable
         new_expn_state = expn_state.copy(
-                stack=(*expn_state.stack, (name, tags)),
+                stack=(*expn_state.stack, ConcreteMatchable(name, tags)),
                 arg_context=self.make_new_arg_context(
                     name, rule.arguments, rec_arguments, expn_state.arg_context))
 
@@ -1481,8 +1488,12 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
     def map_instruction(self, kernel, insn):
         return insn
 
-    def map_kernel(self, kernel: LoopKernel, within=lambda *args: True,
-            map_args: bool = True, map_tvs: bool = True) -> LoopKernel:
+    def map_kernel(self,
+                kernel: LoopKernel,
+                within: StackMatch = lambda knl, insn, stack: True,
+                map_args: bool = True,
+                map_tvs: bool = True
+            ) -> LoopKernel:
         new_insns = [
             # While subst rules are not allowed in assignees, the mapper
             # may perform tasks entirely unrelated to subst rules, so
@@ -1551,13 +1562,19 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
         :meth:`SubstitutionRuleMappingContext.finish_kernel` to perform any
         renaming mandated by the rule expression divergences.
     """
-    def __init__(self, rule_mapping_context, subst_func, within):
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                subst_func,
+                within: StackMatch):
         super().__init__(rule_mapping_context)
 
         self.subst_func = subst_func
-        self._within = within
+        self._within: StackMatch = within
 
-    def within(self, kernel, instruction, stack):
+    def within(self,
+                kernel: LoopKernel,
+                instruction: InstructionBase | None,
+                stack: RuleStack):
         if instruction is None:
             # always perform substitutions on expressions not coming from
             # instructions.
@@ -1565,6 +1582,7 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
         else:
             return self._within(kernel, instruction, stack)
 
+    @override
     def map_variable(self, expr: Variable, expn_state: ExpansionState) -> Expression:
         if (expr.name in expn_state.arg_context
                 or not self.within(
@@ -1582,16 +1600,21 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
 
 
 class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper[[]]):
-    def __init__(self, rule_mapping_context, rules, within):
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                rules,
+                within: StackMatch):
         super().__init__(rule_mapping_context)
 
         self.rules = rules
         self.within = within
 
+    @override
     def map_subst_rule(
                 self, name: str, tags, arguments, expn_state: ExpansionState
             ) -> Expression:
-        new_stack = (*expn_state.stack, (name, tags))
+        from loopy.match import ConcreteMatchable
+        new_stack = (*expn_state.stack, ConcreteMatchable(name, tags))
 
         if self.within(expn_state.kernel, expn_state.instruction, new_stack):
             # expand
@@ -1829,7 +1852,7 @@ class LoopyParser(ParserBase):
 
     def parse_postfix(self, pstate, min_precedence, left_exp):
         from pymbolic.parser import _PREC_CALL, _closebracket
-        if pstate.next_tag() is _open_dbl_bracket and _PREC_CALL > min_precedence:
+        if pstate.next_tag() is _open_dbl_bracket and min_precedence < _PREC_CALL:
             pstate.advance()
             pstate.expect_not_end()
             left_exp = LinearSubscript(
@@ -2207,8 +2230,8 @@ def simplify_via_aff(expr):
 @memoize_on_first_arg
 def simplify_using_aff(
             kernel: LoopKernel,
-            expr: Expression
-        ) -> Expression:
+            expr: ArithmeticExpression
+        ) -> ArithmeticExpression:
     """
     Simplifies *expr* on *kernel*'s domain.
 
@@ -2588,7 +2611,7 @@ class PrimeAdder(IdentityMapper[[]]):
 def get_access_map(
             domain: isl.Set,
             subscript: tuple[Expression, ...],
-            assumptions: isl.Set | None = None,
+            assumptions: isl.BasicSet | None = None,
             shape: ShapeType | None = None,
             allowed_constant_names: Collection[str] | None = None
         ) -> isl.Map:
@@ -2657,10 +2680,8 @@ def get_access_map(
             shape_aff = None
 
             if shape is not None and shape[idim] is not None:
-                try:
+                with contextlib.suppress(ExpressionToAffineConversionError):
                     shape_aff = guarded_aff_from_expr(access_map.space, shape[idim])
-                except ExpressionToAffineConversionError:
-                    pass
 
             if shape_aff is None:
                 # failed to convert shape[idim] to aff
@@ -2754,7 +2775,7 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
 
         try:
             access_map = get_access_map(
-                    domain.to_set(), subscript, self.kernel.assumptions.to_set(),
+                    domain.to_set(), subscript, self.kernel.assumptions,
                     shape=cast("ShapeType | None", descriptor.shape)
                         if self._overestimate else None,
                     allowed_constant_names=self.kernel.get_unwritten_value_args())
@@ -2982,9 +3003,7 @@ def is_tuple_of_expressions_equal(
             b: Expression | None,
         ) -> bool:
     if a is None or b is None:
-        if a is None and b is None:
-            return True
-        return False
+        return bool(a is None and b is None)
 
     if not isinstance(a, tuple):
         a = (a,)

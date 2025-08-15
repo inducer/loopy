@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pymbolic import ArithmeticExpression
+
 
 __copyright__ = "Copyright (C) 2012-15 Andreas Kloeckner"
 
@@ -22,7 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
@@ -36,7 +38,6 @@ from loopy.symbolic import simplify_using_aff
 
 if TYPE_CHECKING:
     from loopy.kernel import LoopKernel
-    from loopy.kernel.data import Iname
     from loopy.symbolic import LinearSubscript, Reduction
 
 
@@ -77,12 +78,12 @@ class VectorizabilityChecker(Mapper[bool, []]):
 
     def __init__(self,
                 kernel: LoopKernel,
-                vec_iname: Iname,
+                vec_iname: str,
                 vec_iname_length: int
             ) -> None:
-        self.kernel = kernel
-        self.vec_iname = vec_iname
-        self.vec_iname_length = vec_iname_length
+        self.kernel: LoopKernel = kernel
+        self.vec_iname: str = vec_iname
+        self.vec_iname_length: int = vec_iname_length
 
     def map_sum(self, expr: p.Sum) -> bool:
         return any(self.rec(child) for child in expr.children)
@@ -122,7 +123,9 @@ class VectorizabilityChecker(Mapper[bool, []]):
 
         index = expr.index_tuple
 
-        index = tuple(simplify_using_aff(self.kernel, idx_i) for idx_i in index)
+        index = tuple(
+            simplify_using_aff(self.kernel, cast("ArithmeticExpression", idx_i))
+            for idx_i in index)
 
         from pymbolic.primitives import Variable
 

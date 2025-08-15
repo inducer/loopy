@@ -60,6 +60,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import contextlib
 import enum
 import itertools
 from dataclasses import dataclass
@@ -69,7 +70,7 @@ from typing import TYPE_CHECKING, TypeAlias
 from constantdict import constantdict
 
 import islpy as isl
-from pytools import memoize_method, memoize_on_first_arg
+from pytools import fset_union, memoize_method, memoize_on_first_arg
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
@@ -116,9 +117,9 @@ def temporaries_read_in_subkernel(
     inames = frozenset().union(*(kernel.insn_inames(insn_id)
                                  for insn_id in insn_ids))
     domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
-    params = frozenset().union(*(
-        kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
-        for dom_idx in domain_idxs))
+    params = fset_union(
+        kernel.domains[dom_idx].get_var_names_not_none(isl.dim_type.param)
+        for dom_idx in domain_idxs)
 
     return (frozenset(tv
                 for insn_id in insn_ids
@@ -145,7 +146,7 @@ def args_read_in_subkernel(
                                  for insn_id in insn_ids))
     domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
     params = frozenset().union(*(
-        kernel.domains[dom_idx].get_var_names(isl.dim_type.param)
+        kernel.domains[dom_idx].get_var_names_not_none(isl.dim_type.param)
         for dom_idx in domain_idxs))
     return (frozenset(arg
                 for insn_id in insn_ids
@@ -261,10 +262,8 @@ def _process_args_for_arg_info(
         if used_only and not (arg.name in args_read or arg.name in args_written):
             continue
 
-        try:
+        with contextlib.suppress(KeyError):
             args_expected.remove(arg.name)
-        except KeyError:
-            pass
 
         # Disregard the original array if it had a sep-tagged axis.
         if isinstance(arg, ArrayArg):
@@ -339,9 +338,8 @@ def get_subkernel_arg_info(
 
         if _should_temp_var_be_passed(tv):
             if tv.base_storage:
-                if tv_name in tvs_written:
-                    if tv_name in tvs_written:
-                        tvs_written.add(tv.base_storage)
+                if tv_name in tvs_written and tv_name in tvs_written:
+                    tvs_written.add(tv.base_storage)
             else:
                 passed_temporaries.append(tv.name)
 
@@ -979,7 +977,7 @@ def get_partial_loop_nest_tree(kernel: LoopKernel) -> LoopNestTree:
         for insn in kernel.instructions}
 
     root: InameStrSet = frozenset()
-    tree = Tree.from_root(root)
+    tree = Tree[InameStrSet].from_root(root)
 
     # mapping from iname to the innermost loop nest they are part of in *tree*.
     iname_to_tree_node_id: dict[InameStr, InameStrSet] = {}
@@ -1049,7 +1047,7 @@ def get_partial_loop_nest_tree(kernel: LoopKernel) -> LoopNestTree:
 
 def _get_iname_to_tree_node_id_from_partial_loop_nest_tree(
             tree: LoopNestTree,
-        ) -> Mapping[str, frozenset[str]]:
+        ) -> Mapping[InameStr, InameStrSet]:
     """
     Returns the mapping from the iname to the *tree*'s node that it was a part
     of.
@@ -1085,14 +1083,8 @@ def get_loop_tree(kernel: LoopKernel) -> LoopTree:
 
     # {{{ impose constraints by the domain tree
 
-    # FIXME: These three could be one statement if it weren't for
-    # - https://github.com/python/mypy/issues/17693
-    # - https://github.com/python/mypy/issues/17694
-    emptyset: InameStrSet = frozenset()
-    loop_inames = reduce(frozenset.union,
-                          (insn.within_inames
-                           for insn in kernel.instructions),
-                          emptyset)
+    loop_inames = fset_union(
+            insn.within_inames for insn in kernel.instructions)
     loop_inames = loop_inames - _get_parallel_inames(kernel)
 
     for dom in kernel.domains:

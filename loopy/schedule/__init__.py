@@ -29,13 +29,14 @@ from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
     Any,
+    Literal,
     TypeVar,
 )
 
 from constantdict import constantdict
 
 import islpy as isl
-from pytools import ImmutableRecord, MinRecursionLimit, ProcessLogger
+from pytools import MinRecursionLimit, ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
@@ -282,7 +283,7 @@ def find_loop_nest_around_map(kernel: LoopKernel) -> Mapping[str, set[str]]:
             if outer_iname not in all_inames:
                 continue
 
-            for inner_iname in dom.get_var_names(isl.dim_type.set):
+            for inner_iname in dom.get_var_names_not_none(isl.dim_type.set):
                 result[inner_iname].add(outer_iname)
 
     return result
@@ -795,10 +796,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
             return False
         if insn.groups != template_insn.groups:
             return False
-        if insn.conflicts_with_groups != template_insn.conflicts_with_groups:
-            return False
-
-        return True
+        return insn.conflicts_with_groups == template_insn.conflicts_with_groups
 
     # }}}
 
@@ -1059,10 +1057,9 @@ def _generate_loop_schedules_internal(
 
     debug_mode = False
 
-    if debug is not None:
-        if (debug.debug_length is not None
-                and len(sched_state.schedule) >= debug.debug_length):
-            debug_mode = True
+    if debug is not None and (debug.debug_length is not None
+            and len(sched_state.schedule) >= debug.debug_length):
+        debug_mode = True
 
     if debug_mode:
         if debug.wrote_status == 2:
@@ -1490,7 +1487,7 @@ def _generate_loop_schedules_internal(
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
             from islpy import dim_type
             iname_home_domain_params = set(
-                    iname_home_domain.get_var_names(dim_type.param))
+                    iname_home_domain.get_var_names_not_none(dim_type.param))
 
             # The previous check should have ensured this is true, because
             # the loop_nest_around_map takes the domain dependency graph into
@@ -1684,7 +1681,8 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
 
 # {{{ barrier insertion/verification
 
-class DependencyRecord(ImmutableRecord):
+@dataclass(frozen=True)
+class DependencyRecord:
     """
     .. attribute:: source
 
@@ -1708,13 +1706,11 @@ class DependencyRecord(ImmutableRecord):
         "global" or "local"
     """
 
-    def __init__(self, source, target, dep_descr, variable, var_kind):
-        ImmutableRecord.__init__(self,
-                source=source,
-                target=target,
-                dep_descr=dep_descr,
-                variable=variable,
-                var_kind=var_kind)
+    source: InstructionBase
+    target: InstructionBase
+    dep_descr: str
+    variable: str
+    var_kind: Literal["global", "local"]
 
 
 class DependencyTracker:
@@ -2439,10 +2435,10 @@ def get_one_linearized_kernel(
             logger.debug(f"{kernel.name}: schedule cache miss")
 
     if not from_cache:
-        with ProcessLogger(logger, "%s: schedule" % kernel.name):
-            with MinRecursionLimitForScheduling(kernel):
-                result = _get_one_linearized_kernel_inner(kernel,
-                        callables_table)
+        with ProcessLogger(logger, "%s: schedule" % kernel.name), \
+                MinRecursionLimitForScheduling(kernel):
+            result = _get_one_linearized_kernel_inner(kernel,
+                    callables_table)
 
     if CACHING_ENABLED and not from_cache:
         schedule_cache.store_if_not_present(sched_cache_key, result)  # pylint: disable=possibly-used-before-assignment

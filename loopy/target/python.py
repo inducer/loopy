@@ -24,55 +24,84 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+from typing_extensions import override
 
 from genpy import Collection, Generable, Suite
 from pymbolic.mapper import Mapper
-from pymbolic.mapper.stringifier import StringifyMapper
+from pymbolic.mapper.stringifier import PREC_NONE, StringifyMapper
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.data import ValueArg
+from loopy.kernel.function_interface import ScalarCallable
 from loopy.target import ASTBuilderBase
 from loopy.type_inference import TypeReader
+from loopy.typing import InameStr, not_none
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from loopy.codegen import CodeGenerationState
+    import pymbolic.primitives as p
+    from pymbolic import Expression
+
+    from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.instruction import Assignment
+    from loopy.symbolic import (
+        GroupHardwareAxisIndex,
+        LocalHardwareAxisIndex,
+        ResolvedFunction,
+    )
+    from loopy.types import LoopyType
 
 
 # {{{ expression to code
 
-class ExpressionToPythonMapper(StringifyMapper):
-    def __init__(self, codegen_state, type_inf_mapper=None):
-        self.kernel = codegen_state.kernel
-        self.codegen_state = codegen_state
+class ExpressionToPythonMapper(StringifyMapper[[]]):
+    def __init__(self,
+                codegen_state: CodeGenerationState,
+                type_inf_mapper: TypeReader | None = None):
+        self.kernel: LoopKernel = codegen_state.kernel
+        self.codegen_state: CodeGenerationState = codegen_state
 
         if type_inf_mapper is None:
             type_inf_mapper = TypeReader(self.kernel,
                     self.codegen_state.callables_table)
-        self.type_inf_mapper = type_inf_mapper
+        self.type_inf_mapper: TypeReader = type_inf_mapper
 
-    def handle_unsupported_expression(self, victim, enclosing_prec):
-        return Mapper.handle_unsupported_expression(self, victim, enclosing_prec)
+    @override
+    def handle_unsupported_expression(self, expr: object, enclosing_prec: int):
+        return Mapper.handle_unsupported_expression(self, expr, enclosing_prec)
 
-    def rec(self, expr, prec, type_context=None, needed_dtype=None):
+    @override
+    def rec(self,
+            expr: Expression,
+            prec: int,
+            type_context: str | None = None,
+            needed_dtype: LoopyType | None = None):
         return super().rec(expr, prec)
 
-    # FIXME: Fix once mappers are precisely typed
-    __call__ = rec  # type: ignore[assignment]
+    @override
+    def __call__(self,
+            expr: Expression,
+            prec: int = PREC_NONE,
+            *, type_context: str | None = None,
+            needed_dtype: LoopyType | None = None):
+        return super().rec(expr, prec)
 
-    def map_constant(self, expr, enclosing_prec):
+    @override
+    def map_constant(self, expr: object, enclosing_prec: int):
         if isinstance(expr, np.generic):
             return repr(expr).replace("np.", "_lpy_np.")
         else:
             return repr(expr)
 
-    def map_variable(self, expr, enclosing_prec):
+    @override
+    def map_variable(self, expr: p.Variable, enclosing_prec: int):
         if expr.name in self.codegen_state.var_subst_map:
             # Unimplemented: annotate_inames
             return str(self.rec(
@@ -91,26 +120,27 @@ class ExpressionToPythonMapper(StringifyMapper):
         return super().map_variable(
                 expr, enclosing_prec)
 
-    def map_subscript(self, expr, enclosing_prec):
+    @override
+    def map_subscript(self, expr: p.Subscript, enclosing_prec: int):
         return super().map_subscript(
                 expr, enclosing_prec)
 
-    def map_call(self, expr, enclosing_prec):
+    @override
+    def map_call(self, expr: p.Call, enclosing_prec: int):
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        identifier_name = self.codegen_state.callables_table[
-                expr.function.name].name
+        func = cast("p.Variable | ResolvedFunction", expr.function)
+        clbl = self.codegen_state.callables_table[func.name]
+        identifier_name = clbl.name
 
         if identifier_name in ["indexof", "indexof_vec"]:
             raise LoopyError(
                     "indexof, indexof_vec not yet supported in Python")
 
-        clbl = self.codegen_state.callables_table[
-                expr.function.name]
-
         str_parameters = None
-        number_of_assignees = len([key for key in
-            clbl.arg_id_to_dtype.keys() if key < 0])
+        number_of_assignees = len([
+                                  key for key in not_none(clbl.arg_id_to_dtype)
+                                  if cast("int", key) < 0])
 
         if number_of_assignees != 1:
             raise LoopyError("functions with more or fewer than one return value "
@@ -118,16 +148,18 @@ class ExpressionToPythonMapper(StringifyMapper):
 
         str_parameters = [self.rec(par, PREC_NONE) for par in expr.parameters]
 
+        assert isinstance(clbl, ScalarCallable)
         return "{}({})".format(clbl.name_in_target,
                                ", ".join(str_parameters))
 
-    def map_group_hw_index(self, expr, enclosing_prec):
+    def map_group_hw_index(self, expr: GroupHardwareAxisIndex, enclosing_prec: int):
         raise LoopyError("plain Python does not have group hw axes")
 
-    def map_local_hw_index(self, expr, enclosing_prec):
+    def map_local_hw_index(self, expr: LocalHardwareAxisIndex, enclosing_prec: int):
         raise LoopyError("plain Python does not have local hw axes")
 
-    def map_if(self, expr, enclosing_prec):
+    @override
+    def map_if(self, expr: p.If, enclosing_prec: int):
         # Synthesize PREC_IFTHENELSE, make sure it is in the right place in the
         # operator precedence hierarchy (right above "or").
         from pymbolic.mapper.stringifier import PREC_LOGICAL_OR
@@ -147,7 +179,7 @@ class ExpressionToPythonMapper(StringifyMapper):
 
 # {{{ ast builder
 
-def _base_python_preamble_generator(preamble_info):
+def _base_python_preamble_generator(preamble_info: PreambleInfo):
     yield ("00_future", "from __future__ import division, print_function\n")
     yield ("05_numpy_import", """
             import numpy as _lpy_np
@@ -172,29 +204,22 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     # {{{ code generation guts
 
     @property
+    @override
     def ast_module(self):
         import genpy
         return genpy
 
+    @override
     def get_function_declaration(
             self, codegen_state: CodeGenerationState,
-            codegen_result: CodeGenerationResult, schedule_index: int
+            codegen_result: CodeGenerationResult[Any], schedule_index: int
             ) -> tuple[Sequence[tuple[str, str]], Generable | None]:
         return [], None
 
-    def get_function_definition(self, codegen_state, codegen_result,
-            schedule_index,
-            function_decl, function_body):
-
-        assert function_decl is None
-
-        from genpy import Function
-        return Function(
-                codegen_result.current_program(codegen_state).name,
-                [idi.name for idi in codegen_state.implemented_data_info],
-                function_body)
-
-    def get_temporary_decls(self, codegen_state, schedule_index):
+    @override
+    def get_temporary_decls(self,
+                codegen_state: CodeGenerationState,
+                schedule_index: int):
         kernel = codegen_state.kernel
         ecm = codegen_state.expression_to_code_mapper
 
@@ -221,23 +246,34 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
 
         return result
 
-    def get_expression_to_code_mapper(self, codegen_state):
+    @override
+    def get_expression_to_code_mapper(self, codegen_state: CodeGenerationState):
         return ExpressionToPythonMapper(codegen_state)
 
     @property
+    @override
     def ast_block_class(self):
         return Suite
 
     @property
+    @override
     def ast_block_scope_class(self):
         # Once a new version of genpy is released, switch to this:
         # from genpy import Collection
         # and delete the implementation above.
         return Collection
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            lbound, ubound, inner, hints):
-        ecm = codegen_state.expression_to_code_mapper
+    @override
+    def emit_sequential_loop(self,
+                codegen_state: CodeGenerationState,
+                iname: InameStr,
+                iname_dtype: LoopyType,
+                lbound: Expression,
+                ubound: Expression,
+                inner: Generable,
+                hints: Sequence[Generable],
+            ):
+        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         from genpy import For
         from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
@@ -249,36 +285,48 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
                 (iname,),
                 "range(%s, %s + 1)"
                 % (
-                    ecm(lbound, PREC_NONE, "i"),
-                    ecm(ubound, PREC_SUM, "i"),
+                    ecm(lbound, PREC_NONE, type_context="i"),
+                    ecm(ubound, PREC_SUM, type_context="i"),
                     ),
                 inner)
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+    @override
+    def emit_initializer(self,
+                codegen_state: CodeGenerationState,
+                dtype: LoopyType,
+                name: str,
+                val_str: str,
+                is_const: bool):
         from genpy import Assign
         return Assign(name, val_str)
 
+    @override
     def emit_blank_line(self):
         from genpy import Line
         return Line()
 
-    def emit_comment(self, s):
+    @override
+    def emit_comment(self, s: str):
         from genpy import Comment
         return Comment(s)
 
-    def emit_noop_with_comment(self, s):
+    @override
+    def emit_noop_with_comment(self, s: str):
         from cgen import Line
         return Line(f"pass #{s}")
 
     @property
+    @override
     def can_implement_conditionals(self):
         return True
 
-    def emit_if(self, condition_str, ast):
+    @override
+    def emit_if(self, condition_str: str, ast: Generable):
         from genpy import If
         return If(condition_str, ast)
 
-    def emit_assignment(self, codegen_state, insn):
+    @override
+    def emit_assignment(self, codegen_state: CodeGenerationState, insn: Assignment):
         ecm = codegen_state.expression_to_code_mapper
 
         if insn.atomicity:

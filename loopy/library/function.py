@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from constantdict import constantdict
@@ -34,6 +34,8 @@ from loopy.types import NumpyType
 
 
 if TYPE_CHECKING:
+    from pymbolic import ArithmeticExpression
+
     from loopy.translation_unit import CallablesTable
 
 
@@ -84,7 +86,8 @@ class IndexOfCallable(ScalarCallable):
 
         from loopy.kernel.array import get_access_info
         access_info = get_access_info(expression_to_code_mapper.kernel,
-                ary, arg.index, lambda expr: evaluate(expr,
+                ary, cast("ArithmeticExpression", arg.index),
+                lambda expr: evaluate(expr,
                     expression_to_code_mapper.codegen_state.var_subst_map),
                 expression_to_code_mapper.codegen_state.vectorization_info)
 

@@ -1,7 +1,15 @@
 """
 .. autoclass:: Matchable
+.. autoclass:: ConcreteMatchable
+.. autodata:: RuleStack
+    :noindex:
+
+.. class:: RuleStack
+
+    See above.
 .. autoclass:: StackMatchComponent
 .. autoclass:: StackMatch
+.. autoclass:: ConcreteStackMatch
 
 .. autofunction:: parse_match
 
@@ -68,7 +76,7 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from sys import intern
-from typing import TYPE_CHECKING, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeAlias, cast
 
 from typing_extensions import override
 
@@ -81,7 +89,7 @@ from pytools.lex import RE, LexTable
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     import pytools.tag
 
@@ -149,6 +157,11 @@ _PREC_NOT = 30
 
 # {{{ match expression
 
+class ConcreteMatchable(NamedTuple):
+    id: str
+    tags: frozenset[pytools.tag.Tag]
+
+
 class Matchable(Protocol):
     """
     .. attribute:: tags
@@ -160,6 +173,13 @@ class Matchable(Protocol):
     @property
     def tags(self) -> frozenset[pytools.tag.Tag]:
         ...
+
+
+RuleStack: TypeAlias = "Sequence[ConcreteMatchable]"
+StackMatch: TypeAlias = """Callable[
+        [LoopKernel, InstructionBase, RuleStack],
+        bool
+    ]"""
 
 
 class MatchExpressionBase(ABC):
@@ -432,12 +452,12 @@ def parse_match(expr: ToMatchConvertible) -> MatchExpressionBase:
 
             next_tag = pstate.next_tag()
 
-            if next_tag is _and and _PREC_AND > min_precedence:
+            if next_tag is _and and min_precedence < _PREC_AND:
                 pstate.advance()
                 left_query = And(
                         (left_query, inner_parse(pstate, _PREC_AND)))
                 did_something = True
-            elif next_tag is _or and _PREC_OR > min_precedence:
+            elif next_tag is _or and min_precedence < _PREC_OR:
                 pstate.advance()
                 left_query = Or(
                         (left_query, inner_parse(pstate, _PREC_OR)))
@@ -534,11 +554,7 @@ class StackWildcardMatchComponent(StackMatchComponent):
     inner_match: StackMatchComponent
 
     def __call__(self, kernel: LoopKernel, stack: Sequence[Matchable]) -> bool:
-        for i in range(0, len(stack)):
-            if self.inner_match(kernel, stack[i:]):
-                return True
-
-        return False
+        return any(self.inner_match(kernel, stack[i:]) for i in range(0, len(stack)))
 
 # }}}
 
@@ -561,7 +577,7 @@ class RuleInvocationMatchable:
 
 
 @dataclass(eq=True, frozen=True)
-class StackMatch:
+class ConcreteStackMatch:
     """
     .. automethod:: __call__
     """
@@ -570,7 +586,7 @@ class StackMatch:
 
     def __call__(
             self, kernel: LoopKernel, insn: InstructionBase,
-            rule_stack: Sequence[tuple[str, frozenset[pytools.tag.Tag]]]) -> bool:
+            rule_stack: RuleStack) -> bool:
         """
         :arg rule_stack: a tuple of (name, tags) rule invocation, outermost first
         """
@@ -585,10 +601,12 @@ class StackMatch:
 
 # {{{ stack match parsing
 
-ToStackMatchConvertible: TypeAlias = MatchExpressionBase | StackMatch | str | None
+ToStackMatchConvertible: TypeAlias = (
+    MatchExpressionBase | ConcreteStackMatch | str | None
+    )
 
 
-def parse_stack_match(smatch: ToStackMatchConvertible) -> StackMatch:
+def parse_stack_match(smatch: ToStackMatchConvertible) -> ConcreteStackMatch:
     """Syntax example::
 
         ... > outer > ... > next > innermost $
@@ -601,15 +619,15 @@ def parse_stack_match(smatch: ToStackMatchConvertible) -> StackMatch:
     :func:`parse_match`.
     """
 
-    if isinstance(smatch, StackMatch):
+    if isinstance(smatch, ConcreteStackMatch):
         return smatch
     if isinstance(smatch, MatchExpressionBase):
-        return StackMatch(
+        return ConcreteStackMatch(
                 StackItemMatchComponent(
                     smatch, StackAllMatchComponent()))
 
     if smatch is None:
-        return StackMatch(StackAllMatchComponent())
+        return ConcreteStackMatch(StackAllMatchComponent())
 
     smatch = smatch.strip()
 
@@ -629,7 +647,7 @@ def parse_stack_match(smatch: ToStackMatchConvertible) -> StackMatch:
         else:
             match = StackItemMatchComponent(parse_match(comp), match)
 
-    return StackMatch(match)
+    return ConcreteStackMatch(match)
 
 # }}}
 

@@ -64,10 +64,7 @@ def tuple_to_complex_literal(expr):
     i = np.array(i)[()]
 
     dtype = (r.dtype.type(0) + i.dtype.type(0))
-    if dtype == np.float32:
-        dtype = np.complex64
-    else:
-        dtype = np.complex128
+    dtype = np.complex64 if dtype == np.float32 else np.complex128
 
     return dtype(float(r) + float(i)*1j)
 
@@ -103,10 +100,7 @@ class FortranExpressionParser(ExpressionParserBase):
         next_tag = pstate.next_tag()
         if next_tag is _float:
             value = pstate.next_str_and_advance().lower()
-            if "d" in value:
-                dtype = np.float64
-            else:
-                dtype = np.float32
+            dtype = np.float64 if "d" in value else np.float32
 
             value = value.replace("d", "e")
             if value.startswith("."):
@@ -131,10 +125,7 @@ class FortranExpressionParser(ExpressionParserBase):
             pstate.advance()
             pstate.expect_not_end()
 
-            if scope.is_known(name):
-                cls = Subscript
-            else:
-                cls = Call
+            cls = Subscript if scope.is_known(name) else Call
 
             if pstate.next_tag is _closepar:
                 pstate.advance()
@@ -185,22 +176,22 @@ class FortranExpressionParser(ExpressionParserBase):
         from pymbolic.primitives import Comparison, LogicalAnd, LogicalOr
 
         next_tag = pstate.next_tag()
-        if next_tag is _openpar and _PREC_CALL > min_precedence:
+        if next_tag is _openpar and min_precedence < _PREC_CALL:
             raise TranslationError("parenthesis operator only works on names")
 
-        elif next_tag in self.COMP_MAP and _PREC_COMPARISON > min_precedence:
+        elif next_tag in self.COMP_MAP and min_precedence < _PREC_COMPARISON:
             pstate.advance()
             left_exp = Comparison(
                     left_exp,
                     self.COMP_MAP[next_tag],
                     self.parse_expression(pstate, _PREC_COMPARISON))
             did_something = True
-        elif next_tag is _and and _PREC_LOGICAL_AND > min_precedence:
+        elif next_tag is _and and min_precedence < _PREC_LOGICAL_AND:
             pstate.advance()
             left_exp = LogicalAnd((left_exp,
                     self.parse_expression(pstate, _PREC_LOGICAL_AND)))
             did_something = True
-        elif next_tag is _or and _PREC_LOGICAL_OR > min_precedence:
+        elif next_tag is _or and min_precedence < _PREC_LOGICAL_OR:
             pstate.advance()
             left_exp = LogicalOr((left_exp,
                     self.parse_expression(pstate, _PREC_LOGICAL_OR)))

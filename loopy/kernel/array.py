@@ -348,20 +348,14 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
                 raise LoopyError("may not specify 'C' array order with explicit "
                         "layout nesting level")
 
-            if ta_nesting_levels:
-                nesting_level = min(ta_nesting_levels)-1
-            else:
-                nesting_level = 0
+            nesting_level = min(ta_nesting_levels) - 1 if ta_nesting_levels else 0
 
         elif tag in ["f", "F"]:
             if nesting_level is not None:
                 raise LoopyError("may not specify 'C' array order with explicit "
                         "layout nesting level")
 
-            if ta_nesting_levels:
-                nesting_level = max(ta_nesting_levels)+1
-            else:
-                nesting_level = 0
+            nesting_level = max(ta_nesting_levels) + 1 if ta_nesting_levels else 0
 
         elif tag == "":
             if nesting_level is None:
@@ -506,7 +500,7 @@ def parse_array_dim_tags(
 
 def convert_computed_to_fixed_dim_tags(
             name: str,
-            num_user_axes: int | None,  # pyright: ignore[reportUnusedParameter]
+            num_user_axes: int | None,
             num_target_axes: int,
             shape: ShapeType | type[auto] | None,
             dim_tags: Sequence[ArrayDimImplementationTag],
@@ -556,6 +550,8 @@ def convert_computed_to_fixed_dim_tags(
     # {{{ convert computed to fixed stride dim tags
 
     new_dim_tags = list(dim_tags)
+
+    stride_so_far: ArithmeticExpression | None
 
     for target_axis in range(num_target_axes):
         if vector_dim is None:
@@ -610,9 +606,9 @@ def convert_computed_to_fixed_dim_tags(
                     stride_so_far *= shape_axis
 
                 if dim_tag.pad_to is not None:
-                    from pytools import div_ceil
+                    assert stride_so_far is not None
                     stride_so_far = (
-                            div_ceil(stride_so_far, dim_tag.pad_to)
+                            -(-stride_so_far // dim_tag.pad_to)
                             * stride_so_far)
 
             elif isinstance(dim_tag, FixedStrideArrayDimTag):
@@ -649,10 +645,7 @@ def _parse_shape_or_strides(
     if x is auto:
         return auto
 
-    if not isinstance(x, str):
-        x_parsed = x
-    else:
-        x_parsed = parse(x)
+    x_parsed = x if not isinstance(x, str) else parse(x)
 
     if isinstance(x_parsed, list):
         raise ValueError("shape can't be a list")
@@ -664,10 +657,7 @@ def _parse_shape_or_strides(
         x_tup = (cast("Expression", x_parsed),)
 
     def parse_arith(x: Expression | str) -> ArithmeticExpression:
-        if isinstance(x, str):
-            res = parse(x)
-        else:
-            res = x
+        res = parse(x) if isinstance(x, str) else x
 
         # The Fortran parser may do this, but this is (deliberately) outside
         # the behavior allowed by types, because the hope is to phase it out.
@@ -1026,10 +1016,7 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         assert self.dtype is not lp.auto
 
-        if self.dtype is None:
-            type_str = "<auto/runtime>"
-        else:
-            type_str = str(self.dtype)
+        type_str = "<auto/runtime>" if self.dtype is None else str(self.dtype)
 
         info_entries.append("type: %s" % type_str)
 
@@ -1238,10 +1225,10 @@ def get_strides(array: ArrayBase) -> tuple[Expression, ...]:
 class AccessInfo(ImmutableRecord):
     array_name: str
     vector_index: int | None
-    subscripts: tuple[Expression, ...]
+    subscripts: tuple[ArithmeticExpression, ...]
 
 
-def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
+def _apply_offset(sub: ArithmeticExpression, ary: ArrayBase) -> ArithmeticExpression:
     """
     Helper for :func:`get_access_info`.
     Augments *ary*'s subscript index expression (*sub*) with its offset info.
@@ -1278,7 +1265,7 @@ def _apply_offset(sub: Expression, ary: ArrayBase) -> Expression:
 
 def get_access_info(kernel: LoopKernel,
             ary: ArrayArg | TemporaryVariable,
-            index: Expression | tuple[Expression, ...],
+            index: ArithmeticExpression | tuple[ArithmeticExpression, ...],
             eval_expr: Callable[[Expression], int],
             vectorization_info: VectorizationInfo | None
         ) -> AccessInfo:
@@ -1334,7 +1321,7 @@ def get_access_info(kernel: LoopKernel,
     num_target_axes = ary.num_target_axes()
 
     vector_index = None
-    subscripts: list[Expression] = [0] * num_target_axes
+    subscripts: list[ArithmeticExpression] = [0] * num_target_axes
 
     vector_size = ary.vector_size(kernel.target)
 
