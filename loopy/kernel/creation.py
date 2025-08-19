@@ -1313,13 +1313,24 @@ class CSEToAssignmentMapper(IdentityMapper):
             from loopy.symbolic import TypedCSE
             dtype = expr.dtype if isinstance(expr, TypedCSE) else None
 
+            # If 'expr' is a descendant of a reduction node, the reduction variable
+            # is added to the set 'additional_inames'. However, 'expr' may not
+            # actually use all inames in 'additional_inames'. The following code uses
+            # 'DependencyMapper' to pick the inames from 'additional_inames' which
+            # are actually used.
+            from loopy.symbolic import DependencyMapper
+            dm = DependencyMapper(composite_leaves=False)
+            within_inames = additional_inames.intersection(
+                frozenset([iname_var.name for iname_var in dm(expr.child)])
+            )
+
             child = self.rec(expr.child, additional_inames)
             from pymbolic.primitives import Variable
             if isinstance(child, Variable):
                 return child
 
             var_name = self.add_assignment(
-                    expr.prefix, child, dtype, additional_inames)
+                    expr.prefix, child, dtype, within_inames)
             var = Variable(var_name)
             self.expr_to_var[expr.child] = var
             return var
@@ -1351,6 +1362,7 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
                 predicates=insn.predicates,
                 within_inames=insn.within_inames | additional_inames,
                 within_inames_is_final=insn.within_inames_is_final,
+                depends_on=insn.depends_on
                 )
         newly_created_insn_ids.add(new_insn.id)
         new_insns.append(new_insn)
