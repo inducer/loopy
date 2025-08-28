@@ -64,10 +64,11 @@ import contextlib
 import enum
 import itertools
 from dataclasses import dataclass
-from functools import cached_property, reduce
-from typing import TYPE_CHECKING, TypeAlias
+from functools import cached_property
+from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 from constantdict import constantdict
+from typing_extensions import override
 
 import islpy as isl
 from pytools import fset_union, memoize_method, memoize_on_first_arg
@@ -75,14 +76,18 @@ from pytools import fset_union, memoize_method, memoize_on_first_arg
 from loopy.diagnostic import LoopyError
 from loopy.kernel.data import AddressSpace, ArrayArg, TemporaryVariable
 from loopy.schedule.tree import Tree
-from loopy.typing import InameStr, InameStrSet, not_none
+from loopy.typing import InameStr, InameStrSet, InsnId, not_none
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Mapping, Sequence, Set
 
+    from pymbolic import Expression
+
     from loopy.kernel import LoopKernel
+    from loopy.kernel.instruction import InstructionBase
     from loopy.schedule import ScheduleItem
+    from loopy.translation_unit import CallablesTable
 
 
 # {{{ block boundary finder
@@ -94,8 +99,8 @@ def get_block_boundaries(schedule: Sequence[ScheduleItem]) -> Mapping[int, int]:
     :class:`loopy.schedule.EndBlockItem`\ s and vice versa.
     """
     from loopy.schedule import BeginBlockItem, EndBlockItem
-    block_bounds = {}
-    active_blocks = []
+    block_bounds: dict[int, int] = {}
+    active_blocks: list[int] = []
     for idx, sched_item in enumerate(schedule):
         if isinstance(sched_item, BeginBlockItem):
             active_blocks.append(idx)
@@ -114,8 +119,8 @@ def temporaries_read_in_subkernel(
         kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
-    inames = frozenset().union(*(kernel.insn_inames(insn_id)
-                                 for insn_id in insn_ids))
+    inames = fset_union(kernel.insn_inames(insn_id)
+                                 for insn_id in insn_ids)
     domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
     params = fset_union(
         kernel.domains[dom_idx].get_var_names_not_none(isl.dim_type.param)
@@ -142,12 +147,12 @@ def args_read_in_subkernel(
         kernel: LoopKernel, subkernel_name: str) -> frozenset[str]:
     from loopy.kernel.tools import get_subkernel_to_insn_id_map
     insn_ids = get_subkernel_to_insn_id_map(kernel)[subkernel_name]
-    inames = frozenset().union(*(kernel.insn_inames(insn_id)
-                                 for insn_id in insn_ids))
+    inames = fset_union(kernel.insn_inames(insn_id)
+                                 for insn_id in insn_ids)
     domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
-    params = frozenset().union(*(
+    params = fset_union(
         kernel.domains[dom_idx].get_var_names_not_none(isl.dim_type.param)
-        for dom_idx in domain_idxs))
+        for dom_idx in domain_idxs)
     return (frozenset(arg
                 for insn_id in insn_ids
                 for arg in kernel.id_to_insn[insn_id].read_dependency_names()
@@ -209,6 +214,7 @@ class SubKernelArgInfo(KernelArgInfo):
     passed_temporaries: Sequence[str]
 
     @property
+    @override
     def passed_names(self) -> Sequence[str]:
         return (list(self.passed_arg_names)
                 + list(self.passed_inames)
@@ -221,10 +227,10 @@ def _should_temp_var_be_passed(tv: TemporaryVariable) -> bool:
 
 class _SupportingNameTracker:
     def __init__(self, kernel: LoopKernel):
-        self.kernel = kernel
-        self.name_to_main_name: dict[str, str] = {}
+        self.kernel: LoopKernel = kernel
+        self.name_to_main_name: dict[str, Set[str]] = {}
 
-    def add_supporting_names_for(self, name):
+    def add_supporting_names_for(self, name: str):
         var_descr = self.kernel.get_var_descriptor(name)
         for supp_name in var_descr.supporting_names():
             self.name_to_main_name[supp_name] = (
@@ -234,8 +240,8 @@ class _SupportingNameTracker:
     def get_additional_args_and_tvs(
             self, already_passed: set[str]
             ) -> tuple[list[str], list[str]]:
-        additional_args = []
-        additional_temporaries = []
+        additional_args: list[str] = []
+        additional_temporaries: list[str] = []
 
         for supporting_name in sorted(frozenset(self.name_to_main_name)):
             if supporting_name not in already_passed:
@@ -257,7 +263,7 @@ def _process_args_for_arg_info(
 
     args_expected: set[str] = set()
 
-    passed_arg_names = []
+    passed_arg_names: list[str] = []
     for arg in kernel.args:
         if used_only and not (arg.name in args_read or arg.name in args_written):
             continue
@@ -401,8 +407,15 @@ def get_return_from_kernel_mapping(kernel: LoopKernel) -> Mapping[int, int | Non
 
 # {{{ check for write races in accesses
 
-def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table,
-                            address_space):
+def _check_for_access_races(
+            map_a: isl.Map,
+            insn_a: InstructionBase,
+            map_b: isl.Map,
+            insn_b: InstructionBase,
+            knl: LoopKernel,
+            callables_table: CallablesTable,
+            address_space: AddressSpace
+        ):
     """
     Returns *True* if the execution instances of *insn_a* and *insn_b*, accessing
     the same variable via access maps *map_a* and *map_b*, result in an access race.
@@ -439,7 +452,7 @@ def _check_for_access_races(map_a, insn_a, map_b, insn_b, knl, callables_table,
     # Step 1.4: Rename the dims with their iname tags i.e. (g.i or l.i)
     # Step 1.5: Name the ith output dims as _lp_dim{i}
 
-    updated_maps = []
+    updated_maps: list[isl.Map] = []
 
     for (map_, insn) in [
             (map_a, insn_a),
@@ -596,9 +609,9 @@ class AccessMapDescriptor(enum.Enum):
 class WriteRaceChecker:
     """Used for checking for overlap between access ranges of instructions."""
 
-    def __init__(self, kernel, callables_table):
-        self.kernel = kernel
-        self.callables_table = callables_table
+    def __init__(self, kernel: LoopKernel, callables_table: CallablesTable):
+        self.kernel: LoopKernel = kernel
+        self.callables_table: CallablesTable = callables_table
 
     @cached_property
     def vars(self):
@@ -606,19 +619,20 @@ class WriteRaceChecker:
                 | self.kernel.get_read_variables())
 
     @memoize_method
-    def _get_access_maps(self, insn_id, access_dir):
+    def _get_access_maps(self, insn_id: InsnId, access_dir: Literal["w", "any"]):
         from collections import defaultdict
 
         from loopy.symbolic import BatchedAccessMapMapper
 
         insn = self.kernel.id_to_insn[insn_id]
 
-        exprs = list(insn.assignees)
+        exprs: list[Expression] = list(insn.assignees)
         if access_dir == "any":
             exprs.append(insn.expression)
             exprs.extend(insn.predicates)
 
-        access_maps = defaultdict(lambda: AccessMapDescriptor.DOES_NOT_ACCESS)
+        access_maps: dict[str, AccessMapDescriptor | isl.Map] = defaultdict(
+                                        lambda: AccessMapDescriptor.DOES_NOT_ACCESS)
 
         arm = BatchedAccessMapMapper(self.kernel, self.vars, overestimate=True)
 
@@ -629,11 +643,15 @@ class WriteRaceChecker:
             if arm.bad_subscripts[name]:
                 access_maps[name] = AccessMapDescriptor.NON_AFFINE_ACCESS
                 continue
-            access_maps[name] = arm.access_maps[name][insn.within_inames]
+            access_maps[name] = not_none(arm.access_maps[name][insn.within_inames])
 
         return access_maps
 
-    def _get_access_map_for_var(self, insn_id, access_dir, var_name):
+    def _get_access_map_for_var(self,
+                insn_id: InsnId,
+                access_dir: Literal["w", "any"],
+                var_name: str
+            ):
         assert access_dir in ["w", "any"]
 
         insn = self.kernel.id_to_insn[insn_id]
@@ -642,14 +660,25 @@ class WriteRaceChecker:
         from loopy.kernel.instruction import MultiAssignmentBase
         if not isinstance(insn, MultiAssignmentBase):
             if access_dir == "any":
-                return var_name in insn.dependency_names()
+                if var_name in insn.dependency_names():
+                    return AccessMapDescriptor.NON_AFFINE_ACCESS
+                else:
+                    return AccessMapDescriptor.DOES_NOT_ACCESS
             else:
-                return var_name in insn.write_dependency_names()
+                if var_name in insn.write_dependency_names():
+                    return AccessMapDescriptor.NON_AFFINE_ACCESS
+                else:
+                    return AccessMapDescriptor.DOES_NOT_ACCESS
 
         return self._get_access_maps(insn_id, access_dir)[var_name]
 
-    def do_accesses_result_in_races(self, insn1, insn1_dir, insn2, insn2_dir,
-                                    var_name):
+    def do_accesses_result_in_races(self,
+                insn1: InsnId,
+                insn1_dir: Literal["w", "any"],
+                insn2: InsnId,
+                insn2_dir: Literal["w", "any"],
+                var_name: str
+            ):
         """Determine whether the access maps to *var_name* in the two given
         instructions result in write races owing to concurrent iname tags. This
         determination is made 'conservatively', i.e. if precise information is
@@ -675,7 +704,7 @@ class WriteRaceChecker:
         return _check_for_access_races(insn1_amap, self.kernel.id_to_insn[insn1],
                                        insn2_amap, self.kernel.id_to_insn[insn2],
                                        self.kernel, self.callables_table,
-                                       (self.kernel
+                                       cast("AddressSpace", self.kernel
                                         .get_var_descriptor(var_name)
                                         .address_space))
 
@@ -741,10 +770,7 @@ def separate_loop_nest(
     """
     assert all(isinstance(loop_nest, frozenset) for loop_nest in loop_nests)
 
-    # annotation to avoid https://github.com/python/mypy/issues/17693
-    emptyset: InameStrSet = frozenset()
-
-    assert inames_to_separate <= reduce(frozenset.union, loop_nests, emptyset)
+    assert inames_to_separate <= fset_union(loop_nests)
 
     # {{{ sanity check to ensure the loop nest *inames_to_separate* is possible
 
@@ -760,8 +786,7 @@ def separate_loop_nest(
     # }}}
 
     innermost_node = loop_nests[-1]
-    # separate variable to avoid https://github.com/python/mypy/issues/17694
-    outerer_loops = reduce(frozenset.union, loop_nests[:-1], emptyset)
+    outerer_loops = fset_union(loop_nests[:-1])
     new_outer_node = inames_to_separate - outerer_loops
     new_inner_node = innermost_node - inames_to_separate
 
@@ -783,7 +808,11 @@ def separate_loop_nest(
     return tree, new_outer_node, new_inner_node
 
 
-def _add_inner_loops(tree, outer_loop_nest, inner_loop_nest):
+def _add_inner_loops(
+            tree: LoopNestTree,
+            outer_loop_nest: InameStrSet,
+            inner_loop_nest: InameStrSet
+        ) -> LoopNestTree:
     """
     Returns a copy of *tree* that nests *inner_loop_nest* inside *outer_loop_nest*.
     """
@@ -889,7 +918,7 @@ def _order_loop_nests(
                                 " schedule kernels with priority dependencies"
                                 " between sibling loop nests")
 
-    def _raise_loopy_err(x):
+    def _raise_loopy_err(x: str):
         raise LoopyError(x)
 
     # record strict priorities
@@ -911,9 +940,9 @@ def _order_loop_nests(
 
     assert loop_nest_tree.root == frozenset()
 
-    new_tree = Tree.from_root("")
+    new_tree = Tree[InameStr].from_root("")
 
-    old_to_new_parent = {}
+    old_to_new_parent: dict[InameStrSet, InameStr] = {}
 
     old_to_new_parent[loop_nest_tree.root] = ""
 
@@ -1054,7 +1083,7 @@ def _get_iname_to_tree_node_id_from_partial_loop_nest_tree(
 
     :arg tree: A partial loop nest tree.
     """
-    iname_to_tree_node_id = {}
+    iname_to_tree_node_id: dict[InameStr, InameStrSet] = {}
     for node in tree.nodes():
         assert isinstance(node, frozenset)
         for iname in node:
