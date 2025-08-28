@@ -178,19 +178,66 @@ def supporting_temporary_names(
     return frozenset(result)
 
 
+def _get_temporaries_accessed_in_schedule(
+            kernel: LoopKernel,
+            sched_idx_lower_bound: int,
+            sched_idx_upper_bound: int
+        ) -> frozenset[str]:
+    from loopy.schedule import CallKernel, EnterLoop, LeaveLoop
+
+    linearization = kernel.linearization
+    assert linearization is not None
+
+    temporaries: frozenset[str] = frozenset()
+    for sched_index in range(sched_idx_lower_bound, sched_idx_upper_bound):
+        sched_item = linearization[sched_index]
+        if isinstance(sched_item, CallKernel):
+            temporaries = (
+                temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
+                | temporaries_read_in_subkernel(
+                    kernel, sched_item.kernel_name
+                )
+                | (temporaries)
+            )
+        elif isinstance(sched_item, (EnterLoop, LeaveLoop)):
+            # ignore further outside-kernel loops
+            pass
+
+        else:
+            raise NotImplementedError("kernel with non-CallKernel outermost")
+
+    return temporaries
+
+
+def _map_to_base_storage(kernel: LoopKernel, tv_names: Set[str]) -> Set[str]:
+    result: set[str] = set()
+    for tv_name in tv_names:
+        while True:
+            tv = kernel.temporary_variables[tv_name]
+            if tv.base_storage is not None:
+                tv_name = tv.base_storage
+            else:
+                break
+
+        result.add(tv_name)
+
+    return result
+
+
+@memoize_on_first_arg
 def get_sched_index_to_first_and_last_used(
         kernel: LoopKernel
-    ) -> tuple[dict[int, frozenset[str]], dict[int, frozenset[str]]]:
+    ) -> tuple[Mapping[int, Set[str]], Mapping[int, Set[str]]]:
     """
     Returns the tuple (first_used, last_used), where first_used is
-    a dict such that first_used[sched_index] is the set of all temporary
+    a dict such that first_used[sched_index] is the set of all global temporary
     variable names first used at sched_index.
 
-    Likewise, last_used[sched_index] is the set of all temporary variable names
-    last used at sched_index.
+    Likewise, last_used[sched_index] is the set of all global temporary
+    variable names last used at sched_index.
     """
     from loopy.kernel.data import AddressSpace
-    from loopy.schedule import CallKernel, EnterLoop
+    from loopy.schedule import CallKernel, EnterLoop, Barrier
 
     assert kernel.linearization is not None
 
@@ -200,94 +247,67 @@ def get_sched_index_to_first_and_last_used(
     )
 
     # Collapse into blocks
-    def get_temporaries_in_bounds(
-            linearization: Sequence[ScheduleItem],
-            lower_bound: int,
-            upper_bound: int
-        ) -> frozenset[str]:
-        temporaries: frozenset[str] = frozenset()
-        for sched_index in range(lower_bound, upper_bound+1):
-            sched_item = linearization[sched_index]
-            if isinstance(sched_item, CallKernel):
-                temporaries = (
-                    temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
-                    | temporaries_read_in_subkernel(
-                        kernel, sched_item.kernel_name
-                    )
-                    | (temporaries)
-                )
-        return temporaries & global_temporaries
-
     block_boundaries = get_block_boundaries(kernel.linearization)
 
-    bounds: dict[int, frozenset[str]] = {}
+    tvs_accessed_at: dict[int, frozenset[str]] = {}
     sched_index = 0
     while sched_index < len(kernel.linearization):
         sched_item = kernel.linearization[sched_index]
-        if isinstance(sched_item, (EnterLoop, CallKernel)):
-            if isinstance(sched_item, CallKernel):
-                block_end = block_boundaries[sched_index]
-                accessed_temporaries = (
-                    temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
-                    | temporaries_read_in_subkernel(
-                        kernel, sched_item.kernel_name
-                    )
+        if isinstance(sched_item, CallKernel):
+            block_end = block_boundaries[sched_index]
+            tvs_accessed_at[sched_index] = (
+                temporaries_written_in_subkernel(kernel, sched_item.kernel_name)
+                | temporaries_read_in_subkernel(
+                    kernel, sched_item.kernel_name
                 )
-            else:
-                block_end = block_boundaries[sched_index]
-                accessed_temporaries = get_temporaries_in_bounds(
-                    kernel.linearization, sched_index, block_end
-                )
-            bounds[sched_index] = accessed_temporaries
+            ) & global_temporaries
+
             sched_index = block_end + 1
-        else:
+
+        elif isinstance(sched_item, EnterLoop):
+            block_end = block_boundaries[sched_index]
+            tvs_accessed_at[sched_index] = _get_temporaries_accessed_in_schedule(
+                kernel, sched_index, block_end+1
+            ) & global_temporaries
+
+            sched_index = block_end + 1
+
+        elif isinstance(sched_item, Barrier):
             sched_index += 1
+        else:
+            raise ValueError(
+                    f"unexpected schedule item at outermost level: {type(sched_item)}")
 
-    def update_seen_storage_vars(
-            seen_sv: set[str],
-            new_temp_variables: frozenset[str]
-        ) -> frozenset[str]:
-        new_storage_variables: set[str] = set()
-        past_sv = frozenset(seen_sv)
-        for new_tv_name in new_temp_variables:
-            new_tv = kernel.temporary_variables[new_tv_name]
-            if new_tv.base_storage is None:
-                storage_var = new_tv_name
-            else:
-                storage_var = new_tv.base_storage
-            new_storage_variables.add(storage_var)
-            seen_sv.add(storage_var)
-        new_sv = frozenset(new_storage_variables)
-        return new_sv - past_sv
-    # forward pass for first accesses
-    first_accesses: dict[int, frozenset[str]] = {}
-    seen_storage_variables: set[str] = set()
+    storage_vars_accessed_at = {
+        sched_index: _map_to_base_storage(kernel, accessed)
+        for sched_index, accessed in tvs_accessed_at.items()
+    }
+    del tvs_accessed_at
+
+    # forward pass for first_accesses
+    first_accesses: dict[int, Set[str]] = {}
+    seen_storage_vars: set[str] = set()
     for sched_index in range(0, len(kernel.linearization)):
-        if (sched_index not in bounds):
-            continue
-        sched_item = kernel.linearization[sched_index]
-        new_temporary_variables = bounds[sched_index]
-        new_storage_variables = update_seen_storage_vars(
-            seen_storage_variables, new_temporary_variables
-        )
+        accessed = storage_vars_accessed_at.get(sched_index, set())
+        new_storage_vars = accessed - seen_storage_vars
+        seen_storage_vars.update(accessed)
 
-        if (len(new_storage_variables) > 0):
-            first_accesses[sched_index] = new_storage_variables
+        if new_storage_vars:
+            first_accesses[sched_index] = new_storage_vars
 
-    last_accesses: dict[int, frozenset[str]] = {}
-    seen_storage_variables.clear()
+    # backward pass for last_accesses
+    last_accesses: dict[int, Set[str]] = {}
+    seen_storage_vars = set()
     for sched_index in range(len(kernel.linearization)-1, -1, -1):
-        if (sched_index not in bounds):
-            continue
-        sched_item = kernel.linearization[sched_index]
-        new_temporary_variables = bounds[sched_index]
-        new_storage_variables = update_seen_storage_vars(
-            seen_storage_variables, new_temporary_variables
-        )
+        accessed = storage_vars_accessed_at.get(sched_index, set())
+        new_storage_vars = accessed - seen_storage_vars
+        seen_storage_vars.update(accessed)
 
-        if new_storage_variables:
-            last_accesses[sched_index] = new_storage_variables
+        if new_storage_vars:
+            last_accesses[sched_index] = new_storage_vars
+
     return (first_accesses, last_accesses)
+
 # }}}
 
 

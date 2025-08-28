@@ -34,7 +34,7 @@ from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import PREC_NONE, StringifyMapper
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel.data import ValueArg
+from loopy.kernel.data import TemporaryVariable, ValueArg
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.target import ASTBuilderBase
 from loopy.type_inference import TypeReader
@@ -339,7 +339,26 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
                 ecm(insn.assignee, prec=PREC_NONE, type_context=None),
                 ecm(insn.expression, prec=PREC_NONE, type_context=None))
 
-    # }}}
+    @override
+    def get_temporary_var_declarator(self,
+                codegen_state: CodeGenerationState,
+                temp_var: TemporaryVariable
+            ) -> Generable | None:
+        return None
+
+    @override
+    def get_temporary_var_deallocator(self,
+                codegen_state: CodeGenerationState,
+                temp_var: TemporaryVariable
+            ) -> Generable | None:
+        return None
+
+    @override
+    def get_temporary_decl_at_index(
+                self, codegen_state: CodeGenerationState,
+                sched_index: int
+            ) -> tuple[Generable | None, Generable | None]:
+        return None, None
 
 # }}}
 

@@ -89,7 +89,6 @@ if TYPE_CHECKING:
 
 # {{{ pyopencl function scopers
 
-
 class PyOpenCLCallable(ScalarCallable):
     """
     Records information about the callables which are not covered by
@@ -912,13 +911,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             gsize: tuple[Expression, ...], lsize: tuple[Expression, ...]
             ) -> genpy.Suite:
         from genpy import Assert, Assign, Comment, Line, Suite
-        from pymbolic.mapper.stringifier import PREC_NONE
 
         kernel = codegen_state.kernel
-        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         from loopy.schedule.tools import get_subkernel_arg_info
         skai = get_subkernel_arg_info(kernel, subkernel_name)
+
+        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         if not gsize:
             gsize = (1,)
@@ -986,6 +985,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
             overflow_args_code = Suite([])
 
         import pyopencl.version as cl_ver
+        from pymbolic.mapper.stringifier import PREC_NONE
         if cl_ver.VERSION < (2020, 2):
             from warnings import warn
             warn("Your kernel invocation will likely fail because your "
