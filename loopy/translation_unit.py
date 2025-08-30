@@ -448,7 +448,7 @@ class TranslationUnit:
 
         return pex(*args, **kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         # FIXME: do a topological sort by the call graph
 
         return "\n".join(
