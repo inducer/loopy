@@ -2866,7 +2866,7 @@ class AccessRangeOverlapChecker:
             exprs.extend(insn.predicates)
 
         from collections import defaultdict
-        aranges: defaultdict[str, bool | isl.Set | None] = defaultdict(lambda: False)
+        ranges: defaultdict[str, bool | isl.Set | None] = defaultdict(lambda: False)
 
         arm = BatchedAccessMapMapper(self.kernel, self.vars, overestimate=True)
 
@@ -2875,11 +2875,11 @@ class AccessRangeOverlapChecker:
 
         for name in arm.access_maps:
             if arm.bad_subscripts[name]:
-                aranges[name] = True
+                ranges[name] = True
                 continue
-            aranges[name] = arm.get_access_range(name)
+            ranges[name] = arm.get_access_range(name)
 
-        return aranges
+        return ranges
 
     def _get_access_range_for_var(self,
                 insn_id: str,
