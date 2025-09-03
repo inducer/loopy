@@ -47,7 +47,7 @@ from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel.array import FixedStrideArrayDimTag
 from loopy.kernel.data import (
     AddressSpace,
-    ArrayArg,
+    KernelArgument,
     SubstitutionRule,
     TemporaryVariable,
     ValueArg,
@@ -2090,7 +2090,7 @@ def make_function(
                 InstructionBase | SubstitutionRule | str
             ] | str,
             kernel_data: Sequence[
-                ValueArg | ArrayArg | TemporaryVariable | EllipsisType | str
+                KernelArgument | TemporaryVariable | EllipsisType | str
             ] | str = (...,),
             *,
             temporary_variables: Mapping[str, TemporaryVariable] | None = None,
@@ -2524,7 +2524,7 @@ def make_kernel(
                 InstructionBase | SubstitutionRule | str
             ] | str,
             kernel_data: Sequence[
-                ValueArg | ArrayArg | TemporaryVariable | EllipsisType | str
+                KernelArgument | TemporaryVariable | EllipsisType | str
             ] = (...,),
             *,
             temporary_variables: Mapping[str, TemporaryVariable] | None = None,
