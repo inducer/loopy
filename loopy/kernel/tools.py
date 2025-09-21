@@ -857,7 +857,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
                     if var.name in auto_axis_inames:
                         # excludes '1', i.e.  the constant
                         new_stride = coeff*stride
-                        old_stride = iname_to_stride_expr.get(var.name, None)
+                        old_stride = iname_to_stride_expr.get(var.name)
                         if old_stride is None or new_stride < old_stride:
                             iname_to_stride_expr[var.name] = new_stride
 

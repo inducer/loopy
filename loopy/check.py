@@ -1359,7 +1359,7 @@ def check_for_nested_base_storage(kernel: LoopKernel) -> None:
 
     for ary in kernel.temporary_variables.values():
         if ary.base_storage:
-            storage_array = name_to_array.get(ary.base_storage, None)
+            storage_array = name_to_array.get(ary.base_storage)
 
             if storage_array is None:
                 raise LoopyError("Nothing known about storage array "
