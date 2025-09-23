@@ -8221,8 +8221,8 @@
                 "code": "reportUnknownArgumentType",
                 "range": {
                     "startColumn": 56,
-                    "endColumn": 17,
-                    "lineCount": 8
+                    "endColumn": 63,
+                    "lineCount": 1
                 }
             },
             {
@@ -8230,6 +8230,14 @@
                 "range": {
                     "startColumn": 21,
                     "endColumn": 63,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 52,
+                    "endColumn": 59,
                     "lineCount": 1
                 }
             },
