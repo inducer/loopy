@@ -2407,7 +2407,7 @@ def _get_one_linearized_kernel_inner(
     # out of scope after the function returns. This allows it to be
     # garbage-collected in the exit handler of the
     # MinRecursionLimitForScheduling context manager in the surrounding
-    # function, because it possilby cannot be safely collected with a lower
+    # function, because it possibly cannot be safely collected with a lower
     # recursion limit without crashing the Python runtime.
     #
     # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
