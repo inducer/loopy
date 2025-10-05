@@ -684,7 +684,7 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
             elif isinstance(sched_item, (CallKernel, ReturnFromKernel, Barrier)):
                 pass
             else:
-                raise LoopyError("schedule item not unterstood: %r" % sched_item)
+                raise LoopyError("schedule item not understood: %r" % sched_item)
 
     return "digraph {} {{\n{}\n}}".format(
             kernel.name,
