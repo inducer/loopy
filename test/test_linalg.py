@@ -28,8 +28,7 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.array
-import pyopencl.cltypes
+import pyopencl.cltypes as cltypes
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -77,9 +76,9 @@ def test_axpy(ctx_factory: cl.CtxFactory):
 
     for dtype, check, a, b in [
             (np.complex64, None, 5, 7),
-            (cl.cltypes.float4, check_float4,  # pylint:disable=no-member
-                cl.cltypes.make_float4(1, 2, 3, 4),  # pylint:disable=no-member
-                cl.cltypes.make_float4(6, 7, 8, 9)),  # pylint:disable=no-member
+            (cltypes.float4, check_float4,  # pylint:disable=no-member
+                cltypes.make_float4(1, 2, 3, 4),  # pylint:disable=no-member
+                cltypes.make_float4(6, 7, 8, 9)),  # pylint:disable=no-member
             (np.float32, None, 5, 7),
             ]:
         knl = lp.make_kernel(
@@ -166,7 +165,7 @@ def test_plain_matrix_mul(ctx_factory: cl.CtxFactory):
     n = get_suitable_size(ctx)
 
     for dtype, check, vec_size in [
-            (cl.cltypes.float4, check_float4, 4),  # pylint:disable=no-member
+            (cltypes.float4, check_float4, 4),  # pylint:disable=no-member
             (np.float32, None, 1),
             ]:
         knl = lp.make_kernel(

@@ -1,5 +1,4 @@
 import ctypes
-import ctypes.util
 import os
 from tempfile import TemporaryDirectory
 from time import time

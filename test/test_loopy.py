@@ -26,9 +26,9 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.array
-import pyopencl.clmath
-import pyopencl.clrandom
+import pyopencl.array as cl_array
+import pyopencl.clmath as clmath
+import pyopencl.clrandom as clrandom
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -433,9 +433,9 @@ def test_offsets_and_slicing(ctx_factory: cl.CtxFactory):
 
     knl = lp.tag_array_axes(knl, "a,b", "stride:auto,stride:1")
 
-    a_full = cl.clrandom.rand(queue, (n, n), np.float64)
+    a_full = clrandom.rand(queue, (n, n), np.float64)
     a_full_h = a_full.get()
-    b_full = cl.clrandom.rand(queue, (n, n), np.float64)
+    b_full = clrandom.rand(queue, (n, n), np.float64)
     b_full_h = b_full.get()
 
     a_sub = (slice(3, 10), slice(5, 10))
@@ -725,7 +725,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory: cl.CtxFactory):
                 outer_tag=outer_tag)
         knl = lp.prioritize_loops(knl, "i_outer")
 
-        a = cl.array.empty(queue, 20, np.float32)
+        a = cl_array.empty(queue, 20, np.float32)
         a.fill(17)
         a_ref = a.copy()
         a_knl = a.copy()
@@ -789,7 +789,7 @@ def test_make_copy_kernel_with_offsets(ctx_factory: cl.CtxFactory):
 
     rng = np.random.default_rng(seed=42)
     a1 = rng.normal(size=(3, 1024, 4))
-    a1_dev = cl.array.to_device(queue, a1)
+    a1_dev = cl_array.to_device(queue, a1)
 
     cknl1 = lp.make_copy_kernel("c,c,c", "sep,c,c")
 
@@ -1461,9 +1461,9 @@ def test_assign_to_linear_subscript(ctx_factory: cl.CtxFactory):
             "a[[i*n + i]] = 1",
             [lp.GlobalArg("a", shape="n,n"), "..."])
 
-    a1 = cl.array.zeros(queue, (10, 10), np.float32)
+    a1 = cl_array.zeros(queue, (10, 10), np.float32)
     knl1(queue, a=a1)
-    a2 = cl.array.zeros(queue, (10, 10), np.float32)
+    a2 = cl_array.zeros(queue, (10, 10), np.float32)
     knl2(queue, a=a2)
 
     assert np.array_equal(a1.get(),  a2.get())
@@ -1475,7 +1475,7 @@ def test_finite_difference_expr_subst(ctx_factory: cl.CtxFactory):
 
     grid = np.linspace(0, 2*np.pi, 2048, endpoint=False)
     h = grid[1] - grid[0]
-    u = cl.clmath.sin(cl.array.to_device(queue, grid))
+    u = clmath.sin(cl_array.to_device(queue, grid))
 
     fin_diff_knl = lp.make_kernel(
         "{[i]: 1<=i<=n}",
@@ -2854,7 +2854,7 @@ def test_empty_domain(ctx_factory: cl.CtxFactory, tag):
         kwargs = {"n": 0}
 
     t_unit = lp.set_options(t_unit, write_code=True)
-    c = cl.array.zeros(queue, (), dtype=np.int32)
+    c = cl_array.zeros(queue, (), dtype=np.int32)
     t_unit(queue, c=c, **kwargs)
 
     assert (c.get() == 0).all()
@@ -3272,7 +3272,7 @@ def test_sep_array_ordering(ctx_factory: cl.CtxFactory):
         )
     knl = lp.tag_inames(knl, "k:unr")
 
-    x = [cl.array.empty(cq, (0,), dtype=np.float64) for i in range(n)]
+    x = [cl_array.empty(cq, (0,), dtype=np.float64) for i in range(n)]
     _evt, out = knl(cq, x=x)
 
     for i in range(n):
