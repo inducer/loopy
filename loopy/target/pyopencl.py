@@ -548,7 +548,7 @@ class PyOpenCLTarget(OpenCLTarget):
             pointer_size_nbytes: int | None = None
             ) -> None:
         # This ensures the dtype registry is populated.
-        import pyopencl.tools
+        import pyopencl.tools  # pyright: ignore[reportUnusedImport]  # noqa: F401
 
         super().__init__(
             atomics_flavor=atomics_flavor,

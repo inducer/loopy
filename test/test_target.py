@@ -28,10 +28,8 @@ from typing_extensions import override
 
 import pymbolic.primitives as prim
 import pyopencl as cl
-import pyopencl.clmath
-import pyopencl.clrandom
-import pyopencl.tools
-import pyopencl.version
+import pyopencl.clrandom as clrandom
+import pyopencl.tools as cl_tools
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -40,7 +38,9 @@ import loopy as lp
 from loopy.diagnostic import LoopyError
 from loopy.target.c import CTarget
 from loopy.target.opencl import OpenCLTarget
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -182,9 +182,6 @@ def test_random123(ctx_factory: cl.CtxFactory, tp):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    if cl.version.VERSION < (2016, 2):
-        pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
-
     n = 150000
 
     knl = lp.make_kernel(
@@ -234,7 +231,7 @@ def test_clamp(ctx_factory: cl.CtxFactory):
     queue = cl.CommandQueue(ctx)
 
     n = 15 * 10**6
-    x = cl.clrandom.rand(queue, n, dtype=np.float32)
+    x = clrandom.rand(queue, n, dtype=np.float32)
 
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
@@ -749,7 +746,7 @@ def test_passing_bajillions_of_svm_args(ctx_factory: cl.CtxFactory, with_gbarrie
             target=lp.PyOpenCLTarget(limit_arg_size_nbytes=20),
             options=lp.Options(return_dict=True))
 
-    alloc = cl.tools.SVMAllocator(
+    alloc = cl_tools.SVMAllocator(
             ctx, flags=cl.svm_mem_flags.READ_WRITE, queue=queue)
 
     multiplier = 10_000

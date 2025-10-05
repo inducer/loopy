@@ -28,8 +28,6 @@ import pytest
 
 import pyopencl as cl
 import pyopencl.clmath
-import pyopencl.clrandom
-import pyopencl.version
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -261,9 +259,6 @@ def test_global_parallel_reduction(ctx_factory: cl.CtxFactory, size):
 @pytest.mark.parametrize("size", [1000])
 def test_global_mc_parallel_reduction(ctx_factory: cl.CtxFactory, size):
     ctx = ctx_factory()
-
-    if cl.version.VERSION < (2016, 2):
-        pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
 
     knl = lp.make_kernel(
             "{[i]: 0 <= i < n }",

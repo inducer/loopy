@@ -2,8 +2,8 @@ import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
-import pyopencl.array
-import pyopencl.clrandom
+import pyopencl.array as cla
+import pyopencl.clrandom as clrandom
 
 import loopy as lp
 
@@ -21,11 +21,11 @@ def main():
     queue = cl.CommandQueue(ctx)
 
     n = 2048
-    a = cl.array.empty(queue, (n, n), dtype=np.float64, order="F")
-    b = cl.array.empty(queue, (n, n), dtype=np.float64, order="F")
-    c = cl.array.zeros(queue, (n, n), dtype=np.float64, order="F")
-    cl.clrandom.fill_rand(a)
-    cl.clrandom.fill_rand(b)
+    a = cla.empty(queue, (n, n), dtype=np.float64, order="F")
+    b = cla.empty(queue, (n, n), dtype=np.float64, order="F")
+    c = cla.zeros(queue, (n, n), dtype=np.float64, order="F")
+    clrandom.fill_rand(a)
+    clrandom.fill_rand(b)
 
     dgemm = lp.set_options(dgemm, write_code=True)
 
