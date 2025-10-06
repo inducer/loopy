@@ -282,6 +282,8 @@ class LoopKernel(Taggable):
             if id_str not in used_ids:
                 return intern(id_str)
 
+        raise RuntimeError("Unreachable.")
+
     def all_group_names(self):
         result = set()
         for insn in self.instructions:

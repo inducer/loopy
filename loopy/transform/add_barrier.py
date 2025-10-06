@@ -24,11 +24,17 @@ THE SOFTWARE.
 """
 
 
+from typing import TYPE_CHECKING
+
 from loopy.kernel import LoopKernel
 from loopy.kernel.instruction import BarrierInstruction
-from loopy.match import parse_match
+from loopy.match import ToMatchConvertible, parse_match
 from loopy.transform.instruction import add_dependency
 from loopy.translation_unit import for_each_kernel
+
+
+if TYPE_CHECKING:
+    from pytools.tag import Tag
 
 
 __doc__ = """
@@ -41,29 +47,33 @@ __doc__ = """
 # {{{ add_barrier
 
 @for_each_kernel
-def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
-                tags=None, synchronization_kind="global", mem_kind=None,
-                within_inames=None):
-    """Takes in a kernel that needs to be added a barrier and returns a kernel
-    which has a barrier inserted into it. It takes input of 2 instructions and
-    then adds a barrier in between those 2 instructions. The expressions can
-    be any inputs that are understood by :func:`loopy.match.parse_match`.
+def add_barrier(
+    kernel: LoopKernel,
+    insn_before: ToMatchConvertible,
+    insn_after: ToMatchConvertible,
+    id_based_on: str | None = None,
+    tags: frozenset[Tag] | None = None,
+    synchronization_kind: str = "global",
+    mem_kind: str | None = None,
+    within_inames: frozenset[str] | None = None,
+) -> LoopKernel:
+    """
+    Returns a transformed version of *kernel* with an additional
+    :class:`loopy.BarrierInstruction` inserted.
 
-    :arg insn_before: String expression that specifies the instruction(s)
-        before the barrier which is to be added. If None, no dependencies will
-        be added to barrier.
-    :arg insn_after: String expression that specifies the instruction(s) after
-        the barrier which is to be added. If None, no dependencies on the barrier
-        will be added.
-    :arg id: String on which the id of the barrier would be based on.
+    :arg insn_before: Match expression that specifies the instruction(s)
+        that the barrier instruction depends on.
+    :arg insn_after: Match expression that specifies the instruction(s)
+        that depend on the barrier instruction.
+    :arg id_based_on: Prefix for the barrier instructions' ID.
     :arg tags: The tag of the group to which the barrier must be added
     :arg synchronization_kind: Kind of barrier to be added. May be "global" or
         "local"
-    :arg kind: Type of memory to be synchronized. May be "global" or "local". Ignored
-        for "global" barriers. If not supplied, defaults to *synchronization_kind*
+    :arg mem_kind: Type of memory to be synchronized. May be "global" or
+        "local". Ignored for "global" barriers. If not supplied, defaults to
+        *synchronization_kind*
     :arg within_inames: A :class:`frozenset` of inames identifying the loops
         within which the barrier will be executed.
-
     """
 
     assert isinstance(kernel, LoopKernel)
@@ -77,14 +87,11 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
     else:
         id = kernel.make_unique_instruction_id(based_on=id_based_on)
 
-    if insn_before is not None:
-        match = parse_match(insn_before)
-        insns_before = frozenset(
-            [insn.id for insn in kernel.instructions if match(kernel, insn)])
-    else:
-        insns_before = None
+    match = parse_match(insn_before)
+    depends_on = frozenset(
+        [insn.id for insn in kernel.instructions if match(kernel, insn)])
 
-    barrier_to_add = BarrierInstruction(depends_on=insns_before,
+    barrier_to_add = BarrierInstruction(depends_on=depends_on,
                                         depends_on_is_final=True,
                                         id=id,
                                         within_inames=within_inames,
@@ -93,10 +100,9 @@ def add_barrier(kernel, insn_before="", insn_after="", id_based_on=None,
                                         mem_kind=mem_kind)
 
     new_kernel = kernel.copy(instructions=[*kernel.instructions, barrier_to_add])
-    if insn_after is not None:
-        new_kernel = add_dependency(new_kernel,
-                                 insn_match=insn_after,
-                                 depends_on="id:"+id)
+    new_kernel = add_dependency(
+        new_kernel, insn_match=insn_after, depends_on="id:" + id
+    )
 
     return new_kernel
 
