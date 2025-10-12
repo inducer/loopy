@@ -724,7 +724,7 @@ def get_insns_in_topologically_sorted_order(
     #
     # Instead of returning these features as a key, we assign an id to
     # each set of features to avoid comparing them which can be expensive.
-    insn_id_to_feature_id = {}
+    insn_id_to_feature_id: dict[InsnId, int] = {}
     insn_features: dict[Hashable, int] = {}
     for insn in kernel.instructions:
         feature = (insn.within_inames, insn.groups, insn.conflicts_with_groups)
@@ -735,7 +735,7 @@ def get_insns_in_topologically_sorted_order(
             feature_id = insn_features[feature]
         insn_id_to_feature_id[insn.id] = feature_id
 
-    def key(insn_id):
+    def key(insn_id: InsnId):
         # negative of insn.priority because
         # pytools.graph.compute_topological_order schedules the nodes with
         # lower 'key' first in case of a tie.
@@ -748,7 +748,10 @@ def get_insns_in_topologically_sorted_order(
 
 # {{{ schedule_as_many_run_insns_as_possible
 
-def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
+def schedule_as_many_run_insns_as_possible(
+            sched_state: SchedulerState,
+            template_insn: InstructionBase
+        ):
     """
     Returns an instance of :class:`loopy.schedule.SchedulerState`, by appending
     all reachable instructions that are similar to *template_insn*. We define
@@ -776,7 +779,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
 
     # }}}
 
-    preschedule = sched_state.preschedule[:]
+    preschedule = list(sched_state.preschedule)
     have_inames = template_insn.within_inames - sched_state.concurrent_inames
     toposorted_insns = sched_state.insns_in_topologically_sorted_order
 
@@ -787,7 +790,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
                 if sched_state.preschedule
                 else None)
 
-    def is_similar_to_template(insn):
+    def is_similar_to_template(insn: InstructionBase):
         if ((insn.within_inames - sched_state.concurrent_inames)
                 != have_inames):
             # sched_state.concurrent_inames contains inames for which no
@@ -802,11 +805,11 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
 
     # select the top instructions in toposorted_insns only which have active
     # inames corresponding to those of sched_state
-    newly_scheduled_insn_ids = []
-    ignored_unscheduled_insn_ids = set()
+    newly_scheduled_insn_ids: list[InsnId] = []
+    ignored_unscheduled_insn_ids: set[InsnId] = set()
 
     # left_over_toposorted_insns: unscheduled insns in a topologically sorted order
-    left_over_toposorted_insns = []
+    left_over_toposorted_insns: list[InstructionBase] = []
 
     for i, insn in enumerate(toposorted_insns):
         assert insn.id not in sched_state.scheduled_insn_ids
@@ -842,7 +845,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     sched_items = tuple(RunInstruction(insn_id=insn_id) for insn_id in
             newly_scheduled_insn_ids)
 
-    updated_schedule = sched_state.schedule + sched_items
+    updated_schedule = [*sched_state.schedule, *sched_items]
     updated_scheduled_insn_ids = (sched_state.scheduled_insn_ids
             | frozenset(newly_scheduled_insn_ids))
     updated_unscheduled_insn_ids = (
@@ -851,7 +854,7 @@ def schedule_as_many_run_insns_as_possible(sched_state, template_insn):
     new_insn_ids_to_try = (None if newly_scheduled_insn_ids
             else sched_state.insn_ids_to_try)
 
-    new_active_group_counts = sched_state.active_group_counts.copy()
+    new_active_group_counts = dict(sched_state.active_group_counts)
     if newly_scheduled_insn_ids:
         # all the newly scheduled insns belong to the same groups as
         # template_insn
