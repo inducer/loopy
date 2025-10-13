@@ -914,6 +914,9 @@ class SubstitutionRule:
         key_builder.rec(key_hash, self.arguments)
         key_builder.rec(key_hash, self.expression)
 
+    @override
+    def __str__(self) -> str:
+        return f"{self.name}({', '.join(self.arguments)}) := {self.expression}"
 
 # }}}
 
