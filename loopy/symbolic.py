@@ -1778,7 +1778,7 @@ class LoopyParser(ParserBase):
 
             return TypeAnnotation(
                     typename,
-                    cast("Expression", self.parse_expression(pstate, _PREC_UNARY)))
+                    self.parse_expression(pstate, _PREC_UNARY))
 
         elif pstate.is_next(_openbracket):
             rollback_pstate = pstate.copy()
@@ -1815,7 +1815,7 @@ class LoopyParser(ParserBase):
             pstate.expect_not_end()
             left_exp = LinearSubscript(
                         left_exp,
-                        cast("Expression", self.parse_expression(pstate)))
+                        self.parse_expression(pstate))
             pstate.expect(_closebracket)
             pstate.advance()
             pstate.expect(_closebracket)
