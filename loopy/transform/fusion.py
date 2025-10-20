@@ -100,7 +100,7 @@ def _find_fusable_loop_domain_index(domain, other_domains):
 
 # {{{ generic merge helpers
 
-T  = TypeVar("T")
+T = TypeVar("T")
 
 
 def _ordered_merge_lists(list_a: Sequence[T], list_b: Sequence[T]) -> list[T]:

@@ -315,7 +315,7 @@ class InOrderSequentialSequentialTag(InameImplementationTag):
         return "ord"
 
 
-ToInameTagConvertible: TypeAlias  = str | Tag | None
+ToInameTagConvertible: TypeAlias = str | Tag | None
 
 
 def parse_tag(tag: ToInameTagConvertible) -> Tag | None:

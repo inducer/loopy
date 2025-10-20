@@ -497,7 +497,7 @@ class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
             # function not resolved => exit
             return []
 
-        arg_id_to_dtype: dict[int | str, LoopyType]  = {
+        arg_id_to_dtype: dict[int | str, LoopyType] = {
                 # FIXME: In order to properly participate in type inference,
                 # functions must be able to deal with multiple types.
                 i: rpar[0]
