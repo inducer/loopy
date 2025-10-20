@@ -110,7 +110,6 @@ extend-select = [
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
-    "E221", # multiple spaces before operator
     "E226", # missing whitespace around operator
     "E402", # module level import not at the top of file
     "N817", # CamelCase `SubstitutionRuleMappingContext` imported as acronym `SRMC`

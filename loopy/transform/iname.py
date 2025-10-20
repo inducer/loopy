@@ -721,7 +721,7 @@ def untag_inames(kernel, iname_to_untag, tag_type):
 
 # {{{ tag inames
 
-_Tags_ish: TypeAlias = Tag | Collection[Tag] | str  | Collection[str]
+_Tags_ish: TypeAlias = Tag | Collection[Tag] | str | Collection[str]
 
 
 @for_each_kernel
