@@ -67,8 +67,9 @@ if TYPE_CHECKING:
     from loopy.types import LoopyType
 
 
-# The Fortran parser may insert dimensions of 'None', but I'd like to phase
+# TODO: Fortran parser may insert dimensions of 'None', but I'd like to phase
 # that out, so we're not encoding that in the type.
+# TODO: ArrayArgDescriptor: also looks for 'None' or 'auto' in the shape
 ShapeType: TypeAlias = tuple[ArithmeticExpression, ...]
 StridesType: TypeAlias = ShapeType
 
