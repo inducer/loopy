@@ -38,7 +38,7 @@ def test_laplacian_stiffness(ctx_factory):
             lp.GlobalArg("jacDet", dtype, shape=(Nc_sym, Nq), order=order),
             lp.ConstantArg("w", dtype, shape=(Nq,), order=order),
             lp.GlobalArg("A", dtype, shape=(Nc_sym, Nb, Nb), order=order),
-            lp.ValueArg("Nc",  np.int32, approximately=1000),
+            lp.ValueArg("Nc", np.int32, approximately=1000),
             ],
             name="lapquad", assumptions="Nc>=1")
 

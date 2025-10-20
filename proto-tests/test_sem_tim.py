@@ -322,15 +322,15 @@ def test_advect(ctx_factory):
                 "Nw[e,i,j,k] = Vr(i,j,k)*wr(i,j,k)+Vs(i,j,k)*ws(i,j,k)+Vt(i,j,k)*wt(i,j,k)",  # noqa
                 ],
             [
-            lp.ArrayArg("u",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("v",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("w",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("Nu",  dtype, shape=field_shape, order=order),
-            lp.ArrayArg("Nv",  dtype, shape=field_shape, order=order),
-            lp.ArrayArg("Nw",  dtype, shape=field_shape, order=order),
-            lp.ArrayArg("G",   dtype, shape=(9, *field_shape), order=order),
-            lp.ArrayArg("D",   dtype, shape=(N, N),  order=order),
-            lp.ValueArg("K",  np.int32, approximately=1000),
+            lp.ArrayArg("u", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("v", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("w", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("Nu", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("Nv", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("Nw", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("G", dtype, shape=(9, *field_shape), order=order),
+            lp.ArrayArg("D", dtype, shape=(N, N), order=order),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="sem_advect", assumptions="K>=1")
 
@@ -436,16 +436,16 @@ def test_advect_dealias(ctx_factory):
 
                 ],
             [
-            lp.ArrayArg("u",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("v",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("w",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("INu",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("INv",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("INw",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("D",   dtype, shape=(M, M), order=order),
-            lp.ArrayArg("I",   dtype, shape=(M, N), order=order),
-            lp.ArrayArg("V",   dtype, shape=(N, M), order=order),
-            lp.ValueArg("K",  np.int32, approximately=1000),
+            lp.ArrayArg("u", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("v", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("w", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("INu", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("INv", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("INw", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("D", dtype, shape=(M, M), order=order),
+            lp.ArrayArg("I", dtype, shape=(M, N), order=order),
+            lp.ArrayArg("V", dtype, shape=(N, M), order=order),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="sem_advect", assumptions="K>=1")
 
@@ -501,12 +501,12 @@ def test_interp_diff(ctx_factory):
                 "Pu[ip,jp,kp,e] = sum_float32(i, V[ip,i]*Pu[i ,jp,kp,e])",
                 ],
             [
-            lp.ArrayArg("u",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("P",   dtype, shape=interim_field_shape, order=order),
-            lp.ArrayArg("I",   dtype, shape=(M, N), order=order),
-            lp.ArrayArg("V",   dtype, shape=(N, M), order=order),
-            lp.ArrayArg("Pu",  dtype, shape=field_shape, order=order),
-            lp.ValueArg("K",  np.int32, approximately=1000),
+            lp.ArrayArg("u", dtype, shape=field_shape, order=order),
+            lp.ArrayArg("P", dtype, shape=interim_field_shape, order=order),
+            lp.ArrayArg("I", dtype, shape=(M, N), order=order),
+            lp.ArrayArg("V", dtype, shape=(N, M), order=order),
+            lp.ArrayArg("Pu", dtype, shape=field_shape, order=order),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="sem_lap_precon", assumptions="K>=1")
 
