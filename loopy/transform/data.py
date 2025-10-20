@@ -260,7 +260,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
 
     kernel, subst_use, sweep_inames, inames_to_be_removed = \
             _process_footprint_subscripts(
-                    kernel,  rule_name, sweep_inames,
+                    kernel, rule_name, sweep_inames,
                     footprint_subscripts, var_descr)
 
     # Our _not_provided is actually a different object from the one in the

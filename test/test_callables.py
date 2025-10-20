@@ -991,7 +991,7 @@ def test_callee_with_auto_offset(ctx_factory: cl.CtxFactory):
         """
         y[i] = 2*y[i]
         """,
-        [lp.GlobalArg("y",  offset=lp.auto)],
+        [lp.GlobalArg("y", offset=lp.auto)],
         name="dosify")
 
     knl = lp.make_kernel(

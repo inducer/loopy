@@ -687,7 +687,7 @@ def test_ilp_loop_bound(ctx_factory: cl.CtxFactory):
     ref_knl = knl
 
     knl = lp.prioritize_loops(knl, "j,i,k")
-    knl = lp.split_iname(knl,  "k", 4, inner_tag="ilp")
+    knl = lp.split_iname(knl, "k", 4, inner_tag="ilp")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             parameters={
@@ -1466,7 +1466,7 @@ def test_assign_to_linear_subscript(ctx_factory: cl.CtxFactory):
     a2 = cl_array.zeros(queue, (10, 10), np.float32)
     knl2(queue, a=a2)
 
-    assert np.array_equal(a1.get(),  a2.get())
+    assert np.array_equal(a1.get(), a2.get())
 
 
 def test_finite_difference_expr_subst(ctx_factory: cl.CtxFactory):

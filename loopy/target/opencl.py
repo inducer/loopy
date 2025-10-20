@@ -479,7 +479,7 @@ def get_opencl_callables():
              "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
              "pow", "exp", "log", "log10", "sqrt", "ceil", "floor",
              "max", "min", "fmax", "fmin",
-             "fabs",  "erf", "erfc"}
+             "fabs", "erf", "erfc"}
             | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
             | set(VECTOR_LITERAL_FUNCS))
 

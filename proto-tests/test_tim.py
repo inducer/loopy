@@ -48,7 +48,7 @@ def test_tim2d(ctx_factory):
 
     seq_knl = knl
     knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "o"], default_tag="l.auto")
-    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "u", ["i", "j", "o"], default_tag="l.auto")
     knl = lp.precompute(knl, "ur", np.float32, ["a", "b"], default_tag="l.auto")
     knl = lp.precompute(knl, "us", np.float32, ["a", "b"], default_tag="l.auto")
     knl = lp.split_iname(knl, "e", 1, outer_tag="g.0")  # , slabs=(0, 1))
@@ -107,7 +107,7 @@ def test_red2d(ctx_factory):
 
     seq_knl = knl
     knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "o"], default_tag="l.auto")
-    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "u", ["i", "j", "o"], default_tag="l.auto")
     knl = lp.precompute(knl, "ue", np.float32, ["a", "b", "m"],
             default_tag="l.auto")
     knl = lp.precompute(knl, "ur", np.float32, ["a", "b"],
@@ -174,7 +174,7 @@ def test_tim3d(ctx_factory):
 
     seq_knl = knl
     knl = lp.add_prefetch(knl, "D", ["m", "j", "i", "k", "o"], default_tag="l.auto")
-    knl = lp.add_prefetch(knl, "u", ["i", "j",  "o", "k"], default_tag="l.auto")
+    knl = lp.add_prefetch(knl, "u", ["i", "j", "o", "k"], default_tag="l.auto")
     knl = lp.precompute(knl, "ur", np.float32, ["a", "b", "c"],
             default_tag="l.auto")
     knl = lp.precompute(knl, "us", np.float32, ["a", "b", "c"],

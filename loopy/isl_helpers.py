@@ -659,7 +659,7 @@ def set_dim_name(
         raise NotImplementedError(f"not implemented for {type(obj)}.")
 
 
-PwAffOrPolynomialT = TypeVar("PwAffOrPolynomialT", isl.PwAff,  isl.PwQPolynomial)
+PwAffOrPolynomialT = TypeVar("PwAffOrPolynomialT", isl.PwAff, isl.PwQPolynomial)
 
 
 def get_param_subst_domain(

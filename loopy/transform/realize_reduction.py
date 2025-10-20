@@ -2246,7 +2246,7 @@ def realize_reduction(t_unit: TranslationUnit,
             )
         in_knl_callable = callables_table[knl.name].copy(
                 subkernel=new_knl)
-        callables_table = callables_table.set(knl.name,  in_knl_callable)
+        callables_table = callables_table.set(knl.name, in_knl_callable)
 
     return t_unit.copy(callables_table=callables_table)
 
