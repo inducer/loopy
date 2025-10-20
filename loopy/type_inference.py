@@ -906,8 +906,7 @@ def infer_unknown_types_for_a_single_kernel(
 
     # }}}
 
-    logger.debug("finding types for {count:d} names".format(
-            count=len(names_for_type_inference)))
+    logger.debug("finding types for %d names", len(names_for_type_inference))
 
     writer_map = kernel.writer_map()
 
@@ -1089,8 +1088,7 @@ def infer_unknown_types_for_a_single_kernel(
     old_calls_to_new_calls.update(type_inf_mapper.old_calls_to_new_calls)
 
     end_time = time.time()
-    logger.debug("type inference took {dur:.2f} seconds".format(
-            dur=end_time - start_time))
+    logger.debug("type inference took %.2f seconds", end_time - start_time)
 
     if kernel._separation_info():
         sep_names: set[str] = set(kernel._separation_info()) | {

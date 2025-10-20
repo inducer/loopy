@@ -1704,12 +1704,11 @@ def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
             options.append("mem_kind=%s" % insn.mem_kind)
 
         if lhs:
-            core = "{} = {}".format(
-                Fore.CYAN+lhs+Style.RESET_ALL,
-                Fore.MAGENTA+rhs+Style.RESET_ALL,
-                )
+            core = (
+                f"{Fore.CYAN}{lhs}{Style.RESET_ALL} "
+                f"= {Fore.MAGENTA}{rhs}{Style.RESET_ALL}")
         else:
-            core = Fore.MAGENTA+rhs+Style.RESET_ALL
+            core = f"{Fore.MAGENTA}{rhs}{Style.RESET_ALL}"
 
         options_str = "  {%s}" % ", ".join(options)
 
@@ -2084,9 +2083,9 @@ def infer_args_are_input_output(kernel: LoopKernel):
             raise NotImplementedError("Unknown argument type %s." % type(arg))
 
         if not (arg.is_input or arg.is_output):
-            raise LoopyError("Kernel argument must be either input or output."
-                    " '{}' in '{}' does not follow it.".format(arg.name,
-                        kernel.name))
+            raise LoopyError(
+                    "Kernel argument must be either input or output."
+                    f" '{arg.name}' in '{kernel.name}' does not follow it.")
 
         new_args.append(arg)
 

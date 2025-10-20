@@ -204,10 +204,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             for arg_name in kai.passed_arg_names:
                 arg = kernel.arg_dict[arg_name]
                 if isinstance(arg, ArrayArg):
-                    gen(
-                            "wait_for.extend({arg_name}.events)"
-                            .format(arg_name=arg.name))
-
+                    gen(f"wait_for.extend({arg.name}.events)")
             gen("")
 
         arg_list = (["_lpy_cl_kernels", "queue", *args,

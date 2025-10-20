@@ -478,8 +478,8 @@ def auto_test_vs_ref(
                 properties=cl.command_queue_properties.PROFILING_ENABLE)
         ref_codegen_result = lp.generate_code_v2(ref_prog)
 
-        logger.info("{} (ref): trying {} for the reference calculation".format(
-            ref_entrypoint, dev))
+        logger.info("%s (ref): trying %s for the reference calculation",
+                    ref_entrypoint, dev)
 
         if not quiet and print_ref_code:
             print(75*"-")
@@ -514,8 +514,8 @@ def auto_test_vs_ref(
 
         ref_queue.finish()
 
-        logger.info("{} (ref): using {} for the reference calculation".format(
-            ref_entrypoint, dev))
+        logger.info("%s (ref): using %s for the reference calculation",
+                    ref_entrypoint, dev)
         logger.info("%s (ref): run" % ref_entrypoint)
 
         ref_start = time()
@@ -667,7 +667,7 @@ def auto_test_vs_ref(
 
     rates = ""
     for cnt, lbl in zip(op_count, op_label, strict=True):
-        rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
+        rates += f" {cnt / elapsed_wall:g} {lbl}/s"
 
     if not quiet:
         def format_float_or_none(v):
@@ -685,7 +685,7 @@ def auto_test_vs_ref(
     if do_check:
         ref_rates = ""
         for cnt, lbl in zip(op_count, op_label, strict=True):
-            rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
+            rates += f" {cnt/elapsed_wall:g} {lbl}/s"
 
         if not quiet:
             print("elapsed: %s s event, %s s marker-event %s s wall "
@@ -697,10 +697,11 @@ def auto_test_vs_ref(
         if do_check:
             ref_rates = ""
             for cnt, lbl in zip(op_count, op_label, strict=True):
-                ref_rates += " {:g} {}/s".format(cnt/ref_elapsed_event, lbl)
+                ref_rates += f" {cnt/ref_elapsed_wall:g} {lbl}/s"
+
             if not quiet:
-                print("ref: elapsed: {:g} s event, {:g} s wall{}".format(
-                        ref_elapsed_event, ref_elapsed_wall, ref_rates))
+                print(f"ref: elapsed: {ref_elapsed_event:g}s event, "
+                      f"{ref_elapsed_wall:g} s wall{ref_rates}")
 
     # }}}
 

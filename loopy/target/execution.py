@@ -607,8 +607,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                                     % arg.name)
 
                     if not arg.offset:
-                        gen("if hasattr({}, 'offset') and {}.offset:".format(
-                                arg.name, arg.name))
+                        gen(f"if hasattr({arg.name}, 'offset') and {arg.name}.offset:")
                         with Indentation(gen):
                             gen("raise ValueError(\"Argument '%s' does not "
                                     "allow arrays with offsets. Try passing "

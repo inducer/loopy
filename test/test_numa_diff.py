@@ -131,8 +131,7 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
             print(insn)
 
             reader, = lp.find_instructions(hsv,
-                  "tag:{knl_tag} and reads:{flux_var}"
-                  .format(knl_tag=knl_tag, flux_var=flux_var))
+                  f"tag:{knl_tag} and reads:{flux_var}")
 
             hsv = lp.assignment_to_subst(hsv, flux_var)
 

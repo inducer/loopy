@@ -761,14 +761,8 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(
 
             # {{{ generate a new assignment instruction
 
-            new_assignee_name = var_name_gen(
-                    "{insn_id}_retval_{assignee_nr}"
-                    .format(insn_id=insn.id, assignee_nr=assignee_nr))
-
-            new_assignment_id = insn_id_gen(
-                    "{insn_id}_assign_retval_{assignee_nr}"
-                    .format(insn_id=insn.id, assignee_nr=assignee_nr))
-
+            new_assignee_name = var_name_gen(f"{insn.id}_retval_{assignee_nr}")
+            new_assignment_id = insn_id_gen(f"{insn.id}_assign_retval_{assignee_nr}")
             newly_added_assignments_ids.add(new_assignment_id)
 
             new_temporaries[new_assignee_name] = (
@@ -1441,9 +1435,7 @@ def _make_temporaries(
 def map_scan_seq(red_realize_ctx, expr, nresults, arg_dtypes,
         reduction_dtypes, scan_param):
 
-    track_iname = red_realize_ctx.var_name_gen(
-            "{sweep_iname}__seq_scan"
-            .format(sweep_iname=scan_param.sweep_iname))
+    track_iname = red_realize_ctx.var_name_gen(f"{scan_param.sweep_iname}__seq_scan")
 
     _get_or_add_sweep_tracking_iname_and_domain(
             red_realize_ctx, scan_param, track_iname)
@@ -1581,9 +1573,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
             _get_int_iname_size(orig_kernel, oiname)
             for oiname in outer_local_inames)
 
-    track_iname = red_realize_ctx.var_name_gen(
-            "{sweep_iname}__pre_scan"
-            .format(sweep_iname=scan_param.sweep_iname))
+    track_iname = red_realize_ctx.var_name_gen(f"{scan_param.sweep_iname}__pre_scan")
 
     _get_or_add_sweep_tracking_iname_and_domain(
             red_realize_ctx,

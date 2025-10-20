@@ -1291,7 +1291,7 @@ def _split_reduction(kernel, inames, direction, within=None):
     inames = set(inames)
 
     if not (inames <= kernel.all_inames()):
-        raise LoopyError("Unknown inames: {}.".format(inames-kernel.all_inames()))
+        raise LoopyError(f"Unknown inames: {inames - kernel.all_inames()}.")
 
     from loopy.match import parse_stack_match
     within = parse_stack_match(within)
@@ -2523,8 +2523,8 @@ def rename_inames(
 
             if not (dom_old <= dom_new and dom_new <= dom_old):
                 raise LoopyError(
-                        "inames {old} and {new} do not iterate over the same domain"
-                        .format(old=old_iname, new=new_iname))
+                        f"inames {old_iname} and {new_iname} do not iterate over "
+                        "the same domain")
 
             # }}}
 

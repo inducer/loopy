@@ -463,8 +463,8 @@ class StringifyMapper(StringifyMapperBase[[]]):
 
     def map_type_cast(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
-        return "cast({}, {})".format(
-                repr(expr.type), self.rec(expr.child, PREC_NONE))
+        child = self.rec(expr.child, PREC_NONE)
+        return f"cast({expr.type!r}, {child})"
 
     def map_resolved_function(self, expr, prec):
         # underlining a resolved call

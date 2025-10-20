@@ -194,14 +194,11 @@ def _fuse_two_kernels(kernela: LoopKernel, kernelb: LoopKernel):
 
             new_args.append(b_arg.copy(name=new_arg_name))
         else:
-            if b_arg != kernela.arg_dict[b_arg.name]:
+            a_arg = kernela.arg_dict[b_arg.name]
+            if b_arg != a_arg:
                 raise LoopyError(
-                        "argument '{arg_name}' has inconsistent definition between "
-                        "the two kernels being merged ({arg_a} <-> {arg_b})"
-                        .format(
-                            arg_name=b_arg.name,
-                            arg_a=str(kernela.arg_dict[b_arg.name]),
-                            arg_b=str(b_arg)))
+                        f"argument '{b_arg.name}' has inconsistent definition between "
+                        f"the two kernels being merged ({a_arg} <-> {b_arg})")
 
     # }}}
 

@@ -231,7 +231,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     for i in range(var_descr.num_user_axes()):
         based_on = "%s_dim_%d" % (c_name, i)
         if var_descr.dim_names is not None:
-            based_on = "{}_dim_{}".format(c_name, var_descr.dim_names[i])
+            based_on = f"{c_name}_dim_{var_descr.dim_names[i]}"
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]
 
@@ -663,9 +663,9 @@ def alias_temporaries(kernel, names, base_name_prefix=None,
     for tv in kernel.temporary_variables.values():
         if tv.name in names_set:
             if tv.base_storage is not None:
-                raise LoopyError("temporary variable '{tv}' already has "
-                        "a defined storage array -- cannot alias"
-                        .format(tv=tv.name))
+                raise LoopyError(
+                        f"temporary variable '{tv.name}' already has "
+                        "a defined storage array -- cannot alias")
 
             new_temporary_variables[tv.name] = \
                     tv.copy(

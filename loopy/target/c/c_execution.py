@@ -164,7 +164,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 var("_lpy_expected_strides_%s" % i)
                 for i in range(num_axes))
 
-        gen("{} = {}.strides".format(strify(expected_strides), arg.name))
+        gen(f"{strify(expected_strides)} = {arg.name}.strides")
 
         # check strides
         if not skip_arg_checks:

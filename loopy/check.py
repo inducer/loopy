@@ -339,8 +339,8 @@ class SubscriptIndicesIsIntChecker(TypeReader):
                         "Type inference did not find type of '%s'"
                         % idx)
             if not type_inf_result[0].is_integral():
-                raise LoopyError("Non-integral array indices obtained in"
-                        " {}.".format(expr))
+                raise LoopyError(
+                    f"Non-integral array indices obtained in {expr}")
 
         return self.rec(expr.aggregate)
 
@@ -489,8 +489,8 @@ def check_multiple_tags_allowed(kernel: LoopKernel) -> None:
     for iname in kernel.inames.values():
         for comb in illegal_combinations:
             if len(filter_iname_tags_by_type(iname.tags, comb)) > 1:
-                raise LoopyError("iname {} has illegal combination of "
-                                 "tags: {}".format(iname.name, iname.tags))
+                raise LoopyError(f"iname {iname.name} has illegal combination of "
+                                 f"tags: {iname.tags}")
 
 
 def _check_for_double_use_of_hw_axes_inner(
@@ -1991,11 +1991,9 @@ def check_implemented_domains(
                         iname, pt.get_coordinate_val(tp, dim).to_python()))
 
                 lines.append(
-                        "sample point in {} but not {}: {}".format(
-                            bigger, smaller, ", ".join(point_axes)))
+                    f"sample point in {bigger} but not {smaller}: {point_axes}")
                 lines.append(
-                        "gist of constraints in {} but not {}: {}".format(
-                            bigger, smaller, gist_domain))
+                    f"gist of constraints in {bigger} but not {smaller}: {gist_domain}")
 
             if code is not None:
                 print(79*"-")
