@@ -259,9 +259,7 @@ def generate_assignment_instruction_code(
             printf_args_str = ", " + ", ".join(str(v) for v in printf_args)
         else:
             printf_args_str = ""
-
-        printf_insn = S('printf("{}\\n"{})'.format(
-                    printf_format, printf_args_str))
+        printf_insn = S(f'printf("{printf_format}\\n"{printf_args_str})')
 
         from cgen import Block
         if kernel.options.trace_assignment_values:

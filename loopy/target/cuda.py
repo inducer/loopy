@@ -535,8 +535,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 lhs_expr_code = ecm(lhs_expr)
                 rhs_expr_code = ecm(new_rhs_expr)
 
-                return Statement("atomicAdd(&{}, {})".format(
-                    lhs_expr_code, rhs_expr_code))
+                return Statement(f"atomicAdd(&{lhs_expr_code}, {rhs_expr_code})")
             else:
                 from cgen import Assign, Block, DoWhile, Line
 

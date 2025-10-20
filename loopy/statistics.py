@@ -216,10 +216,9 @@ class ToCountMap:
 
     def __radd__(self, other):
         if other != 0:
-            raise ValueError("ToCountMap: Attempted to add ToCountMap "
-                                "to {} {}. ToCountMap may only be added to "
-                                "0 and other ToCountMap objects."
-                                .format(type(other), other))
+            raise ValueError("ToCountMap: Attempted to add ToCountMap to"
+                             f"{type(other)}: {other}. ToCountMap may only be added to "
+                             "0 and other ToCountMap objects.")
 
         return self
 
@@ -229,9 +228,8 @@ class ToCountMap:
                 index: other*value
                 for index, value in self.count_map.items()})
         else:
-            raise ValueError("ToCountMap: Attempted to multiply "
-                                "ToCountMap by {} {}."
-                                .format(type(other), other))
+            raise ValueError("ToCountMap: Attempted to multiply ToCountMap by "
+                             f"{type(other)}: {other}.")
 
     __rmul__ = __mul__
 

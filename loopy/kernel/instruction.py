@@ -782,11 +782,9 @@ class OrderedAtomic(VarAtomicity):
         raise NotImplementedError
 
     def __str__(self):
-        return "{}[{}]{}/{}".format(
-                self.op_name,
-                self.var_name,
-                MemoryOrdering.to_string(self.ordering),
-                MemoryScope.to_string(self.scope))
+        ordering = MemoryOrdering.to_string(self.ordering)
+        scope = MemoryScope.to_string(self.scope)
+        return f"{self.op_name}[{self.var_name}]{ordering}/{scope}"
 
 
 class AtomicInit(OrderedAtomic):
@@ -1706,8 +1704,7 @@ class BarrierInstruction(_DataObliviousInstruction):
         self.mem_kind = mem_kind
 
     def __str__(self):
-        first_line = \
-                "{}: ... {}barrier".format(self.id, self.synchronization_kind[0])
+        first_line = f"{self.id}: ... {self.synchronize[0]}barrier"
 
         options = self.get_str_options()
         if self.synchronization_kind == "local":

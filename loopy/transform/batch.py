@@ -139,11 +139,7 @@ def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch"
 
     new_args = []
 
-    batch_dom_str = "{{[{iname}]: 0 <= {iname} < {nbatches}}}".format(
-            iname=batch_iname,
-            nbatches=nbatches,
-            )
-
+    batch_dom_str = f"{{[{batch_iname}]: 0 <= {batch_iname} < {nbatches}}}"
     if not isinstance(nbatches, int):
         batch_dom_str = "[%s] -> " % nbatches + batch_dom_str
         new_args.append(ValueArg(nbatches, dtype=kernel.index_dtype))

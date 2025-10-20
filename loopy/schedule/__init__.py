@@ -350,13 +350,9 @@ def find_loop_insn_dep_map(
                 if not may_add_to_loop_dep_map:
                     continue
 
-                logger.debug("{knl}: loop dependency map: iname '{iname}' "
-                        "depends on '{dep_insn}' via '{insn}'"
-                        .format(
-                            knl=kernel.name,
-                            iname=iname,
-                            dep_insn=dep_insn_id,
-                            insn=insn.id))
+                logger.debug(
+                    "%s: loop dependency map: iname '%s' depends on '%s' via '%s'",
+                    kernel.name, iname, dep_insn_id, insn.id)
 
                 iname_dep.add(dep_insn_id)
 
@@ -463,27 +459,25 @@ def format_insn(kernel: LoopKernel, insn_id: InsnId):
         NoOpInstruction,
     )
     if isinstance(insn, MultiAssignmentBase):
-        return "{}{}{} = {}{}{}  {{id={}}""}".format(
-            Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
-            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
-            format_insn_id(kernel, insn_id))
+        assignees = ", ".join(str(a) for a in insn.assignees)
+        insn_id = format_insn_id(kernel, insn_id)
+        return (
+            f"{Fore.CYAN}{assignees}{Style.RESET_ALL} "
+            f"= {Fore.MAGENTA}{insn.expression}{Style.RESET_ALL}  {{id={insn_id}}}")
     elif isinstance(insn, BarrierInstruction):
         mem_kind = ""
         if insn.synchronization_kind == "local":
             mem_kind = "{mem_kind=%s}" % insn.mem_kind
 
-        return "[{}] {}... {}barrier{}{}".format(
-                format_insn_id(kernel, insn_id),
-                Fore.MAGENTA, insn.synchronization_kind[0], mem_kind,
-                Style.RESET_ALL)
+        insn_id = format_insn_id(kernel, insn_id)
+        sync_kind = insn.synchronization_kind[0]
+        return f"[{insn_id}] {Fore.MAGENTA}... {sync_kind}barrier{mem_kind}{Style.RESET_LL}"  # noqa: E501
     elif isinstance(insn, NoOpInstruction):
-        return "[{}] {}... nop{}".format(
-                format_insn_id(kernel, insn_id),
-                Fore.MAGENTA, Style.RESET_ALL)
+        insn_id = format_insn_id(kernel, insn_id)
+        return f"[{insn_id}] {Fore.MAGENTA}... nop{Style.RESET_ALL}"
     else:
-        return "[{}] {}{}{}".format(
-                format_insn_id(kernel, insn_id),
-                Fore.CYAN, str(insn), Style.RESET_ALL)
+        insn_id = format_insn_id(kernel, insn_id)
+        return f"[{insn_id}] {Fore.CYAN}{insn}{Style.RESET_ALL}"
 
 
 def dump_schedule(kernel: LoopKernel, schedule: Sequence[ScheduleItem]):

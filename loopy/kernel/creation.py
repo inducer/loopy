@@ -1572,8 +1572,8 @@ def determine_shapes_of_temporaries(knl):
         if len(var_to_error) > 0:
             # No way around errors: propagate an exception upward.
             formatted_errors = (
-                "\n\n".join("'{}': {}".format(varname, var_to_error[varname])
-                for varname in sorted(var_to_error.keys())))
+                "\n\n".join(f"'{varname}': {var_to_error[varname]}"
+                            for varname in sorted(var_to_error.keys())))
 
             raise LoopyError("got the following exception(s) trying to find the "
                     "shape of temporary variables: %s" % formatted_errors)
@@ -1956,10 +1956,10 @@ class SliceToInameReplacer(IdentityMapper[[]]):
                     shape = self.knl.temporary_variables[
                             expr.aggregate.name].shape
                 if shape is None or shape[i] is None:
-                    raise LoopyError("Slice notation is only supported for "
+                    raise LoopyError(
+                            "Slice notation is only supported for "
                             "variables whose shapes are known at creation time "
-                            "-- maybe add the shape for '{}'.".format(
-                                expr.aggregate.name))
+                            f"-- maybe add the shape for '{expr.aggregate.name}'.")
 
                 domain_length = shape[i]
                 start, stop, step = normalize_slice_params(index, domain_length)
@@ -2287,14 +2287,10 @@ def make_function(
             )
             warn("'lang_version' was not passed to make_function(). "
                     "To avoid this warning, pass "
-                    "lang_version={ver} in this invocation. "
+                    f"lang_version={MOST_RECENT_LANGUAGE_VERSION} in this invocation. "
                     "(Or say 'from loopy.version import "
-                    "{sym_ver}' in "
-                    "the global scope of the calling frame.)"
-                    .format(
-                        ver=MOST_RECENT_LANGUAGE_VERSION,
-                        sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
-                        ),
+                    f"{version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]}' in "
+                    "the global scope of the calling frame.)",
                     LoopyWarning, stacklevel=2)
 
             lang_version = FALLBACK_LANGUAGE_VERSION

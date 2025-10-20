@@ -114,8 +114,8 @@ class LivenessAnalysis:
                     CallKernel, ReturnFromKernel, Barrier)):
                 after = {sched_idx + 1}
             else:
-                raise LoopyError("unexpected type of schedule item: {ty}"
-                    .format(ty=type(next_item).__name__))
+                raise LoopyError(
+                    f"unexpected type of schedule item: {type(next_item).__name__}")
 
             # Look at item
             if isinstance(item, LeaveLoop):
@@ -124,8 +124,8 @@ class LivenessAnalysis:
                 after |= {loop_begin}
             elif not isinstance(item, (EnterLoop, RunInstruction,
                     CallKernel, ReturnFromKernel, Barrier)):
-                raise LoopyError("unexpected type of schedule item: {ty}"
-                    .format(ty=type(item).__name__))
+                raise LoopyError(
+                    f"unexpected type of schedule item: {type(item).__name__}")
 
             successors[sched_idx] = after
 
@@ -699,11 +699,8 @@ class TemporarySaver:
                             + len(promoted_temporary.hw_dims))
 
         for dim_idx, dim_size in enumerate(promoted_temporary.non_hw_dims):
-            new_iname = self.insn_name_gen("{name}_{mode}_axis_{dim}_{sk}".
-                format(name=orig_temporary.name,
-                       mode=mode,
-                       dim=dim_idx,
-                       sk=subkernel))
+            new_iname = self.insn_name_gen(
+                f"{orig_temporary.name}_{mode}_axis_{dim_idx}_{subkernel}")
             domain = domain.set_dim_name(
                 isl.dim_type.set, orig_dim + dim_idx, new_iname)
 
@@ -728,11 +725,8 @@ class TemporarySaver:
         for hw_iname_idx, (hw_tag, dim) in enumerate(
                 zip(promoted_temporary.hw_tags,
                     promoted_temporary.hw_dims, strict=True)):
-            new_iname = self.insn_name_gen("{name}_{mode}_hw_dim_{dim}_{sk}".
-                format(name=orig_temporary.name,
-                       mode=mode,
-                       dim=hw_iname_idx,
-                       sk=subkernel))
+            new_iname = self.insn_name_gen(
+                f"{orig_temporary.name}_{mode}_hw_dim_{hw_iname_idx}_{subkernel}")
             domain = domain.set_dim_name(
                 isl.dim_type.set, dim_offset + hw_iname_idx, new_iname)
 
@@ -826,8 +820,8 @@ def save_and_reload_temporaries(
                                                        subkernel))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
-                logger.info("reloading {} at entry of {}"
-                        .format(temporary, sched_item.kernel_name))
+                logger.info("reloading %s at entry of %s",
+                            temporary, sched_item.kernel_name)
                 saver.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
@@ -840,8 +834,8 @@ def save_and_reload_temporaries(
                     temporaries_written_in_subkernel(knl, subkernel))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
-                logger.info("saving {} before return of {}"
-                        .format(temporary, sched_item.kernel_name))
+                logger.info("saving %s before return of %s",
+                            temporary, sched_item.kernel_name)
                 saver.save(temporary, sched_item.kernel_name)
 
     return t_unit.with_kernel(saver.finish())

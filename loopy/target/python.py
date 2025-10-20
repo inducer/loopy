@@ -163,15 +163,15 @@ class ExpressionToPythonMapper(StringifyMapper[[]]):
         # Synthesize PREC_IFTHENELSE, make sure it is in the right place in the
         # operator precedence hierarchy (right above "or").
         from pymbolic.mapper.stringifier import PREC_LOGICAL_OR
-        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1  # noqa
+        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1  # noqa: N806
 
+        then_ = self.rec(expr.then, PREC_LOGICAL_OR)
+        cond_ = self.rec(expr.condition, PREC_LOGICAL_OR)
+        else_ = self.rec(expr.else_, PREC_LOGICAL_OR)
         return self.parenthesize_if_needed(
-            "{then} if {cond} else {else_}".format(
-                # "1 if 0 if 1 else 2 else 3" is not valid Python.
-                # So force parens by using an artificially higher precedence.
-                then=self.rec(expr.then, PREC_LOGICAL_OR),
-                cond=self.rec(expr.condition, PREC_LOGICAL_OR),
-                else_=self.rec(expr.else_, PREC_LOGICAL_OR)),
+            f"{then_} if {cond_} else {else_}",
+            # "1 if 0 if 1 else 2 else 3" is not valid Python.
+            # So force parens by using an artificially higher precedence.
             enclosing_prec, PREC_IFTHENELSE)
 
 # }}}

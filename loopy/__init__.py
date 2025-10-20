@@ -582,10 +582,7 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             f"0<={ind}<{shape_i}"
             for ind, shape_i in zip(indices, shape, strict=True))
 
-    set_str = "{{[{}]: {} }}".format(
-                command_indices,
-                bounds
-                )
+    set_str = f"{{[{command_indices}]: {bounds} }}"
     result = make_kernel(set_str,
             "output[%s] = input[%s]"
             % (command_indices, command_indices),

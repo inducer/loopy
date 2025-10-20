@@ -168,11 +168,14 @@ def filter_iname_tags_by_type(
             return tag_type.__name__
 
     if max_num is not None and len(result) > max_num:
-        raise LoopyError("cannot have more than {} tags "
-                "of type(s): {}".format(max_num, strify_tag_type()))
+        raise LoopyError(
+                f"cannot have less than {max_num} tags "
+                f"of type(s): {strify_tag_type()}")
+
     if min_num is not None and len(result) < min_num:
-        raise LoopyError("must have more than {} tags "
-                "of type(s): {}".format(max_num, strify_tag_type()))
+        raise LoopyError(
+                f"must have more than {min_num} tags "
+                f"of type(s): {strify_tag_type()}")
 
     return result
 
@@ -751,8 +754,9 @@ class TemporaryVariable(ArrayBase):
                 shape = initializer.shape
             else:
                 if shape != initializer.shape:
-                    raise LoopyError("Shape of '{}' does not match that of the"
-                            " initializer.".format(name))
+                    raise LoopyError(
+                            f"Shape of '{name}' does not match that of the"
+                            " initializer.")
         else:
             raise LoopyError(
                     "temporary variable '%s': "

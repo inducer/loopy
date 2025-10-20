@@ -48,8 +48,7 @@ def defines_to_python_code(defines_str):
         if match is None:
             raise RuntimeError("#define not understood: '%s'" % line)
 
-        result.append(
-                "{} = {}".format(match.group(1), to_python_literal(match.group(2))))
+        result.append(f"{match.group(1)} = {to_python_literal(match.group(2))}")
 
     return "\n".join(result)
 

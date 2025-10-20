@@ -256,9 +256,9 @@ def _preamble_generator(
             """)
 
     function_defs = {
-            "loopy_floor_div": r"""
+            "loopy_floor_div": fr"""
             #define LOOPY_DEFINE_FLOOR_DIV(SUFFIX, TYPE) \
-                {} TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
+                {func_qualifier} TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
                 {{ \
                     if ((a<0) != (b<0)) \
                         a = a - (b + (b<0) - (b>=0)); \
@@ -266,11 +266,11 @@ def _preamble_generator(
                 }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV)
             #undef LOOPY_DEFINE_FLOOR_DIV
-            """.format(func_qualifier),
+            """,
 
-            "loopy_floor_div_pos_b": r"""
+            "loopy_floor_div_pos_b": fr"""
             #define LOOPY_DEFINE_FLOOR_DIV_POS_B(SUFFIX, TYPE) \
-                {} TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                {func_qualifier} TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
                 {{ \
                     if (a<0) \
                         a = a - (b-1); \
@@ -278,11 +278,11 @@ def _preamble_generator(
                 }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV_POS_B)
             #undef LOOPY_DEFINE_FLOOR_DIV_POS_B
-            """.format(func_qualifier),
+            """,
 
-            "loopy_mod": r"""
+            "loopy_mod": fr"""
             #define LOOPY_DEFINE_MOD(SUFFIX, TYPE) \
-                {} TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
+                {func_qualifier} TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
                 {{ \
                     TYPE result = a%b; \
                     if (result < 0 && b > 0) \
@@ -293,11 +293,11 @@ def _preamble_generator(
                 }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD)
             #undef LOOPY_DEFINE_MOD
-            """.format(func_qualifier),
+            """,
 
-            "loopy_mod_pos_b": r"""
+            "loopy_mod_pos_b": fr"""
             #define LOOPY_DEFINE_MOD_POS_B(SUFFIX, TYPE) \
-                {} TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                {func_qualifier} TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
                 {{ \
                     TYPE result = a%b; \
                     if (result < 0) \
@@ -306,7 +306,7 @@ def _preamble_generator(
                 }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD_POS_B)
             #undef LOOPY_DEFINE_MOD_POS_B
-            """.format(func_qualifier),
+            """,
             }
 
     c_funcs = {func.c_name for func in preamble_info.seen_functions}
@@ -640,8 +640,7 @@ class CMathCallable(ScalarCallable):
                     and real_dtype == np.float128):  # pylint:disable=no-member
                 name = name + "l"  # fabsl
             else:
-                raise LoopyTypeError("{} does not support type {}".format(name,
-                    dtype))
+                raise LoopyTypeError(f"{name} does not support type {dtype}")
 
             result_dtype = real_dtype if name in ["abs", "real", "imag"] else dtype
 

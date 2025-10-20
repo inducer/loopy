@@ -458,9 +458,9 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return 2
 
     def prefix(self, scalar_dtype, segment_flag_dtype):
-        return "loopy_segmented_{}_{}_{}".format(self.which,
-                scalar_dtype.numpy_dtype.type.__name__,
-                segment_flag_dtype.numpy_dtype.type.__name__)
+        stype = scalar_dtype.numpy_dtype.type.__name__
+        ftype = segment_flag_dtype.numpy_dtype.type.__name__
+        return f"loopy_segmented_{self.which}_{stype}_{ftype}"
 
     @override
     def neutral_element(self,
@@ -585,9 +585,9 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         raise NotImplementedError
 
     def prefix(self, scalar_dtype, index_dtype):
-        return "loopy_arg{}_{}_{}".format(self.which,
-                scalar_dtype.numpy_dtype.type.__name__,
-                index_dtype.numpy_dtype.type.__name__)
+        stype = scalar_dtype.numpy_dtype.type.__name__
+        itype = index_dtype.numpy_dtype.type.__name__
+        return f"loopy_arg{self.which}_{stype}_{itype}"
 
     @override
     def result_dtypes(self,

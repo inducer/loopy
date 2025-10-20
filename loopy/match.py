@@ -268,7 +268,7 @@ class Not(MatchExpressionBase):
 
     @override
     def __repr__(self):
-        return "{}({!r})".format(type(self).__name__, self.child)
+        return f"{type(self).__name__}({self.child!r})"
 
 
 @dataclass(frozen=True, eq=True)
@@ -304,7 +304,7 @@ class GlobMatchExpressionBase(MatchExpressionBase, ABC):
 
     @override
     def __repr__(self):
-        return "{}({!r})".format(type(self).__name__, self. glob)
+        return f"{type(self).__name__}({self.glob!r})"
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, type(self).__name__)
@@ -475,14 +475,11 @@ def parse_match(expr: ToMatchConvertible) -> MatchExpressionBase:
              for (tag, s, idx, matchobj) in lex(_LEX_TABLE, expr,
                  match_objects=True)
              if tag is not _whitespace], expr)
-    except InvalidTokenError as e:
+    except InvalidTokenError as exc:
         from loopy.diagnostic import LoopyError
         raise LoopyError(
-                "invalid match expression: '{match_expr}' ({err_type}: {err_str})"
-                .format(
-                    match_expr=expr,
-                    err_type=type(e).__name__,
-                    err_str=str(e))) from e
+                f"invalid match expression: '{expr}' "
+                f"({type(exc).__name__}: {exc})") from exc
 
     if pstate.is_at_end():
         pstate.raise_parse_error("unexpected end of input")
