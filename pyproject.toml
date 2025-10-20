@@ -120,7 +120,6 @@ extend-ignore = [
     # FIXME
     "UP031", # .format instead of %s
     "UP032", # .format instead of %s
-    "B905",  # zip without strict
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -523,7 +523,7 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList[V]):
         if len(self) != len(other):
             return False
 
-        for a, b in zip(self._list, other):
+        for a, b in zip(self._list, other, strict=True):
             if self._get_eq_key(a) != self._get_eq_key(b):
                 return False
 

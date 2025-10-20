@@ -748,8 +748,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(
         for assignee_nr, assignee_var_name, assignee in zip(
                 range(FIRST_POINTER_ASSIGNEE_IDX, len(assignees)),
                 assignee_var_names[FIRST_POINTER_ASSIGNEE_IDX:],
-                assignees[FIRST_POINTER_ASSIGNEE_IDX:]):
-
+                assignees[FIRST_POINTER_ASSIGNEE_IDX:], strict=True):
             if (
                     assignee_var_name in kernel.temporary_variables
                     and
@@ -1425,7 +1424,7 @@ def _make_temporaries(
 
     from loopy.kernel.data import TemporaryVariable
 
-    for name, dtype in zip(var_names, dtypes):
+    for name, dtype in zip(var_names, dtypes, strict=True):
         red_realize_ctx.additional_temporary_variables[name] = TemporaryVariable(
                 name=name,
                 shape=shape,
@@ -1693,7 +1692,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
         pre_scan_result = (pre_scan_result,)
 
     transfer_ids = frozenset()
-    for acc_var, pre_scan_result_i in zip(acc_vars, pre_scan_result):
+    for acc_var, pre_scan_result_i in zip(acc_vars, pre_scan_result, strict=True):
         transfer_id = red_realize_ctx.insn_id_gen(
                 f"{red_realize_ctx.id_prefix}_{scan_param.scan_iname}_transfer")
         transfer_insn = make_assignment(
@@ -1735,7 +1734,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
         red_realize_ctx.additional_iname_tags[stage_exec_iname] \
                 = orig_kernel.iname_tags(scan_param.sweep_iname)
 
-        for read_var, acc_var in zip(read_vars, acc_vars):
+        for read_var, acc_var in zip(read_vars, acc_vars, strict=True):
             read_stage_id = red_realize_ctx.insn_id_gen(
                     f"scan_{scan_param.scan_iname}_read_stage_{istage}")
 
@@ -2114,8 +2113,8 @@ def realize_reduction_for_single_kernel(
                             assignee=assignee,
                             expression=new_expr,
                             **kwargs)
-                        for i, (assignee, new_expr) in enumerate(zip(
-                            insn.assignees, new_expressions))]
+                        for i, (assignee, new_expr) in enumerate(
+                            zip(insn.assignees, new_expressions, strict=True))]
 
                 insn_id_replacements[insn.id] = [
                     rinsn.id for rinsn in replacement_insns]

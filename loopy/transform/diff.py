@@ -128,7 +128,7 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
 
             conds = [
                 p.Comparison(var(ti), "==", ei)
-                for ti, ei in zip(self.diff_inames, index)
+                for ti, ei in zip(self.diff_inames, index, strict=True)
                 ]
 
             if len(conds) == 1:

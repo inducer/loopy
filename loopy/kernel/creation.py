@@ -1194,7 +1194,7 @@ class ArgumentGuesser:
             if isinstance(insn, MultiAssignmentBase):
                 for assignee_var_name, temp_var_type in zip(
                         insn.assignee_var_names(),
-                        insn.temp_var_types):
+                        insn.temp_var_types, strict=True):
                     if temp_var_type.has_value:
                         temp_var_names.add(assignee_var_name)
 
@@ -1375,7 +1375,7 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
     newly_created_insn_ids = set()
     new_temp_vars = []
 
-    for insn, insn_inames_to_dup in zip(instructions, inames_to_dup):
+    for insn, insn_inames_to_dup in zip(instructions, inames_to_dup, strict=True):
         if isinstance(insn, MultiAssignmentBase):
             new_expression = cseam(insn.expression, frozenset())
             if new_expression is not insn.expression:
@@ -1429,8 +1429,7 @@ def create_temporaries(knl, default_order):
         if isinstance(insn, MultiAssignmentBase):
             for assignee_name, temp_var_type in zip(
                     insn.assignee_var_names(),
-                    insn.temp_var_types):
-
+                    insn.temp_var_types, strict=True):
                 if not temp_var_type.has_value:
                     continue
 
@@ -1497,7 +1496,7 @@ def find_shapes_of_vars(knl, var_names, feed_expression):
                 base_indices, shape = list(zip(*[
                         knl.cache_manager.base_index_and_length(
                             access_range, i)
-                        for i in range(access_range.dim(dim_type.set))]))
+                        for i in range(access_range.dim(dim_type.set))], strict=True))
             except StaticValueFindingError as e:
                 var_to_error[var_name] = str(e)
                 continue
@@ -2471,7 +2470,7 @@ def make_function(
     # -------------------------------------------------------------------------
     from loopy import duplicate_inames
     from loopy.match import Id
-    for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
+    for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup, strict=True):
         for old_iname, new_iname in insn_inames_to_dup:
             knl = duplicate_inames(knl, old_iname,
                     within=Id(insn.id), new_inames=new_iname)

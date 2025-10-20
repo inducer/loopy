@@ -122,7 +122,7 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
 
     flux_store_idx = 0
 
-    for rflux_insn, sflux_insn in zip(r_fluxes, s_fluxes):
+    for rflux_insn, sflux_insn in zip(r_fluxes, s_fluxes, strict=True):
         for knl_tag, insn, flux_inames, tmps, flux_precomp_inames in [
                   ("rknl", rflux_insn, ("j", "n",), rtmps, ("jj", "ii",)),
                   ("sknl", sflux_insn, ("i", "n",), stmps, ("ii", "jj",)),

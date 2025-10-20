@@ -815,7 +815,8 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
                 result_i = None
                 found = False
                 for assignee, comp_dtype_set in zip(
-                        writer_insn.assignee_var_names(), return_dtype_set):
+                        writer_insn.assignee_var_names(),
+                        return_dtype_set, strict=True):
                     if assignee == var_name:
                         found = True
                         result_i = comp_dtype_set

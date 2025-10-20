@@ -273,7 +273,8 @@ def _add_assignees_to_calls(knl, all_kernels):
                 assignees = []
                 new_params = []
                 subroutine = subroutine_dict[insn.expression.function.name]
-                for par, arg in zip(insn.expression.parameters, subroutine.args):
+                for par, arg in zip(insn.expression.parameters, subroutine.args,
+                                    strict=True):
                     if arg.name in subroutine.get_written_variables():
                         par = modify_assignee_for_array_call(par)
                         assignees.append(par)

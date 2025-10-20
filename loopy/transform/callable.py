@@ -155,7 +155,7 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
             index_tuple = self.rec(expr.index_tuple, expn_state)
             subs_map = {iname: idx for idx, iname in
-                    zip(index_tuple, sar.swept_inames)}
+                    zip(index_tuple, sar.swept_inames, strict=True)}
             new_indices = tuple(substitute(idx, subs_map) for idx in
                     sar.subscript.index_tuple)
 

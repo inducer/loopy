@@ -297,7 +297,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         for sax_name, sax_source, sax_base_idx in zip(
                 self.storage_axis_names,
                 self.storage_axis_sources,
-                abm.storage_base_indices):
+                abm.storage_base_indices, strict=True):
             if sax_name not in self.non1_storage_axis_names:
                 continue
 
@@ -915,7 +915,7 @@ def precompute_for_single_kernel(
     storage_axis_subst_dict = {}
 
     for i, (arg_name, base_index) in enumerate(
-            zip(storage_axis_names, abm.storage_base_indices)):
+            zip(storage_axis_names, abm.storage_base_indices, strict=True)):
         is_length_1 = arg_name not in non1_storage_axis_names
         arg = 0 if is_length_1 else var(arg_name)
 
@@ -1130,7 +1130,7 @@ def precompute_for_single_kernel(
         new_temp_shape = tuple(
                 # https://github.com/numpy/numpy/issues/27251
                 np.maximum(integer_or_err(i), integer_or_err(ex_i))
-                for i, ex_i in zip(new_temp_shape, temp_var.shape))
+                for i, ex_i in zip(new_temp_shape, temp_var.shape, strict=True))
 
         temp_var = temp_var.copy(shape=new_temp_shape)
 

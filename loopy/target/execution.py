@@ -411,7 +411,7 @@ class ExecutionWrapperGeneratorBase(ABC):
         match_expr = " and ".join(
                 f"({shape_i} == 1 or {strides_i} == {expected_strides_i})"
                 for shape_i, strides_i, expected_strides_i
-                in zip(shape, strides, expected_strides)) or "True"
+                in zip(shape, strides, expected_strides, strict=True)) or "True"
 
         if shape:
             # If any shape component is zero, the array is empty and the strides

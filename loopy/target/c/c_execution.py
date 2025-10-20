@@ -454,7 +454,7 @@ class CompiledCKernel:
     def __call__(self, *args):
         """Execute kernel with given args mapped to ctypes equivalents."""
         args_ = []
-        for arg, arg_t in zip(args, self._fn.argtypes):
+        for arg, arg_t in zip(args, self._fn.argtypes, strict=True):
             if hasattr(arg, "ctypes"):
                 # TODO eliminate unused arguments from kernel
                 arg_ = arg_t(0.0) if arg.size == 0 else arg.ctypes.data_as(arg_t)

@@ -1030,7 +1030,7 @@ class ArrayBase(ImmutableRecord, Taggable):
                 info_entries.append("shape: (%s)"
                         % ", ".join(
                             f"{n}:{i}"
-                            for n, i in zip(self.dim_names, self.shape)))
+                            for n, i in zip(self.dim_names, self.shape, strict=True)))
             else:
                 info_entries.append("shape: (%s)"
                         % ", ".join(str(i) for i in self.shape))
@@ -1191,7 +1191,7 @@ def drop_vec_dims(
         dim_tags: tuple[ArrayDimImplementationTag, ...],
         t: tuple[T, ...]) -> tuple[T, ...]:
     assert len(dim_tags) == len(t)
-    return tuple(t_i for dim_tag, t_i in zip(dim_tags, t)
+    return tuple(t_i for dim_tag, t_i in zip(dim_tags, t, strict=True)
             if not isinstance(dim_tag, VectorArrayDimTag))
 
 
@@ -1331,7 +1331,8 @@ def get_access_info(kernel: LoopKernel,
     if isinstance(ary, ArrayArg) and ary._separation_info:
         sep_index = []
         remaining_index = []
-        for iaxis, (index_i, dim_tag) in enumerate(zip(index, ary.dim_tags)):
+        for iaxis, (index_i, dim_tag) in enumerate(zip(index,
+                                                       ary.dim_tags, strict=True)):
             if iaxis in ary._separation_info.sep_axis_indices_set:
                 sep_index.append(eval_expr_assert_integer_constant(iaxis, index_i))
                 assert isinstance(dim_tag, SeparateArrayArrayDimTag)
@@ -1348,7 +1349,7 @@ def get_access_info(kernel: LoopKernel,
     # {{{ process remaining dim tags
 
     assert ary.dim_tags is not None
-    for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
+    for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags, strict=True)):
         if isinstance(dim_tag, FixedStrideArrayDimTag):
             stride = dim_tag.stride
 

@@ -158,7 +158,7 @@ def make_ref_args(kernel, queue, parameters):
                 strides = evaluate(get_strides(arg), parameters)
 
                 alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
-                        for alen, astrd in zip(shape, strides)) + 1
+                        for alen, astrd in zip(shape, strides, strict=True)) + 1
 
                 if dtype is None:
                     raise LoopyError("dtype for argument '%s' is not yet "
@@ -229,7 +229,7 @@ def make_args(kernel, queue, ref_arg_data, parameters):
     from loopy.kernel.data import ArrayArg, ConstantArg, ImageArg, ValueArg
 
     args = {}
-    for arg, arg_desc in zip(kernel.args, ref_arg_data):
+    for arg, arg_desc in zip(kernel.args, ref_arg_data, strict=True):
         if isinstance(arg, ValueArg):
             arg_value = parameters[arg.name]
 
@@ -264,7 +264,7 @@ def make_args(kernel, queue, ref_arg_data, parameters):
             numpy_strides = [itemsize*s for s in strides]
 
             alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
-                    for alen, astrd in zip(shape, strides)) + 1
+                    for alen, astrd in zip(shape, strides, strict=True)) + 1
 
             # use contiguous array to transfer to host
             host_ref_contig_array = arg_desc.ref_pre_run_storage_array.get()
@@ -429,8 +429,9 @@ def auto_test_vs_ref(
         raise LoopyError("ref_prog and test_prog do not have the same number "
                 "of arguments")
 
-    for i, (ref_arg, test_arg) in enumerate(zip(ref_prog[ref_entrypoint].args,
-            test_prog[test_entrypoint].args)):
+    for i, (ref_arg, test_arg) in enumerate(
+            zip(ref_prog[ref_entrypoint].args,
+                test_prog[test_entrypoint].args, strict=True)):
         if ref_arg.name != test_arg.name:
             raise LoopyError("ref_prog and test_prog argument lists disagree at "
                     "index %d (1-based)" % (i+1))
@@ -665,7 +666,7 @@ def auto_test_vs_ref(
     logger.info("%s: timing run done" % (test_entrypoint))
 
     rates = ""
-    for cnt, lbl in zip(op_count, op_label):
+    for cnt, lbl in zip(op_count, op_label, strict=True):
         rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
 
     if not quiet:
@@ -683,7 +684,7 @@ def auto_test_vs_ref(
 
     if do_check:
         ref_rates = ""
-        for cnt, lbl in zip(op_count, op_label):
+        for cnt, lbl in zip(op_count, op_label, strict=True):
             rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
 
         if not quiet:
@@ -695,7 +696,7 @@ def auto_test_vs_ref(
 
         if do_check:
             ref_rates = ""
-            for cnt, lbl in zip(op_count, op_label):
+            for cnt, lbl in zip(op_count, op_label, strict=True):
                 ref_rates += " {:g} {}/s".format(cnt/ref_elapsed_event, lbl)
             if not quiet:
                 print("ref: elapsed: {:g} s event, {:g} s wall{}".format(

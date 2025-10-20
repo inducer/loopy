@@ -717,13 +717,14 @@ def test_map_domain_vs_split_iname(ctx_factory: cl.CtxFactory):
 
     for d_map_domain, d_split_iname in zip(
             knl_map_dom["loopy_kernel"].domains,
-            knl_split_iname["loopy_kernel"].domains):
+            knl_split_iname["loopy_kernel"].domains, strict=True):
         d_map_domain_aligned = _ensure_dim_names_match_and_align(
             d_map_domain, d_split_iname)
         assert d_map_domain_aligned == d_split_iname
 
     for litem_map_domain, litem_split_iname in zip(
-            lin_knl_map_dom.linearization, lin_knl_split_iname.linearization):
+            lin_knl_map_dom.linearization,
+            lin_knl_split_iname.linearization, strict=True):
         assert litem_map_domain == litem_split_iname
 
     # Can't easily compare instructions because equivalent subscript
@@ -808,13 +809,14 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory
 
     for d_map_domain, d_split_iname in zip(
             knl_map_dom["loopy_kernel"].domains,
-            knl_split_iname["loopy_kernel"].domains):
+            knl_split_iname["loopy_kernel"].domains, strict=True):
         d_map_domain_aligned = _ensure_dim_names_match_and_align(
             d_map_domain, d_split_iname)
         assert d_map_domain_aligned == d_split_iname
 
     for litem_map_domain, litem_split_iname in zip(
-            lin_knl_map_dom.linearization, lin_knl_split_iname.linearization):
+            lin_knl_map_dom.linearization,
+            lin_knl_split_iname.linearization, strict=True):
         assert litem_map_domain == litem_split_iname
 
     # Can't easily compare instructions because equivalent subscript

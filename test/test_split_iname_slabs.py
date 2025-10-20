@@ -62,7 +62,7 @@ def split(vanilla):
 @pytest.fixture(params=[(1, 4), (1, 5), (4, 8)],
                 ids=lambda x: "{k=%s, n=%s}" % x)
 def parameters(request):
-    return dict(zip("kn", request.param))
+    return dict(zip("kn", request.param, strict=True))
 
 
 def test_split_slabs(ctx_factory: cl.CtxFactory, vanilla, split, parameters):

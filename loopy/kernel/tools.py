@@ -847,7 +847,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
         # {{{ construct iname_to_stride_expr
 
         iname_to_stride_expr = {}
-        for iexpr_i, stride in zip(index_expr, ary_strides):
+        for iexpr_i, stride in zip(index_expr, ary_strides, strict=True):
             if stride is None:
                 continue
             coeffs = CoefficientCollector()(iexpr_i)
@@ -1653,7 +1653,7 @@ def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
         current_inames[0] = new_inames
 
     for insn, (arrows, extender) in zip(  # noqa: B007
-            printed_insn_order, arrows_and_extenders):
+            printed_insn_order, arrows_and_extenders, strict=True):
         if isinstance(insn, lp.MultiAssignmentBase):
             lhs = ", ".join(str(a) for a in insn.assignees)
             rhs = str(insn.expression)
