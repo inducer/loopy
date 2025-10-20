@@ -68,8 +68,11 @@ __doc__ = """
 """
 
 
-def register_callable(translation_unit, function_identifier, callable_,
-        redefining_not_ok=True):
+def register_callable(
+        translation_unit: TranslationUnit,
+        function_identifier: str,
+        callable_: InKernelCallable,
+        redefining_not_ok: bool = True) -> TranslationUnit:
     """
     :param translation_unit: A :class:`loopy.TranslationUnit`.
     :param callable_: A :class:`loopy.InKernelCallable`.
@@ -78,7 +81,6 @@ def register_callable(translation_unit, function_identifier, callable_,
     if isinstance(callable_, LoopKernel):
         callable_ = CallableKernel(callable_)
 
-    from loopy.kernel.function_interface import InKernelCallable
     assert isinstance(callable_, InKernelCallable)
 
     if (function_identifier in translation_unit.callables_table) and (
