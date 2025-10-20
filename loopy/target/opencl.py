@@ -162,11 +162,15 @@ def _create_vector_types():
                     "titles": titles})
             except NotImplementedError:
                 try:
-                    dtype = np.dtype([((n, title), base_type)
-                                      for (n, title) in zip(names, titles)])
+                    dtype = np.dtype([
+                        ((n, title), base_type)
+                        for (n, title) in zip(names, titles, strict=True)
+                    ])
                 except TypeError:
-                    dtype = np.dtype([(n, base_type) for (n, title)
-                                      in zip(names, titles)])
+                    dtype = np.dtype([
+                        (n, base_type)
+                        for (n, title) in zip(names, titles, strict=True)
+                    ])
 
             setattr(vec, name, dtype)
 

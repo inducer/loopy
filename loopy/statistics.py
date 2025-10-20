@@ -1149,7 +1149,7 @@ def _get_lid_and_gid_strides(knl, array, index):
         for tag in tag_to_iname_dict:
             total_iname_stride = 0
             # find total stride of this iname for each axis
-            for idx, axis_tag in zip(index, dim_tags):
+            for idx, axis_tag in zip(index, dim_tags, strict=True):
                 # collect index coefficients
                 try:
                     coeffs = _IndexStrideCoefficientCollector(

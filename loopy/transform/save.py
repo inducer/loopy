@@ -100,7 +100,7 @@ class LivenessAnalysis:
 
         for idx, (item, next_item) in enumerate(zip(
                 reversed(self.linearization),
-                reversed([*self.linearization, None]))):
+                reversed([*self.linearization, None]), strict=False)):
             sched_idx = len(self.linearization) - idx - 1
 
             # Look at next_item
@@ -726,7 +726,8 @@ class TemporarySaver:
         hw_inames = []
         # Add hardware dims.
         for hw_iname_idx, (hw_tag, dim) in enumerate(
-                zip(promoted_temporary.hw_tags, promoted_temporary.hw_dims)):
+                zip(promoted_temporary.hw_tags,
+                    promoted_temporary.hw_dims, strict=True)):
             new_iname = self.insn_name_gen("{name}_{mode}_hw_dim_{dim}_{sk}".
                 format(name=orig_temporary.name,
                        mode=mode,

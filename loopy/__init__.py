@@ -580,7 +580,7 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
     command_indices = ", ".join(indices)
     bounds = " and ".join(
             f"0<={ind}<{shape_i}"
-            for ind, shape_i in zip(indices, shape))
+            for ind, shape_i in zip(indices, shape, strict=True))
 
     set_str = "{{[{}]: {} }}".format(
                 command_indices,
@@ -659,7 +659,7 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
     lhs = var("out")[tuple(var(i) for i in out_spec)]
 
     rhs = 1
-    for arg_name, argsp in zip(arg_names, arg_specs):
+    for arg_name, argsp in zip(arg_names, arg_specs, strict=True):
         rhs = rhs * var(arg_name)[tuple(var(i) for i in argsp)]
 
     if sum_indices:

@@ -91,7 +91,7 @@ def test_c_target_strides_nonsquare():
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indices, sizes):
+        for idx, size in zip(indices, sizes, strict=True):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
@@ -140,7 +140,7 @@ def test_c_optimizations():
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indices, sizes):
+        for idx, size in zip(indices, sizes, strict=True):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))

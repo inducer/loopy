@@ -612,7 +612,7 @@ def check_for_write_races(kernel: LoopKernel) -> None:
     for insn in kernel.instructions:
         for assignee_name, assignee_indices in zip(
                 insn.assignee_var_names(),
-                insn.assignee_subscript_deps()):
+                insn.assignee_subscript_deps(), strict=True):
             assignee_inames = assignee_indices & kernel.all_inames()
             if not assignee_inames <= insn.within_inames:
                 raise LoopyError(
@@ -1716,16 +1716,16 @@ def _are_sub_array_refs_equivalent(
     from pymbolic.mapper.substitutor import make_subst_func
 
     from loopy.symbolic import SubstitutionMapper, simplify_via_aff
-    subst_func = make_subst_func({iname1.name:  iname2
-                                  for iname1, iname2 in zip(sar1.swept_inames,
-                                                            sar2.swept_inames)
-                                  })
+    subst_func = make_subst_func({
+        iname1.name: iname2
+        for iname1, iname2 in zip(sar1.swept_inames, sar2.swept_inames, strict=True)
+    })
 
     # subst_mapper: maps swept inames from sar1 to sar2
     subst_mapper = SubstitutionMapper(subst_func)
 
     for idx1, idx2 in zip(sar1.subscript.index_tuple,
-                          sar2.subscript.index_tuple):
+                          sar2.subscript.index_tuple, strict=True):
         subst_idx1 = subst_mapper(idx1)
         assert is_arithmetic_expression(subst_idx1)
         assert is_arithmetic_expression(idx2)

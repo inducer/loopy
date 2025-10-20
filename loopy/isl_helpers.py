@@ -364,7 +364,7 @@ def duplicate_axes(
     if not duplicate_inames:
         return isl_obj
 
-    old_name_to_new_name = dict(zip(duplicate_inames, new_inames))
+    old_name_to_new_name = dict(zip(duplicate_inames, new_inames, strict=True))
 
     dup_isl_obj = isl_obj
 

@@ -259,7 +259,7 @@ def get_arg_descriptor_for_expression(kernel: LoopKernel, expr: Expression):
         linearized_index = simplify_using_aff(
                 kernel,
                 sum(dim_tag.stride*iname for dim_tag, iname in
-                    zip(arg.dim_tags, expr.subscript.index_tuple)))
+                    zip(arg.dim_tags, expr.subscript.index_tuple, strict=True)))
 
         strides_as_dict = SweptInameStrideCollector(
                 tuple(iname.name for iname in expr.swept_inames)
@@ -671,7 +671,9 @@ class ScalarCallable(InKernelCallable):
                     dtype_to_type_context(target, tgt_dtype),
                     tgt_dtype)
                 for par, par_dtype, tgt_dtype in zip(
-                    expression.parameters, par_dtypes, arg_dtypes))
+                    expression.parameters,
+                    par_dtypes,
+                    arg_dtypes, strict=True))
 
         from pymbolic import var
         return var(self.name_in_target)(*processed_parameters)
@@ -726,14 +728,14 @@ class ScalarCallable(InKernelCallable):
         assignee_dtypes = tuple(self.arg_id_to_dtype[-i-2]
                                 for i, _ in enumerate(assignees))
 
-        tgt_parameters: list[Expression] = [ecm(par, PREC_NONE,
-                              dtype_to_type_context(target, tgt_dtype),
-                              tgt_dtype).expr
-                          for par, par_dtype, tgt_dtype in zip(parameters,
-                                                               par_dtypes,
-                                                               arg_dtypes)]
+        tgt_parameters: list[Expression] = [
+            ecm(par, PREC_NONE,
+                dtype_to_type_context(target, tgt_dtype),
+                tgt_dtype).expr
+            for par, par_dtype, tgt_dtype in
+            zip(parameters, par_dtypes, arg_dtypes, strict=True)]
 
-        for a, tgt_dtype in zip(assignees, assignee_dtypes):
+        for a, tgt_dtype in zip(assignees, assignee_dtypes, strict=True):
             if tgt_dtype != expression_to_code_mapper.infer_type(a):
                 raise LoopyError("Type Mismatch in function %s. Expected: %s"
                         "Got: %s" % (self.name, tgt_dtype,
@@ -1066,10 +1068,11 @@ class CallableKernel(InKernelCallable):
 
         from loopy.expression import dtype_to_type_context
 
-        tgt_parameters = [ecm(par, PREC_NONE, dtype_to_type_context(target,
-                                                                    par_dtype),
-                              par_dtype).expr
-                          for par, par_dtype in zip(parameters, par_dtypes)]
+        tgt_parameters = [
+            ecm(par, PREC_NONE,
+                dtype_to_type_context(target, par_dtype),
+                par_dtype).expr
+            for par, par_dtype in zip(parameters, par_dtypes, strict=True)]
 
         return var(self.subkernel.name)(*tgt_parameters), False
 

@@ -1209,11 +1209,13 @@ class CallInstruction(MultiAssignmentBase):
             predicates.append(new_pred)
         predicates = frozenset(predicates) if changed_predicates else self.predicates
 
-        if len(assignees) == len(self.assignees) and \
-                all(assignee is orig_assignee for assignee, orig_assignee in
-                    zip(assignees, self.assignees)) \
-                and expression is self.expression and \
-                predicates is self.predicates:
+        if (
+                len(assignees) == len(self.assignees)
+                and all(assignee is orig_assignee
+                        for assignee, orig_assignee in
+                        zip(assignees, self.assignees, strict=True))
+                and expression is self.expression
+                and predicates is self.predicates):
             return self
 
         return self.copy(

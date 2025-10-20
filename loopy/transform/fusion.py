@@ -403,7 +403,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
         merge_sets = partial(reduce, or_)
 
         new_kernels = []
-        for i, (kernel, suffix) in enumerate(zip(kernels, suffixes)):
+        for i, (kernel, suffix) in enumerate(zip(kernels, suffixes, strict=True)):
             new_kernels.append(
                     _rename_temporaries(
                         kernel,

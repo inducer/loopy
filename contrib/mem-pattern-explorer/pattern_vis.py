@@ -58,7 +58,7 @@ class ArrayAccessPatternContext:
             for _ in f():
                 self.tick()
 
-                for ary, plot in zip(self.arrays, plots):
+                for ary, plot in zip(self.arrays, plots, strict=True):
                     plot.set_array(ary.get_plot_data())
 
                 fig.canvas.draw()
@@ -85,7 +85,7 @@ class Array:
         if elements_per_row is None:
             if len(shape) > 1:
                 minstride = min(strides)
-                for sh_i, st_i in zip(shape, strides):
+                for sh_i, st_i in zip(shape, strides, strict=True):
                     if st_i == minstride:
                         elements_per_row = sh_i
                         break
@@ -119,7 +119,7 @@ class Array:
 
         lin_index = sum(
                 ind_i * stride_i
-                for ind_i, stride_i in zip(index, self.strides))
+                for ind_i, stride_i in zip(index, self.strides, strict=True))
 
         if not isinstance(lin_index, np.ndarray):
             subscript = [np.newaxis] * self.ctx.ind_length

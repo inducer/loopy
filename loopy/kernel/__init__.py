@@ -1243,7 +1243,9 @@ class LoopKernel(Taggable):
             lines.extend(sep)
             if show_labels:
                 lines.append("DOMAINS:")
-            for dom, parents in zip(kernel.domains, kernel.all_parents_per_domain()):
+            for dom, parents in zip(
+                    kernel.domains,
+                    kernel.all_parents_per_domain(), strict=True):
                 lines.append(len(parents)*"  " + str(dom))
 
         if "tags" in what:

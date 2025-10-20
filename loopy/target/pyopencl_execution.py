@@ -148,7 +148,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         size_expr = 1 + sum(
                 integer_expr_or_err(astrd)*(integer_expr_or_err(alen)-1)
-                for alen, astrd in zip(sym_shape, sym_ustrides)
+                for alen, astrd in zip(sym_shape, sym_ustrides, strict=True)
             )
 
         gen("_lpy_size = %s" % strify(size_expr))

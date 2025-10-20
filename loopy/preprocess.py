@@ -338,7 +338,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
     return {iname
             for aname, adeps in zip(
                 insn.assignee_var_names(),
-                insn.assignee_subscript_deps())
+                insn.assignee_subscript_deps(), strict=True)
             for iname in adeps & kernel.all_inames()
             if aname in tv_names
             if kernel.iname_tags_of_type(iname, tag_base)}

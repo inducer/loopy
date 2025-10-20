@@ -439,7 +439,7 @@ def generate_linearized_array(array, value):
     assert array.offset == 0
 
     for ituple in np.ndindex(value.shape):
-        i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides))
+        i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides, strict=True))
         data[i] = value[ituple]
 
     return data
@@ -1349,7 +1349,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         assignments = []
 
         for i, (assignee, parameter) in enumerate(
-                zip(insn.assignees, insn.expression.parameters)):
+                zip(insn.assignees, insn.expression.parameters, strict=True)):
             lhs_code = ecm(assignee, prec=PREC_NONE, type_context=None)
             assignee_var_name = insn.assignee_var_names()[i]
             lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
