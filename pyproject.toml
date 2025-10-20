@@ -97,19 +97,16 @@ extend-select = [
     "C",   # flake8-comprehensions
     "E",   # pycodestyle
     "F",   # pyflakes
-
+    "FA",  # flake8-future-annotations
     "I",   # flake8-isort
-
     "N",   # pep8-naming
     "NPY", # numpy
     "Q",   # flake8-quotes
-    "W",   # pycodestyle
-
+    "RUF", # ruff
+    "SIM", # flake8-simplify
+    "TC",  # flake8-type-checking
     "UP",  # pyupgrade
-    "RUF",  # ruff
-    "FA",
-    "TC",
-    "SIM",
+    "W",   # pycodestyle
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
