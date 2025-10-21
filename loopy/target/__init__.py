@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
+    from loopy.kernel.data import TemporaryVariable
     from loopy.target.c import DTypeRegistry
     from loopy.target.execution import ExecutorBase
     from loopy.translation_unit import CallableId, CallablesTable, TranslationUnit
@@ -251,6 +252,27 @@ class ASTBuilderBase(Generic[ASTType], ABC):
             schedule_index: int) -> ASTType:
         raise NotImplementedError
 
+    @abstractmethod
+    def get_temporary_var_declarator(self,
+                codegen_state: CodeGenerationState,
+                temp_var: TemporaryVariable
+            ) -> ASTType | None:
+        ...
+
+    @abstractmethod
+    def get_temporary_var_deallocator(self,
+                codegen_state: CodeGenerationState,
+                temp_var: TemporaryVariable
+            ) -> ASTType | None:
+        ...
+
+    @abstractmethod
+    def get_temporary_decl_at_index(
+                self, codegen_state: CodeGenerationState,
+                sched_index: int
+            ) -> tuple[ASTType | None, ASTType | None]:
+        ...
+
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
             gsize: tuple[Expression, ...],
@@ -364,6 +386,27 @@ class DummyHostASTBuilder(ASTBuilderBase[None]):
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize):
         return None
+
+    @override
+    def get_temporary_var_declarator(
+        self, codegen_state: CodeGenerationState,
+        temp_var: TemporaryVariable
+    ) -> None:
+        return None
+
+    @override
+    def get_temporary_var_deallocator(
+        self, codegen_state: CodeGenerationState,
+        temp_var: TemporaryVariable
+    ) -> None:
+        return None
+
+    @override
+    def get_temporary_decl_at_index(
+        self, codegen_state: CodeGenerationState,
+        sched_index: int
+    ) -> tuple[None, None]:
+        return (None, None)
 
     @property
     def ast_block_class(self):
