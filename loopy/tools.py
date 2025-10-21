@@ -88,13 +88,17 @@ class LoopyKeyBuilder(KeyBuilderBase):
     update_for_dict = KeyBuilderBase.update_for_constantdict
     update_for_defaultdict = KeyBuilderBase.update_for_constantdict
 
-    def update_for_BasicSet(self, key_hash, key):  # noqa
-        from islpy import Printer
-        prn = Printer.to_str(key.get_ctx())
-        getattr(prn, "print_"+key._base_name)(key)
-        key_hash.update(prn.get_str().encode("utf8"))
+    def update_for_BasicSet(self, key_hash, key):  # noqa: N802
+        key_hash.update(str(type(key)).encode("utf-8"))
+        self.rec(key_hash, frozenset(key.get_var_dict().keys()))
 
-    def update_for_Map(self, key_hash, key):  # noqa
+        constraints = set()
+        for constraint in key.get_constraints():
+            constraints.add(str(constraint).partition("->")[-1])
+
+        self.rec(key_hash, frozenset(constraints))
+
+    def update_for_Map(self, key_hash, key):  # noqa: N802
         if isinstance(key, isl.Map):
             self.update_for_BasicSet(key_hash, key)
         else:
