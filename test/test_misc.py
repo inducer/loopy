@@ -338,6 +338,31 @@ def test_memoize_on_disk_with_pym_expr():
     assert cached_result == uncached_result
 
 
+def test_basicset_keybuilder():
+    # See https://github.com/inducer/loopy/issues/912 for context
+    import islpy as isl
+
+    # Both sets have the same variables and constraints, but in different order.
+    # These sets are generated in test_convolution() in test_apps.py
+    a = isl.BasicSet("[im_w, im_h, nimgs, nfeats] -> "
+                     "{  : im_w >= 7 and im_h >= 7 and nimgs >= 0 and nfeats > 0 }")
+
+    b = isl.BasicSet("[nfeats, nimgs, im_h, im_w] -> "
+                     "{  : nfeats > 0 and nimgs >= 0 and im_h >= 7 and im_w >= 7 }")
+
+    from loopy.tools import LoopyKeyBuilder
+
+    # Equality
+    assert a == b
+    assert a.is_equal(b)
+    assert not a.plain_is_equal(b)
+
+    # Hashing
+    assert hash(a) != hash(b)
+    assert a.get_hash() != b.get_hash()
+    assert LoopyKeyBuilder()(a) == LoopyKeyBuilder()(b)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
