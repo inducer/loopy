@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 
 # {{{ vector types
 
-class vec:  # noqa
+class vec:  # noqa: N801
     pass
 
 

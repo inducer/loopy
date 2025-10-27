@@ -1,8 +1,8 @@
 import numpy as np
 
-import pyopencl as cl  # noqa
+import pyopencl as cl  # noqa: F401
 from pyopencl.tools import (
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa: F401
 )
 
 import loopy as lp
@@ -21,7 +21,7 @@ def test_laplacian(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (K_sym, n, n, n)
 
@@ -34,16 +34,16 @@ def test_laplacian(ctx_factory):
 
     # K - run-time symbolic
     knl = lp.make_kernel(ctx.devices[0],
-            "[K] -> {[i,j,k,e,m,o1,o2,o3,gi]: 0<=i,j,k,m,o1,o2,o3<%d and 0<=e<K and 0<=gi<6}" % n,  # noqa
+            "[K] -> {[i,j,k,e,m,o1,o2,o3,gi]: 0<=i,j,k,m,o1,o2,o3<%d and 0<=e<K and 0<=gi<6}" % n,  # noqa: E501
             [
                 "CSE: ur(i,j,k) = sum_float32(o1, D[i,o1]*cse(u[e,o1,j,k], urf))",
                 "CSE: us(i,j,k) = sum_float32(o2, D[j,o2]*cse(u[e,i,o2,k], usf))",
                 "CSE: ut(i,j,k) = sum_float32(o3, D[k,o3]*cse(u[e,i,j,o3], utf))",
 
                 # define function
-                "CSE: Gu(i,j,k) = G[0,e,i,j,k]*ur(i,j,k) + G[1,e,i,j,k]*us(i,j,k) + G[2,e,i,j,k]*ut(i,j,k)",  # noqa
-                "CSE: Gv(i,j,k) = G[1,e,i,j,k]*ur(i,j,k) + G[3,e,i,j,k]*us(i,j,k) + G[4,e,i,j,k]*ut(i,j,k)",  # noqa
-                "CSE: Gw(i,j,k) = G[2,e,i,j,k]*ur(i,j,k) + G[4,e,i,j,k]*us(i,j,k) + G[5,e,i,j,k]*ut(i,j,k)",  # noqa
+                "CSE: Gu(i,j,k) = G[0,e,i,j,k]*ur(i,j,k) + G[1,e,i,j,k]*us(i,j,k) + G[2,e,i,j,k]*ut(i,j,k)",  # noqa: E501
+                "CSE: Gv(i,j,k) = G[1,e,i,j,k]*ur(i,j,k) + G[3,e,i,j,k]*us(i,j,k) + G[4,e,i,j,k]*ut(i,j,k)",  # noqa: E501
+                "CSE: Gw(i,j,k) = G[2,e,i,j,k]*ur(i,j,k) + G[4,e,i,j,k]*us(i,j,k) + G[5,e,i,j,k]*ut(i,j,k)",  # noqa: E501
 
                 "lap[e,i,j,k]  = "
                 "  sum_float32(m, D[m,i]*Gu(m,j,k))"
@@ -78,17 +78,17 @@ def test_laplacian(ctx_factory):
 
     if 0:
         pass
-        #seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]", default_tag="l.auto")  # noqa
+        # seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]", default_tag="l.auto")  # noqa: E501
         # seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"], default_tag="l.auto")
-        #seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")  # noqa
+        # seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")  # noqa: E501
     else:
         seq_knl = knl
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")  # , slabs=(0, 1))
 
-    knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]", default_tag="l.auto")  # noqa
+    knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]", default_tag="l.auto")  # noqa: E501
     knl = lp.add_prefetch(knl, "D", ["m", "j"], default_tag="l.auto")
-    #knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")  # noqa
+    # knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]", default_tag="l.auto")  # noqa: E501
 
     # knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
@@ -102,7 +102,7 @@ def test_laplacian(ctx_factory):
             loop_priority=["m_fetch_G", "i_fetch_u"])
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
-    K = 1000  # noqa
+    K = 1000  # noqa: N806
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=K*(n*n*n*n*2*3 + n*n*n*5*3 + n**4 * 2*3)/1e9,
             op_label="GFlops",
@@ -119,7 +119,7 @@ def test_laplacian_lmem(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (K_sym, n, n, n)
 
@@ -132,9 +132,9 @@ def test_laplacian_lmem(ctx_factory):
                 "CSE: ut(i,j,k) = sum_float32(@o, D[k,o]*u[e,i,j,o])",
 
                 "lap[e,i,j,k]  = "
-                "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # noqa
-                "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # noqa
-                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # noqa
+                "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # noqa: E501
+                "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # noqa: E501
+                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # noqa: E501
                 ],
             [
             lp.GlobalArg("u", dtype, shape=field_shape, order=order),
@@ -178,7 +178,7 @@ def test_laplacian_lmem(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
-    K = 1000  # noqa
+    K = 1000  # noqa: N806
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=K*(n*n*n*n*2*3 + n*n*n*5*3 + n**4 * 2*3)/1e9,
             op_label="GFlops",
@@ -196,7 +196,7 @@ def test_laplacian_lmem_ilp(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (K_sym, n, n, n)
 
@@ -209,9 +209,9 @@ def test_laplacian_lmem_ilp(ctx_factory):
                 "ut(i,j,k) := sum_float32(@o, D[k,o]*u[e,i,j,o])",
 
                 "lap[e,i,j,k]  = "
-                "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # noqa
-                "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # noqa
-                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # noqa
+                "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # noqa: E501
+                "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # noqa: E501
+                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # noqa: E501
                 ],
             [
             lp.GlobalArg("u", dtype, shape=field_shape, order=order),
@@ -263,10 +263,10 @@ def test_advect(ctx_factory):
 
     order = "C"
 
-    N = 8  # noqa
+    N = 8  # noqa: N806
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (K_sym, N, N, N)
 
@@ -304,14 +304,14 @@ def test_advect(ctx_factory):
 
                 # find velocity in (r,s,t) coordinates
                 # CSE?
-                "CSE: Vr(i,j,k) = G[0,e,i,j,k]*u[e,i,j,k] + G[1,e,i,j,k]*v[e,i,j,k] + G[2,e,i,j,k]*w[e,i,j,k]",  # noqa
-                "CSE: Vs(i,j,k) = G[3,e,i,j,k]*u[e,i,j,k] + G[4,e,i,j,k]*v[e,i,j,k] + G[5,e,i,j,k]*w[e,i,j,k]",  # noqa
-                "CSE: Vt(i,j,k) = G[6,e,i,j,k]*u[e,i,j,k] + G[7,e,i,j,k]*v[e,i,j,k] + G[8,e,i,j,k]*w[e,i,j,k]",  # noqa
+                "CSE: Vr(i,j,k) = G[0,e,i,j,k]*u[e,i,j,k] + G[1,e,i,j,k]*v[e,i,j,k] + G[2,e,i,j,k]*w[e,i,j,k]",  # noqa: E501
+                "CSE: Vs(i,j,k) = G[3,e,i,j,k]*u[e,i,j,k] + G[4,e,i,j,k]*v[e,i,j,k] + G[5,e,i,j,k]*w[e,i,j,k]",  # noqa: E501
+                "CSE: Vt(i,j,k) = G[6,e,i,j,k]*u[e,i,j,k] + G[7,e,i,j,k]*v[e,i,j,k] + G[8,e,i,j,k]*w[e,i,j,k]",  # noqa: E501
 
                 # form nonlinear term on integration nodes
-                "Nu[e,i,j,k] = Vr(i,j,k)*ur(i,j,k)+Vs(i,j,k)*us(i,j,k)+Vt(i,j,k)*ut(i,j,k)",  # noqa
-                "Nv[e,i,j,k] = Vr(i,j,k)*vr(i,j,k)+Vs(i,j,k)*vs(i,j,k)+Vt(i,j,k)*vt(i,j,k)",  # noqa
-                "Nw[e,i,j,k] = Vr(i,j,k)*wr(i,j,k)+Vs(i,j,k)*ws(i,j,k)+Vt(i,j,k)*wt(i,j,k)",  # noqa
+                    "Nu[e,i,j,k] = Vr(i,j,k)*ur(i,j,k)+Vs(i,j,k)*us(i,j,k)+Vt(i,j,k)*ut(i,j,k)",  # noqa: E501
+                    "Nv[e,i,j,k] = Vr(i,j,k)*vr(i,j,k)+Vs(i,j,k)*vs(i,j,k)+Vt(i,j,k)*vt(i,j,k)",  # noqa: E501
+                    "Nw[e,i,j,k] = Vr(i,j,k)*wr(i,j,k)+Vs(i,j,k)*ws(i,j,k)+Vt(i,j,k)*wt(i,j,k)",  # noqa: E501
                 ],
             [
             lp.GlobalArg("u", dtype, shape=field_shape, order=order),
@@ -338,7 +338,7 @@ def test_advect(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
-    K = 1000  # noqa
+    K = 1000  # noqa: N806
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=0,
             op_label="GFlops",
@@ -352,11 +352,11 @@ def test_advect_dealias(ctx_factory):
     ctx = ctx_factory()
     order = "C"
 
-    N = 8  # noqa
-    M = 8  # noqa
+    N = 8  # noqa: N806
+    M = 8  # noqa: N806
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (N, N, N, K_sym)
 
@@ -366,7 +366,7 @@ def test_advect_dealias(ctx_factory):
 
     # K - run-time symbolic
     knl = lp.make_kernel(ctx.devices[0],
-            "[K] -> {[i,ip,j,jp,k,kp,m,e]: 0<=i,j,k,m<%d AND 0<=o,ip,jp,kp<%d 0<=e<K}" %M %N  # noqa
+            "[K] -> {[i,ip,j,jp,k,kp,m,e]: 0<=i,j,k,m<%d AND 0<=o,ip,jp,kp<%d 0<=e<K}" % (M, N),  # noqa: E501
             [
 
                 # interpolate u to integration nodes
@@ -401,15 +401,15 @@ def test_advect_dealias(ctx_factory):
 
                 # find velocity in (r,s,t) coordinates
                 # QUESTION: should I use CSE here ?
-                "CSE: Vr[i,j,k,e] = G[i,j,k,0,e]*Iu[i,j,k,e] + G[i,j,k,1,e]*Iv[i,j,k,e] + G[i,j,k,2,e]*Iw[i,j,k,e]",  # noqa
-                "CSE: Vs[i,j,k,e] = G[i,j,k,3,e]*Iu[i,j,k,e] + G[i,j,k,4,e]*Iv[i,j,k,e] + G[i,j,k,5,e]*Iw[i,j,k,e]",  # noqa
-                "CSE: Vt[i,j,k,e] = G[i,j,k,6,e]*Iu[i,j,k,e] + G[i,j,k,7,e]*Iv[i,j,k,e] + G[i,j,k,8,e]*Iw[i,j,k,e]",  # noqa
+                "CSE: Vr[i,j,k,e] = G[i,j,k,0,e]*Iu[i,j,k,e] + G[i,j,k,1,e]*Iv[i,j,k,e] + G[i,j,k,2,e]*Iw[i,j,k,e]",  # noqa: E501
+                "CSE: Vs[i,j,k,e] = G[i,j,k,3,e]*Iu[i,j,k,e] + G[i,j,k,4,e]*Iv[i,j,k,e] + G[i,j,k,5,e]*Iw[i,j,k,e]",  # noqa: E501
+                "CSE: Vt[i,j,k,e] = G[i,j,k,6,e]*Iu[i,j,k,e] + G[i,j,k,7,e]*Iv[i,j,k,e] + G[i,j,k,8,e]*Iw[i,j,k,e]",  # noqa: E501
 
                 # form nonlinear term on integration nodes
                 # QUESTION: should I use CSE here ?
-                "<SE: Nu[i,j,k,e] = Vr[i,j,k,e]*Iur[i,j,k,e]+Vs[i,j,k,e]*Ius[i,j,k,e]+Vt[i,j,k,e]*Iut[i,j,k,e]",  # noqa
-                "<SE: Nv[i,j,k,e] = Vr[i,j,k,e]*Ivr[i,j,k,e]+Vs[i,j,k,e]*Ivs[i,j,k,e]+Vt[i,j,k,e]*Ivt[i,j,k,e]",  # noqa
-                "<SE: Nw[i,j,k,e] = Vr[i,j,k,e]*Iwr[i,j,k,e]+Vs[i,j,k,e]*Iws[i,j,k,e]+Vt[i,j,k,e]*Iwt[i,j,k,e]",  # noqa
+                "<SE: Nu[i,j,k,e] = Vr[i,j,k,e]*Iur[i,j,k,e]+Vs[i,j,k,e]*Ius[i,j,k,e]+Vt[i,j,k,e]*Iut[i,j,k,e]",  # noqa: E501
+                "<SE: Nv[i,j,k,e] = Vr[i,j,k,e]*Ivr[i,j,k,e]+Vs[i,j,k,e]*Ivs[i,j,k,e]+Vt[i,j,k,e]*Ivt[i,j,k,e]",  # noqa: E501
+                "<SE: Nw[i,j,k,e] = Vr[i,j,k,e]*Iwr[i,j,k,e]+Vs[i,j,k,e]*Iws[i,j,k,e]+Vt[i,j,k,e]*Iwt[i,j,k,e]",  # noqa: E501
 
                 # L2 project Nu back to Lagrange basis
                 "CSE: Nu2[ip,j,k,e]   = sum_float32(@m, V[ip,m]*Nu[m,j,k,e])",
@@ -454,7 +454,7 @@ def test_advect_dealias(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
-    K = 1000  # noqa
+    K = 1000  # noqa: N806
     lp.auto_test_vs_ref(knl, ctx, kernel_gen,
             op_count=0,
             op_label="GFlops",
@@ -467,11 +467,11 @@ def test_interp_diff(ctx_factory):
     ctx = ctx_factory()
     order = "C"
 
-    N = 8  # noqa
-    M = 8  # noqa
+    N = 8  # noqa: N806
+    M = 8  # noqa: N806
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (N, N, N, K_sym)
     interim_field_shape = (M, M, M, K_sym)
@@ -482,14 +482,14 @@ def test_interp_diff(ctx_factory):
 
     # K - run-time symbolic
     knl = lp.make_kernel(ctx.devices[0],
-            "[K] -> {[i,ip,j,jp,k,kp,e]: 0<=i,j,k<%d AND 0<=ip,jp,kp<%d 0<=e<K}" %M %N  # noqa
+            "[K] -> {[i,ip,j,jp,k,kp,e]: 0<=i,j,k<%d AND 0<=ip,jp,kp<%d 0<=e<K}" % (M, N),  # noqa: E501
             [
-                "[|i,jp,kp] <float32>  u1[i ,jp,kp,e] = sum_float32(ip, I[i,ip]*u [ip,jp,kp,e])",  # noqa
-                "[|i,j ,kp] <float32>  u2[i ,j ,kp,e] = sum_float32(jp, I[j,jp]*u1[i ,jp,kp,e])",  # noqa
-                "[|i,j ,k ] <float32>  u3[i ,j ,k ,e] = sum_float32(kp, I[k,kp]*u2[i ,j ,kp,e])",  # noqa
+                "[|i,jp,kp] <float32>  u1[i ,jp,kp,e] = sum_float32(ip, I[i,ip]*u [ip,jp,kp,e])",  # noqa: E501
+                "[|i,j ,kp] <float32>  u2[i ,j ,kp,e] = sum_float32(jp, I[j,jp]*u1[i ,jp,kp,e])",  # noqa: E501
+                "[|i,j ,k ] <float32>  u3[i ,j ,k ,e] = sum_float32(kp, I[k,kp]*u2[i ,j ,kp,e])",  # noqa: E501
                 "[|i,j ,k ] <float32>  Pu[i ,j ,k ,e] = P[i,j,k,e]*u3[i,j,k,e]",
-                "[|i,j ,kp] <float32> Pu3[i ,j ,kp,e] = sum_float32(k, V[kp,k]*Pu[i ,j , k,e])",  # noqa
-                "[|i,jp,kp] <float32> Pu2[i ,jp,kp,e] = sum_float32(j, V[jp,j]*Pu[i ,j ,kp,e])",  # noqa
+                "[|i,j ,kp] <float32> Pu3[i ,j ,kp,e] = sum_float32(k, V[kp,k]*Pu[i ,j , k,e])",  # noqa: E501
+                "[|i,jp,kp] <float32> Pu2[i ,jp,kp,e] = sum_float32(j, V[jp,j]*Pu[i ,j ,kp,e])",  # noqa: E501
                 "Pu[ip,jp,kp,e] = sum_float32(i, V[ip,i]*Pu[i ,jp,kp,e])",
                 ],
             [
@@ -515,7 +515,7 @@ def test_interp_diff(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000}, kill_level_min=5)
 
-    K = 1000  # noqa
+    K = 1000  # noqa: N806
     lp.auto_test_vs_ref(knl, ctx, kernel_gen,
             op_count=0,
             op_label="GFlops",

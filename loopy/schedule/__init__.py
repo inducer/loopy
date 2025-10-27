@@ -444,15 +444,15 @@ def sched_item_to_insn_id(sched_item: ScheduleItem) -> Iterator[str]:
 # {{{ debug help
 
 def format_insn_id(kernel: LoopKernel, insn_id: InsnId):
-    Fore = kernel.options._fore  # noqa
-    Style = kernel.options._style  # noqa
+    Fore = kernel.options._fore  # noqa: N806
+    Style = kernel.options._style  # noqa: N806
     return Fore.GREEN + insn_id + Style.RESET_ALL
 
 
 def format_insn(kernel: LoopKernel, insn_id: InsnId):
     insn = kernel.id_to_insn[insn_id]
-    Fore = kernel.options._fore  # noqa
-    Style = kernel.options._style  # noqa
+    Fore = kernel.options._fore  # noqa: N806
+    Style = kernel.options._style  # noqa: N806
     from loopy.kernel.instruction import (
         BarrierInstruction,
         MultiAssignmentBase,
@@ -1040,8 +1040,8 @@ def _generate_loop_schedules_internal(
     # allow_insn is set to False initially and after entering each loop
     # to give loops containing high-priority instructions a chance.
     kernel = sched_state.kernel
-    Fore = kernel.options._fore  # noqa
-    Style = kernel.options._style  # noqa
+    Fore = kernel.options._fore  # noqa: N806
+    Style = kernel.options._style  # noqa: N806
 
     active_inames_set = frozenset(sched_state.active_inames)
 
