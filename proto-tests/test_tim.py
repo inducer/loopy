@@ -1,8 +1,8 @@
 import numpy as np
 
-import pyopencl as cl  # noqa
+import pyopencl as cl  # noqa: F401
 from pyopencl.tools import (
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa: F401
 )
 
 import loopy as lp
@@ -19,7 +19,7 @@ def test_tim2d(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (K_sym, n, n)
 
@@ -57,20 +57,19 @@ def test_tim2d(ctx_factory):
     knl = lp.tag_inames(knl, {"o": "unr"})
     knl = lp.tag_inames(knl, {"m": "unr"})
 
-
-#    knl = lp.add_prefetch(knl, "G", [2,3], default_tag=None) # axis/argument indices on G  # noqa
-    knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # noqa
+    # knl = lp.add_prefetch(knl, "G", [2,3], default_tag=None) # axis/argument indices on G  # noqa: E501
+    knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # noqa: E501
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
-    K = 1000  # noqa
+    K = 1000  # noqa: N806
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=K*(n*n*n*2*2 + n*n*2*3 + n**3 * 2*2)/1e9,
             op_label="GFlops",
             parameters={"K": K})
 
-#TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa
+    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa: E501
 
 
 def test_red2d(ctx_factory):
@@ -81,7 +80,7 @@ def test_red2d(ctx_factory):
     n = 16
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (K_sym, n, n)
 
@@ -121,18 +120,18 @@ def test_red2d(ctx_factory):
     knl = lp.tag_inames(knl, {"o": "unr"})
     knl = lp.tag_inames(knl, {"m": "unr"})
 
-    knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # noqa
+    knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # noqa: E501
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
-    K = 1000  # noqa
+    K = 1000  # noqa: N806
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=K*((n**3)*2*2 + n*n*2*3 + (n**3)*2*2)/1e9,
             op_label="GFlops",
             parameters={"K": K})
 
-#TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa
+    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa: E501
 
 
 def test_tim3d(ctx_factory):
@@ -143,7 +142,7 @@ def test_tim3d(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa
+    K_sym = var("K")  # noqa: N806
 
     field_shape = (K_sym, n, n, n)
 
@@ -156,9 +155,9 @@ def test_tim3d(ctx_factory):
             "ut(a,b,c) := sum_float32(@o, D[c,o]*u[e,a,b,o])",
 
             "lap[e,i,j,k]  = "
-            "   sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # noqa
-            " + sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # noqa
-            " + sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # noqa
+            "   sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # noqa: E501
+            " + sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # noqa: E501
+            " + sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # noqa: E501
              ],
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
@@ -186,24 +185,24 @@ def test_tim3d(ctx_factory):
     knl = lp.split_iname(knl, "k", n, inner_tag="l.2")  # , slabs=(0, 1))
     knl = lp.split_iname(knl, "i", n, inner_tag="l.0")  # , slabs=(0, 1))
 
-#    knl = lp.tag_inames(knl, dict(k_inner="unr"))
+    # knl = lp.tag_inames(knl, dict(k_inner="unr"))
 
     knl = lp.tag_inames(knl, {"o": "unr"})
     knl = lp.tag_inames(knl, {"m": "unr"})
-#    knl = lp.tag_inames(knl, dict(i="unr"))
+    # knl = lp.tag_inames(knl, dict(i="unr"))
 
-    knl = lp.add_prefetch(knl, "G", [2, 3, 4], default_tag="l.auto")  # axis/argument indices on G  # noqa
+    knl = lp.add_prefetch(knl, "G", [2, 3, 4], default_tag="l.auto")  # axis/argument indices on G  # noqa: E501
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
-    K = 4000  # noqa
+    K = 4000  # noqa: N806
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=K*((n**4)*3*2 + (n**3)*5*3 + (n**4)*3*2)/1e9,
             op_label="GFlops",
             parameters={"K": K})
 
-#TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa
+    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa: E501
 
 
 if __name__ == "__main__":

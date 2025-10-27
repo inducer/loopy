@@ -1599,8 +1599,8 @@ def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
 
     import loopy as lp
 
-    Fore = kernel.options._fore  # noqa
-    Style = kernel.options._style  # noqa
+    Fore = kernel.options._fore  # noqa: N806
+    Style = kernel.options._style  # noqa: N806
 
     uniform_arrow_length, arrows_and_extenders = \
             draw_dependencies_as_unicode_arrows(

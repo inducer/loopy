@@ -114,7 +114,7 @@ class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):
 
 # {{{ vector types
 
-class vec:  # noqa
+class vec:  # noqa: N801
     pass
 
 

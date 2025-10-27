@@ -45,7 +45,7 @@ from pytools.tag import Tag, Taggable, TagT, UniqueTag as UniqueTagBase
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
-from loopy.kernel.instruction import (  # noqa
+from loopy.kernel.instruction import (  # noqa: F401
     Assignment,
     AtomicInit,
     AtomicUpdate,
