@@ -101,6 +101,7 @@ extend-select = [
     "I",   # flake8-isort
     "N",   # pep8-naming
     "NPY", # numpy
+    "PGH", # pygrep-hooks
     "Q",   # flake8-quotes
     "RUF", # ruff
     "SIM", # flake8-simplify
