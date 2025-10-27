@@ -1460,9 +1460,7 @@ class LoopKernel(Taggable):
             # Avoid carrying over an invalid cache when instructions are
             # modified.
             try:
-                # The type system does not know about this attribute, and we're
-                # not about to tell it. It's an internal caching hack.
-                cwv = self._cached_written_variables  # type: ignore[attr-defined]
+                cwv = self._cached_written_variables
             except AttributeError:
                 pass
             else:

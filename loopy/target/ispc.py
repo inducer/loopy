@@ -197,7 +197,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
         raise NotImplementedError("wrap_in_typecast needs uniform-ness information "
                                   "for ispc")
 
-    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
+    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):
         result = super().rec(expr, type_context)
 
         if needed_type is None:

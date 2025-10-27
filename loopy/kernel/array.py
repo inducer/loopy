@@ -1257,8 +1257,7 @@ def _apply_offset(sub: ArithmeticExpression, ary: ArrayBase) -> ArithmeticExpres
             return var(ary.offset) + sub
         else:
             # assume it's an expression
-            # FIXME: mypy can't figure out that ExpressionT + ExpressionT works
-            return ary.offset + sub  # type: ignore[call-overload, arg-type, operator]
+            return ary.offset + sub
     else:
         return sub
 

@@ -1,5 +1,3 @@
-# mypy: disallow-untyped-defs
-
 from __future__ import annotations
 
 
@@ -52,7 +50,7 @@ NodeT = TypeVar("NodeT", bound=Hashable)
 
 # Not frozen when optimizations are enabled because it is slower.
 # Tree objects are immutable, and offer no way to mutate the tree.
-@dataclass(frozen=__debug__)  # type: ignore[literal-required]
+@dataclass(frozen=__debug__)
 class Tree(Generic[NodeT]):
     """
     An immutable tree containing nodes of type :class:`NodeT`.
