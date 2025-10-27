@@ -310,11 +310,11 @@ def _remove_non_candidate_pre_ldg_nodes(
 
     return (
         {
-            key.iname: frozenset({n.iname for n in value})  # type: ignore[attr-defined]
+            key.iname: frozenset({n.iname for n in value})
             for key, value in new_predecessors.items()
         },
         {
-            key.iname: frozenset({n.iname for n in value})  # type: ignore[attr-defined]
+            key.iname: frozenset({n.iname for n in value})
             for key, value in new_successors.items()
         },
         infusible_edges_in_statement_dag,

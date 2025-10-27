@@ -143,7 +143,7 @@ class ExpressionToCExpressionMapper(IdentityMapper[[str]]):
     def rec(self,
             expr: Expression,
             type_context: str | None = None,
-            needed_type: LoopyType | None = None) -> Expression:  # type: ignore[override]
+            needed_type: LoopyType | None = None) -> Expression:
         result = super().rec(expr, type_context)
 
         if needed_type is None:
@@ -154,7 +154,7 @@ class ExpressionToCExpressionMapper(IdentityMapper[[str]]):
                     result)
 
     @override
-    def __call__(self,  # type: ignore[override]  # pyright: ignore[reportIncompatibleMethodOverride]
+    def __call__(self,  # pyright: ignore[reportIncompatibleMethodOverride]
                  expr: Expression,
                  prec: int | None = None,
                  type_context: str | None = None,

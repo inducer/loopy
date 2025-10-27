@@ -934,10 +934,6 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
 
     # loop_inames: inames that are realized as loops. Concurrent inames aren't
     # realized as a loop in the generated code for a loopy.TargetBase.
-
-    # FIXME: These three could be one statement if it weren't for
-    # - https://github.com/python/mypy/issues/17693
-    # - https://github.com/python/mypy/issues/17694
     emptyset: frozenset[InameStr] = frozenset()
     all_inames = reduce(
                         frozenset.union,
