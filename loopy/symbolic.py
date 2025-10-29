@@ -116,24 +116,36 @@ __doc__ = """
 Loopy-specific expression types
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. autoclass:: LoopyExpressionBase
+    :show-inheritance:
 .. autoclass:: Literal
+    :show-inheritance:
 .. autoclass:: ArrayLiteral
+    :show-inheritance:
+.. autoclass:: GroupHardwareAxisIndex
+.. autoclass:: LocalHardwareAxisIndex
 .. autoclass:: FunctionIdentifier
+    :show-inheritance:
 .. autoclass:: TypedCSE
+    :show-inheritance:
 
 .. currentmodule:: loopy
 
 .. autoclass:: TypeCast
+    :show-inheritance:
 .. autoclass:: TaggedVariable
+    :show-inheritance:
 .. autoclass:: Reduction
-.. autoclass:: LinearSubscript
+    :show-inheritance:
 
 .. currentmodule:: loopy.symbolic
+
 .. autoclass:: SubArrayRef
-
-
+    :show-inheritance:
 .. autoclass:: RuleArgument
+    :show-inheritance:
 .. autoclass:: ResolvedFunction
+    :show-inheritance:
 
 Rule-aware Mappers
 ^^^^^^^^^^^^^^^^^^
@@ -141,7 +153,6 @@ Rule-aware Mappers
 .. autoclass:: SubstitutionRuleMappingContext
 .. autoclass:: ExpansionState
 .. autoclass:: RuleAwareIdentityMapper
-
 
 Expression Manipulation Helpers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -684,7 +695,8 @@ class HardwareAxisIndex(LoopyExpressionBase):
 
 @p.expr_dataclass()
 class GroupHardwareAxisIndex(HardwareAxisIndex):
-    """
+    """Inherits: :class:`LoopyExpressionBase`.
+
     .. note::
 
         Only used in the output of
@@ -699,7 +711,8 @@ class GroupHardwareAxisIndex(HardwareAxisIndex):
 
 @p.expr_dataclass()
 class LocalHardwareAxisIndex(HardwareAxisIndex):
-    """
+    """Inherits: :class:`LoopyExpressionBase`.
+
     .. note::
 
         Only used in the output of
@@ -721,8 +734,7 @@ class FunctionIdentifier(LoopyExpressionBase):
 
 @p.expr_dataclass()
 class TypedCSE(LoopyExpressionBase, p.CommonSubexpression):
-    """A :class:`pymbolic.primitives.CommonSubexpression` annotated with
-    a type.
+    """A :class:`pymbolic.primitives.CommonSubexpression` annotated with a type.
 
     .. autoattribute:: dtype
     """
@@ -754,7 +766,7 @@ class TypeCast(LoopyExpressionBase):
     :meth:`numpy.ndarray.astype`.
 
     .. autoattribute:: child
-    .. autoattribute:: type
+    .. autoproperty:: type
     """
 
     child: Expression
@@ -793,9 +805,6 @@ class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     accesses tagged a certain way.
 
     .. autoattribute:: tags
-
-    Inherits from :class:`pymbolic.primitives.Variable`
-    and :class:`pytools.tag.Taggable`.
     """
 
     tags: frozenset[Tag]
@@ -922,6 +931,9 @@ class Reduction(LoopyExpressionBase):
 class LinearSubscript(LoopyExpressionBase):
     """Represents a linear index into a multi-dimensional array, completely
     ignoring any multi-dimensional layout.
+
+    .. autoattribute:: aggregate
+    .. autoattribute:: index
     """
     aggregate: Expression
     index: Expression
@@ -935,8 +947,11 @@ class LinearSubscript(LoopyExpressionBase):
 @p.expr_dataclass()
 class RuleArgument(LoopyExpressionBase):
     """Represents a (numbered) argument of a :class:`loopy.SubstitutionRule`.
-    Only used internally in the rule-aware mappers to match subst rules
+
+    Only used internally in the rule-aware mappers to match substitution rules
     independently of argument names.
+
+    .. autoattribute:: index
     """
 
     index: int
@@ -944,15 +959,16 @@ class RuleArgument(LoopyExpressionBase):
 
 @p.expr_dataclass(init=False)
 class ResolvedFunction(LoopyExpressionBase):
-    """
-    A function identifier whose definition is known in a :mod:`loopy` program.
+    """A function identifier whose definition is known in a :mod:`loopy` program.
+
     A function is said to be *known* in a :class:`~loopy.TranslationUnit` if its
     name maps to  an :class:`~loopy.kernel.function_interface.InKernelCallable`
     in :attr:`loopy.TranslationUnit.callables_table`. Refer to :ref:`func-interface`.
 
     .. autoattribute:: function
-    .. autoattribute:: name
+    .. autoproperty:: name
     """
+
     function: p.Variable | ReductionOpFunction
 
     def __init__(self, function: p.Variable | ReductionOpFunction) -> None:
@@ -1100,8 +1116,10 @@ class SubArrayRef(LoopyExpressionBase):
 class FortranDivision(p.QuotientBase, LoopyExpressionBase):
     """This exists for the benefit of the Fortran frontend, which specializes
     to floating point division for floating point inputs and round-to-zero
-    division for integer inputs. Despite the name, this would also be usable
-    for C semantics. (:mod:`loopy` division semantics match Python's.)
+    division for integer inputs.
+
+    Despite the name, this would also be usable for C semantics. (:mod:`loopy`
+    division semantics match Python's.)
 
     .. note::
 
@@ -1433,9 +1451,14 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
 
     Subclasses of this must be careful to not touch identifiers that
     are in :attr:`ExpansionState.arg_context`.
+
+    .. autoattribute:: rule_mapping_context
     """
 
     rule_mapping_context: SubstitutionRuleMappingContext
+    """An instance of :class:`SubstitutionRuleMappingContext` to record
+    divergence of substitution rules.
+    """
 
     def __init__(self, rule_mapping_context: SubstitutionRuleMappingContext) -> None:
         self.rule_mapping_context = rule_mapping_context
@@ -1608,17 +1631,9 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
     Mapper to substitute expressions and record any divergence of substitution
     rule expressions of :class:`loopy.LoopKernel`.
 
-    .. attribute:: rule_mapping_context
-
-        An instance of :class:`SubstitutionRuleMappingContext` to record
-        divergence of substitution rules.
-
-    .. attribute:: within
-
-        An instance of :class:`loopy.match.StackMatchComponent`.
-        :class:`RuleAwareSubstitutionMapper` would perform
-        substitutions in the expression if the stack match is ``True`` or
-        if the expression does not arise from an :class:`~loopy.InstructionBase`.
+    .. autoattribute:: rule_mapping_context
+    .. autoattribute:: subst_func
+    .. automethod:: within
 
     .. note::
 
@@ -1643,6 +1658,11 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
                 kernel: LoopKernel,
                 instruction: InstructionBase | None,
                 stack: RuleStack) -> bool:
+        """:class:`RuleAwareSubstitutionMapper` will perform
+        substitutions in the expression if the stack match is *True* or
+        if the expression does not arise from an :class:`~loopy.InstructionBase`.
+        """
+
         if instruction is None:
             # always perform substitutions on expressions not coming from
             # instructions.
@@ -3029,12 +3049,12 @@ class AccessRangeMapper:
     Using this class *will likely* lead to performance bottlenecks.
 
     To avoid performance issues, rewrite your code to use
-    BatchedAccessMapMapper if at all possible.
+    :class:`BatchedAccessMapMapper` if at all possible.
 
     For *n* variables and *m* expressions, calling this class to compute the
     access ranges will take *O(mn)* time for traversing the expressions.
 
-    BatchedAccessMapMapper does the same traversal in *O(m + n)* time.
+    :class:`BatchedAccessMapMapper` does the same traversal in *O(m + n)* time.
     """
 
     var_name: str
