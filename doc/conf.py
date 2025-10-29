@@ -1,4 +1,4 @@
-import os
+from importlib import metadata
 from urllib.request import urlopen
 
 
@@ -7,51 +7,68 @@ with urlopen(_conf_url) as _inf:
     exec(compile(_inf.read(), _conf_url, "exec"), globals())
 
 copyright = "2016, Andreas Klöckner"
-
-# The short X.Y version.
-ver_dic = {}
-_version_source = "../loopy/version.py"
-with open(_version_source) as vpy_file:
-    version_py = vpy_file.read()
-
-os.environ["AKPYTHON_EXEC_IMPORT_UNAVAILABLE"] = "1"
-exec(compile(version_py, _version_source, "exec"), ver_dic)
-version = ".".join(str(x) for x in ver_dic["VERSION"])
-# The full version, including alpha/beta/rc tags.
-release = ver_dic["VERSION_TEXT"]
-del os.environ["AKPYTHON_EXEC_IMPORT_UNAVAILABLE"]
+release = metadata.version("loopy")
+version = ".".join(release.split(".")[:2])
 
 exclude_patterns = ["_build"]
 
-# Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
-        "python": ("https://docs.python.org/3", None),
-        "numpy": ("https://numpy.org/doc/stable/", None),
-        "pytools": ("https://documen.tician.de/pytools", None),
-        "islpy": ("https://documen.tician.de/islpy", None),
-        "pyopencl": ("https://documen.tician.de/pyopencl", None),
-        "cgen": ("https://documen.tician.de/cgen", None),
-        "genpy": ("https://documen.tician.de/genpy", None),
-        "pymbolic": ("https://documen.tician.de/pymbolic", None),
-        "constantdict": ("https://matthiasdiener.github.io/constantdict/", None),
-        }
+    "cgen": ("https://documen.tician.de/cgen", None),
+    "constantdict": ("https://matthiasdiener.github.io/constantdict/", None),
+    "genpy": ("https://documen.tician.de/genpy", None),
+    "islpy": ("https://documen.tician.de/islpy", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "pymbolic": ("https://documen.tician.de/pymbolic", None),
+    "pyopencl": ("https://documen.tician.de/pyopencl", None),
+    "python": ("https://docs.python.org/3", None),
+    "pytools": ("https://documen.tician.de/pytools", None),
+}
 
 nitpicky = True
-
 nitpick_ignore_regex = [
-        ["py:class", r"typing_extensions\.(.+)"],
-        ["py:class", r"numpy\.u?int[0-9]+"],
-        ["py:class", r"numpy\.float[0-9]+"],
-        ["py:class", r"numpy\.complex[0-9]+"],
+    ("py:class", ".*ASTType"),
+    ("py:class", ".*EllipsisType"),
+    # FIXME: add to pytools docs
+    ("py:class", ".*ToTagSetConvertible"),
+]
 
-        # Reference not found from "<unknown>"? I'm not even sure where to look.
-        ["py:class", r"ExpressionNode"],
+sphinxconfig_missing_reference_aliases = {
+    "constantdict": "class:constantdict.constantdict",
+    # numpy
+    "DTypeLike": "obj:numpy.typing.DTypeLike",
+    "np.typing.NDArray": "obj:numpy.typing.NDArray",
+    "numpy.complex128": "obj:numpy.complex128",
+    "numpy.int16": "obj:numpy.int16",
+    # pytools
+    "Tag": "class:pytools.tag.Tag",
+    "TagT": "obj:pytools.tag.TagT",
+    "UniqueNameGenerator": "obj:pytools.UniqueNameGenerator",
+    # cgen
+    "Generable": "class:cgen.Generable",
+    # pymbolic
+    "ArithmeticExpression": "data:pymbolic.ArithmeticExpression",
+    "Expression": "obj:pymbolic.typing.Expression",
+    "ExpressionNode": "class:pymbolic.primitives.ExpressionNode",
+    "Variable": "class:pymbolic.primitives.Variable",
+    "_Expression": "obj:pymbolic.typing.Expression",
+    "p.Call": "obj:pymbolic.primitives.Call",
+    "p.CallWithKwargs": "obj:pymbolic.primitives.CallWithKwargs",
+    "p.Variable": "obj:pymbolic.primitives.Variable",
+    # isl
+    "isl.BasicSet": "class:islpy.BasicSet",
+    "isl.PwAff": "class:islpy.PwAff",
+    "isl.Set": "class:islpy.Set",
+    "isl.Space": "class:islpy.Space",
+    # loopy
+    "InameStr": "obj:loopy.typing.InameStr",
+    "InameStrSet": "obj:loopy.typing.InameStrSet",
+    "KernelIname": "obj:loopy.kernel.data.Iname",
+    "LoopNestTree": "obj:loopy.schedule.tools.LoopNestTree",
+    "LoopTree": "obj:loopy.schedule.tools.LoopTree",
+    "ShapeType": "obj:loopy.typing.ShapeType",
+    "ToLoopyTypeConvertible": "obj:loopy.types.ToLoopyTypeConvertible",
+}
 
-        # Type aliases
-        ["py:class", r"InameStr"],
-        ["py:class", r"ConcreteCallablesTable"],
-        ["py:class", r"LoopNestTree"],
-        ["py:class", r"LoopTree"],
-        ["py:class", r"ToLoopyTypeConvertible"],
-        ["py:class", r"ToStackMatchConvertible"],
-        ]
+
+def setup(app):
+    app.connect("missing-reference", process_autodoc_missing_reference)  # noqa: F821
