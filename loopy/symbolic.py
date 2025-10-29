@@ -186,8 +186,8 @@ class IdentityMapperMixin(Mapper[Expression, P]):
         for iname, new_sym_iname in zip(expr.inames, mapped_inames, strict=True):
             if not isinstance(new_sym_iname, p.Variable):
                 from loopy.diagnostic import LoopyError
-                raise LoopyError("%s did not map iname '%s' to a variable"
-                        % (type(self).__name__, iname))
+                raise LoopyError(
+                    f"{type(self).__name__} did not map iname '{iname}' to a variable")
 
             new_inames.append(new_sym_iname.name)
 
@@ -419,29 +419,32 @@ class StringifyMapper(StringifyMapperBase[[]]):
 
     def map_array_literal(self, expr: ArrayLiteral, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
-        return "{%s}" % ", ".join(self.rec(ch, PREC_NONE) for ch in expr.children)
+
+        children = ", ".join(self.rec(ch, PREC_NONE) for ch in expr.children)
+        return f"{{{children}}}"
 
     def map_group_hw_index(self, expr: GroupHardwareAxisIndex,
                            enclosing_prec: int) -> str:
-        return "grp.%d" % expr.axis
+        return f"grp.{expr.axis}"
 
     def map_local_hw_index(self, expr: LocalHardwareAxisIndex,
                            enclosing_prec: int) -> str:
-        return "loc.%d" % expr.axis
+        return f"loc.{expr.axis}"
 
     def map_reduction(self, expr: Reduction, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        return "{}reduce({}, [{}], {})".format(
-                "simul_" if expr.allow_simultaneous else "",
-                expr.operation, ", ".join(expr.inames),
-                self.rec(expr.expr, PREC_NONE))
+        simul = "simul_" if expr.allow_simultaneous else ""
+        inames = ", ".join(expr.inames)
+        child = self.rec(expr.expr, PREC_NONE)
+        return f"{simul}reduce({expr.operation}, [{inames}], {child})"
 
     def map_tagged_variable(self, expr: TaggedVariable, enclosing_prec: int) -> str:
         return f"{expr.name}${{{', '.join(str(t) for t in expr.tags)}}}"
 
     def map_linear_subscript(self, expr: LinearSubscript, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
+
         return self.parenthesize_if_needed(
                 self.format("%s[[%s]]",
                     self.rec(expr.aggregate, PREC_CALL),
@@ -451,12 +454,12 @@ class StringifyMapper(StringifyMapperBase[[]]):
     def map_loopy_function_identifier(
             self, expr: FunctionIdentifier, enclosing_prec: int) -> str:
         from dataclasses import fields
-        initargs = tuple(getattr(self, fld.name) for fld in fields(expr))
+        initargs = ", ".join(f"{getattr(expr, fld.name)}" for fld in fields(expr))
 
-        return "{}<{}>".format(type(expr).__name__, ", ".join(str(a) for a in initargs))
+        return f"{type(expr).__name__}<{initargs}>"
 
     def map_rule_argument(self, expr: RuleArgument, enclosing_prec: int) -> str:
-        return "<arg%d>" % expr.index
+        return f"<arg{expr.index}>"
 
     def map_type_cast(self, expr: TypeCast, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -468,10 +471,11 @@ class StringifyMapper(StringifyMapperBase[[]]):
         return "\u0332".join(str(expr.function))
 
     def map_sub_array_ref(self, expr: SubArrayRef, enclosing_prec: int) -> str:
-        return "[{inames}]: {subscr}".format(
-                inames=",".join(self.rec(iname, enclosing_prec) for iname in
-                    expr.swept_inames),
-                subscr=self.rec(expr.subscript, enclosing_prec))
+        inames = ",".join(self.rec(iname, enclosing_prec)
+                          for iname in expr.swept_inames)
+        subscr = self.rec(expr.subscript, enclosing_prec)
+
+        return f"[{inames}]: {subscr}"
 
     def map_fortran_division(self, expr: FortranDivision, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -615,8 +619,8 @@ class SubstitutionRuleExpander(IdentityMapper[[]]):
                     ) -> Expression:
         if len(rule.arguments) != len(arguments):
             from loopy.diagnostic import LoopyError
-            raise LoopyError("number of arguments to '%s' does not match "
-                    "definition" % name)
+            raise LoopyError(
+                    f"number of arguments to '{name}' does not match definition")
 
         from pymbolic.mapper.substitutor import make_subst_func
         submap = SubstitutionMapper(
@@ -892,7 +896,7 @@ class Reduction(LoopyExpressionBase):
             if not isinstance(expr, (tuple, Reduction, Call)):
                 raise LoopyError("reduction argument must be one of "
                                  "a tuple, reduction, or call; "
-                                 "got '%s'" % type(expr).__name__)
+                                 f"got '{type(expr).__name__}'")
         else:
             # Sanity checks
             if isinstance(expr, tuple):
@@ -966,8 +970,8 @@ class ResolvedFunction(LoopyExpressionBase):
         elif isinstance(self.function, ReductionOpFunction):
             return self.function
         else:
-            raise LoopyError("Unexpected function type %s in ResolvedFunction." %
-                    type(self.function))
+            raise LoopyError(
+                f"Unexpected function type {type(self.function)} in ResolvedFunction.")
 
 # }}}
 
@@ -1202,7 +1206,7 @@ def parse_tagged_name(expr: Expression) -> tuple[str, Set[Tag] | None]:
     elif isinstance(expr, (p.Variable, ArgExtOp, SegmentedOp)):
         return expr.name, None
     else:
-        raise RuntimeError("subst rule name not understood: %s" % expr)
+        raise RuntimeError(f"subst rule name not understood: {expr!r}")
 
 
 @dataclass(frozen=True)
@@ -1343,7 +1347,7 @@ class SubstitutionRuleMappingContext:
 
         if reg_value is None:
             # These names are temporary and won't stick around.
-            new_name = self.make_unique_var_name("_lpy_tmp_"+original_name)
+            new_name = self.make_unique_var_name(f"_lpy_tmp_{original_name}")
             self.subst_rule_registry[key] = (new_name, args, body)
         else:
             new_name, _, _ = reg_value
@@ -1473,8 +1477,9 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
             arg_context: Mapping[str, Expression]
             ) -> Mapping[str, Expression]:
         if len(arg_names) != len(arguments):
-            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
-                    % (rule_name, len(arguments), len(arg_names), ))
+            raise RuntimeError(
+                    f"Rule '{rule_name}' invoked with {len(arguments)} arguments "
+                    f" (needs {len(arg_names)})")
 
         from pymbolic.mapper.substitutor import make_subst_func
         arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
@@ -1824,11 +1829,10 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper[[]]):
             if operation:
                 # arg_count counts arguments but not inames
                 if len(expr.parameters) != 1 + operation.arg_count:
-                    raise RuntimeError("invalid invocation of "
-                            "reduction operation '%s': expected %d arguments, "
-                            "got %d instead" % (expr.function.name,
-                                                1 + operation.arg_count,
-                                                len(expr.parameters)))
+                    raise RuntimeError(
+                        "invalid invocation of reduction operation "
+                        f"'{expr.function.name}': expected {operation.arg_count + 1} "
+                        f"arguments: got {len(expr.parameters)} instead")
 
                 inames = expr.parameters[0]
                 red_exprs = tuple(self.rec(param) for param in expr.parameters[1:])
@@ -2126,8 +2130,8 @@ class PwAffEvaluationMapper(EvaluationMapperBase[isl.PwAff]):
 
     @override
     def map_quotient(self, expr: p.Quotient) -> isl.PwAff:
-        raise TypeError("true division in '%s' not supported "
-                "for as-pwaff evaluation" % expr)
+        raise TypeError(
+            f"true division in '{expr}' not supported for as-pwaff evaluation")
 
     @override
     def map_floor_div(self, expr: p.FloorDiv) -> isl.PwAff:
@@ -2140,8 +2144,9 @@ class PwAffEvaluationMapper(EvaluationMapperBase[isl.PwAff]):
         num = self.rec(expr.numerator)
         denom = self.rec(expr.denominator)
         if not denom.is_cst():
-            raise TypeError("modulo non-constant in '%s' not supported "
-                    "for as-pwaff evaluation" % expr)
+            raise TypeError(
+                    f"modulo non-constant in '{expr}' not supported "
+                    "for as-pwaff evaluation")
 
         (_s, denom_aff), = denom.get_pieces()
         denom = denom_aff.get_constant_val()
@@ -2149,12 +2154,11 @@ class PwAffEvaluationMapper(EvaluationMapperBase[isl.PwAff]):
         return num.mod_val(denom)
 
     def map_literal(self, expr: Literal) -> isl.PwAff:
-        raise TypeError("literal '%s' not supported "
-                        "for as-pwaff evaluation" % expr)
+        raise TypeError(f"literal '{expr}' not supported for as-pwaff evaluation")
 
     def map_reduction(self, expr: Reduction) -> isl.PwAff:
-        raise TypeError("reduction in '%s' not supported "
-                "for as-pwaff evaluation" % expr)
+        raise TypeError(
+                f"reduction in '{expr}' not supported for as-pwaff evaluation")
 
     @override
     def map_call(self, expr: p.Call) -> isl.PwAff:
@@ -2179,8 +2183,9 @@ def aff_from_expr(
         return aff
     else:
         from loopy.diagnostic import ExpressionNotAffineError
-        raise ExpressionNotAffineError("expression '%s' could not be converted to a "
-                "non-piecewise quasi-affine expression" % expr)
+        raise ExpressionNotAffineError(
+                f"expression '{expr}' could not be converted to a "
+                "non-piecewise quasi-affine expression")
 
 
 def pwaff_from_expr(
@@ -2219,8 +2224,8 @@ def with_aff_conversion_guard(
     assert err is not None
     from loopy.diagnostic import ExpressionToAffineConversionError
     raise ExpressionToAffineConversionError(
-            "could not convert expression '%s' to affine representation: "
-            "%s: %s" % (expr, type(err).__name__, str(err)))
+            f"could not convert expression '{expr}' to affine representation: "
+            f"{type(err).__name__}: {err}")
 
 
 def guarded_aff_from_expr(
@@ -2282,8 +2287,9 @@ class PwQPolyEvaluationMapper(EvaluationMapperBase[isl.PwQPolynomial]):
 
     @override
     def map_quotient(self, expr: p.Quotient) -> isl.PwQPolynomial:
-        raise TypeError("true division in '%s' not supported "
-                "for as-pwqpoly evaluation" % expr)
+        raise TypeError(
+                f"true division in '{expr}' not supported "
+                "for as-pwqpoly evaluation")
 
     @override
     def map_power(self, expr: p.Power) -> isl.PwQPolynomial:
@@ -2313,8 +2319,9 @@ def qpolynomial_from_expr(space: isl.Space, expr: Expression) -> isl.QPolynomial
         (_s, qpoly), = pieces
         return qpoly
     else:
-        raise RuntimeError("expression '%s' could not be converted to a "
-                "non-piecewise quasi-polynomial expression" % expr)
+        raise RuntimeError(
+                f"expression '{expr}' could not be converted to a "
+                "non-piecewise quasi-polynomial expression")
 
 # }}}
 
@@ -2709,7 +2716,7 @@ class IndexVariableFinder(CombineMapper[Set[str], []]):
             if isinstance(idx_var, p.Variable):
                 result.add(idx_var.name)
             else:
-                raise RuntimeError("index variable not understood: %s" % idx_var)
+                raise RuntimeError(f"index variable not understood: {idx_var}")
 
         return result
 
@@ -2718,8 +2725,9 @@ class IndexVariableFinder(CombineMapper[Set[str], []]):
         result = self.rec(expr.expr)
 
         if not (expr.inames_set & result):
-            raise RuntimeError("reduction '%s' does not depend on "
-                    "reduction inames (%s)" % (expr, ",".join(expr.inames)))
+            inames = ", ".join(expr.inames)
+            raise RuntimeError(
+                f"reduction '{expr}' does not depend on reduction inames ({inames})")
 
         if self.include_reduction_inames:
             return result
@@ -2852,12 +2860,11 @@ def get_access_map(
 
             if shape_aff is None:
                 # failed to convert shape[idim] to aff
+                subs = ", ".join(str(si) for si in subscript)
                 raise UnableToDetermineAccessRangeError(
-                        "unable to determine access range of subscript: [%s] "
-                        "(encountered %s: %s)"
-                        % (", ".join(str(si) for si in subscript),
-                            # intentionally using 'outer' err
-                            type(err).__name__, str(err))) from err
+                        # intentionally using 'outer' err
+                        f"unable to determine access range of subscript: [{subs}] "
+                        f"(encountered {type(err).__name__}: {err})") from err
 
             # successfully converted shape[idim] to aff, but not subscript[idim]
 
@@ -2959,9 +2966,8 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
             if (other_access_map.dim(isl.dim_type.set)
                     != access_map.dim(isl.dim_type.set)):
                 raise RuntimeError(
-                        "error while determining shape of argument '%s': "
-                        "varying number of indices encountered"
-                        % arg_name)
+                        f"error while determining shape of argument '{arg_name}': "
+                        "varying number of indices encountered")
 
         # }}}
 
