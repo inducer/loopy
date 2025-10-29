@@ -473,16 +473,3 @@ Work on loopy was supported in part by
 AK also gratefully acknowledges a hardware gift from Nvidia Corporation.
 
 The views and opinions expressed herein do not necessarily reflect those of the funding agencies.
-
-Cross-References to Other Documentation
-=======================================
-
-.. currentmodule:: numpy
-
-.. class:: int16
-
-    See :class:`numpy.generic`.
-
-.. class:: complex128
-
-    See :class:`numpy.generic`.

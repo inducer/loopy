@@ -98,13 +98,6 @@ __doc__ = """
 .. autoclass:: ScopingBlock
 
 .. automodule:: loopy.target.c.codegen.expression
-
-References
-^^^^^^^^^^
-
-.. class:: Generable
-
-    See :class:`cgen.Generable`.
 """
 
 

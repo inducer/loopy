@@ -48,7 +48,6 @@ import numpy as np
 from constantdict import constantdict
 from typing_extensions import overload
 
-import islpy  # to help out Sphinx
 import islpy as isl
 from islpy import dim_type
 from pytools import (
@@ -60,10 +59,11 @@ from pytools import (
 )
 from pytools.tag import Tag, Taggable, TagT
 
-import loopy.kernel.data  # to help out Sphinx
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
     ArrayArg,
+    # NOTE: this is imported `as` to help Sphinx disambiguate `loopy.match.Iname`.
+    Iname as KernelIname,
     KernelArgument,
     SubstitutionRule,
     TemporaryVariable,
@@ -116,9 +116,9 @@ def _get_inames_from_domains(
 
 @dataclass(frozen=True)
 class _BoundsRecord:
-    lower_bound_pw_aff: islpy.PwAff
-    upper_bound_pw_aff: islpy.PwAff
-    size: islpy.PwAff
+    lower_bound_pw_aff: isl.PwAff
+    upper_bound_pw_aff: isl.PwAff
+    size: isl.PwAff
 
 
 @dataclass(frozen=True)
@@ -158,7 +158,7 @@ class LoopKernel(Taggable):
     .. automethod:: tagged
     .. automethod:: without_tags
     """
-    domains: Sequence[islpy.BasicSet]
+    domains: Sequence[isl.BasicSet]
     """Represents the :ref:`domain-tree`."""
 
     instructions: Sequence[InstructionBase]
@@ -167,13 +167,13 @@ class LoopKernel(Taggable):
     """
 
     args: Sequence[KernelArgument]
-    assumptions: islpy.BasicSet
+    assumptions: isl.BasicSet
     """
     Must be a :class:`islpy.BasicSet` parameter domain.
     """
 
     temporary_variables: Mapping[str, TemporaryVariable]
-    inames: Mapping[InameStr, loopy.kernel.data.Iname]
+    inames: Mapping[InameStr, KernelIname]
     """
     An entry is guaranteed to be present for each iname.
     """
@@ -1443,8 +1443,7 @@ class LoopKernel(Taggable):
         if "domains" in kwargs:
             inames = kwargs.get("inames", self.inames)
             domains = kwargs["domains"]
-            kwargs["inames"] = {name: inames.get(name,
-                                         loopy.kernel.data.Iname(name, frozenset()))
+            kwargs["inames"] = {name: inames.get(name, KernelIname(name, frozenset()))
                                 for name in _get_inames_from_domains(domains)}
 
             assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)

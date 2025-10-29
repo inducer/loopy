@@ -31,13 +31,6 @@ __doc__ = """
 .. autofunction:: separate_loop_nest
 .. autofunction:: get_partial_loop_nest_tree
 .. autofunction:: get_loop_tree
-
-References
-^^^^^^^^^^
-
-.. class:: InameStrSet
-
-    See :class:`loopy.typing.InameStrSet`
 """
 
 __license__ = """

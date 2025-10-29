@@ -83,19 +83,6 @@ __doc__ = """
     See above.
 
 .. autofunction:: parse_array_dim_tags
-
-Cross-references
-----------------
-
-(This section shouldn't exist: Sphinx should be able to resolve these on its own.)
-
-.. class:: ShapeType
-
-    See :class:`loopy.typing.ShapeType`
-
-.. class:: Tag
-
-    See :class:`pytools.tag.Tag`
 """
 
 

@@ -36,7 +36,6 @@ from typing import (
     cast,
 )
 
-import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
 from typing_extensions import override
 
@@ -89,17 +88,6 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
-
-References
-^^^^^^^^^^
-
-.. class:: ToLoopyTypeConvertible
-
-    See :class:`loopy.ToLoopyTypeConvertible`.
-
-.. class:: TagT
-
-    A type variable with a lower bound of :class:`pytools.tag.Tag`.
 """
 
 # This docstring is included in ref_internals. Do not include parts of the public
@@ -669,7 +657,7 @@ class TemporaryVariable(ArrayBase):
     will be created.
     """
 
-    initializer: numpy.ndarray | None
+    initializer: np.typing.NDArray[Any] | None
     """*None* or a :class:`numpy.ndarray` of data to be used to initialize the
     array.
     """
@@ -716,7 +704,7 @@ class TemporaryVariable(ArrayBase):
                 storage_shape: ShapeType | None = None,
 
                 base_storage: str | None = None,
-                initializer: np.ndarray | None = None,
+                initializer: np.typing.NDArray[Any] | None = None,
                 read_only: bool = False,
 
                 _base_storage_access_may_be_aliasing: bool = False,
