@@ -58,6 +58,7 @@ if TYPE_CHECKING:
 __doc__ = """
 .. autoclass:: GeneratedExpression
 .. autoclass:: AbstractExpressionToCodeMapper
+.. autoclass:: SubstitutionCallable
 .. autoclass:: ArgDescriptor
 .. autoclass:: ValueArgDescriptor
 .. autoclass:: ArrayArgDescriptor
