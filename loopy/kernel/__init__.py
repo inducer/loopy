@@ -1073,6 +1073,22 @@ class LoopKernel(Taggable):
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
+    @overload
+    def get_grid_size_upper_bounds(self,
+                callables_table: CallablesTable,
+                *,
+                ignore_auto: bool = ...,
+                return_dict: Literal[False] = ...
+            ) -> tuple[tuple[isl.PwAff, ...], tuple[isl.PwAff, ...]]: ...
+
+    @overload
+    def get_grid_size_upper_bounds(self,
+                callables_table: CallablesTable,
+                *,
+                ignore_auto: bool = ...,
+                return_dict: Literal[True]
+            ) -> tuple[dict[int, isl.PwAff], dict[int, isl.PwAff]]: ...
+
     def get_grid_size_upper_bounds(self,
                 callables_table: CallablesTable,
                 ignore_auto: bool = False,
