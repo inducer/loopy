@@ -651,8 +651,8 @@ class ScalarCallable(InKernelCallable):
                    arg_id_to_dtype: Mapping[int | str, LoopyType],
                    clbl_inf_ctx: CallablesInferenceContext,
                ) -> tuple[ScalarCallable, CallablesInferenceContext]:
-        raise LoopyError("No type inference information present for "
-                "the function %s." % (self.name))
+        raise LoopyError(
+            f"No type inference information present for the function {self.name!r}.")
 
     @override
     def with_descrs(self,
@@ -777,10 +777,11 @@ class ScalarCallable(InKernelCallable):
             zip(parameters, par_dtypes, arg_dtypes, strict=True)]
 
         for a, tgt_dtype in zip(assignees, assignee_dtypes, strict=True):
-            if tgt_dtype != expression_to_code_mapper.infer_type(a):
-                raise LoopyError("Type Mismatch in function %s. Expected: %s"
-                        "Got: %s" % (self.name, tgt_dtype,
-                            expression_to_code_mapper.infer_type(a)))
+            inferred_dtype = expression_to_code_mapper.infer_type(a)
+            if tgt_dtype != inferred_dtype:
+                raise LoopyError(
+                        f"type mismatch in function {self.name!r}: expected "
+                        f"{tgt_dtype} got {inferred_dtype}")
 
             tgt_parameters.append(p.Variable("&")(
                 expression_to_code_mapper(
