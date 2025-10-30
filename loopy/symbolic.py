@@ -144,6 +144,8 @@ Loopy-specific expression types
     :show-inheritance:
 .. autoclass:: RuleArgument
     :show-inheritance:
+.. autoclass:: LinearSubscript
+    :show-inheritance:
 .. autoclass:: ResolvedFunction
     :show-inheritance:
 
@@ -663,8 +665,8 @@ class Literal(LoopyExpressionBase):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
-        similar mappers). Not for use in Loopy source representation.
+        :class:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`
+        (and similar mappers). Not for use in Loopy source representation.
 
     .. autoattribute:: s
     """
@@ -679,8 +681,8 @@ class ArrayLiteral(LoopyExpressionBase):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
-        similar mappers). Not for use in Loopy source representation.
+        :class:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`
+        (and similar mappers). Not for use in Loopy source representation.
 
     .. autoattribute:: children
     """
@@ -700,8 +702,8 @@ class GroupHardwareAxisIndex(HardwareAxisIndex):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
-        similar mappers). Not for use in Loopy source representation.
+        :class:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`
+        (and similar mappers). Not for use in Loopy source representation.
 
     .. autoattribute:: axis
     """
@@ -716,8 +718,8 @@ class LocalHardwareAxisIndex(HardwareAxisIndex):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
-        similar mappers). Not for use in Loopy source representation.
+        :class:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`
+        (and similar mappers). Not for use in Loopy source representation.
 
     .. autoattribute:: axis
     """
