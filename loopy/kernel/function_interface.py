@@ -699,9 +699,6 @@ class ScalarCallable(InKernelCallable):
         arg_dtypes = tuple(self.arg_id_to_dtype[id]
                           for id in range(len(self.arg_id_to_dtype) - 1))
 
-        par_dtypes = tuple(expression_to_code_mapper.infer_type(par)
-                           for par in expression.parameters)
-
         from loopy.expression import dtype_to_type_context
         # processing the parameters with the required dtypes
         processed_parameters = tuple(
@@ -709,9 +706,8 @@ class ScalarCallable(InKernelCallable):
                     par,
                     dtype_to_type_context(target, tgt_dtype),
                     tgt_dtype)
-                for par, _par_dtype, tgt_dtype in zip(
+                for par, tgt_dtype in zip(
                     expression.parameters,
-                    par_dtypes,
                     arg_dtypes, strict=True))
 
         assert self.name_in_target is not None
@@ -761,11 +757,8 @@ class ScalarCallable(InKernelCallable):
         parameters = insn.expression.parameters
         assignees = insn.assignees[1:]
 
-        par_dtypes = tuple(expression_to_code_mapper.infer_type(par)
-                           for par in parameters)
         arg_dtypes = tuple(self.arg_id_to_dtype[i]
                            for i, _ in enumerate(parameters))
-
         assignee_dtypes = tuple(self.arg_id_to_dtype[-i-2]
                                 for i, _ in enumerate(assignees))
 
@@ -774,8 +767,7 @@ class ScalarCallable(InKernelCallable):
                 par, PREC_NONE,
                 dtype_to_type_context(target, tgt_dtype),
                 tgt_dtype).expr
-            for par, _par_dtype, tgt_dtype in
-            zip(parameters, par_dtypes, arg_dtypes, strict=True)]
+            for par, tgt_dtype in zip(parameters, arg_dtypes, strict=True)]
 
         for a, tgt_dtype in zip(assignees, assignee_dtypes, strict=True):
             inferred_dtype = expression_to_code_mapper.infer_type(a)
