@@ -569,6 +569,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                                 gen(shape_mismatch_msg)
 
                     else:  # not None, no Nones in tuple
+                        assert isinstance(arg.shape, tuple)
                         gen("if %s.shape != %s:"
                                 % (arg.name, strify(arg.shape)))
                         with Indentation(gen):
