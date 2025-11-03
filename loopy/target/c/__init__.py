@@ -37,6 +37,7 @@ import pymbolic.primitives as p
 from cgen import (
     Block,
     Collection,
+    Comment,
     Const,
     Declarator,
     Generable,
@@ -1101,6 +1102,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
         return result
 
+    @override
+    def get_temporary_decl_at_index(
+            self, codegen_state: CodeGenerationState, sched_index: int
+            ) -> tuple[Generable | None, Generable | None]:
+        return (None, None)
+
     @property
     @override
     def ast_block_class(self):
@@ -1234,6 +1241,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             raise ValueError(f"unexpected type of argument '{passed_name}': "
                     f"'{type(var_descr)}'")
 
+    @override
     def get_temporary_var_declarator(self,
             codegen_state: CodeGenerationState,
             temp_var: TemporaryVariable) -> Declarator:
@@ -1266,6 +1274,12 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         return self.wrap_decl_for_address_space(temp_var_decl,
                 temp_var.address_space)
 
+    @override
+    def get_temporary_var_deallocator(self,
+                codegen_state: CodeGenerationState,
+                temp_var: TemporaryVariable
+            ) -> Generable:
+        return Comment("Dynamic freeing of temp vars not supported")
     # }}}
 
     @override

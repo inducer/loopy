@@ -85,14 +85,23 @@ def generate_code_for_sched_index(
             glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
                     get_insn_ids_for_block_at(kernel.linearization, sched_index),
                     codegen_state.callables_table)
-            return merge_codegen_results(codegen_state, [
-                codegen_result,
 
+            prefixes, suffixes = (
+                codegen_state.ast_builder.get_temporary_decl_at_index(
+                    codegen_state, sched_index
+                )
+            )
+            results = [
+                prefixes,
+                codegen_result,
                 codegen_state.ast_builder.get_kernel_call(
                     codegen_state,
                     sched_item.kernel_name,
-                    glob_grid, loc_grid)
-                ])
+                    glob_grid, loc_grid),
+                suffixes
+            ]
+            results = [r for r in results if r is not None]
+            return merge_codegen_results(codegen_state, results)
         else:
             # do not generate host code for non-entrypoint kernels
             return codegen_result
@@ -136,7 +145,14 @@ def generate_code_for_sched_index(
                     "for '%s', tagged '%s'"
                     % (sched_item.iname, ", ".join(str(tag) for tag in tags)))
 
-        return func(codegen_state, sched_index)
+        prefixes, suffixes = (
+            codegen_state.ast_builder.get_temporary_decl_at_index(
+                codegen_state, sched_index
+            )
+        )
+        results = [prefixes, func(codegen_state, sched_index), suffixes]
+        results = [r for r in results if r is not None]
+        return merge_codegen_results(codegen_state, results)
 
     elif isinstance(sched_item, Barrier):
         # {{{ emit barrier code

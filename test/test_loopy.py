@@ -3693,6 +3693,60 @@ def test_long_kernel():
     lp.get_one_linearized_kernel(t_unit.default_entrypoint, t_unit.callables_table)
 
 
+def test_temporary_memory_allocation(ctx_factory: cl.CtxFactory):
+    from pyopencl.tools import ImmediateAllocator, MemoryPool
+
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+    n = 16
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n}",
+            """
+            for i
+                <> b[i] = a[i]
+                ... gbarrier
+                <> c[i] = b[i] + 1
+                ... gbarrier
+                <> d[i] = c[i] + 1
+                ... gbarrier
+                <> e[i] = d[i] + 1
+                ... gbarrier
+                <> f[i] = e[i] + 1
+                ... gbarrier
+                <> g[i] = f[i] + 1
+                ... gbarrier
+                <> h[i] = g[i] + 1
+                ... gbarrier
+                <> j[i] = h[i] + 1
+                ... gbarrier
+                <> k[i] = j[i] + 1
+                ... gbarrier
+                <> l[i] = k[i] + 1
+                ... gbarrier
+                <> m[i] = l[i] + 1
+                ... gbarrier
+                out[i] = m[i]
+            end
+            """, seq_dependencies=True)
+
+    knl = lp.add_and_infer_dtypes(knl,
+            {"a": np.float32})
+
+    temp_vars = list(knl.default_entrypoint.temporary_variables)
+    knl = lp.set_temporary_address_space(knl, temp_vars, "global")
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    mem_pool_alloc = MemoryPool(ImmediateAllocator(cq))
+
+    a = np.arange(n, dtype=np.float32)
+    knl(cq, a=a, allocator=mem_pool_alloc)
+
+    # FIXME This relies on the memory pool not freeing any memory it allocates
+    assert mem_pool_alloc.managed_bytes < len(temp_vars) * a.nbytes
+
+
 @pytest.mark.filterwarnings("error:.*:loopy.LoopyWarning")
 def test_loop_imperfect_nest_priorities_in_v2_scheduler():
     # Reported by Connor Ward. See <https://github.com/inducer/loopy/issues/890>.
