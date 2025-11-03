@@ -26,7 +26,7 @@ THE SOFTWARE.
 """
 
 from dataclasses import dataclass, replace
-from enum import IntEnum
+from enum import Enum, IntEnum
 from sys import intern
 from typing import (
     TYPE_CHECKING,
@@ -376,6 +376,10 @@ class AddressSpace(IntEnum):
             return "<auto>"
         else:
             raise ValueError("unexpected value of AddressSpace")
+
+    # IntEnum.__repr__ only prints the integer values
+    __repr__ = Enum.__repr__
+    __str__ = Enum.__str__
 
 # }}}
 

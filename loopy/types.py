@@ -112,6 +112,7 @@ class NumpyType(LoopyType):
         if dtype == object:  # noqa: E721
             raise TypeError("loopy does not directly support object arrays")
 
+        # Normalize due to https://stackoverflow.com/questions/35293672/why-do-these-dtypes-compare-equal-but-hash-different
         self.dtype = np.dtype(dtype)
 
     @override
