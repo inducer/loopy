@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence, Set
 
     import islpy as isl
-    from pymbolic.typing import Expression
+    from pymbolic.typing import ArithmeticExpression, Expression
 
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import CallInstruction
@@ -543,31 +543,48 @@ class InKernelCallable(ABC):
         """
         raise NotImplementedError()
 
-    # FIXME(pyright): these return types are not correct: see IndexOfCallable.emit_call
     @abstractmethod
     def emit_call(self,
                   expression_to_code_mapper: AbstractExpressionToCodeMapper,
                   expression: p.Call,
-                  target: TargetBase) -> p.Call | p.CallWithKwargs:
-        ...
+                  target: TargetBase) -> ArithmeticExpression:
+        """Generate a target-specific call expression by mapping its arguments
+        to the appropriate data types.
+
+        :arg expression_to_code_mapper: an instance of
+            ``loopy.symbolic.IdentityMapper``
+            responsible mapping the arguments (see
+            :meth:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`).
+        """
 
     @abstractmethod
     def emit_call_insn(self,
                        insn: CallInstruction,
                        target: TargetBase,
                        expression_to_code_mapper: AbstractExpressionToCodeMapper,
-                   )  -> tuple[p.Call | p.CallWithKwargs, bool]:
+                   )  -> tuple[ArithmeticExpression, bool]:
         """
         Returns a tuple of ``(call, assignee_is_returned)`` which is the target
         facing function call that would be seen in the generated code. ``call``
-        is an instance of ``pymbolic.primitives.Call`` and ``assignee_is_returned``
-        is a boolean flag used to indicate if the assignee is returned
-        by value of C-type targets.
+        is (usually) an instance of :class:`pymbolic.primitives.Call` and
+        ``assignee_is_returned`` is a boolean flag used to indicate if the
+        assignee is returned by value of C-type targets.
 
-        *Example*: If ``assignee_is_returned=True``, then ``a, b = f(c, d)`` is
-            interpreted in the target as ``a = f(c, d, &b)``. If
-            ``assignee_is_returned=False``, then ``a, b = f(c, d)`` is interpreted
-            in the target as the statement ``f(c, d, &a, &b)``.
+        .. note::
+
+            *Example*: If ``assignee_is_returned=True``, then ``a, b = f(c,
+            d)`` is interpreted in the target as ``a = f(c, d, &b)``. If
+            ``assignee_is_returned=False``, then ``a, b = f(c, d)`` is
+            interpreted in the target as the statement ``f(c, d, &a, &b)``.
+
+        :arg expression_to_code_mapper: an instance of
+            ``loopy.symbolic.IdentityMapper`` responsible for code mapping
+            from :mod:`loopy` syntax to the *target syntax* (see
+            :meth:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`).
+
+        :returns: a tuple of the call to be generated and an instance of
+            :class:`bool` whether the first assignee is a part of the LHS in
+            the assignment instruction
         """
 
     @abstractmethod
@@ -690,7 +707,7 @@ class ScalarCallable(InKernelCallable):
     def emit_call(self,
                   expression_to_code_mapper: AbstractExpressionToCodeMapper,
                   expression: p.Call,
-                  target: TargetBase) -> p.Call | p.CallWithKwargs:
+                  target: TargetBase) -> ArithmeticExpression:
         assert self.is_ready_for_codegen()
         assert self.arg_id_to_dtype is not None
 
@@ -718,27 +735,7 @@ class ScalarCallable(InKernelCallable):
                        insn: CallInstruction,
                        target: TargetBase,
                        expression_to_code_mapper: AbstractExpressionToCodeMapper,
-                   )  -> tuple[p.Call | p.CallWithKwargs, bool]:
-        """
-        :arg insn: An instance of :class:`loopy.kernel.instructions.CallInstruction`.
-        :arg target: An instance of :class:`loopy.target.TargetBase`.
-        :arg expression_to_code_mapper: An instance of :class:`IdentityMapper`
-            responsible for code mapping from :mod:`loopy` syntax to the
-            **target syntax**.
-
-        :returns: A tuple of the call to be generated and an instance of
-            :class:`bool` whether the first assignee is a part of the LHS in
-            the assignment instruction.
-
-        .. note::
-
-            The default implementation returns the first assignees and the
-            references of the rest of the assignees are appended to the
-            arguments of the call.
-
-            *Example:* ``c, d = f(a, b)`` is returned as ``c = f(a, b, &d)``
-        """
-
+                   )  -> tuple[ArithmeticExpression, bool]:
         from loopy.target.c import CFamilyTarget
         if not isinstance(target, CFamilyTarget):
             raise NotImplementedError(
