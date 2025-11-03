@@ -129,8 +129,8 @@ def get_loopy_callables() -> CallablesTable:
     category are --
 
     - reductions leading to function calls like ``argmin``, ``argmax``.
-    - callables that have a predefined meaning in :mod:`loo.py` like
-      ``make_tuple``, ``index_of``, ``indexof_vec``.
+    - callables that have a predefined meaning in :mod:`loopy` like
+      ``make_tuple``, ``indexof``, ``indexof_vec``.
     """
     return constantdict({
             "make_tuple": MakeTupleCallable(name="make_tuple"),
