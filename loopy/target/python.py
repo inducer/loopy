@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import pymbolic.primitives as p
-    from pymbolic import Expression
+    from pymbolic import Expression, ExpressionNode
 
     from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
@@ -74,7 +74,7 @@ class ExpressionToPythonMapper(StringifyMapper[[]]):
         self.type_inf_mapper: TypeReader = type_inf_mapper
 
     @override
-    def handle_unsupported_expression(self, expr: object, enclosing_prec: int):
+    def handle_unsupported_expression(self, expr: ExpressionNode, enclosing_prec: int):
         return Mapper.handle_unsupported_expression(self, expr, enclosing_prec)
 
     @override
