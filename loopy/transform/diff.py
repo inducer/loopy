@@ -23,56 +23,86 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from typing_extensions import override
+
 import islpy as isl
 import pymbolic.primitives as p
-from pymbolic.mapper.differentiator import DifferentiationMapper
+from pymbolic.mapper.differentiator import DifferentiationMapper, Smoothness
 
 
 var = p.Variable
+
+
+from typing import TYPE_CHECKING
+
+from pymbolic import ArithmeticExpression, Expression
 
 import loopy as lp
 from loopy.diagnostic import LoopyError
 from loopy.isl_helpers import make_slab
 from loopy.kernel import LoopKernel
-from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
+from loopy.symbolic import (
+    ExpansionState,
+    RuleAwareIdentityMapper,
+    SubstitutionRuleMappingContext,
+)
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 # {{{ diff mapper
 
-def func_map(i, func, args, allowed_nonsmoothness):
+def func_map(
+            i: int,
+            func: Expression,
+            pars: Sequence[Expression],
+            allowed_nonsmoothness: Smoothness = "none"):
+    assert isinstance(func, p.Variable)
     if func.name == "exp":
-        return var("exp")(*args)
+        return var("exp")(*pars)
     elif func.name == "log":
-        return 1/args[0]
+        assert p.is_arithmetic_expression(pars[0])
+        return 1/pars[0]
 
     elif func.name == "sin":
-        return var("cos")(*args)
+        return var("cos")(*pars)
     elif func.name == "cos":
-        return -var("sin")(*args)
+        return -var("sin")(*pars)
     elif func.name == "tan":
-        return 1+var("tan")(*args)**2
+        return 1+var("tan")(*pars)**2
 
     elif func.name == "sinh":
-        return var("cosh")(*args)
+        return var("cosh")(*pars)
     elif func.name == "cosh":
-        return var("sinh")(*args)
+        return var("sinh")(*pars)
     elif func.name == "tanh":
-        return (1 - var("tanh")(*args))**2
+        return (1 - var("tanh")(*pars))**2
 
     else:
         raise NotImplementedError("derivative of '%s'" % func.name)
 
 
-class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, diff_context, diff_inames,
-            allowed_nonsmoothness=None):
+class LoopyDiffMapper(
+                DifferentiationMapper[[ExpansionState]],
+                RuleAwareIdentityMapper[[]]):
+    diff_context: DifferentiationContext
+    diff_inames: Sequence[str]
+    diff_iname_exprs: tuple[p.Variable, ...]
+
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                diff_context: DifferentiationContext,
+                diff_inames: Sequence[str],
+                allowed_nonsmoothness: Smoothness | None = None):
         RuleAwareIdentityMapper.__init__(self, rule_mapping_context)
         DifferentiationMapper.__init__(
                 self,
 
                 # This is actually ignored because we
                 # override map_variable below.
-                variable=None,
+                variable=p.Variable("ignored"),
 
                 allowed_nonsmoothness=None)
         self.diff_context = diff_context
@@ -80,7 +110,8 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
         self.diff_iname_exprs = tuple(var(diname) for diname in diff_inames)
         self.function_map = func_map
 
-    def rec_undiff(self, expr, *args):
+    @override
+    def rec_undiff(self, expr: ArithmeticExpression, expn_state: ExpansionState):
         dc = self.diff_context
 
         from loopy.symbolic import get_dependencies
@@ -93,7 +124,8 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
 
         return expr
 
-    def map_variable(self, expr, *args):
+    @override
+    def map_variable(self, expr: p.Variable, expn_state: ExpansionState):
         dc = self.diff_context
 
         if expr.name == dc.by_name:
@@ -116,13 +148,13 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
 
     map_tagged_variable = map_variable
 
-    def map_subscript(self, expr, *args):
+    @override
+    def map_subscript(self, expr: p.Subscript, expn_state: ExpansionState):
         dc = self.diff_context
 
+        assert isinstance(expr.aggregate, p.Variable)
         if expr.aggregate.name == dc.by_name:
-            index = expr.index
-            if not isinstance(expr.index, tuple):
-                index = (expr.index,)
+            index = expr.index_tuple
 
             assert len(self.diff_inames) == len(index)
 
@@ -145,23 +177,23 @@ class LoopyDiffMapper(DifferentiationMapper, RuleAwareIdentityMapper):
             if dvar_dby is None:
                 return 0
 
-            idx = expr.index
-            if not isinstance(idx, tuple):
-                idx = (idx,)
+            idx = expr.index_tuple
 
             return type(expr)(
                     var(dvar_dby),
-                    expr.index + self.diff_inames)
+                    (*idx, *self.diff_iname_exprs))
 
-    def map_call(self, expr, *args):
+    @override
+    def map_call(self, expr: p.Call, expn_state: ExpansionState):
         dc = self.diff_context
 
+        assert isinstance(expr.function, p.Variable)
         if expr.function.name in dc.kernel.substitutions:
             # FIXME: Deal with substitution rules
             # Need to use chain rule here, too.
             raise NotImplementedError("substitution rules in differentiation")
         else:
-            return DifferentiationMapper.map_call(self, expr, *args)
+            return DifferentiationMapper.map_call(self, expr, expn_state)
 
 # }}}
 
@@ -372,8 +404,13 @@ class DifferentiationContext:
 
 # {{{ entrypoint
 
-def diff_kernel(kernel, diff_outputs, by, diff_iname_prefix="diff_i",
-        batch_axes_in_by=frozenset(), copy_outputs=frozenset()):
+def diff_kernel(
+            kernel: LoopKernel,
+            diff_outputs: Sequence[str],
+            by,
+            diff_iname_prefix="diff_i",
+            batch_axes_in_by=frozenset(),
+            copy_outputs=frozenset()):
     """
 
     :arg batch_axes_in_by: a :class:`set` of axis indices in the variable named *by*
