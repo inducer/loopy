@@ -940,7 +940,7 @@ class LinearSubscript(LoopyExpressionBase):
     .. autoattribute:: index
     """
     aggregate: Expression
-    index: Expression
+    index: ArithmeticExpression
 
     def __post_init__(self) -> None:
         warn("LinearSubscript is deprecated "
@@ -1965,9 +1965,13 @@ class LoopyParser(ParserBase):
         if pstate.next_tag() is _open_dbl_bracket and min_precedence < _PREC_CALL:
             pstate.advance()
             pstate.expect_not_end()
+            subscript = self.parse_expression(pstate)
+            if not p.is_arithmetic_expression(subscript):
+                raise LoopyError("subscript in linear subscript "
+                                 "must be of arithmetic type")
             left_exp = LinearSubscript(
-                        left_exp,
-                        self.parse_expression(pstate))
+                        left_exp, subscript,
+                        )
             pstate.expect(_closebracket)
             pstate.advance()
             pstate.expect(_closebracket)
