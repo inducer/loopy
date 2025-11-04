@@ -178,7 +178,7 @@ class IdentityMapperMixin(Mapper[Expression, P]):
         return type(expr)(tuple(self.rec(ch, *args, **kwargs)
                                 for ch in expr.children))
 
-    def map_group_hw_index(self, expr: GroupHardwareAxisIndex | RuleArgument,
+    def map_group_hw_index(self, expr: GroupHardwareAxisIndex,
                            *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
@@ -256,10 +256,12 @@ class IdentityMapperMixin(Mapper[Expression, P]):
 
         return type(expr)(expr.type, new_child)
 
+    def map_rule_argument(self, expr: RuleArgument,
+                           *args: P.args, **kwargs: P.kwargs) -> Expression:
+        return expr
+
     map_linear_subscript: Callable[Concatenate[Self, LinearSubscript, P],
                                    Expression] = IdentityMapperBase.map_subscript
-    map_rule_argument: Callable[Concatenate[Self, RuleArgument, P],
-                                Expression] = map_group_hw_index
     map_fortran_division: Callable[Concatenate[Self, FortranDivision, P],
                                    Expression] = IdentityMapperBase.map_quotient
 
