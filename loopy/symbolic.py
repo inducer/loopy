@@ -169,28 +169,28 @@ T = TypeVar("T")
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(Mapper[Expression, P]):
-    def map_literal(self, expr: Literal,
+    def map_literal(self, expr: Literal, /,
                     *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
-    def map_array_literal(self, expr: ArrayLiteral,
+    def map_array_literal(self, expr: ArrayLiteral, /,
                           *args: P.args, **kwargs: P.kwargs) -> Expression:
         return type(expr)(tuple(self.rec(ch, *args, **kwargs)
                                 for ch in expr.children))
 
-    def map_group_hw_index(self, expr: GroupHardwareAxisIndex,
+    def map_group_hw_index(self, expr: GroupHardwareAxisIndex, /,
                            *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
-    def map_local_hw_index(self, expr: LocalHardwareAxisIndex,
+    def map_local_hw_index(self, expr: LocalHardwareAxisIndex, /,
                            *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
-    def map_loopy_function_identifier(self, expr: FunctionIdentifier,
+    def map_loopy_function_identifier(self, expr: FunctionIdentifier, /,
                                       *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
-    def map_reduction(self, expr: Reduction,
+    def map_reduction(self, expr: Reduction, /,
                       *args: P.args, **kwargs: P.kwargs) -> Expression:
         mapped_inames = [self.rec(p.Variable(iname), *args, **kwargs)
                          for iname in expr.inames]
@@ -213,12 +213,12 @@ class IdentityMapperMixin(Mapper[Expression, P]):
                 new_expr,
                 allow_simultaneous=expr.allow_simultaneous)
 
-    def map_tagged_variable(self, expr: TaggedVariable,
+    def map_tagged_variable(self, expr: TaggedVariable, /,
                             *args: P.args, **kwargs: P.kwargs) -> Expression:
         # leaf, doesn't change
         return expr
 
-    def map_type_annotation(self, expr: TypeAnnotation,
+    def map_type_annotation(self, expr: TypeAnnotation, /,
                             *args: P.args, **kwargs: P.kwargs) -> Expression:
         new_child = self.rec(expr.child, *args, **kwargs)
 
@@ -227,7 +227,7 @@ class IdentityMapperMixin(Mapper[Expression, P]):
 
         return type(expr)(expr.type, new_child)
 
-    def map_sub_array_ref(self, expr: SubArrayRef,
+    def map_sub_array_ref(self, expr: SubArrayRef, /,
                           *args: P.args, **kwargs: P.kwargs) -> Expression:
         new_inames = self.rec(expr.swept_inames, *args, **kwargs)
         new_subscript = self.rec(expr.subscript, *args, **kwargs)
@@ -242,12 +242,12 @@ class IdentityMapperMixin(Mapper[Expression, P]):
 
         return SubArrayRef(cast("tuple[p.Variable, ...]", new_inames), new_subscript)
 
-    def map_resolved_function(self, expr: ResolvedFunction,
+    def map_resolved_function(self, expr: ResolvedFunction, /,
                               *args: P.args, **kwargs: P.kwargs) -> Expression:
         # leaf, doesn't change
         return expr
 
-    def map_type_cast(self, expr: TypeCast,
+    def map_type_cast(self, expr: TypeCast, /,
                       *args: P.args, **kwargs: P.kwargs) -> Expression:
         new_child = self.rec(expr.child, *args, **kwargs)
 
@@ -256,7 +256,7 @@ class IdentityMapperMixin(Mapper[Expression, P]):
 
         return type(expr)(expr.type, new_child)
 
-    def map_rule_argument(self, expr: RuleArgument,
+    def map_rule_argument(self, expr: RuleArgument, /,
                            *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
