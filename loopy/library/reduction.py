@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loopy.target.c import CFamilyTarget
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -786,6 +788,9 @@ class ReductionCallable(ScalarCallable):
 class ArgExtOpCallable(ReductionCallable):
 
     def generate_preambles(self, target):
+        if not isinstance(target, CFamilyTarget):
+            raise NotImplementedError("non-C code generation for SegmentOpCallable")
+
         op = self.name.reduction_op  # pylint: disable=no-member
         scalar_dtype = self.arg_id_to_dtype[-1]
         index_dtype = self.arg_id_to_dtype[-2]
@@ -822,6 +827,9 @@ class ArgExtOpCallable(ReductionCallable):
 class SegmentOpCallable(ReductionCallable):
 
     def generate_preambles(self, target):
+        if not isinstance(target, CFamilyTarget):
+            raise NotImplementedError("non-C code generation for SegmentOpCallable")
+
         op = self.name.reduction_op  # pylint: disable=no-member
         scalar_dtype = self.arg_id_to_dtype[-1]
         segment_flag_dtype = self.arg_id_to_dtype[-2]
