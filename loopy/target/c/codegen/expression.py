@@ -232,8 +232,11 @@ class ExpressionToCExpressionMapper(IdentityMapper[[str]]):
     @override
     def map_sub_array_ref(self, expr, type_context):
         from loopy.symbolic import get_start_subscript_from_sar
-        return var("&")(self.rec(get_start_subscript_from_sar(expr, self.kernel),
-            type_context))
+        if not expr.subscript.index_tuple:
+            return var("&")(self.rec(expr.subscript.aggregate, type_context))
+        else:
+            return var("&")(self.rec(get_start_subscript_from_sar(expr, self.kernel),
+                type_context))
 
     @override
     def map_subscript(self, expr, type_context):
