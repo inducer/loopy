@@ -58,6 +58,7 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.expression import TypeContext
     from loopy.kernel import LoopKernel
     from loopy.target.c import DTypeRegistry
     from loopy.target.execution import ExecutorBase
@@ -331,7 +332,11 @@ class ASTBuilderBase(Generic[ASTType], ABC):
 # {{{ dummy host ast builder
 
 class _DummyExpressionToCodeMapper:
-    def rec(self, expr, prec, type_context=None, needed_dtype=None):
+    def rec(self,
+            expr,
+            prec,
+            type_context: TypeContext | None = None,
+            needed_dtype=None):
         return ""
 
     __call__ = rec

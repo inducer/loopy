@@ -62,6 +62,7 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.expression import TypeContext
     from loopy.kernel.instruction import Assignable, VarAtomicity
     from loopy.translation_unit import CallablesInferenceContext
 
@@ -582,10 +583,10 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
         return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
-    def map_group_hw_index(self, expr, type_context):
+    def map_group_hw_index(self, expr, type_context: TypeContext):
         return var("gid")(expr.axis)
 
-    def map_local_hw_index(self, expr, type_context):
+    def map_local_hw_index(self, expr, type_context: TypeContext):
         return var("lid")(expr.axis)
 
 # }}}
@@ -845,7 +846,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 lhs_expr: Assignable,
                 rhs_expr: Expression,
                 lhs_dtype: AtomicType,
-                rhs_type_context: str | None) -> Generable:
+                rhs_type_context: TypeContext | None) -> Generable:
         # for the CL1 flavor, this is as simple as a regular update with whatever
         # the RHS value is...
 

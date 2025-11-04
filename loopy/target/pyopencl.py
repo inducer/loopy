@@ -78,6 +78,7 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.expression import TypeContext
     from loopy.kernel import LoopKernel
     from loopy.target.pyopencl_execution import PyOpenCLExecutor
     from loopy.translation_unit import (
@@ -257,7 +258,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             return super().wrap_in_typecast(actual_type, needed_type, s)
 
     @override
-    def map_sum(self, expr: p.Sum, type_context: str) -> Expression:
+    def map_sum(self, expr: p.Sum, type_context: TypeContext) -> Expression:
         # I've added 'type_context == "i"' because of the following
         # idiotic corner case: Code generation for subscripts comes
         # through here, and it may involve variables that we know
@@ -369,7 +370,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 return complex_sum
 
     @override
-    def map_product(self, expr: p.Product, type_context: str) -> Expression:
+    def map_product(self, expr: p.Product, type_context: TypeContext) -> Expression:
         # I've added 'type_context == "i"' because of the following
         # idiotic corner case: Code generation for subscripts comes
         # through here, and it may involve variables that we know
@@ -443,7 +444,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 return complex_prd
 
     @override
-    def map_quotient(self, expr: p.Quotient, type_context: str):
+    def map_quotient(self, expr: p.Quotient, type_context: TypeContext):
         n_dtype = self.infer_type(expr.numerator).numpy_dtype
         d_dtype = self.infer_type(expr.denominator).numpy_dtype
         tgt_dtype = self.infer_type(expr)
@@ -467,7 +468,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                     self.rec(expr.denominator, type_context, tgt_dtype))
 
     @override
-    def map_constant(self, expr: object, type_context: str):
+    def map_constant(self, expr: object, type_context: TypeContext):
         if isinstance(expr, (complex, np.complexfloating)):
             try:
                 dtype = expr.dtype
@@ -494,7 +495,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         return super().map_constant(expr, type_context)
 
     @override
-    def map_power(self, expr: p.Power, type_context: str):
+    def map_power(self, expr: p.Power, type_context: TypeContext):
         tgt_dtype = self.infer_type(expr)
         base_dtype = self.infer_type(expr.base)
         exponent_dtype = self.infer_type(expr.exponent)
