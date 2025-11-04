@@ -168,7 +168,7 @@ class PyOpenCLCallable(ScalarCallable):
                 name_in_target=self.name_in_target).with_types(
                         arg_id_to_dtype, clbl_inf_ctx)
 
-    def generate_preambles(self, target):
+    def generate_preambles(self, target: PyOpenCLTarget):
         name = self.name_in_target
         if (name.startswith("_lpy_real")
                 or name.startswith("_lpy_conj")
@@ -284,7 +284,10 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             for child in expr.children:
                 rhs_is_complex = self.infer_type(child).is_complex()
                 if rhs_is_complex:
-                    child_val = self.rec_arith(child, type_context, tgt_dtype)
+                    # FIXME: Yes, rec_arith isn't supposed to take the extra
+                    # argument, but it passes it through to rec(), which does.
+                    # Kinda ugly, I agree. -AK
+                    child_val = self.rec_arith(child, type_context, tgt_dtype)  # pyright: ignore[reportCallIssue]
                 else:
                     child_val = self.rec_arith(child, type_context)
 
@@ -393,7 +396,10 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             for child in expr.children:
                 rhs_is_complex = self.infer_type(child).is_complex()
                 if rhs_is_complex:
-                    child_val = self.rec_arith(child, type_context, tgt_dtype)
+                    # FIXME: Yes, rec_arith isn't supposed to take the extra
+                    # argument, but it passes it through to rec(), which does.
+                    # Kinda ugly, I agree. -AK
+                    child_val = self.rec_arith(child, type_context, tgt_dtype)  # pyright: ignore[reportCallIssue]
                 else:
                     child_val = self.rec_arith(child, type_context)
 

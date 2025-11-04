@@ -298,7 +298,7 @@ class ASTBuilderBase(Generic[ASTType], ABC):
             ) -> ASTType:
         raise NotImplementedError()
 
-    def emit_unroll_hint(self, value):
+    def emit_unroll_hint(self, value: int | None):
         raise NotImplementedError()
 
     @property

@@ -1325,14 +1325,14 @@ def rename_subst_rules_in_instructions(
 
 
 class SubstitutionRuleMappingContext:
-    old_subst_rules: dict[str, SubstitutionRule]
+    old_subst_rules: Mapping[str, SubstitutionRule]
     make_unique_var_name: Callable[[str], str]
 
     subst_rule_registry: dict[Expression, tuple[str, Sequence[str], Expression]]
     subst_rule_old_names: dict[Expression, list[str]]
 
     def __init__(self,
-                 old_subst_rules: dict[str, SubstitutionRule],
+                 old_subst_rules: Mapping[str, SubstitutionRule],
                  make_unique_var_name: Callable[[str], str]) -> None:
         self.old_subst_rules = old_subst_rules
         self.make_unique_var_name = make_unique_var_name
@@ -1648,12 +1648,12 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
         renaming mandated by the rule expression divergences.
     """
 
-    subst_func: Callable[[Expression], Expression | None]
+    subst_func: Callable[[p.AlgebraicLeaf], Expression | None]
     _within: StackMatch
 
     def __init__(self,
                  rule_mapping_context: SubstitutionRuleMappingContext,
-                 subst_func: Callable[[Expression], Expression | None],
+                 subst_func: Callable[[p.AlgebraicLeaf], Expression | None],
                  within: StackMatch) -> None:
         super().__init__(rule_mapping_context)
 

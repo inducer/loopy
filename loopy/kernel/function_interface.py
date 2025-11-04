@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 from warnings import warn
 
 from constantdict import constantdict
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     import islpy as isl
     from pymbolic.typing import ArithmeticExpression, Expression
 
+    from loopy.codegen import CodeGenerationState
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import CallInstruction
     from loopy.target import TargetBase
@@ -186,7 +187,7 @@ class ArrayArgDescriptor(ArgDescriptor):
             dep_mapper = DependencyMapper(composite_leaves=False)
             for axis_len in self.shape:
                 if axis_len not in [None, auto]:
-                    result |= dep_mapper(axis_len)
+                    result |= cast("set[p.Variable]", dep_mapper(axis_len))
 
         if self.dim_tags:
             for dim_tag in self.dim_tags:
@@ -323,6 +324,8 @@ class AbstractExpressionToCodeMapper(Protocol):
     .. automethod:: infer_type
     .. automethod:: __call__
     """
+    kernel: LoopKernel
+    codegen_state: CodeGenerationState
 
     def infer_type(self, expr: Expression) -> LoopyType: ...
 
@@ -529,7 +532,7 @@ class InKernelCallable(ABC):
 
     @abstractmethod
     def get_used_hw_axes(self,
-                         callables_table: CallablesTable) -> tuple[Set[str], Set[str]]:
+                         callables_table: CallablesTable) -> tuple[Set[int], Set[int]]:
         """
         Returns a tuple ``group_axes_used, local_axes_used``, where
         ``(group|local)_axes_used`` are :class:`frozenset` of hardware axes
@@ -693,7 +696,7 @@ class ScalarCallable(InKernelCallable):
 
     @override
     def get_used_hw_axes(self,
-                         callables_table: CallablesTable) -> tuple[Set[str], Set[str]]:
+                         callables_table: CallablesTable) -> tuple[Set[int], Set[int]]:
         return frozenset(), frozenset()
 
     @override
@@ -1041,7 +1044,7 @@ class CallableKernel(InKernelCallable):
 
     @override
     def get_used_hw_axes(self,
-                         callables_table: CallablesTable) -> tuple[Set[str], Set[str]]:
+                         callables_table: CallablesTable) -> tuple[Set[int], Set[int]]:
         gsize, lsize = self.subkernel.get_grid_size_upper_bounds(callables_table,
                                                                  return_dict=True)
 
