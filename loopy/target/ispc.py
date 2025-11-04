@@ -176,6 +176,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
                 from loopy.kernel.array import get_access_info
 
+                assert p.is_arithmetic_expression(expr.index)
                 access_info = get_access_info(self.kernel, ary, expr.index,
                     lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                     self.codegen_state.vectorization_info)

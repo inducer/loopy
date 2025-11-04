@@ -752,7 +752,7 @@ class CMathCallable(ScalarCallable):
                 self.copy(arg_id_to_dtype=constantdict(arg_num_to_dtype)),
                 clbl_inf_ctx)
 
-    def generate_preambles(self, target):
+    def generate_preambles(self, target: CFamilyTarget):
         if self.name_in_target.startswith("lpy_max"):
             dtype = self.arg_id_to_dtype[-1]
             ctype = target.dtype_to_typename(dtype)
@@ -1425,7 +1425,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         else:
             return loop
 
-    def emit_unroll_hint(self, value):
+    def emit_unroll_hint(self, value) -> Generable:
         from cgen import Pragma
         if value:
             return Pragma(f"unroll {value}")

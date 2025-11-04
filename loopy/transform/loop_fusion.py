@@ -42,6 +42,7 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     SubstitutionRuleMappingContext,
 )
+from loopy.typing import InameStr
 
 
 if TYPE_CHECKING:
@@ -50,7 +51,7 @@ if TYPE_CHECKING:
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import RuleStack
     from loopy.schedule.tools import LoopNestTree
-    from loopy.typing import InameStr, InameStrSet, InsnId
+    from loopy.typing import InameStrSet, InsnId
 
 
 __doc__ = """
@@ -675,7 +676,7 @@ def _fuse_sequential_loops_within_outer_loops(
 
 
 @final
-class ReductionLoopInserter(RuleAwareIdentityMapper[[]]):
+class ReductionLoopInserter(RuleAwareIdentityMapper[[frozenset[InameStr]]]):
     """
     Main mapper used by :func:`_add_reduction_loops_in_partial_loop_nest_tree`.
     """
@@ -753,7 +754,7 @@ class ReductionLoopInserter(RuleAwareIdentityMapper[[]]):
 
         assert not (outer_redn_inames & redn_inames)
         return super().map_reduction(
-            expr, expn_state, outer_redn_inames=(outer_redn_inames | redn_inames)
+            expr, expn_state, (outer_redn_inames | redn_inames)
         )
 
 
