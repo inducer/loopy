@@ -1072,6 +1072,8 @@ def get_start_subscript_from_sar(
             for swept_iname in sar.swept_inames}
 
     result = EvaluatorWithDeficientContext(swept_inames_to_zeros)(sar.subscript)
+    # assert isinstance(result, p.Subscript)
+    # pending https://github.com/inducer/pymbolic/pull/224
     assert isinstance(result, (p.Variable, p.Subscript))
 
     return result
