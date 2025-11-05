@@ -2126,10 +2126,10 @@
                 }
             },
             {
-                "code": "reportIncompatibleMethodOverride",
+                "code": "reportUnknownArgumentType",
                 "range": {
-                    "startColumn": 8,
-                    "endColumn": 26,
+                    "startColumn": 42,
+                    "endColumn": 54,
                     "lineCount": 1
                 }
             },
@@ -2898,22 +2898,6 @@
                 "range": {
                     "startColumn": 37,
                     "endColumn": 40,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownParameterType",
-                "range": {
-                    "startColumn": 53,
-                    "endColumn": 72,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportMissingParameterType",
-                "range": {
-                    "startColumn": 53,
-                    "endColumn": 72,
                     "lineCount": 1
                 }
             },
@@ -32594,6 +32578,14 @@
                 }
             },
             {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 48,
+                    "endColumn": 68,
+                    "lineCount": 1
+                }
+            },
+            {
                 "code": "reportUnreachable",
                 "range": {
                     "startColumn": 8,
@@ -42220,14 +42212,6 @@
                 }
             },
             {
-                "code": "reportIncompatibleMethodOverride",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportImplicitOverride",
                 "range": {
                     "startColumn": 8,
@@ -42325,14 +42309,6 @@
             },
             {
                 "code": "reportUnknownParameterType",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportIncompatibleMethodOverride",
                 "range": {
                     "startColumn": 8,
                     "endColumn": 26,
@@ -59948,14 +59924,6 @@
                 }
             },
             {
-                "code": "reportIncompatibleMethodOverride",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportImplicitOverride",
                 "range": {
                     "startColumn": 8,
@@ -70792,6 +70760,30 @@
             {
                 "code": "reportUnknownArgumentType",
                 "range": {
+                    "startColumn": 67,
+                    "endColumn": 76,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 68,
+                    "endColumn": 77,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 68,
+                    "endColumn": 77,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
                     "startColumn": 35,
                     "endColumn": 54,
                     "lineCount": 1
@@ -70912,6 +70904,38 @@
             {
                 "code": "reportUnknownArgumentType",
                 "range": {
+                    "startColumn": 64,
+                    "endColumn": 75,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 67,
+                    "endColumn": 76,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 68,
+                    "endColumn": 77,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 68,
+                    "endColumn": 77,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
                     "startColumn": 39,
                     "endColumn": 58,
                     "lineCount": 1
@@ -71026,6 +71050,22 @@
                 "range": {
                     "startColumn": 44,
                     "endColumn": 47,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 55,
+                    "endColumn": 59,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 61,
+                    "endColumn": 65,
                     "lineCount": 1
                 }
             },
@@ -104474,6 +104514,14 @@
                 }
             },
             {
+                "code": "reportArgumentType",
+                "range": {
+                    "startColumn": 65,
+                    "endColumn": 83,
+                    "lineCount": 1
+                }
+            },
+            {
                 "code": "reportUnknownMemberType",
                 "range": {
                     "startColumn": 8,
@@ -106192,6 +106240,14 @@
                 "range": {
                     "startColumn": 23,
                     "endColumn": 33,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 36,
+                    "endColumn": 41,
                     "lineCount": 1
                 }
             },
@@ -109742,14 +109798,6 @@
                 }
             },
             {
-                "code": "reportIncompatibleMethodOverride",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 26,
-                    "lineCount": 1
-                }
-            },
-            {
                 "code": "reportImplicitOverride",
                 "range": {
                     "startColumn": 8,
@@ -109802,14 +109850,6 @@
                 "range": {
                     "startColumn": 8,
                     "endColumn": 19,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportIncompatibleMethodOverride",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 26,
                     "lineCount": 1
                 }
             },
@@ -111168,14 +111208,6 @@
                 "range": {
                     "startColumn": 10,
                     "endColumn": 37,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 10,
-                    "endColumn": 41,
                     "lineCount": 1
                 }
             },
