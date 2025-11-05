@@ -217,12 +217,12 @@ from loopy.transform.subst import (
 from loopy.translation_unit import TranslationUnit, for_each_kernel, make_program
 from loopy.type_inference import infer_unknown_types
 from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible, to_loopy_type
-from loopy.typing import auto
+from loopy.typing import PreambleGenerator, auto
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
 
 __all__ = [
@@ -462,7 +462,9 @@ def set_options(kernel, *args, **kwargs):
 # {{{ library registration
 
 @for_each_kernel
-def register_preamble_generators(kernel: LoopKernel, preamble_generators):
+def register_preamble_generators(
+            kernel: LoopKernel,
+            preamble_generators: Sequence[PreambleGenerator]) -> LoopKernel:
     """
     :arg manglers: list of functions of signature ``(preamble_info)``
         generating tuples ``(sortable_str_identifier, code)``,
@@ -477,10 +479,9 @@ def register_preamble_generators(kernel: LoopKernel, preamble_generators):
     for pgen in preamble_generators:
         if pgen not in new_pgens:
             if not unpickles_equally(pgen):
-                raise LoopyError("preamble generator '%s' does not "
-                        "compare equally after being unpickled "
-                        "and would thus disrupt loopy's caches"
-                        % pgen)
+                raise LoopyError(
+                    f"preamble generator '{pgen}' does not compare equally after "
+                    "being unpickled and would thus disrupt loopy's caches")
 
             new_pgens = (pgen, *new_pgens)
 
