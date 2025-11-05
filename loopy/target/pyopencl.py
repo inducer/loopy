@@ -70,7 +70,7 @@ from loopy.types import LoopyType, NumpyType
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     import genpy
     import pyopencl as cl
@@ -168,7 +168,7 @@ class PyOpenCLCallable(ScalarCallable):
                 name_in_target=self.name_in_target).with_types(
                         arg_id_to_dtype, clbl_inf_ctx)
 
-    def generate_preambles(self, target: PyOpenCLTarget):
+    def generate_preambles(self, target: PyOpenCLTarget) -> Iterator[tuple[str, str]]:
         name = self.name_in_target
         if (name.startswith("_lpy_real")
                 or name.startswith("_lpy_conj")
