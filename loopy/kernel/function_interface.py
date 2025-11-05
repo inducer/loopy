@@ -540,7 +540,7 @@ class InKernelCallable(ABC):
         """
 
     @abstractmethod
-    def generate_preambles(self, target: TargetBase) -> Iterator[str]:
+    def generate_preambles(self, target: TargetBase) -> Iterator[tuple[str, str]]:
         """
         Yields the target specific preamble.
         """
@@ -790,7 +790,7 @@ class ScalarCallable(InKernelCallable):
                 first_assignee_is_returned)
 
     @override
-    def generate_preambles(self, target: TargetBase) -> Iterator[str]:
+    def generate_preambles(self, target: TargetBase) -> Iterator[tuple[str, str]]:
         return
         yield
 
@@ -1079,9 +1079,7 @@ class CallableKernel(InKernelCallable):
                 and self.arg_id_to_descr is not None)
 
     @override
-    def generate_preambles(self, target: TargetBase) -> Iterator[str]:
-        """ Yields the *target* specific preambles.
-        """
+    def generate_preambles(self, target: TargetBase) -> Iterator[tuple[str, str]]:
         return
         yield
 
