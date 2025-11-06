@@ -232,7 +232,7 @@ def test_fusion():
 
     knl = lp.fuse_kernels([exp_kernel, sum_kernel])
 
-    print(knl)
+    logger.info("%s", knl)
 
 
 def test_alias_temporaries(ctx_factory: cl.CtxFactory):
@@ -305,8 +305,7 @@ def test_extract_subst(ctx_factory: cl.CtxFactory):
                 """, name="extract_subst")
 
     prog = lp.extract_subst(prog, "bsquare", "alpha*b[i]**2", "alpha")
-
-    print(prog)
+    logger.info("%s", prog)
 
     from loopy.symbolic import parse
 
@@ -404,7 +403,7 @@ def test_affine_map_inames():
             "i", "i0",
             "i0 = n+i")
 
-    print(knl)
+    logger.info("%s", knl)
 
 
 def test_precompute_confusing_subst_arguments(ctx_factory: cl.CtxFactory):
@@ -1403,7 +1402,7 @@ def test_simplify_indices_when_inlining(ctx_factory: cl.CtxFactory):
     inlined_knl = lp.inline_callable_kernel(knl, "zerozerozeroonezeroify")
     contains_floordiv = ContainsFloorDiv()
 
-    print(inlined_knl)
+    logger.info("%s", inlined_knl)
 
     assert all(not contains_floordiv(insn.expression)
                for insn in inlined_knl.default_entrypoint.instructions
@@ -1738,7 +1737,8 @@ def test_duplicate_iname_not_read_only_nested(ctx_factory: cl.CtxFactory):
     t_unit = lp.duplicate_inames(
         t_unit,
         inames="i", within="tag:foo", new_inames="irow")
-    print(t_unit)
+    logger.info("%s", t_unit)
+
     assert (t_unit.default_entrypoint.id_to_insn["init"].within_inames
             == frozenset({"irow"}))
 

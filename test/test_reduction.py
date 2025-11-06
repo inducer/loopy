@@ -85,7 +85,7 @@ def test_empty_reduction(ctx_factory: cl.CtxFactory):
             )
 
     knl = lp.preprocess_kernel(knl)
-    print(knl)
+    logger.info("%s", knl)
 
     knl = lp.set_options(knl, write_code=True)
     _evt, (a,) = knl(queue)
@@ -148,7 +148,7 @@ def test_multi_nested_dependent_reduction():
             assumptions="ntgts>=1",
             target=lp.PyOpenCLTarget())
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
     # FIXME: Actually test functionality.
 
 
@@ -180,7 +180,7 @@ def test_recursive_nested_dependent_reduction():
             assumptions="ntgts>=1",
             target=lp.PyOpenCLTarget())
 
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
     # FIXME: Actually test functionality.
 
 
@@ -305,9 +305,9 @@ def test_argmax(ctx_factory: cl.CtxFactory):
             """
             max_val, max_idx = argmax(i, abs(a[i]), i)
             """)
-
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
-    print(lp.preprocess_kernel(knl))
+    logger.info("%s", lp.preprocess_kernel(knl))
+
     knl = lp.set_options(knl, write_code=True, allow_terminal_colors=True)
 
     a = rng.normal(size=10000).astype(np.float32)
@@ -391,7 +391,7 @@ def test_double_sum_made_unique(ctx_factory: cl.CtxFactory):
             assumptions="n>=1")
 
     knl = lp.make_reduction_inames_unique(knl)
-    print(knl)
+    logger.info("%s", knl)
 
     _evt, (a, b) = knl(queue, n=n)
 
@@ -436,7 +436,7 @@ def test_reduction_with_conditional():
     knl = lp.tag_inames(knl, "l:g.0")
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
     code = lp.generate_code_v2(knl).device_code()
-    print(code)
+    logger.info("%s", code)
 
     # Check that the if appears before the loop that realizes the reduction.
     assert code.index("if") < code.index("for")
