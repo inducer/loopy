@@ -1,0 +1,43 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+     - main
+  release:
+    types:
+      - published
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: "recursive"
+
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: ".test-conda-env-py3.yml"
+          activate-environment: "test-conda-env"
+          auto-activate-base: false
+          auto-update-conda: true
+
+      - name: Install build dependencies
+        run: |
+          pip install --upgrade pip
+          pip install hatchling hatch
+
+      - name: Build package
+        run: hatch build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        if: github.event_name == 'release' && github.event.action == 'published'
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_PASSWORD }}
