@@ -1,27 +1,19 @@
-# DomainChanger
-# iname nesting order <=> tree
-# loop transformations
-# - traverse syntax tree
-# - affine map inames
-#
-# index views for warp tiling
-
-from pymbolic.mapper.substitutor import make_subst_func
-from loopy.kernel import LoopKernel
 import islpy as isl
 
 import loopy as lp
+from loopy.kernel import LoopKernel
 from loopy.kernel.data import AddressSpace
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-from loopy.kernel.instruction import MultiAssignmentBase
-from loopy.kernel.tools import DomainChanger
 from loopy.match import parse_stack_match
-from loopy.symbolic import RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext, aff_from_expr, aff_to_expr, pw_aff_to_expr
-from loopy.transform.precompute import RuleInvocationGatherer, RuleInvocationReplacer, contains_a_subst_rule_invocation
+from loopy.symbolic import (
+    RuleAwareSubstitutionMapper,
+    SubstitutionRuleMappingContext,
+    pw_aff_to_expr
+)
 from loopy.translation_unit import TranslationUnit
 
-import pymbolic.primitives as prim
 from pymbolic import var
+from pymbolic.mapper.substitutor import make_subst_func
 
 from pytools.tag import Tag
 
@@ -81,7 +73,7 @@ def _compute_inner(
 
     :arg compute_map: An :class:`isl.Map` representing a relation between
     substitution rule indices and tuples `(a, l)`, where `a` is a vector of
-    storage indices and `l` is a vector of "timestamps". This map describes
+    storage indices and `l` is a vector of "timestamps".
     """
 
     if not temporary_address_space:
