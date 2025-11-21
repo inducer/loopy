@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any, cast
 import islpy as isl
 from islpy import dim_type
 from pymbolic.mapper.stringifier import PREC_NONE
+from pytools import fset_union
 
 from loopy.codegen.control import build_loop_nest
 from loopy.codegen.result import CodeGenerationResult, merge_codegen_results
@@ -294,8 +295,11 @@ def set_up_hw_parallel_loops(
     else:
         raise RuntimeError("unexpected hw tag type")
 
+    inames_in_subkernel = fset_union(
+        kernel.id_to_insn[insn_id].within_inames
+         for insn_id in insn_ids_for_block)
     other_inames_with_same_tag = [
-        other_iname for other_iname in kernel.all_inames()
+        other_iname for other_iname in inames_in_subkernel
         if (kernel.iname_tags_of_type(other_iname, UniqueInameTag)
             and other_iname != iname
             and any(_tag.key == tag.key
