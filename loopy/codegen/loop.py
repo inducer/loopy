@@ -302,8 +302,8 @@ def set_up_hw_parallel_loops(
         other_iname for other_iname in inames_in_subkernel
         if (kernel.iname_tags_of_type(other_iname, UniqueInameTag)
             and other_iname != iname
-            and any(_tag.key == tag.key
-                    for _tag in kernel.iname_tags_of_type(
+            and any(tag_.key == tag.key
+                    for tag_ in kernel.iname_tags_of_type(
                         other_iname, InameImplementationTag)))]
 
     # {{{ 'implement' hardware axis boundaries
