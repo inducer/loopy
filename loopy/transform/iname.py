@@ -23,14 +23,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
-from collections.abc import Collection, Iterable, Mapping, Sequence
-from typing import TYPE_CHECKING, Any, TypeAlias
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence, Set
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, final
 
 from typing_extensions import override
+from constantdict import constantdict
 
 import islpy as isl
 from islpy import dim_type
+from pymbolic.primitives import AlgebraicLeaf, is_arithmetic_expression
 from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError
@@ -48,9 +49,18 @@ from loopy.typing import not_none
 
 
 if TYPE_CHECKING:
+    from pymbolic import ArithmeticExpression, Variable
+    from pymbolic.typing import Expression
+
     from loopy.kernel.data import GroupInameTag, LocalInameTag, ToInameTagConvertible
     from loopy.kernel.instruction import InstructionBase
-    from loopy.match import RuleStack, ToMatchConvertible, ToStackMatchConvertible
+    from loopy.match import (
+        ConcreteStackMatch,
+        MatchExpressionBase,
+        RuleStack,
+        ToMatchConvertible,
+        ToStackMatchConvertible,
+    )
     from loopy.typing import InameStr
 
 
@@ -138,9 +148,15 @@ def prioritize_loops(
 
 # {{{ backend
 
+@final
 class _InameSplitter(RuleAwareIdentityMapper[[]]):
-    def __init__(self, rule_mapping_context, within,
-            iname_to_split, outer_iname, inner_iname, replacement_index):
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                within: MatchExpressionBase,
+                iname_to_split: InameStr,
+                outer_iname: InameStr,
+                inner_iname: InameStr,
+                replacement_index: ArithmeticExpression):
         super().__init__(rule_mapping_context)
 
         self.within = within
@@ -151,7 +167,8 @@ class _InameSplitter(RuleAwareIdentityMapper[[]]):
 
         self.replacement_index = replacement_index
 
-    def map_reduction(self, expr, expn_state):
+    @override
+    def map_reduction(self, expr: Reduction, expn_state: ExpansionState):
         if (self.iname_to_split in expr.inames
                 and self.iname_to_split not in expn_state.arg_context
                 and self.within(
@@ -168,7 +185,8 @@ class _InameSplitter(RuleAwareIdentityMapper[[]]):
         else:
             return super().map_reduction(expr, expn_state)
 
-    def map_variable(self, expr, expn_state):
+    @override
+    def map_variable(self, expr: Variable, expn_state: ExpansionState):
         if (expr.name == self.iname_to_split
                 and self.iname_to_split not in expn_state.arg_context
                 and self.within(
@@ -241,7 +259,7 @@ def _split_iname_backend(
         iname_to_split: InameStr,
         fixed_length: int,
         fixed_length_is_inner: bool,
-        make_new_loop_index,
+        make_new_loop_index: Callable[[Variable, Variable], ArithmeticExpression],
         outer_iname: InameStr | None = None,
         inner_iname: InameStr | None = None,
         outer_tag: ToInameTagConvertible = None,
@@ -303,7 +321,7 @@ def _split_iname_backend(
 
     # {{{ update within_inames
 
-    new_insns = []
+    new_insns: list[InstructionBase] = []
     for insn in kernel.instructions:
         if iname_to_split in insn.within_inames and (
                 within(kernel, insn)):
@@ -344,7 +362,7 @@ def _split_iname_backend(
 
     from loopy.kernel.instruction import MultiAssignmentBase
 
-    def check_insn_has_iname(kernel, insn, *args):
+    def check_insn_has_iname(kernel: LoopKernel, insn: InstructionBase, *args):
         return (not isinstance(insn, MultiAssignmentBase)
                 or iname_to_split in insn.dependency_names()
                 or iname_to_split in insn.reduction_inames())
@@ -403,7 +421,7 @@ def split_iname(
     """
     assert isinstance(kernel, LoopKernel)
 
-    def make_new_loop_index(inner, outer):
+    def make_new_loop_index(inner: Variable, outer: Variable):
         return inner + outer*inner_length
 
     return _split_iname_backend(kernel, split_iname,
@@ -454,7 +472,7 @@ def chunk_iname(
 
     from loopy.symbolic import pw_aff_to_expr
 
-    def make_new_loop_index(inner, outer):
+    def make_new_loop_index(inner: Variable, outer: Variable):
         # These two expressions are equivalent. Benchmarking between the
         # two was inconclusive, although one is shorter.
 
@@ -525,16 +543,21 @@ def chunk_iname(
 
 # {{{ join inames
 
+@final
 class _InameJoiner(RuleAwareSubstitutionMapper):
-    def __init__(self, rule_mapping_context, within, subst_func,
-            joined_inames, new_iname):
-        super().__init__(rule_mapping_context,
-                subst_func, within)
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                within: ConcreteStackMatch,
+                subst_func: Callable[[AlgebraicLeaf], Expression | None],
+                joined_inames: Sequence[InameStr],
+                new_iname: InameStr):
+        super().__init__(rule_mapping_context, subst_func, within)
 
         self.joined_inames = set(joined_inames)
         self.new_iname = new_iname
 
-    def map_reduction(self, expr, expn_state):
+    @override
+    def map_reduction(self, expr: Reduction, expn_state: ExpansionState):
         expr_inames = set(expr.inames)
         overlap = (self.joined_inames & expr_inames
                 - set(expn_state.arg_context))
@@ -563,9 +586,12 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
 
 @for_each_kernel
-def join_inames(kernel, inames, new_iname=None, tag=None,
-                within: ToMatchConvertible = None,
-            ):
+def join_inames(
+            kernel: LoopKernel,
+            inames: Sequence[InameStr] | str,
+            new_iname: InameStr | None = None,
+            tag: Tag | None = None,
+            within: ToMatchConvertible = None, ):
     """In a sense, the inverse of :func:`split_iname`. Takes in inames,
     finds their bounds (all but the first have to be bounded), and combines
     them into a single loop via analogs of ``new_iname = i0 * LEN(i1) + i1``.
@@ -697,7 +723,10 @@ def join_inames(kernel, inames, new_iname=None, tag=None,
 
 # {{{ untag inames
 
-def untag_inames(kernel, iname_to_untag, tag_type):
+def untag_inames(
+            kernel: LoopKernel,
+            iname_to_untag: InameStr,
+            tag_type: type[Tag]):
     """
     Remove tags on *iname_to_untag* which matches *tag_type*.
 
@@ -710,11 +739,11 @@ def untag_inames(kernel, iname_to_untag, tag_type):
     from loopy.kernel.data import filter_iname_tags_by_type
     tags_to_remove = filter_iname_tags_by_type(
             kernel.inames[iname_to_untag].tags, tag_type)
-    new_inames = kernel.inames.copy()
+    new_inames = dict(kernel.inames)
     new_inames[iname_to_untag] = kernel.inames[iname_to_untag].without_tags(
             tags_to_remove, verify_existence=False)
 
-    return kernel.copy(inames=new_inames)
+    return kernel.copy(inames=constantdict(new_inames))
 
 # }}}
 
@@ -1160,7 +1189,7 @@ def get_used_inames(kernel):
 
 
 @for_each_kernel
-def remove_unused_inames(kernel, inames=None):
+def remove_unused_inames(kernel: LoopKernel, inames: Collection[str] | None = None):
     """Delete those among *inames* that are unused, i.e. project them
     out of the domain. If these inames pose implicit restrictions on
     other inames, these restrictions will persist as existentially
@@ -1242,8 +1271,13 @@ def remove_any_newly_unused_inames(transformation_func):
 
 # {{{ split_reduction
 
-class _ReductionSplitter(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, within, inames, direction):
+@final
+class _ReductionSplitter(RuleAwareIdentityMapper[[]]):
+    def __init__(self,
+                 rule_mapping_context: SubstitutionRuleMappingContext,
+                 within: ConcreteStackMatch,
+                 inames: Set[str],
+                 direction: Literal["in", "out"]):
         super().__init__(
                 rule_mapping_context)
 
@@ -1251,7 +1285,7 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
         self.inames = inames
         self.direction = direction
 
-    def map_reduction(self, expr, expn_state):
+    def map_reduction(self, expr: Reduction, expn_state: ExpansionState):
         if set(expr.inames) & set(expn_state.arg_context):
             # FIXME
             raise NotImplementedError()
@@ -1282,7 +1316,12 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
             return super().map_reduction(expr, expn_state)
 
 
-def _split_reduction(kernel, inames, direction, within=None):
+def _split_reduction(
+            kernel: LoopKernel,
+            inames: Collection[str] | str,
+            direction: Literal["in", "out"],
+            within: ToStackMatchConvertible = None
+        ):
     if direction not in ["in", "out"]:
         raise ValueError("invalid value for 'direction': %s" % direction)
 
@@ -1305,7 +1344,10 @@ def _split_reduction(kernel, inames, direction, within=None):
 
 
 @for_each_kernel
-def split_reduction_inward(kernel, inames, within=None):
+def split_reduction_inward(
+            kernel: LoopKernel,
+            inames: Collection[str] | str,
+            within: ToStackMatchConvertible = None):
     """Takes a reduction of the form::
 
         sum([i,j,k], ...)
@@ -1325,7 +1367,10 @@ def split_reduction_inward(kernel, inames, within=None):
 
 
 @for_each_kernel
-def split_reduction_outward(kernel, inames, within=None):
+def split_reduction_outward(
+            kernel: LoopKernel,
+            inames: Collection[str] | str,
+            within: ToStackMatchConvertible = None):
     """Takes a reduction of the form::
 
         sum([i,j,k], ...)
@@ -1349,7 +1394,13 @@ def split_reduction_outward(kernel, inames, within=None):
 # {{{ affine map inames
 
 @for_each_kernel
-def affine_map_inames(kernel, old_inames, new_inames, equations):
+def affine_map_inames(
+            kernel: LoopKernel,
+            old_inames: Collection[InameStr] | str,
+            new_inames: Collection[InameStr] | str,
+            equations:
+                Sequence[tuple[ArithmeticExpression, ArithmeticExpression] | str]
+        ):
     """Return a new *kernel* where the affine transform
     specified by *equations* has been applied to the inames.
 
@@ -1381,7 +1432,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     import re
     eqn_re = re.compile(r"^([^=]+)=([^=]+)$")
 
-    def parse_equation(eqn):
+    def parse_equation(eqn: str | tuple[ArithmeticExpression, ArithmeticExpression]):
         if isinstance(eqn, str):
             eqn_match = eqn_re.match(eqn)
             if not eqn_match:
@@ -1390,6 +1441,8 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
             from loopy.symbolic import parse
             lhs = parse(eqn_match.group(1))
             rhs = parse(eqn_match.group(2))
+            assert is_arithmetic_expression(lhs)
+            assert is_arithmetic_expression(rhs)
             return (lhs, rhs)
         elif isinstance(eqn, tuple):
             if len(eqn) != 2:
@@ -1880,8 +1933,16 @@ def remove_predicates_from_insn(kernel, predicates, insn_match):
 
 # {{{ _MapDomainMapper
 
-class _MapDomainMapper(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, new_inames, substitutions):
+class _MapDomainMapper(RuleAwareIdentityMapper[[]]):
+    old_inames: Set[InameStr]
+    new_inames: Set[InameStr]
+    substitutions: Mapping[str, ArithmeticExpression]
+
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                new_inames: Set[InameStr],
+                substitutions: Mapping[str, ArithmeticExpression]
+            ):
         super().__init__(rule_mapping_context)
 
         self.old_inames = frozenset(substitutions)
@@ -1889,7 +1950,8 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
 
         self.substitutions = substitutions
 
-    def map_reduction(self, expr, expn_state):
+    @override
+    def map_reduction(self, expr: Reduction, expn_state: ExpansionState):
         red_overlap = frozenset(expr.inames) & self.old_inames
         arg_ctx_overlap = frozenset(expn_state.arg_context) & self.old_inames
         if red_overlap:
@@ -1923,7 +1985,8 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
         else:
             return super().map_reduction(expr, expn_state)
 
-    def map_variable(self, expr, expn_state):
+    @override
+    def map_variable(self, expr: Variable, expn_state: ExpansionState):
         if (expr.name in self.old_inames
                 and expr.name not in expn_state.arg_context):
             return self.substitutions[expr.name]
@@ -1935,7 +1998,7 @@ class _MapDomainMapper(RuleAwareIdentityMapper):
 
 # {{{ _find_aff_subst_from_map(iname, isl_map)
 
-def _find_aff_subst_from_map(iname, isl_map):
+def _find_aff_subst_from_map(iname: InameStr, isl_map: isl.BasicMap):
     if not isinstance(isl_map, isl.BasicMap):
         raise RuntimeError("isl_map must be a BasicMap")
 
@@ -1955,12 +2018,11 @@ def _find_aff_subst_from_map(iname, isl_map):
     isl_map = isl_map.move_dims(
             dim_type.out, isl_map.dim(dim_type.out),
             dt, dim_idx, 1)
-    isl_map = isl_map.range()  # now a set
     dt = dim_type.set
     dim_idx = new_dim_idx
     del new_dim_idx
 
-    for cns in isl_map.get_constraints():
+    for cns in isl_map.range().get_constraints():
         if cns.is_equality() and cns.involves_dims(dt, dim_idx, 1):
             coeff = cns.get_coefficient_val(dt, dim_idx)
             cns_zeroed = cns.set_coefficient_val(dt, dim_idx, 0)
@@ -1983,7 +2045,9 @@ def _find_aff_subst_from_map(iname, isl_map):
 
 # {{{ _apply_identity_for_missing_map_dims(mapping, desired_dims)
 
-def _apply_identity_for_missing_map_dims(mapping, desired_dims):
+def _apply_identity_for_missing_map_dims(
+            mapping: isl.BasicMap,
+            desired_dims: Sequence[str]):
     """For every variable v in *desired_dims* that is not found in the
     input space for *mapping*, add input dimension v, output dimension
     v_'proxy'_, and constraint v = v_'proxy'_ to the mapping. Also return a
@@ -2048,32 +2112,10 @@ def _apply_identity_for_missing_map_dims(mapping, desired_dims):
 # }}}
 
 
-# {{{ _error_if_any_iname_in_constraint
-
-def _error_if_any_iname_in_constraint(
-        inames, nest_constraints, constraint_descriptor_str):
-    """Raise informative error if any iname in *inames* is constrained by any
-    nest constraint in *nest_constraints*.
-    """
-    # (This function is only used when new machinery from
-    # new-loop-nest-constraints branch is detected.)
-
-    for constraint in nest_constraints:
-        for tier in constraint:
-            for iname in inames:
-                if tier.contains(iname):
-                    raise ValueError(
-                        "%s constraint %s contains iname(s) "
-                        "transformed by map in map_domain."
-                        % (constraint_descriptor_str, constraint))
-
-# }}}
-
-
 # {{{ map_domain
 
 @for_each_kernel
-def map_domain(kernel, transform_map):
+def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap):
     """Transform an iname domain by applying a mapping from existing inames to
     new inames.
 
@@ -2099,21 +2141,12 @@ def map_domain(kernel, transform_map):
 
     # {{{ Make sure that none of the mapped inames are involved in loop priorities
 
-    # kernel.loop_priority is being replaced with kernel.loop_nest_constraints,
-    # handle both attributes.
     if hasattr(kernel, "loop_priority") and kernel.loop_priority:
         for prio in kernel.loop_priority:
             if set(prio) & transform_map_in_dims:
                 raise ValueError(
                     "Loop priority %s contains iname(s) transformed by "
                     "map %s in map_domain." % (prio, transform_map))
-    if hasattr(kernel, "loop_nest_constraints") and kernel.loop_nest_constraints:
-        _error_if_any_iname_in_constraint(
-            transform_map_in_dims,
-            kernel.loop_nest_constraints.must_nest, "Must-nest")
-        _error_if_any_iname_in_constraint(
-            transform_map_in_dims,
-            kernel.loop_nest_constraints.must_not_nest, "Must-not-nest")
 
     # }}}
 
@@ -2139,7 +2172,7 @@ def map_domain(kernel, transform_map):
 
     # {{{ Function to apply mapping to one set
 
-    def process_set(s):
+    def process_set(s: isl.BasicSet):
         """Return the transformed set. Assume that map is applicable to this
         set."""
 
@@ -2157,7 +2190,7 @@ def map_domain(kernel, transform_map):
 
         augmented_transform_map, proxy_name_pairs = \
             _apply_identity_for_missing_map_dims(
-                transform_map, s.get_var_names(dim_type.set))
+                transform_map, s.get_var_names_not_none(dim_type.set))
 
         # }}}
 
@@ -2174,7 +2207,7 @@ def map_domain(kernel, transform_map):
                 }
         # Variables found in transform map
         map_names = {
-                augmented_transform_map.get_dim_name(dt, i)
+                not_none(augmented_transform_map.get_dim_name(dt, i))
                 for dt in dim_types
                 for i in range(augmented_transform_map.dim(dt))
                 }
@@ -2214,7 +2247,7 @@ def map_domain(kernel, transform_map):
     # {{{ Apply the transform map to exactly one domain
 
     map_applied_to_one_dom = False
-    new_domains = []
+    new_domains: list[isl.BasicSet] = []
     transform_map_rules = (
         "Transform map must be applicable to exactly one domain. "
         "A transform map is applicable to a domain if its input "
@@ -2266,7 +2299,7 @@ def map_domain(kernel, transform_map):
     # require that if any transformed inames are found in stmt.within_inames,
     # ALL transformed inames must be found in stmt.within_inames.
 
-    new_stmts = []
+    new_stmts: list[InstructionBase] = []
     for stmt in kernel.instructions:
         overlap = transform_map_in_dims & stmt.within_inames
         if overlap:
