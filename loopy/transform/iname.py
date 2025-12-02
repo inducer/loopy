@@ -44,6 +44,7 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
+    pw_aff_to_expr,
 )
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.typing import not_none
@@ -2001,53 +2002,6 @@ class _MapDomainMapper(RuleAwareIdentityMapper[[]]):
 # }}}
 
 
-# {{{ _find_aff_subst_from_map(iname, isl_map)
-
-def _find_aff_subst_from_map(iname: InameStr, isl_map: isl.BasicMap):
-    if not isinstance(isl_map, isl.BasicMap):
-        raise RuntimeError("isl_map must be a BasicMap")
-
-    dt, dim_idx = isl_map.get_var_dict()[iname]
-
-    assert dt == dim_type.in_
-
-    # Force isl to solve for only this iname on its side of the map, by
-    # projecting out all other "in" variables.
-    isl_map = isl_map.project_out(dt, dim_idx+1, isl_map.dim(dt)-(dim_idx+1))
-    isl_map = isl_map.project_out(dt, 0, dim_idx)
-    dim_idx = 0
-
-    # Convert map to set to avoid "domain of affine expression should be a set".
-    # The old "in" variable will be the last of the out_dims.
-    new_dim_idx = isl_map.dim(dim_type.out)
-    isl_map = isl_map.move_dims(
-            dim_type.out, isl_map.dim(dim_type.out),
-            dt, dim_idx, 1)
-    dt = dim_type.set
-    dim_idx = new_dim_idx
-    del new_dim_idx
-
-    for cns in isl_map.range().get_constraints():
-        if cns.is_equality() and cns.involves_dims(dt, dim_idx, 1):
-            coeff = cns.get_coefficient_val(dt, dim_idx)
-            cns_zeroed = cns.set_coefficient_val(dt, dim_idx, 0)
-            if cns_zeroed.involves_dims(dt, dim_idx, 1):
-                # not suitable, constraint still involves dim, perhaps in a div
-                continue
-
-            if coeff.is_one():
-                return -cns_zeroed.get_aff()
-            elif coeff.is_negone():
-                return cns_zeroed.get_aff()
-            else:
-                # not suitable, coefficient does not have unit coefficient
-                continue
-
-    raise LoopyError("No suitable equation for '%s' found" % iname)
-
-# }}}
-
-
 # {{{ _apply_identity_for_missing_map_dims(mapping, desired_dims)
 
 def _apply_identity_for_missing_map_dims(
@@ -2136,12 +2090,12 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap):
     #     - slab processing
     #     - priorities processing
 
-    # Make sure the map is bijective
-    if not transform_map.is_bijective():
+    if not transform_map.to_map().is_bijective():
         raise LoopyError("transform_map must be bijective")
 
+    in_var_dict = transform_map.get_var_dict(dim_type.in_)
     transform_map_out_dims = frozenset(transform_map.get_var_dict(dim_type.out))
-    transform_map_in_dims = frozenset(transform_map.get_var_dict(dim_type.in_))
+    transform_map_in_dims = frozenset(in_var_dict)
 
     # {{{ Make sure that none of the mapped inames are involved in loop priorities
 
@@ -2161,11 +2115,11 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap):
     applied_iname_rewrites = kernel.applied_iname_rewrites
 
     from pymbolic import var
+    out_vars_in_terms_of_in_vars = transform_map.reverse().to_map().as_pw_multi_aff()
 
-    from loopy.symbolic import aff_to_expr
     for iname in transform_map_in_dims:
-        subst_from_map = aff_to_expr(
-            _find_aff_subst_from_map(iname, transform_map))
+        subst_from_map = pw_aff_to_expr(
+            out_vars_in_terms_of_in_vars.get_pw_aff(in_var_dict[iname][1]))
         substitutions[iname] = subst_from_map
         var_substitutions[var(iname)] = subst_from_map
 
