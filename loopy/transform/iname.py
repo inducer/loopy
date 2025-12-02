@@ -25,9 +25,10 @@ THE SOFTWARE.
 
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence, Set
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, final
+from warnings import warn
 
-from typing_extensions import override
 from constantdict import constantdict
+from typing_extensions import deprecated, override
 
 import islpy as isl
 from islpy import dim_type
@@ -1393,6 +1394,7 @@ def split_reduction_outward(
 
 # {{{ affine map inames
 
+@deprecated("use map_domain instead")
 @for_each_kernel
 def affine_map_inames(
             kernel: LoopKernel,
@@ -1417,6 +1419,9 @@ def affine_map_inames(
         a tuple ``(lhs, rhs)`` of expressions or a string, with left and
         right hand side of the equation separated by ``=``.
     """
+
+    warn("affine_map_inames is deprecated and will stop working in 2H2026. "
+         "Rewrite in terms of map_domain.", DeprecationWarning, stacklevel=3)
 
     # {{{ check and parse arguments
 
@@ -2130,7 +2135,6 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap):
     #   Missing/deleted for now:
     #     - slab processing
     #     - priorities processing
-    # FIXME: Express affine_map_inames in terms of this, deprecate
 
     # Make sure the map is bijective
     if not transform_map.is_bijective():
