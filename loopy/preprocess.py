@@ -454,7 +454,7 @@ def find_temporary_address_space(kernel):
 
 # {{{ realize_ilp
 
-def realize_ilp(kernel):
+def realize_ilp(kernel: LoopKernel) -> LoopKernel:
     logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
 
     from loopy.kernel.data import IlpBaseTag, VectorizeTag, filter_iname_tags_by_type
