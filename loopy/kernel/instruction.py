@@ -304,7 +304,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                  within_inames_is_final: bool | None,
                  within_inames: frozenset[str] | None,
                  priority: int | None,
-                 predicates: frozenset[str] | None,
+                 predicates: frozenset[str] | frozenset[Expression] | None,
                  tags: frozenset[Tag] | None,
                  *,
                  depends_on: frozenset[str] | str | None = None,
@@ -946,7 +946,7 @@ class Assignment(MultiAssignmentBase):
                  within_inames_is_final: bool | None = None,
                  within_inames: frozenset[str] | None = None,
                  priority: int | None = None,
-                 predicates: frozenset[str] | None = None,
+                 predicates: frozenset[str] | frozenset[Expression] | None = None,
                  tags: frozenset[Tag] | None = None,
                  temp_var_type:
                     type[_not_provided]
