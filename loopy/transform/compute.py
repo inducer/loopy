@@ -1,16 +1,18 @@
 import islpy as isl
+import namedisl as nisl
 
 import loopy as lp
 from loopy.kernel import LoopKernel
 from loopy.kernel.data import AddressSpace
-from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.kernel.instruction import MultiAssignmentBase
 from loopy.match import parse_stack_match
 from loopy.symbolic import (
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
     pw_aff_to_expr
 )
-from loopy.translation_unit import TranslationUnit
+from loopy.transform.precompute import contains_a_subst_rule_invocation
+from loopy.translation_unit import for_each_kernel
 
 from pymbolic import var
 from pymbolic.mapper.substitutor import make_subst_func
@@ -18,43 +20,11 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools.tag import Tag
 
 
+@for_each_kernel
 def compute(
-        t_unit: TranslationUnit,
-substitution: str,
-        *args,
-        **kwargs
-    ) -> TranslationUnit:
-    """
-    Entrypoint for performing a compute transformation on all kernels in a
-    translation unit. See :func:`_compute_inner` for more details.
-    """
-
-    assert isinstance(t_unit, TranslationUnit)
-    new_callables = {}
-
-    for id, callable in t_unit.callables_table.items():
-        if isinstance(callable, CallableKernel):
-            kernel = _compute_inner(
-                callable.subkernel,
-                substitution,
-                *args, **kwargs
-            )
-
-            callable = callable.copy(subkernel=kernel)
-        elif isinstance(callable, ScalarCallable):
-            pass
-        else:
-            raise NotImplementedError()
-
-        new_callables[id] = callable
-
-    return t_unit
-
-def _compute_inner(
         kernel: LoopKernel,
         substitution: str,
-        transform_map: isl.Map,
-        compute_map: isl.Map,
+        compute_map: isl.Map | nisl.Map,
         storage_inames: list[str],
         default_tag: Tag | str | None = None,
         temporary_address_space: AddressSpace | None = None
@@ -67,14 +37,12 @@ def _compute_inner(
     :arg substitution: The substitution rule for which the compute
     transform should be applied.
 
-    :arg transform_map: An :class:`isl.Map` representing the affine
-    transformation from the original iname domain to the transformed iname
-    domain.
-
     :arg compute_map: An :class:`isl.Map` representing a relation between
     substitution rule indices and tuples `(a, l)`, where `a` is a vector of
     storage indices and `l` is a vector of "timestamps".
     """
+    if isinstance(compute_map, isl.Map):
+        compute_map = nisl.make_map(compute_map)
 
     if not temporary_address_space:
         temporary_address_space = AddressSpace.GLOBAL
@@ -86,52 +54,29 @@ def _compute_inner(
         for iname in storage_inames
     }
 
-    new_storage_axes = list(iname_to_storage_map.values())
-
-    for dim in range(compute_map.dim(isl.dim_type.out)):
-        for iname, storage_ax in iname_to_storage_map.items():
-            if compute_map.get_dim_name(isl.dim_type.out, dim) == iname:
-                compute_map = compute_map.set_dim_name(
-                    isl.dim_type.out, dim, storage_ax
-                )
+    compute_map = compute_map.rename_dims(iname_to_storage_map)
 
     # }}}
 
     # {{{ update kernel domain to contain storage inames
 
-    storage_domain = compute_map.range().project_out_except(
-        new_storage_axes, [isl.dim_type.set]
-    )
+    new_storage_axes = list(iname_to_storage_map.values())
 
-    # FIXME: likely need to do some more digging to find proper domain to update
+    # FIXME: use DomainChanger to add domain to kernel
+    storage_domain = compute_map.range().project_out_except(new_storage_axes)
     new_domain = kernel.domains[0]
-    for ax in new_storage_axes:
-        new_domain = new_domain.add_dims(isl.dim_type.set, 1)
-
-        new_domain = new_domain.set_dim_name(
-            isl.dim_type.set,
-            new_domain.dim(isl.dim_type.set) - 1,
-            ax
-        )
-
-    new_domain, storage_domain = isl.align_two(new_domain, storage_domain)
-    new_domain = new_domain & storage_domain
-    kernel = kernel.copy(domains=[new_domain])
 
     # }}}
 
     # {{{ express substitution inputs as pw affs of (storage, time) names
 
     compute_pw_aff = compute_map.reverse().as_pw_multi_aff()
-    subst_inp_names = [
-        compute_map.get_dim_name(isl.dim_type.in_, i)
-        for i in range(compute_map.dim(isl.dim_type.in_))
-    ]
-    storage_ax_to_global_expr = dict.fromkeys(subst_inp_names)
-    for dim in range(compute_pw_aff.dim(isl.dim_type.out)):
-        subst_inp = compute_map.get_dim_name(isl.dim_type.in_, dim)
-        storage_ax_to_global_expr[subst_inp] = \
-            pw_aff_to_expr(compute_pw_aff.get_at(dim))
+
+    # FIXME: remove PwAff._obj usage when ready
+    storage_ax_to_global_expr = {
+        dim_name : pw_aff_to_expr(compute_pw_aff.get_at(dim_name)._obj)
+        for dim_name in compute_map.dim_type_names(isl.dim_type.in_)
+    }
 
     # }}}
 
@@ -161,34 +106,14 @@ def _compute_inner(
         expression=compute_expression,
     )
 
-    compute_dep_id = compute_insn_id
-    new_insns = [compute_insn]
-
-    # add global sync if we are storing in global memory
-    if temporary_address_space == lp.AddressSpace.GLOBAL:
-        gbarrier_id = kernel.make_unique_instruction_id(
-            based_on=substitution + "_barrier"
-        )
-
-        from loopy.kernel.instruction import BarrierInstruction
-        barrier_insn = BarrierInstruction(
-            id=gbarrier_id,
-            depends_on=frozenset([compute_insn_id]),
-            synchronization_kind="global",
-            mem_kind="global"
-        )
-
-        compute_dep_id = gbarrier_id
-
     # }}}
 
     # {{{ replace substitution rule with newly created instruction
 
-    # FIXME: get these properly (see `precompute`)
-    subst_name = substitution
-    subst_tag = None
-    within = None  # do we need this?
-
+    for insn in kernel.instructions:
+        if contains_a_subst_rule_invocation(kernel, insn) \
+                and isinstance(insn, MultiAssignmentBase):
+            print(insn)
 
 
     # }}}
