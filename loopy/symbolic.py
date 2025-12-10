@@ -48,6 +48,7 @@ import numpy as np
 from constantdict import constantdict
 from typing_extensions import Self, override
 
+import namedisl as nisl
 import islpy as isl
 import pymbolic.primitives as p
 import pytools.lex
@@ -2044,23 +2045,37 @@ class ArrayAccessFinder(CombineMapper[Set[p.Subscript], []]):
 
 # {{{ (pw)aff to expr conversion
 
-def aff_to_expr(aff: isl.Aff) -> ArithmeticExpression:
+def aff_to_expr(aff: isl.Aff | nisl.Aff) -> ArithmeticExpression:
     from pymbolic import var
 
     denom = aff.get_denominator_val().to_python()
-
     result = (aff.get_constant_val()*denom).to_python()
-    for dt in [isl.dim_type.in_, isl.dim_type.param]:
-        for i in range(aff.dim(dt)):
-            coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
-            if coeff:
-                dim_name = not_none(aff.get_dim_name(dt, i))
-                result += coeff*var(dim_name)
+    if isinstance(aff, isl.Aff):
+        for dt in [isl.dim_type.in_, isl.dim_type.param]:
+            for i in range(aff.dim(dt)):
+                coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
+                if coeff:
+                    dim_name = not_none(aff.get_dim_name(dt, i))
+                    result += coeff*var(dim_name)
 
-    for i in range(aff.dim(isl.dim_type.div)):
-        coeff = (aff.get_coefficient_val(isl.dim_type.div, i)*denom).to_python()
-        if coeff:
-            result += coeff*aff_to_expr(aff.get_div(i))
+        for i in range(aff.dim(isl.dim_type.div)):
+            coeff = (aff.get_coefficient_val(isl.dim_type.div, i)*denom).to_python()
+            if coeff:
+                result += coeff*aff_to_expr(aff.get_div(i))
+
+    else:
+        in_names = set(aff.dim_type_names(isl.dim_type.in_))
+        param_names = set(aff.dim_type_names(isl.dim_type.param))
+
+        for name in in_names | param_names:
+            coeff = (aff.get_coefficient_val(name) * denom).to_python()
+            if coeff:
+                result = coeff * var(name)
+
+        for name in aff.dim_type_names(isl.dim_type.div):
+            coeff = (aff.get_coefficient_val(name) * denom).to_python()
+            if coeff:
+                result += coeff * aff_to_expr(aff.get_div(name))
 
     assert not isinstance(result, complex)
     return flatten(result // denom)

@@ -74,7 +74,7 @@ def compute(
 
     # FIXME: remove PwAff._obj usage when ready
     storage_ax_to_global_expr = {
-        dim_name : pw_aff_to_expr(compute_pw_aff.get_at(dim_name)._obj)
+        dim_name : pw_aff_to_expr(compute_pw_aff.get_at(dim_name))
         for dim_name in compute_map.dim_type_names(isl.dim_type.in_)
     }
 
