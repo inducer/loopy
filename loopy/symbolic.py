@@ -2048,6 +2048,7 @@ class ArrayAccessFinder(CombineMapper[Set[p.Subscript], []]):
 def aff_to_expr(aff: isl.Aff | nisl.Aff) -> ArithmeticExpression:
     from pymbolic import var
 
+    # FIXME: remove this once namedisl is the standard in loopy
     denom = aff.get_denominator_val().to_python()
     result = (aff.get_constant_val()*denom).to_python()
     if isinstance(aff, isl.Aff):
@@ -2082,7 +2083,7 @@ def aff_to_expr(aff: isl.Aff | nisl.Aff) -> ArithmeticExpression:
 
 
 def pw_aff_to_expr(
-            pw_aff: int | isl.PwAff | isl.Aff,
+            pw_aff: int | isl.PwAff | isl.Aff | nisl.PwAff | nisl.Aff,
             int_ok: bool = False
         ) -> ArithmeticExpression:
     if isinstance(pw_aff, int):
