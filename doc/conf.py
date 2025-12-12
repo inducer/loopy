@@ -62,6 +62,7 @@ sphinxconfig_missing_reference_aliases = {
     # loopy
     "InameStr": "obj:loopy.typing.InameStr",
     "InameStrSet": "obj:loopy.typing.InameStrSet",
+    "ToInameStrSetConvertible": "obj:loopy.typing.ToInameStrSetConvertible",
     "KernelIname": "obj:loopy.kernel.data.Iname",
     "LoopNestTree": "obj:loopy.schedule.tools.LoopNestTree",
     "LoopTree": "obj:loopy.schedule.tools.LoopTree",
