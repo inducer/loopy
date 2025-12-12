@@ -192,9 +192,9 @@ Values of domain parameters arise from
 Iname Implementation Tags
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-=============================== ====================================================
+=============================== ======================================================
 Tag                             Meaning
-=============================== ====================================================
+=============================== ======================================================
 ``None`` | ``"for"``            Sequential loop
 ``"ord"``                       Forced-order sequential loop
 ``"l.N"``                       Local (intra-group) axis N ("local")
@@ -205,8 +205,8 @@ Tag                             Meaning
 ``"ilp"`` | ``"ilp.unr"``       Unroll using instruction-level parallelism
 ``"ilp.seq"``                   Realize parallel iname as innermost loop
 ``"like.INAME"``                Can be used when tagging inames to tag like another
-``"unused.g"`` | ``"unused.l"`` Can be to tag as the next unused group/local axis
-=============================== ====================================================
+``"unused.g"`` | ``"unused.l"`` Can be used to tag as the next unused group/local axis
+=============================== ======================================================
 
 (Throughout this table, `N` must be replaced by an actual, zero-based number.)
 
