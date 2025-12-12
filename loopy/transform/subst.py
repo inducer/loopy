@@ -39,7 +39,7 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 if TYPE_CHECKING:
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import InstructionBase
-    from loopy.match import RuleStack, ToMatchConvertible
+    from loopy.match import RuleStack, ToMatchConvertible, ToStackMatchConvertible
 
 
 logger = logging.getLogger(__name__)
@@ -526,7 +526,8 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 # {{{ expand_subst
 
 @for_each_kernel
-def expand_subst(kernel, within=None):
+def expand_subst(kernel: LoopKernel,
+                 within: ToStackMatchConvertible | None = None) -> LoopKernel:
     """
     Returns an instance of :class:`loopy.LoopKernel` with the substitutions
     referenced in instructions of *kernel* matched by *within* expanded.
@@ -542,6 +543,7 @@ def expand_subst(kernel, within=None):
 
     from loopy.match import parse_stack_match
     from loopy.symbolic import RuleAwareSubstitutionRuleExpander
+
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
     submap = RuleAwareSubstitutionRuleExpander(
