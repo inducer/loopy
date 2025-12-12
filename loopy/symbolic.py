@@ -41,6 +41,7 @@ from typing import (
     TypeAlias,
     TypeVar,
     cast,
+    overload,
 )
 from warnings import warn
 
@@ -1697,12 +1698,12 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
 
 
 class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper[[]]):
-    rules: dict[str, SubstitutionRule]
+    rules: Mapping[str, SubstitutionRule]
     within: StackMatch
 
     def __init__(self,
                  rule_mapping_context: SubstitutionRuleMappingContext,
-                 rules: dict[str, SubstitutionRule],
+                 rules: Mapping[str, SubstitutionRule],
                  within: StackMatch) -> None:
         super().__init__(rule_mapping_context)
 
@@ -2068,6 +2069,14 @@ def aff_to_expr(aff: isl.Aff) -> ArithmeticExpression:
 
     assert not isinstance(result, complex)
     return flatten(result // denom)
+
+
+@overload
+def pw_aff_to_expr(pw_aff: int, int_ok: bool = False) -> int: ...
+
+@overload
+def pw_aff_to_expr(pw_aff: isl.PwAff | isl.Aff,
+                   int_ok: bool = False) -> ArithmeticExpression: ...
 
 
 def pw_aff_to_expr(
