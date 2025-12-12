@@ -77,28 +77,14 @@ def make_slab(space: isl.Space,
     constraint ``start <= iname_multiplier*iname < stop``.
 
     :arg space: An instance of :class:`islpy._isl.Space`.
-
-    :arg iname:
-
-        Either an instance of :class:`str` as a name of the ``iname`` or a
+    :arg iname: Either an instance of :class:`str` as a name of the ``iname`` or a
         tuple of ``(iname_dt, iname_dx)`` indicating the *iname* in the space.
-
-    :arg start:
-
-        An instance of :class:`int`  or an instance of
-        :class:`islpy._isl.Aff` indicating the lower bound of
-        ``iname_multiplier*iname``(inclusive).
-
-    :arg stop:
-
-        An instance of :class:`int`  or an instance of
-        :class:`islpy._isl.Aff` indicating the upper bound of
-        ``iname_multiplier*iname``.
-
-    :arg iname_multiplier:
-
-        A strictly positive :class:`int` denoting *iname*'s coefficient in the
-        above inequality expression.
+    :arg start: An instance of :class:`int`  or an instance of :class:`islpy._isl.Aff`
+        indicating the lower bound of ``iname_multiplier*iname``(inclusive).
+    :arg stop: An instance of :class:`int`  or an instance of :class:`islpy._isl.Aff`
+        indicating the upper bound of ``iname_multiplier*iname``.
+    :arg iname_multiplier: A strictly positive :class:`int` denoting *iname*'s
+        coefficient in the above inequality expression.
     """
     zero = isl.Aff.zero_on_domain(space)
 
