@@ -1,4 +1,5 @@
 """isl helpers"""
+
 from __future__ import annotations
 
 
@@ -50,13 +51,14 @@ def pw_aff_to_aff(pw_aff: isl.Aff | isl.PwAff) -> isl.Aff:
 
     if len(pieces) == 0:
         raise RuntimeError("PwAff does not have any pieces")
+
     if len(pieces) > 1:
         _, first_aff = pieces[0]
         for _, other_aff in pieces[1:]:
             if not first_aff.plain_is_equal(other_aff):
                 raise NotImplementedError("only single-valued piecewise affine "
                         "expressions are supported here--encountered "
-                        "multi-valued expression '%s'" % pw_aff)
+                        f"multi-valued expression '{pw_aff}'")
 
         return first_aff
 
@@ -65,7 +67,11 @@ def pw_aff_to_aff(pw_aff: isl.Aff | isl.PwAff) -> isl.Aff:
 
 # {{{ make_slab
 
-def make_slab(space, iname, start, stop, iname_multiplier=1):
+def make_slab(space: isl.Space,
+              iname: str | tuple[dim_type, int],
+              start: isl.Aff | isl.PwAff | ArithmeticExpression,
+              stop: isl.Aff | isl.PwAff | ArithmeticExpression,
+              iname_multiplier: int = 1) -> isl.BasicSet:
     """
     Returns an instance of :class:`islpy._isl.BasicSet`, which satisfies the
     constraint ``start <= iname_multiplier*iname < stop``.
@@ -245,8 +251,8 @@ def static_extremum_of_pw_aff(
     if len(pieces) == 1:
         (_, result), = pieces
         if constants_only and not result.is_cst():
-            raise StaticValueFindingError("a numeric %s was not found for PwAff '%s'"
-                    % (what, pw_aff))
+            raise StaticValueFindingError(
+                f"a numeric {what} was not found for PwAff '{pw_aff}'")
         return result
 
     from pytools import flatten, memoize
