@@ -140,19 +140,21 @@ def prioritize_loops(
         kernel: LoopKernel,
         loop_priority: ToInameStrSetConvertible) -> LoopKernel:
     """Indicates the textual order in which loops should be entered in the
-    kernel code. Note that this priority has an advisory role only. If the
-    kernel logically requires a different nesting, priority is ignored.
-    Priority is only considered if loop nesting is ambiguous.
+    kernel code.
 
-    prioritize_loops can be used multiple times. If you do so, each given
-    *loop_priority* specifies a scheduling constraint. The constraints from
-    all calls to prioritize_loops together establish a partial order on the
-    inames (see https://en.wikipedia.org/wiki/Partially_ordered_set).
+    Note that this priority has an advisory role only. If the kernel logically
+    requires a different nesting, the priority is ignored. Priority is only
+    considered if loop nesting is ambiguous.
 
-    :arg: an iterable of inames, or, for brevity, a comma-separated string of
-        inames
+    :func:`prioritize_loops` can be used multiple times. If you do so, each
+    given *loop_priority* specifies a scheduling constraint. The constraints
+    from all calls to :func:`prioritize_loops` together establish a partial
+    order on the inames (see `partially ordered sets
+    <https://en.wikipedia.org/wiki/Partially_ordered_set>`__).
+
+    :arg loop_priority: an iterable of inames, or, for brevity, a comma-separated
+        string of inames.
     """
-
     assert isinstance(kernel, LoopKernel)
 
     loop_priority = _to_inames_tuple(loop_priority)
@@ -297,9 +299,8 @@ def _split_iname_backend(
         within: ToMatchConvertible = None
     ) -> LoopKernel:
     """
-    :arg within: If not None, limit the action of the transformation to
-        matching contexts.  See :func:`loopy.match.parse_stack_match`
-        for syntax.
+    :arg within: if not *None*, limit the action of the transformation to
+        matching contexts. See :func:`loopy.match.parse_match` for syntax.
     """
 
     from loopy.match import parse_match
@@ -377,7 +378,7 @@ def _split_iname_backend(
     kernel = kernel.copy(
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
-            instructions=new_insns,
+            instructions=tuple(new_insns),
             applied_iname_rewrites=(*kernel.applied_iname_rewrites, subst_map),
             loop_priority=frozenset(new_priorities))
 
@@ -424,27 +425,24 @@ def split_iname(
             do_tagged_check: bool = True,
             within: ToMatchConvertible = None
         ) -> LoopKernel:
-    """Split *split_iname* into two inames (an 'inner' one and an 'outer' one)
+    """Split *split_iname* into two inames (an *inner* one and an *outer* one)
     so that ``split_iname == inner + outer*inner_length`` and *inner* is of
     constant length *inner_length*.
 
-    :arg outer_iname: The new iname to use for the 'inner' (fixed-length)
-        loop. Defaults to a name derived from ``split_iname + "_outer"``
-    :arg inner_iname: The new iname to use for the 'inner' (fixed-length)
-        loop. Defaults to a name derived from ``split_iname + "_inner"``
-    :arg inner_length: a positive integer
-    :arg slabs:
-        A tuple ``(head_it_count, tail_it_count)`` indicating the
+    Split inames do not inherit tags from their parent inames.
+
+    :arg inner_length: a positive integer.
+    :arg outer_iname: the new iname to use for the *inner* (fixed-length)
+        loop. Defaults to a name derived from ``"{split_iname}_outer"``.
+    :arg inner_iname: the new iname to use for the *inner* (fixed-length)
+        loop. Defaults to a name derived from ``"{split_iname}_inner"``.
+    :arg outer_tag: the iname tag (see :ref:`iname-tags`) to apply to *outer_iname*.
+    :arg inner_tag: the iname tag (see :ref:`iname-tags`) to apply to *inner_iname*.
+    :arg slabs: a tuple ``(head_it_count, tail_it_count)`` indicating the
         number of leading/trailing iterations of *outer_iname*
         for which separate code should be generated.
-    :arg outer_tag: The iname tag (see :ref:`iname-tags`) to apply to
-        *outer_iname*.
-    :arg inner_tag: The iname tag (see :ref:`iname-tags`) to apply to
-        *inner_iname*.
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_match`.
-
-    Split inames do not inherit tags from their 'parent' inames.
+    :arg do_tagged_check: if *True*, check if the iname was already split.
+    :arg within: a match, as understood by :func:`loopy.match.parse_match`.
     """
     assert isinstance(kernel, LoopKernel)
 
@@ -477,15 +475,14 @@ def chunk_iname(
             do_tagged_check: bool = True,
             within: ToMatchConvertible = None
          ) -> LoopKernel:
-    """
-    Split *split_iname* into two inames (an 'inner' one and an 'outer' one)
+    """Split *split_iname* into two inames (an *inner* one and an *outer* one)
     so that ``split_iname == inner + outer*chunk_length`` and *outer* is of
     fixed length *num_chunks*.
 
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
+    Split inames do not inherit tags from their parent inames. See
+    :func:`split_iname` for a description of the arguments.
 
-    Split inames do not inherit tags from their 'parent' inames.
+    :arg within: a match, as understood by :func:`loopy.match.parse_match`.
 
     .. versionadded:: 2016.2
     """
@@ -549,9 +546,9 @@ def chunk_iname(
                 box_dom <= dom
                 and
                 dom <= box_dom):
-            raise LoopyError("domain '%s' is not box-shape about iname "
-                    "'%s', cannot use chunk_iname()"
-                    % (dom, split_iname))
+            raise LoopyError(
+                    f"domain '{dom}' is not box-shape about iname "
+                    f"'{split_iname}', cannot use chunk_iname()")
 
     # }}}
 
@@ -623,16 +620,19 @@ def join_inames(
             new_iname: InameStr | None = None,
             tag: Tag | None = None,
             within: ToMatchConvertible = None) -> LoopKernel:
-    """In a sense, the inverse of :func:`split_iname`. Takes in inames,
-    finds their bounds (all but the first have to be bounded), and combines
-    them into a single loop via analogs of ``new_iname = i0 * LEN(i1) + i1``.
-    The old inames are re-obtained via the appropriate division/modulo
-    operations.
+    """In a sense, the inverse of :func:`split_iname`.
 
-    :arg inames: a sequence of inames, fastest varying last
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
+    Takes in inames, finds their bounds (all but the first have to be bounded),
+    and combines them into a single loop via analogs of ``new_iname = i0 *
+    len(i1) + i1``. The old inames can be re-obtained via the appropriate
+    division/modulo operations.
+
+    :arg inames: a sequence of inames, fastest varying last.
+    :arg within: a match, as understood by :func:`loopy.match.parse_match`.
     """
+
+    if isinstance(inames, str):
+        inames = [inames]
 
     from loopy.match import parse_match
     within = parse_match(within)
@@ -752,12 +752,11 @@ def untag_inames(
             kernel: LoopKernel,
             iname_to_untag: InameStr,
             tag_type: type[Tag]) -> LoopKernel:
-    """
-    Remove tags on *iname_to_untag* which matches *tag_type*.
+    """Remove tags on *iname_to_untag* which matches *tag_type*.
 
     :arg iname_to_untag: iname as string.
-    :arg tag_type: a subclass of :class:`pytools.tag.Tag`, for example a
-        subclass of :class:`loopy.kernel.data.InameImplementationTag`.
+    :arg tag_type: a subclass of :class:`~pytools.tag.Tag`, for example a
+        subclass of :class:`~loopy.kernel.data.InameImplementationTag`.
 
     .. versionadded:: 2018.1
     """
@@ -789,14 +788,21 @@ def tag_inames(
             force: bool | None = None,
             ignore_nonexistent: bool = False
         ) -> LoopKernel:
-    """Tag an iname
+    """Tag an iname.
 
-    :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
-        as an instance of a subclass of :class:`pytools.tag.Tag`, for example a
-        subclass of :class:`loopy.kernel.data.InameImplementationTag`.
-        May also be iterable of which, or as a string as shown in
-        :ref:`iname-tags`. May also be a dictionary for backwards
-        compatibility. *iname* may also be a wildcard using ``*`` and ``?``.
+    The iname to tags mapping can be given in several forms:
+
+    * A sequence of tuples ``(iname, new_tags)``, where *new_tags* is a collection
+      of instances of :class:`~pytools.tag.Tag` (for example, a subclass of
+      :class:`~loopy.kernel.data.InameImplementationTag`).
+    * A string of comma-separated ``iname:new_tag`` formatted entries. Note that
+      in this format, it is not possible to pass in multiple tags for an iname.
+    * (deprecated) a mapping of inames to collections of tags.
+
+    *iname* may also be a wildcard using ``*`` or ``?``.
+
+    :arg iname_to_tag: a mapping of inames to their corresponding tags in one of
+        the formats described above.
 
     .. versionchanged:: 2016.3
 
@@ -1005,8 +1011,8 @@ def duplicate_inames(kernel: LoopKernel,
             new_iname = name_gen(new_iname)
         else:
             if name_gen.is_name_conflicting(new_iname):
-                raise ValueError("new iname '%s' conflicts with existing names"
-                        % new_iname)
+                raise ValueError(
+                    f"new iname '{new_iname}' conflicts with existing names")
 
             name_gen.add_name(new_iname)
 
@@ -1147,12 +1153,12 @@ def _get_iname_duplication_options(
 def get_iname_duplication_options(
             kernel: LoopKernel
     ) -> Iterator[tuple[InameStr, MatchExpressionBase]]:
-    """List options for duplication of inames, if necessary for schedulability
+    """List options for duplication of inames, if necessary for schedulability.
 
     :returns: a generator listing all options to duplicate inames, if duplication
         of an iname is necessary to ensure the schedulability of the kernel.
         Duplication options are returned as tuples (iname, within) as
-        understood by :func:`duplicate_inames`. There is no guarantee, that the
+        understood by :func:`duplicate_inames`. There is no guarantee that the
         transformed kernel will be schedulable, because multiple duplications
         of iname may be necessary.
 
@@ -1253,10 +1259,10 @@ def remove_unused_inames(
         kernel: LoopKernel,
         inames: ToInameStrSetConvertible | None = None
     ) -> LoopKernel:
-    """Delete those among *inames* that are unused, i.e. project them
-    out of the domain. If these inames pose implicit restrictions on
-    other inames, these restrictions will persist as existentially
-    quantified variables.
+    """Delete those among *inames* that are unused, i.e. project them out of the domain.
+
+    If these inames pose implicit restrictions on other inames, these
+    restrictions will persist as existentially quantified variables.
 
     :arg inames: may be an iterable of inames or a string of comma-separated inames.
     """
@@ -1415,17 +1421,17 @@ def split_reduction_inward(
             within: ToStackMatchConvertible = None) -> LoopKernel:
     """Takes a reduction of the form::
 
-        sum([i,j,k], ...)
+        sum([i, j, k], ...)
 
     and splits it into two nested reductions::
 
-        sum([j,k], sum([i], ...))
+        sum([j, k], sum([i], ...))
 
     In this case, *inames* would have been ``"i"`` indicating that
     the iname ``i`` should be made the iname governing the inner reduction.
 
-    :arg inames: a list of inames, or a comma-separated string that can
-        be parsed into those
+    :arg inames: an iterable of inames, or a comma-separated string that can
+        be parsed into those.
     """
 
     return _split_reduction(kernel, inames, "in", within)
@@ -1438,17 +1444,17 @@ def split_reduction_outward(
             within: ToStackMatchConvertible = None) -> LoopKernel:
     """Takes a reduction of the form::
 
-        sum([i,j,k], ...)
+        sum([i, j, k], ...)
 
     and splits it into two nested reductions::
 
-        sum([i], sum([j,k], ...))
+        sum([i], sum([j, k], ...))
 
     In this case, *inames* would have been ``"i"`` indicating that
     the iname ``i`` should be made the iname governing the outer reduction.
 
-    :arg inames: A list of inames, or a comma-separated string that can
-        be parsed into those
+    :arg inames: an iterable of inames, or a comma-separated string that can
+        be parsed into those.
     """
 
     return _split_reduction(kernel, inames, "out", within)
@@ -1467,19 +1473,16 @@ def affine_map_inames(
             equations:
                 Sequence[tuple[ArithmeticExpression, ArithmeticExpression] | str]
         ) -> LoopKernel:
-    """Return a new *kernel* where the affine transform
-    specified by *equations* has been applied to the inames.
+    """Return a new *kernel* where the affine transform specified by *equations*
+    has been applied to the inames.
 
-    :arg old_inames: A list of inames to be replaced by affine transforms
-        of their values.
-        May also be a string of comma-separated inames.
-
-    :arg new_inames: A list of new inames that are not yet used in *kernel*,
+    :arg old_inames: an iterable of inames to be replaced by affine transforms
+        of their values. May also be a string of comma-separated inames.
+    :arg new_inames: an iterable of new inames that are not yet used in *kernel*,
         but have their values established in terms of *old_inames* by
-        *equations*.
-        May also be a string of comma-separated inames.
-    :arg equations: A list of equations establishing a relationship
-        between *old_inames* and *new_inames*. Each equation may be
+        *equations*. May also be a string of comma-separated inames.
+    :arg equations: a sequence of equations establishing a relationship
+        between *old_inames* and *new_inames*. Each equation should be
         a tuple ``(lhs, rhs)`` of expressions or a string, with left and
         right hand side of the equation separated by ``=``.
     """
@@ -1678,15 +1681,13 @@ def find_unused_axis_tag(
                 kind: Literal["l", "g"] | type[GroupInameTag | LocalInameTag],
                 insn_match: ToMatchConvertible = None,
             ) -> GroupInameTag | LocalInameTag:
-    """For one of the hardware-parallel execution tags, find an unused
-    axis.
+    """For one of the hardware-parallel execution tags, find an unused axis.
 
-    :arg insn_match: An instruction match as understood by
-        :func:`loopy.match.parse_match`.
-    :arg kind: may be "l" or "g", or the corresponding tag class name
+    :arg insn_match: a match as understood by :func:`loopy.match.parse_match`.
+    :arg kind: may be "l" or "g", or the corresponding tag class name.
 
-    :returns: an :class:`loopy.kernel.data.GroupInameTag` or
-        :class:`loopy.kernel.data.LocalInameTag` that is not being used within
+    :returns: an :class:`~loopy.kernel.data.GroupInameTag` or
+        :class:`~loopy.kernel.data.LocalInameTag` that is not being used within
         the instructions matched by *insn_match*.
     """
     from loopy.kernel.data import GroupInameTag, LocalInameTag
@@ -1823,8 +1824,7 @@ def make_reduction_inames_unique(
         within: ToStackMatchConvertible | None = None) -> LoopKernel:
     """
     :arg inames: if not *None*, only apply to these inames.
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
+    :arg within: a stack match as understood by :func:`loopy.match.parse_stack_match`.
 
     .. versionadded:: 2016.2
     """
@@ -1884,11 +1884,10 @@ def add_inames_to_insn(kernel: LoopKernel,
                        inames: ToInameStrSetConvertible,
                        insn_match: ToMatchConvertible) -> LoopKernel:
     """
-    :arg inames: a frozenset of inames that will be added to the
+    :arg inames: an iterable of inames that will be added to the
         instructions matched by *insn_match*, or a comma-separated
-        string that parses to such a tuple.
-    :arg insn_match: An instruction match as understood by
-        :func:`loopy.match.parse_match`.
+        string that parses to such an iterable.
+    :arg insn_match: a match as understood by :func:`loopy.match.parse_match`.
 
     :returns: a :class:`LoopKernel` with the *inames* added to
         the instructions matched by *insn_match*.
@@ -1920,20 +1919,20 @@ def remove_inames_from_insn(
         kernel: LoopKernel,
         inames: ToInameStrSetConvertible,
         insn_match: ToMatchConvertible) -> LoopKernel:
-    """
-    :arg inames: a frozenset of inames that will be added to the
-        instructions matched by *insn_match*.
-    :arg insn_match: An instruction match as understood by
-        :func:`loopy.match.parse_match`.
-
-    :returns: a :class:`LoopKernel` with the *inames* removed from
-        the instructions matched by *insn_match*.
+    """Remove inames from kernel instructions.
 
     This transformation is useful when an iname is added to an
     instruction in a sub-kernel by an inlining call because the
     kernel invocation itself has the iname. When the instruction
     does not depend on the iname, this transformation can be used
-    for removing that iname.
+    to remove that iname.
+
+    :arg inames: an iterable of inames that will be added to the
+        instructions matched by *insn_match*.
+    :arg insn_match: a match as understood by :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *inames* removed from
+        the instructions matched by *insn_match*.
 
     .. versionadded:: 2023.0
     """
@@ -1962,20 +1961,20 @@ def remove_predicates_from_insn(
         kernel: LoopKernel,
         predicates: frozenset[Expression],
         insn_match: ToMatchConvertible) -> LoopKernel:
-    """
-    :arg predicates: a frozenset of predicates that will be added to the
-        instructions matched by *insn_match*
-    :arg insn_match: An instruction match as understood by
-        :func:`loopy.match.parse_match`.
-
-    :returns: a :class:`LoopKernel` with the *predicates* removed from
-        the instructions matched by *insn_match*.
+    """Remove predicates from kernel instructions.
 
     This transformation is useful when a predicate is added to an
     instruction in a sub-kernel by an inlining call because the
     kernel invocation itself has the iname. When the instruction
     does not depend on the predicate, this transformation can be used
     for removing that predicate.
+
+    :arg predicates: a frozenset of predicates that will be added to the
+        instructions matched by *insn_match*
+    :arg insn_match: a match as understood by :func:`loopy.match.parse_match`.
+
+    :returns: a :class:`LoopKernel` with the *predicates* removed from
+        the instructions matched by *insn_match*.
 
     .. versionadded:: 2023.0
     """
@@ -2071,21 +2070,19 @@ class _MapDomainMapper(RuleAwareIdentityMapper[[]]):
 
 def _apply_identity_for_missing_map_dims(
             mapping: isl.BasicMap,
-            desired_dims: Sequence[str]):
-    """For every variable v in *desired_dims* that is not found in the
-    input space for *mapping*, add input dimension v, output dimension
-    v_'proxy'_, and constraint v = v_'proxy'_ to the mapping. Also return a
-    list of the (v, v_'proxy'_) pairs.
+            desired_dims: Sequence[str],
+    ) -> tuple[isl.BasicMap, Sequence[tuple[str, str]]]:
+    """For every variable *v* in *desired_dims* that is not found in the
+    input space for *mapping*, add input dimension *v*, output dimension
+    ``v_'proxy'_``, and constraint ``v = v_'proxy'_`` to the mapping.
 
-    :arg mapping: An :class:`islpy.Map`.
-
-    :arg desired_dims: An iterable of :class:`str` specifying the names of the
+    :arg mapping: an :class:`islpy.BasicMap`.
+    :arg desired_dims: a sequence of :class:`str` specifying the names of the
         desired map input dimensions.
 
-    :returns: A two-tuple containing the mapping with the new dimensions and
-        constraints added, and a list of two-tuples of :class:`str` values
-        specifying the (v, v_'proxy'_) pairs.
-
+    :returns: a pair containing the mapping with the new dimensions and
+        constraints added, and sequence of pairs of :class:`str` values
+        specifying the ``(v, v_'proxy'_)`` pairs.
     """
 
     # If the transform map in map_domain (below) does not contain all the
@@ -2140,11 +2137,10 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
     """Transform an iname domain by applying a mapping from existing inames to
     new inames.
 
-    :arg transform_map: A bijective :class:`islpy.Map` from existing inames to
+    :arg transform_map: a bijective :class:`islpy.BasicMap` from existing inames to
         new inames. To be applicable to a kernel domain, all input inames in
         the map must be found in the domain. The map must be applicable to
         exactly one domain found in *kernel.domains*.
-
     """
 
     # FIXME: Express _split_iname_backend in terms of this
@@ -2273,18 +2269,14 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
         "inames are a subset of the domain inames.")
 
     for old_domain in kernel.domains:
-
         # Make sure transform map is applicable to this set. Then transform.
-
         if not transform_map_in_dims <= frozenset(old_domain.get_var_dict()):
-
             # Map not applicable to this set because map transforms at least
             # one iname that is not present in the set. Don't transform.
             new_domains.append(old_domain)
             continue
 
         elif map_applied_to_one_dom:
-
             # Map is applicable to this domain, but this map was
             # already applied. Error.
             raise LoopyError(
@@ -2292,7 +2284,6 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
                 % (transform_map, transform_map_rules))
 
         else:
-
             # Map is applicable to this domain, and this map has not yet
             # been applied. Transform.
             new_domains.append(process_set(old_domain))
@@ -2362,11 +2353,10 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
 def add_inames_for_unused_hw_axes(kernel: LoopKernel,
                                   within: ToMatchConvertible = None) -> LoopKernel:
     """
-    Returns a kernel with inames added to each instruction
-    corresponding to any hardware-parallel iname tags
-    (:class:`loopy.kernel.data.GroupInameTag`,
-    :class:`loopy.kernel.data.LocalInameTag`) unused
-    in the instruction but used elsewhere in the kernel.
+    Returns a kernel with inames added to each instruction corresponding to any
+    hardware-parallel iname tags (:class:`~loopy.kernel.data.GroupInameTag`,
+    :class:`~loopy.kernel.data.LocalInameTag`) unused in the instruction but
+    used elsewhere in the kernel.
 
     Current limitations:
 
@@ -2374,8 +2364,7 @@ def add_inames_for_unused_hw_axes(kernel: LoopKernel,
     * Occurrence of an ``l.auto`` tag when an instruction is missing one of the
       local hw axes.
 
-    :arg within: An instruction match as understood by
-        :func:`loopy.match.parse_match`.
+    :arg within: a match, as understood by :func:`loopy.match.parse_match`.
     """
     from loopy.kernel.data import AutoFitLocalInameTag, GroupInameTag, LocalInameTag
 
@@ -2482,11 +2471,10 @@ def rename_inames(
             raise_on_domain_mismatch: bool | None = None
         ) -> LoopKernel:
     r"""
-    :arg old_inames: A collection of inames that must be renamed to **new_iname**.
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
-    :arg existing_ok: execute even if *new_iname* already exists
-    :arg raise_on_domain_mismatch: If *True*, raises an error if
+    :arg old_inames: a collection of inames that must be renamed to *new_iname*.
+    :arg within: a stack match, as understood by :func:`loopy.match.parse_stack_match`.
+    :arg existing_ok: execute even if *new_iname* already exists.
+    :arg raise_on_domain_mismatch: if *True*, raises an error if
         :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
         \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
     """
@@ -2497,16 +2485,15 @@ def rename_inames(
     old_inames = frozenset(_to_inames_tuple(old_inames))
 
     if new_iname in old_inames:
-        raise LoopyError("new iname is part of inames being renamed")
+        raise LoopyError("'new_iname' is part of inames being renamed: "
+                         f"'{new_iname}' in {old_inames}")
 
-    if new_iname in (kernel.all_variable_names() - kernel.all_inames()):
-        raise LoopyError(f"New iname '{new_iname}' is already a variable in the"
-                         "kernel")
+    if new_iname in (kinames := (kernel.all_variable_names() - kernel.all_inames())):
+        raise LoopyError(f"new iname '{new_iname}' is already a variable in the"
+                         f"kernel: {kinames}")
 
-    if any((len(insn.within_inames & frozenset(old_inames)) > 1)
-           for insn in kernel.instructions):
-        raise LoopyError("old_inames contains nested inames"
-                         " -- renaming is illegal.")
+    if any((len(insn.within_inames & old_inames) > 1) for insn in kernel.instructions):
+        raise LoopyError("'old_inames' contains nested inames -- renaming is illegal")
 
     if raise_on_domain_mismatch is None:
         raise_on_domain_mismatch = __debug__
@@ -2631,12 +2618,13 @@ def rename_iname(
         ) -> LoopKernel:
     r"""
     Single iname version of :func:`loopy.rename_inames`.
+
     :arg existing_ok: execute even if *new_iname* already exists.
-    :arg within: a stack match understood by :func:`loopy.match.parse_stack_match`.
+    :arg within: a stack match, as understood by :func:`loopy.match.parse_stack_match`.
     :arg preserve_tags: copy the tags on the old iname to the new iname.
     :arg raise_on_domain_mismatch: If *True*, raises an error if
-    :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
-    \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
+        :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
+        \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
     """
     from itertools import product
 
