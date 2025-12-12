@@ -3,6 +3,7 @@
 .. autoclass:: ShapeType
 .. autodata:: InameStr
 .. autodata:: InameStrSet
+.. autodata:: ToInameStrSetConvertible
 
 .. autodata:: SymbolMangler
     :noindex:
@@ -60,7 +61,7 @@ from pymbolic.typing import ArithmeticExpression, Expression, Integer
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from loopy.codegen import PreambleInfo
     from loopy.kernel import LoopKernel
@@ -75,6 +76,7 @@ StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str
 InameStrSet: TypeAlias = frozenset[InameStr]
+ToInameStrSetConvertible: TypeAlias = "Iterable[InameStr] | InameStr"
 
 InsnId: TypeAlias = str
 
