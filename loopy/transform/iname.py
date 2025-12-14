@@ -133,6 +133,10 @@ def _to_inames_tuple(inames: ToInameStrSetConvertible) -> tuple[InameStr, ...]:
     return tuple(inames)
 
 
+def _to_inames_str(inames: Collection[str]) -> str:
+    return ", ".join(inames)
+
+
 # {{{ set loop priority
 
 @for_each_kernel
@@ -248,7 +252,7 @@ def _split_iname_in_set(
             break
     else:
         # NOTE: this should never happen, but it's a way to let pyright know
-        raise ValueError(f"could not generate unique names for {iname_to_split}")
+        raise ValueError(f"could not generate unique names for {iname_to_split!r}")
 
     from loopy.isl_helpers import duplicate_axes
     s = duplicate_axes(s, (iname_to_split,), (dup_iname_to_split,))
@@ -378,7 +382,7 @@ def _split_iname_backend(
     kernel = kernel.copy(
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
-            instructions=tuple(new_insns),
+            instructions=new_insns,
             applied_iname_rewrites=(*kernel.applied_iname_rewrites, subst_map),
             loop_priority=frozenset(new_priorities))
 
@@ -586,24 +590,18 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
     @override
     def map_reduction(self, expr: Reduction, /,
                       expn_state: ExpansionState) -> Expression:
-        expr_inames = set(expr.inames)
-        overlap = (self.joined_inames & expr_inames
-                - set(expn_state.arg_context))
+        expr_inames = frozenset(expr.inames)
+        overlap = self.joined_inames & expr_inames - set(expn_state.arg_context)
         if overlap and self.within(
                 expn_state.kernel,
                 expn_state.instruction,
                 expn_state.stack):
             if overlap != expr_inames:
                 raise LoopyError(
-                        "Cannot join inames '%s' if there is a reduction "
-                        "that does not use all of the inames being joined. "
-                        "(Found one with just '%s'.)"
-                        % (
-                            ", ".join(self.joined_inames),
-                            ", ".join(expr_inames)))
-
-            new_inames = expr_inames - self.joined_inames
-            new_inames.add(self.new_iname)
+                        f"Cannot join inames '{_to_inames_str(self.joined_inames)}' "
+                        "if there is a reduction that does not use all of the "
+                        "inames being joined. (Found one with just "
+                        f"'{_to_inames_str(expr_inames)}'.)")
 
             new_inames = (expr_inames - self.joined_inames) | {self.new_iname}
             return Reduction(expr.operation, tuple(sorted(new_inames)),
@@ -655,8 +653,8 @@ def join_inames(
     domch = DomainChanger(kernel, frozenset(inames))
     for iname in inames:
         if kernel.get_home_domain_index(iname) != domch.leaf_domain_index:
-            raise LoopyError("iname '%s' is not 'at home' in the "
-                    "join's leaf domain" % iname)
+            raise LoopyError(
+                    f"iname '{iname}' is not 'at home' in the join's leaf domain")
 
     new_domain = domch.domain
     new_dim_idx = new_domain.dim(dim_type.set)
@@ -685,7 +683,7 @@ def join_inames(
                     bounds.lower_bound_pw_aff.coalesce(),
                     constants_only=False)
         except Exception as e:
-            raise type(e)("while finding lower bound of '%s': " % iname) from e
+            raise type(e)(f"while finding lower bound of '{iname}': ") from e
 
         my_val = prim.Variable(new_iname) // base_divisor
         if i+1 < len(inames):
@@ -1385,7 +1383,7 @@ class _ReductionSplitter(RuleAwareIdentityMapper[[]]):
                             expr.allow_simultaneous),
                         expr.allow_simultaneous)
             else:
-                raise AssertionError()
+                raise ValueError(f"unsupported direction: {self.direction!r}")
         else:
             return super().map_reduction(expr, expn_state)
 
@@ -1506,7 +1504,7 @@ def affine_map_inames(
         if isinstance(eqn, str):
             eqn_match = eqn_re.match(eqn)
             if not eqn_match:
-                raise ValueError("invalid equation: %s" % eqn)
+                raise ValueError(f"invalid equation: {eqn}")
 
             from loopy.symbolic import parse
             lhs = parse(eqn_match.group(1))
@@ -1530,12 +1528,11 @@ def affine_map_inames(
     all_vars = kernel.all_variable_names()
     for iname in new_inames:
         if iname in all_vars:
-            raise LoopyError("new iname '%s' is already used in kernel"
-                    % iname)
+            raise LoopyError(f"new iname '{iname}' is already used in kernel")
 
     for iname in old_inames:
         if iname not in kernel.all_inames():
-            raise LoopyError("old iname '%s' not known" % iname)
+            raise LoopyError(f"old iname '{iname}' not known")
 
     # }}}
 
@@ -1605,10 +1602,10 @@ def affine_map_inames(
 
                 if this_eqn_old_iname_dim_types:
                     if len(this_eqn_old_iname_dim_types) > 1:
-                        raise ValueError("inames '%s' (from equation %d (0-based)) "
-                                "in domain %d (0-based) are not "
-                                "of a uniform dim_type"
-                                % (", ".join(eqn_deps & old_inames_set), ieqn, idom))
+                        raise ValueError(
+                                f"inames '{_to_inames_str(eqn_deps & old_inames_set)}' "
+                                f"(from equation {ieqn} (0-based)) in domain {idom} "
+                                "(0-based) are not of a uniform dim_type")
 
                     this_eqn_new_iname_dim_type, = this_eqn_old_iname_dim_types
 
@@ -1616,18 +1613,19 @@ def affine_map_inames(
                         if new_iname in new_iname_dim_types:
                             if (this_eqn_new_iname_dim_type
                                     != new_iname_dim_types[new_iname]):
-                                raise ValueError("dim_type disagreement for "
-                                        "iname '%s' (from equation %d (0-based)) "
-                                        "in domain %d (0-based)"
-                                        % (new_iname, ieqn, idom))
+                                raise ValueError(
+                                        "dim_type disagreement for iname "
+                                        f"'{new_iname}' (from equation {ieqn} "
+                                        f"(0-based)) in domain {idom} (0-based)")
                         else:
                             new_iname_dim_types[new_iname] = \
                                     this_eqn_new_iname_dim_type
 
         if not dom_old_inames <= set(dom_var_dict):
-            raise ValueError("domain %d (0-based) does not know about "
-                    "all old inames (specifically '%s') needed to define new inames"
-                    % (idom, ", ".join(dom_old_inames - set(dom_var_dict))))
+            raise ValueError(
+                    f"domain {idom} (0-based) does not know about all old inames "
+                    f"(specifically {_to_inames_str(dom_old_inames-set(dom_var_dict))}"
+                    ") needed to define new inames")
 
         # add inames to domain with correct dim_types
         for iname in dom_new_inames:
@@ -1657,9 +1655,10 @@ def affine_map_inames(
         if old_inames_set <= inames:
             return (inames - old_inames_set) | new_inames_set
         elif old_inames_set & inames:
-            raise LoopyError("instruction '%s' uses only a part (%s), not all, "
-                    "of the old inames"
-                    % (insn_id, ", ".join(old_inames_set & inames)))
+            raise LoopyError(
+                    f"instruction '{insn_id}' uses only a part "
+                    f"({_to_inames_str(old_inames_set & inames)}), not all, "
+                    "of the old inames")
         else:
             return inames
 
@@ -1699,7 +1698,7 @@ def find_unused_axis_tag(
                 kind_cls = cls
                 break
         else:
-            raise LoopyError("invalid tag kind: %s" % kind)
+            raise LoopyError(f"invalid tag kind: {kind!r}")
     else:
         kind_cls = kind
 
@@ -1979,7 +1978,7 @@ def remove_predicates_from_insn(
     .. versionadded:: 2023.0
     """
     if not isinstance(predicates, frozenset):
-        raise TypeError("'predicates' must be a frozenset")
+        raise TypeError(f"'predicates' must be a frozenset: {type(predicates)}")
 
     from loopy.match import parse_match
     match = parse_match(insn_match)
@@ -2026,10 +2025,10 @@ class _MapDomainMapper(RuleAwareIdentityMapper[[]]):
         arg_ctx_overlap = frozenset(expn_state.arg_context) & self.old_inames
         if red_overlap:
             if len(red_overlap) != len(self.old_inames):
-                raise LoopyError("Reduction '%s' involves a part "
-                        "of the map domain inames. Reductions must "
-                        "either involve all or none of the map domain "
-                        "inames." % str(expr))
+                raise LoopyError(
+                        f"Reduction '{expr}' involves a part of the map domain "
+                        "inames. Reductions must either involve all or none of "
+                        "the map domain inames.")
 
             if arg_ctx_overlap:
                 if arg_ctx_overlap == red_overlap:
@@ -2037,11 +2036,10 @@ class _MapDomainMapper(RuleAwareIdentityMapper[[]]):
                     return super().map_reduction(
                             expr, expn_state)
                 else:
-                    raise LoopyError("Reduction '%s' has"
-                            "some of the reduction variables affected "
-                            "by the map_domain shadowed by context. "
-                            "Either all or none must be shadowed."
-                            % str(expr))
+                    raise LoopyError(
+                            f"Reduction '{expr}' has some of the reduction "
+                            "variables affected by the map_domain shadowed by context. "
+                            "Either all or none must be shadowed.")
 
             new_inames = list(expr.inames)
             for old_iname in self.old_inames:
@@ -2161,8 +2159,8 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
         for prio in kernel.loop_priority:
             if set(prio) & transform_map_in_dims:
                 raise ValueError(
-                    "Loop priority %s contains iname(s) transformed by "
-                    "map %s in map_domain." % (prio, transform_map))
+                    f"Loop priority {prio!r} contains iname(s) transformed by "
+                    f"map {transform_map} in map_domain.")
 
     # }}}
 
@@ -2280,8 +2278,8 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
             # Map is applicable to this domain, but this map was
             # already applied. Error.
             raise LoopyError(
-                "Transform map %s was applicable to more than one domain. %s"
-                % (transform_map, transform_map_rules))
+                f"Transform map {transform_map} was applicable to more than "
+                f"one domain. {transform_map_rules}")
 
         else:
             # Map is applicable to this domain, and this map has not yet
@@ -2293,8 +2291,8 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
     # or the map could not be applied to any domain, which should produce an error.
     if not map_applied_to_one_dom:
         raise LoopyError(
-            "Transform map %s was not applicable to any domain. %s"
-            % (transform_map, transform_map_rules))
+            f"Transform map {transform_map} was not applicable to any domain. "
+            f"{transform_map_rules}")
 
     # }}}
 
@@ -2314,10 +2312,10 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
         overlap = transform_map_in_dims & stmt.within_inames
         if overlap:
             if len(overlap) != len(transform_map_in_dims):
-                raise LoopyError("Statement '%s' is within only a part "
-                    "of the mapped inames in transformation map %s. "
-                    "Statements must be within all or none of the mapped "
-                    "inames." % (stmt.id, transform_map))
+                raise LoopyError(
+                    f"Statement '{stmt.id}' is within only a part of the mapped "
+                    f"inames in transformation map {transform_map}. Statements "
+                    "must be within all or none of the mapped inames.")
 
             stmt = stmt.copy(within_inames=(
                 stmt.within_inames - transform_map_in_dims) | transform_map_out_dims)
@@ -2385,8 +2383,7 @@ def add_inames_for_unused_hw_axes(kernel: LoopKernel,
         for tag in iname.tags)
 
     if contains_auto_local_tag:
-        raise LoopyError("Kernels containing l.auto tags are invalid"
-                " arguments.")
+        raise LoopyError("kernels containing 'l.auto' tags are invalid arguments")
 
     # {{{ fill axes_to_inames
 
@@ -2403,7 +2400,7 @@ def add_inames_for_unused_hw_axes(kernel: LoopKernel,
                 for name, iname in kernel.inames.items()
                 if ith_local_axes_tag in iname.tags]
         if not inames:
-            raise LoopyError(f"Unused local hw axes {i}.")
+            raise LoopyError(f"unused local hw axes: {i}")
 
         local_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
 
@@ -2413,7 +2410,7 @@ def add_inames_for_unused_hw_axes(kernel: LoopKernel,
                 for name, iname in kernel.inames.items()
                 if ith_group_axes_tag in iname.tags]
         if not inames:
-            raise LoopyError(f"Unused group hw axes {i}.")
+            raise LoopyError(f"unused group hw axes: {i}")
 
         group_axes_to_inames.append(inames[0] if len(inames) == 1 else None)
 
@@ -2439,9 +2436,9 @@ def add_inames_for_unused_hw_axes(kernel: LoopKernel,
                     insn = insn.copy(
                         within_inames=insn.within_inames | frozenset([iname]))
                 else:
-                    raise LoopyError("Multiple inames tagged with l.%d while"
-                            " adding unused local hw axes to instruction '%s'."
-                            % (axis, insn.id))
+                    raise LoopyError(
+                            f"multiple inames tagged with 'l.{axis}' while "
+                            f"adding unused local hw axes to instruction '{insn.id}'")
 
             for axis in missing_group_axes:
                 iname = group_axes_to_inames[axis]
@@ -2449,9 +2446,9 @@ def add_inames_for_unused_hw_axes(kernel: LoopKernel,
                     insn = insn.copy(
                         within_inames=insn.within_inames | frozenset([iname]))
                 else:
-                    raise LoopyError("Multiple inames tagged with g.%d while"
-                            " adding unused group hw axes to instruction '%s'."
-                            % (axis, insn.id))
+                    raise LoopyError(
+                            f"multiple inames tagged with 'g.{axis}' while "
+                            f"adding unused group hw axes to instruction '{insn.id}'")
 
         new_insns.append(insn)
 
@@ -2486,7 +2483,7 @@ def rename_inames(
 
     if new_iname in old_inames:
         raise LoopyError("'new_iname' is part of inames being renamed: "
-                         f"'{new_iname}' in {old_inames}")
+                         f"'{new_iname}' in {_to_inames_str(old_inames)}")
 
     if new_iname in (kinames := (kernel.all_variable_names() - kernel.all_inames())):
         raise LoopyError(f"new iname '{new_iname}' is already a variable in the"
@@ -2507,8 +2504,9 @@ def rename_inames(
     does_exist = new_iname in kernel.all_inames()
 
     if not (old_inames <= kernel.all_inames()):
-        raise LoopyError(f"old inames {old_inames - kernel.all_inames()}"
-                         " do not exist.")
+        raise LoopyError(
+                f"old inames {_to_inames_str(old_inames - kernel.all_inames())}"
+                " do not exist.")
 
     if does_exist and not existing_ok:
         raise LoopyError(f"iname '{new_iname}' conflicts with an existing identifier"
