@@ -128,7 +128,7 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
                   ("sknl", sflux_insn, ("i", "n",), stmps, ("ii", "jj",)),
                   ]:
             flux_var, = insn.assignee_var_names()
-            print(insn)
+            logger.info("insn %s", insn)
 
             reader, = lp.find_instructions(hsv,
                   f"tag:{knl_tag} and reads:{flux_var}")
@@ -240,13 +240,13 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
                  "-cl-no-signed-zeros"])
 
     if 1:
-        print("OPS")
+        logger.info("OPS")
         op_map = lp.get_op_map(hsv, subgroup_size=32)
-        print(op_map)
+        logger.info("%s", op_map)
 
-        print("MEM")
+        logger.info("MEM")
         gmem_map = lp.get_mem_access_map(hsv, subgroup_size=32).to_bytes()
-        print(gmem_map)
+        logger.info("%s", gmem_map)
 
     # FIXME: renaming's a bit tricky in this program model.
     # add a simple transformation for it
@@ -257,7 +257,7 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
 
     elapsed = results["elapsed_wall"]
 
-    print("elapsed", elapsed)
+    logger.info("elapsed: %g", elapsed)
 
 
 if __name__ == "__main__":
