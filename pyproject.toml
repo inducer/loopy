@@ -115,6 +115,7 @@ extend-ignore = [
     "E402", # module level import not at the top of file
     "N817", # CamelCase `SubstitutionRuleMappingContext` imported as acronym `SRMC`
     "SIM102", # combine if statements
+    "RUF067", # no code in __init__ *shrug*
 
     # FIXME
     "UP031", # .format instead of %s
