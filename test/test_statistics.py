@@ -1081,7 +1081,7 @@ def test_all_counters_parallel_matmul():
     sync_map = lp.get_synchronization_map(knl)
     assert len(sync_map) == 2
     assert sync_map.filter_by(kind="kernel_launch").eval_and_sum(params) == 1
-    assert sync_map.filter_by(kind="barrier_local").eval_and_sum(params) == 2*m/bsize
+    assert sync_map.filter_by(kind="barrier_local").eval_and_sum(params) == 2*m/bsize  # noqa: RUF069
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
     f32mul = op_map[
@@ -1164,7 +1164,7 @@ def test_all_counters_parallel_matmul():
                                           ).eval_and_sum(params)
 
     # (count-per-sub-group)*n_subgroups
-    assert local_mem_s == m*2/bsize*n_subgroups
+    assert local_mem_s == m*2/bsize*n_subgroups  # noqa: RUF069
 
 
 def test_floor_div_coefficient_collector():
