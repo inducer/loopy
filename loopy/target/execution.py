@@ -47,16 +47,18 @@ logger = logging.getLogger(__name__)
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.kernel import KernelState, LoopKernel
-from loopy.kernel.data import ArrayArg, _ArraySeparationInfo, auto
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import Expression, integer_expr_or_err
+from loopy.typing import auto, integer_expr_or_err
 from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence, Set
 
+    from pymbolic.typing import Expression
+
+    from loopy.kernel.data import ArrayArg, _ArraySeparationInfo
     from loopy.schedule.tools import KernelArgInfo
     from loopy.translation_unit import TranslationUnit
 
@@ -766,7 +768,13 @@ class ExecutorBase:
 
     .. automethod:: __call__
     """
+    t_unit: TranslationUnit
     packing_controller: SeparateArrayPackingController | None
+    entrypoint: str
+    input_array_names: Set[str]
+    has_runtime_typed_args: bool
+    separated_entry_knl: LoopKernel
+    sep_info: dict[str, _ArraySeparationInfo]
 
     def __init__(self, t_unit: TranslationUnit, entrypoint: str):
         self.t_unit = t_unit
