@@ -223,7 +223,7 @@ def test_tuple(ctx_factory: cl.CtxFactory):
     _evt, (a, b) = knl(queue)
 
     assert a.get() == 1
-    assert b.get() == 2.
+    assert b.get() == 2.  # noqa: RUF069
 
 
 def test_clamp(ctx_factory: cl.CtxFactory):
@@ -334,7 +334,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 7.
+    assert x[0] == 7.  # noqa: RUF069
 
     # test numpy input for x is written to and returned, even when a pyopencl array
     # is passed for y
@@ -343,7 +343,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 7.
+    assert x[0] == 7.  # noqa: RUF069
 
     # test numpy input for x is written to and returned, even when output-only
     knl = lp.make_kernel("{:}", ["x[0] = y[0] + 2"])
@@ -352,7 +352,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 5.
+    assert x[0] == 5.  # noqa: RUF069
 
 
 def test_opencl_support_for_bool(ctx_factory: cl.CtxFactory):
