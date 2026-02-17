@@ -117,36 +117,12 @@ class UseStreamingStoreTag(Tag):
 
 @dataclass(frozen=True)
 class HappensAfter:
-    """A class representing a "happens-after" relationship between two
-    statements found in a :class:`loopy.LoopKernel`. Used to validate that a
-    given kernel transformation respects the data dependencies in a given
-    program.
+    instances_rel: isl.Map | None  # type: ignore
 
-    .. attribute:: variable_name
 
-       The name of the variable responsible for the dependency. For
-       backward compatibility purposes, this may be *None*. In this case, the
-       dependency semantics revert to the deprecated, statement-level
-       dependencies of prior versions of :mod:`loopy`.
-
-    .. attribute:: instances_rel
-
-        An :class:`islpy.Map` representing the precise happens-after
-        relationship. The domain and range are sets of statement instances. The
-        instances in the domain are required to execute before the instances in
-        the range.
-
-        Map dimensions are named according to the order of appearance of the
-        inames in a :mod:`loopy` program. The dimension names in the range are
-        appended with a prime to signify that the mapped instances are distinct.
-
-        As a (deprecated) matter of backward compatibility, this may be *None*,
-        in which case the semantics revert to the (underspecified)
-        statement-level dependencies of prior versions of :mod:`loopy`.
-    """
-
+@dataclass(frozen=True)
+class VariableSpecificHappensAfter(HappensAfter):
     variable_name: str | None
-    instances_rel: isl.Map | None
 
 # }}}
 
@@ -352,14 +328,12 @@ class InstructionBase(ImmutableRecord, Taggable):
 
             happens_after = constantdict({
                     after_id.strip(): HappensAfter(
-                        variable_name=None,
                         instances_rel=None)
                     for after_id in happens_after.split(",")
                     if after_id.strip()})
         elif isinstance(happens_after, frozenset):
             happens_after = constantdict({
                     after_id: HappensAfter(
-                        variable_name=None,
                         instances_rel=None)
                     for after_id in happens_after})
         elif isinstance(happens_after, dict):
