@@ -151,6 +151,7 @@ from loopy.transform.data import (
     tag_array_axes,
     tag_data_axes,
 )
+from loopy.transform.domain import decouple_domain
 from loopy.transform.fusion import fuse_kernels
 from loopy.transform.iname import (
     add_inames_for_unused_hw_axes,
@@ -317,6 +318,7 @@ __all__ = [
     "clear_in_mem_caches",
     "collect_common_factors_on_increment",
     "concatenate_arrays",
+    "decouple_domain",
     "duplicate_inames",
     "expand_subst",
     "extract_subst",
