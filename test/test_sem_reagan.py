@@ -102,7 +102,7 @@ def test_tim2d(ctx_factory: cl.CtxFactory):
         knl = lp.tag_inames(knl, {"m": "unr"})
 
         knl = lp.set_instruction_priority(knl, "id:D_fetch", 5)
-        print(knl)
+        logger.info("%s", knl)
 
         return knl
 
