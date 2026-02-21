@@ -334,7 +334,7 @@ def _preamble_generator(
             static inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
-              {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.M)}
+              {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.MULTILINE)}
 
               {res_ctype} y = 1;
 

@@ -28,7 +28,7 @@ THE SOFTWARE.
 import contextlib
 import re
 from collections import defaultdict
-from collections.abc import Set
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, replace
 from functools import cached_property, reduce
 from sys import intern
@@ -1189,42 +1189,43 @@ def get_reduction_inames(expr: Expression) -> frozenset[str]:
     return _get_dependencies_and_reduction_inames(expr)[1]
 
 
-class SubArrayRefSweptInamesCollector(CombineMapper[Set[str], []]):
+class SubArrayRefSweptInamesCollector(CombineMapper[AbstractSet[str], []]):
     @override
-    def combine(self, values: Iterable[Set[str]]) -> Set[str]:
-        result: Set[str] = set()
+    def combine(self, values: Iterable[AbstractSet[str]]) -> AbstractSet[str]:
+        result: AbstractSet[str] = set()
         for value in values:
             result |= value
 
         return frozenset(result)
 
     @override
-    def map_sub_array_ref(self, expr: SubArrayRef, /) -> Set[str]:
+    def map_sub_array_ref(self, expr: SubArrayRef, /) -> AbstractSet[str]:
         return frozenset({iname.name for iname in expr.swept_inames})
 
     def _map_no_swept_inames(
                 self, expr: (
                     object
                     | p.Variable | p.FunctionSymbol | p.NaN
-                    | TaggedVariable | TypeCast | ResolvedFunction), /) -> Set[str]:
+                    | TaggedVariable | TypeCast | ResolvedFunction),
+            /) -> AbstractSet[str]:
         return frozenset()
 
-    map_constant: Callable[[Self, object], Set[str]] = _map_no_swept_inames
-    map_variable: Callable[[Self, p.Variable], Set[str]] = _map_no_swept_inames
-    map_function_symbol: Callable[[Self, p.FunctionSymbol], Set[str]] = _map_no_swept_inames  # noqa: E501
-    map_nan: Callable[[Self, p.NaN], Set[str]] = _map_no_swept_inames
-    map_tagged_variable: Callable[[Self, TaggedVariable], Set[str]] = _map_no_swept_inames  # noqa: E501
-    map_type_cast: Callable[[Self, TypeCast], Set[str]] = _map_no_swept_inames
-    map_resolved_function: Callable[[Self, ResolvedFunction], Set[str]] = _map_no_swept_inames  # noqa: E501
+    map_constant: Callable[[Self, object], AbstractSet[str]] = _map_no_swept_inames
+    map_variable: Callable[[Self, p.Variable], AbstractSet[str]] = _map_no_swept_inames
+    map_function_symbol: Callable[[Self, p.FunctionSymbol], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
+    map_nan: Callable[[Self, p.NaN], AbstractSet[str]] = _map_no_swept_inames
+    map_tagged_variable: Callable[[Self, TaggedVariable], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
+    map_type_cast: Callable[[Self, TypeCast], AbstractSet[str]] = _map_no_swept_inames
+    map_resolved_function: Callable[[Self, ResolvedFunction], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
 
 
-def get_sub_array_ref_swept_inames(expr: SubArrayRef) -> Set[str]:
+def get_sub_array_ref_swept_inames(expr: SubArrayRef) -> AbstractSet[str]:
     return SubArrayRefSweptInamesCollector()(expr)
 
 
 # {{{ rule-aware mappers
 
-def parse_tagged_name(expr: Expression) -> tuple[str, Set[Tag] | None]:
+def parse_tagged_name(expr: Expression) -> tuple[str, AbstractSet[Tag] | None]:
     from loopy.library.reduction import ArgExtOp, SegmentedOp
 
     if isinstance(expr, TaggedVariable):
@@ -1524,7 +1525,7 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
     def map_subst_rule(
                 self,
                 name: str,
-                tags: Set[Tag] | None,
+                tags: AbstractSet[Tag] | None,
                 arguments: Sequence[Expression],
                 expn_state: ExpansionState,
                 *args: P.args, **kwargs: P.kwargs
@@ -1713,7 +1714,7 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper[[]]):
     @override
     def map_subst_rule(
                 self, name: str,
-                tags: Set[Tag] | None,
+                tags: AbstractSet[Tag] | None,
                 arguments: Sequence[Expression],
                 expn_state: ExpansionState
             ) -> Expression:
@@ -2013,7 +2014,7 @@ class CoefficientCollector(CoefficientCollectorBase):
 
 # {{{ variable index expression collector
 
-class ArrayAccessFinder(CombineMapper[Set[p.Subscript], []]):
+class ArrayAccessFinder(CombineMapper[AbstractSet[p.Subscript], []]):
     tgt_vector_name: str | None
 
     def __init__(self, tgt_vector_name: str | None = None) -> None:
@@ -2021,20 +2022,22 @@ class ArrayAccessFinder(CombineMapper[Set[p.Subscript], []]):
         super().__init__()
 
     @override
-    def combine(self, values: Iterable[Set[p.Subscript]]) -> Set[p.Subscript]:
+    def combine(self,
+                values: Iterable[AbstractSet[p.Subscript]]
+            ) -> AbstractSet[p.Subscript]:
         from pytools import flatten
         return set(flatten(values))
 
     @override
-    def map_constant(self, expr: object, /) -> Set[p.Subscript]:
+    def map_constant(self, expr: object, /) -> AbstractSet[p.Subscript]:
         return set()
 
     @override
-    def map_algebraic_leaf(self, expr: p.AlgebraicLeaf, /) -> Set[p.Subscript]:
+    def map_algebraic_leaf(self, expr: p.AlgebraicLeaf, /) -> AbstractSet[p.Subscript]:
         return set()
 
     @override
-    def map_subscript(self, expr: p.Subscript, /) -> Set[p.Subscript]:
+    def map_subscript(self, expr: p.Subscript, /) -> AbstractSet[p.Subscript]:
         assert isinstance(expr.aggregate, p.Variable)
 
         if (
@@ -2669,9 +2672,9 @@ def condition_to_set(space: isl.Space, expr: Expression) -> isl.Set | None:
 # {{{ set_to_cond_expr
 
 def basic_set_to_cond_expr(isl_basicset: isl.BasicSet) -> Expression:
-    constrs: list[Expression] = []
-    for constr in isl_basicset.get_constraints():
-        constrs.append(constraint_to_cond_expr(constr))
+    constrs: list[Expression] = [
+        constraint_to_cond_expr(constr)
+        for constr in isl_basicset.get_constraints()]
 
     if len(constrs) == 0:
         raise ValueError("may not be called on universe")
@@ -2683,9 +2686,9 @@ def basic_set_to_cond_expr(isl_basicset: isl.BasicSet) -> Expression:
 
 
 def set_to_cond_expr(isl_set: isl.Set) -> Expression:
-    conjs: list[Expression] = []
-    for isl_basicset in isl_set.get_basic_sets():
-        conjs.append(basic_set_to_cond_expr(isl_basicset))
+    conjs: list[Expression] = [
+        basic_set_to_cond_expr(isl_basicset)
+        for isl_basicset in isl_set.get_basic_sets()]
 
     if len(conjs) == 0:
         raise ValueError("may not be called on universe")
@@ -2727,7 +2730,7 @@ class ReductionCallbackMapper(UncachedIdentityMapper[P]):
 
 # {{{ index dependency finding
 
-class IndexVariableFinder(CombineMapper[Set[str], []]):
+class IndexVariableFinder(CombineMapper[AbstractSet[str], []]):
     include_reduction_inames: bool
 
     def __init__(self, include_reduction_inames: bool) -> None:
@@ -2735,7 +2738,7 @@ class IndexVariableFinder(CombineMapper[Set[str], []]):
         self.include_reduction_inames = include_reduction_inames
 
     @override
-    def combine(self, values: Iterable[Set[str]]) -> Set[str]:
+    def combine(self, values: Iterable[AbstractSet[str]]) -> AbstractSet[str]:
         result = set()
         for value in values:
             result |= value
@@ -2743,15 +2746,15 @@ class IndexVariableFinder(CombineMapper[Set[str], []]):
         return result
 
     @override
-    def map_constant(self, expr: object, /) -> Set[str]:
+    def map_constant(self, expr: object, /) -> AbstractSet[str]:
         return set()
 
     @override
-    def map_algebraic_leaf(self, expr: p.AlgebraicLeaf, /) -> Set[str]:
+    def map_algebraic_leaf(self, expr: p.AlgebraicLeaf, /) -> AbstractSet[str]:
         return set()
 
     @override
-    def map_subscript(self, expr: p.Subscript, /) -> Set[str]:
+    def map_subscript(self, expr: p.Subscript, /) -> AbstractSet[str]:
         idx_vars = DependencyMapper()(expr.index)
 
         result: set[str] = set()
@@ -2764,7 +2767,7 @@ class IndexVariableFinder(CombineMapper[Set[str], []]):
         return result
 
     @override
-    def map_reduction(self, expr: Reduction, /) -> Set[str]:
+    def map_reduction(self, expr: Reduction, /) -> AbstractSet[str]:
         result = self.rec(expr.expr)
 
         if not (expr.inames_set & result):
@@ -2943,9 +2946,9 @@ def get_access_map(
 
 # {{{ access range mapper
 
-class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
+class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
     kernel: LoopKernel
-    access_maps: defaultdict[str, defaultdict[Set[str], isl.Map | None]]
+    access_maps: defaultdict[str, defaultdict[AbstractSet[str], isl.Map | None]]
     bad_subscripts: defaultdict[str, list[p.Subscript | LinearSubscript]]
     _overestimate: bool
     _var_names: Collection[str]
@@ -2973,7 +2976,7 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
                       (not_none(val).range() for val in loops_to_amaps.values()))
 
     @override
-    def map_subscript(self, expr: p.Subscript, /, inames: Set[str]) -> None:
+    def map_subscript(self, expr: p.Subscript, /, inames: AbstractSet[str]) -> None:
         domain = self.kernel.get_inames_domain(inames)
         super().map_subscript(expr, inames)
 
@@ -3023,7 +3026,7 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
     @override
     def map_linear_subscript(
                 self,
-                expr: LinearSubscript, /, inames: Set[str]
+                expr: LinearSubscript, /, inames: AbstractSet[str]
             ) -> None:
         self.rec(expr.index, inames)
 
@@ -3032,11 +3035,11 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
             self.bad_subscripts[expr.aggregate.name].append(expr)
 
     @override
-    def map_reduction(self, expr: Reduction, /, inames: Set[str]) -> None:
+    def map_reduction(self, expr: Reduction, /, inames: AbstractSet[str]) -> None:
         return WalkMapper.map_reduction(self, expr, inames | set(expr.inames))
 
     @override
-    def map_sub_array_ref(self, expr: SubArrayRef, /, inames: Set[str]) -> None:
+    def map_sub_array_ref(self, expr: SubArrayRef, /, inames: AbstractSet[str]) -> None:
         assert isinstance(expr.subscript.aggregate, p.Variable)
         arg_name = expr.subscript.aggregate.name
         if arg_name not in self._var_names:
@@ -3090,7 +3093,7 @@ class AccessRangeMapper:
         self.var_name = var_name
         self.inner_mapper = BatchedAccessMapMapper(kernel, [var_name], overestimate)
 
-    def __call__(self, expr: Expression, inames: Set[str]) -> None:
+    def __call__(self, expr: Expression, inames: AbstractSet[str]) -> None:
         return self.inner_mapper(expr, inames)
 
     @property
@@ -3113,14 +3116,14 @@ class AccessRangeOverlapChecker:
     kernel: LoopKernel
 
     @cached_property
-    def vars(self) -> Set[str]:
+    def vars(self) -> AbstractSet[str]:
         return (self.kernel.get_written_variables()
                 | self.kernel.get_read_variables())
 
     @memoize_method
     def _get_access_ranges(self,
                 insn_id: InsnId,
-                access_dir: TypingLiteral["w"] | TypingLiteral["any"]
+                access_dir: TypingLiteral["w", "any"]
             ):
         insn = self.kernel.id_to_insn[insn_id]
 
@@ -3147,7 +3150,7 @@ class AccessRangeOverlapChecker:
 
     def _get_access_range_for_var(self,
                 insn_id: str,
-                access_dir: TypingLiteral["w"] | TypingLiteral["any"],
+                access_dir: TypingLiteral["w", "any"],
                 var_name: str
             ):
         assert access_dir in ["w", "any"]
@@ -3166,9 +3169,9 @@ class AccessRangeOverlapChecker:
 
     def do_access_ranges_overlap_conservative(self,
                 insn1: InsnId,
-                insn1_dir: TypingLiteral["w"] | TypingLiteral["any"],
+                insn1_dir: TypingLiteral["w", "any"],
                 insn2: InsnId,
-                insn2_dir: TypingLiteral["w"] | TypingLiteral["any"],
+                insn2_dir: TypingLiteral["w", "any"],
                 var_name: str,
             ):
         """Determine whether the access ranges to *var_name* in the two

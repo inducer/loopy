@@ -105,9 +105,7 @@ T = TypeVar("T")
 
 def _ordered_merge_lists(list_a: Sequence[T], list_b: Sequence[T]) -> list[T]:
     result = list(list_a)
-    for item in list_b:
-        if item not in list_b:
-            result.append(item)
+    result.extend(item for item in list_b if item not in list_b)
 
     return result
 
@@ -169,7 +167,7 @@ def _fuse_two_kernels(kernela: LoopKernel, kernelb: LoopKernel):
             dom_a_s = dom_a.project_out_except(shared_inames, [dim_type.set])
             dom_b_s = dom_a.project_out_except(shared_inames, [dim_type.set])
 
-            if not (dom_a_s <= dom_b_s and dom_b_s <= dom_a_s):
+            if not (dom_a_s <= dom_b_s <= dom_a_s):
                 raise LoopyError("kernels do not agree on domain of "
                         "inames '%s'" % (",".join(shared_inames)))
 
@@ -239,7 +237,7 @@ def _fuse_two_kernels(kernela: LoopKernel, kernelb: LoopKernel):
     assump_a_s = assump_a.project_out_except(shared_param_names, [dim_type.param])
     assump_b_s = assump_a.project_out_except(shared_param_names, [dim_type.param])
 
-    if not (assump_a_s <= assump_b_s and assump_b_s <= assump_a_s):
+    if not (assump_a_s <= assump_b_s <= assump_a_s):
         raise LoopyError("assumptions do not agree on kernels to be merged")
 
     new_assumptions = (assump_a & assump_b).params()

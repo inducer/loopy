@@ -27,8 +27,7 @@ import pytest
 
 import pyopencl as cl
 import pyopencl.array as cl_array
-import pyopencl.clmath as clmath
-import pyopencl.clrandom as clrandom
+from pyopencl import clmath, clrandom
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )

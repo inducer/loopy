@@ -296,8 +296,6 @@ class ToCountMap:
 
         """
 
-        new_count_map = {}
-
         class _Sentinel:
             pass
 
@@ -309,10 +307,10 @@ class ToCountMap:
 
             new_kwargs[arg_field] = allowable_vals
 
-        for key, val in self.count_map.items():
+        new_count_map = {key: val
+            for key, val in self.count_map.items()
             if all(getattr(key, arg_field, _Sentinel) in allowable_vals
-                    for arg_field, allowable_vals in new_kwargs.items()):
-                new_count_map[key] = val
+            for arg_field, allowable_vals in new_kwargs.items())}
 
         return self.copy(count_map=new_count_map)
 
@@ -341,11 +339,9 @@ class ToCountMap:
 
         """
 
-        new_count_map = {}
-
-        for self_key, self_val in self.count_map.items():
-            if func(self_key):
-                new_count_map[self_key] = self_val
+        new_count_map = {self_key: self_val
+            for self_key, self_val in self.count_map.items()
+            if func(self_key)}
 
         return self.copy(count_map=new_count_map)
 
@@ -1807,30 +1803,13 @@ def get_op_map(program, count_redundant_work=False,
 
 # {{{ subgoup size finding
 
-def _find_subgroup_size_for_knl(knl):
-    from loopy.target.pyopencl import PyOpenCLTarget
-    if isinstance(knl.target, PyOpenCLTarget) and knl.target.device is not None:
-        from pyopencl.characterize import get_simd_group_size
-        # type_size is unused in get_simd_group_size
-        subgroup_size_guess = get_simd_group_size(knl.target.device, type_size=4)
-
-        warn_with_kernel(knl, "getting_subgroup_size_from_device",
-                         "Device: %s. Using sub-group size given by "
-                         "pyopencl.characterize.get_simd_group_size(): %s"
-                         % (knl.target.device, subgroup_size_guess))
-        return subgroup_size_guess
-    else:
-        return None
-
-
 @memoize_method
-def _process_subgroup_size(knl, subgroup_size_requested):
+def _process_subgroup_size(knl, subgroup_size_requested: int | None):
 
     if isinstance(subgroup_size_requested, int):
         return subgroup_size_requested
     else:
-        # try to find subgroup_size
-        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
+        subgroup_size_guess = None
 
         if subgroup_size_requested is None:
             if subgroup_size_guess is None:

@@ -995,10 +995,8 @@ def _find_inames_in_set(dom_str):
     if match is None:
         raise RuntimeError("invalid syntax for domain '%s'" % dom_str)
 
-    result = {iname.strip() for iname in match.group(1).split(",")
+    return {iname.strip() for iname in match.group(1).split(",")
             if iname.strip()}
-
-    return result
 
 
 EX_QUANT_RE = re.compile(r"\bexists\s+([a-zA-Z0-9])\s*\:")
@@ -1620,10 +1618,9 @@ def guess_arg_shape_if_requested(kernel, default_order):
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.tools import guess_var_shape
 
-    var_names = []
-    for arg in kernel.args:
-        if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
-            var_names.append(arg.name)
+    var_names = [
+        arg.name for arg in kernel.args
+        if isinstance(arg, ArrayBase) and arg.shape is lp.auto]
 
     shapes = guess_var_shape(kernel, var_names) if var_names else []
 
@@ -2096,7 +2093,7 @@ def make_function(
             substitutions: Mapping[str, SubstitutionRule] | None = None,
             preambles: Sequence[tuple[str, str]] = (),
             preamble_generators: Sequence[PreambleGenerator] = (),
-            default_order: Literal["C"] | Literal["F"] | type[auto] = "C",
+            default_order: Literal["C", "F"] | type[auto] = "C",
             default_offset: Literal[0] | type[auto] | None = None,
             symbol_manglers: Sequence[SymbolMangler] = (),
             assumptions: isl.BasicSet | str = "",
@@ -2526,7 +2523,7 @@ def make_kernel(
             substitutions: Mapping[str, SubstitutionRule] | None = None,
             preambles: Sequence[tuple[str, str]] = (),
             preamble_generators: Sequence[PreambleGenerator] = (),
-            default_order: Literal["C"] | Literal["F"] | type[auto] = "C",
+            default_order: Literal["C", "F"] | type[auto] = "C",
             default_offset: Literal[0] | type[auto] | None = None,
             symbol_manglers: Sequence[SymbolMangler] = (),
             assumptions: isl.BasicSet | str = "",

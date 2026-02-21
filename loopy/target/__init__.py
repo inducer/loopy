@@ -193,7 +193,7 @@ class TargetBase(ABC):
 
 
 @dataclass(frozen=True)
-class ASTBuilderBase(Generic[ASTType], ABC):
+class ASTBuilderBase(ABC, Generic[ASTType]):
     """An interface for generating (host or device) ASTs.
     """
 

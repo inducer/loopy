@@ -54,7 +54,7 @@ from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence, Set
+    from collections.abc import Callable, Mapping, Sequence, Set as AbstractSet
 
     from pymbolic.typing import Expression
 
@@ -771,7 +771,7 @@ class ExecutorBase:
     t_unit: TranslationUnit
     packing_controller: SeparateArrayPackingController | None
     entrypoint: str
-    input_array_names: Set[str]
+    input_array_names: AbstractSet[str]
     has_runtime_typed_args: bool
     separated_entry_knl: LoopKernel
     sep_info: dict[str, _ArraySeparationInfo]

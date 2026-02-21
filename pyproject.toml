@@ -116,22 +116,25 @@ extend-ignore = [
     "N817", # CamelCase `SubstitutionRuleMappingContext` imported as acronym `SRMC`
     "SIM102", # combine if statements
     "RUF067", # no code in __init__ *shrug*
+    "TRY004",
+    "TRY300",
 
     # FIXME
     "UP031", # .format instead of %s
+    "BLE001",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "test/test_loopy.py" = ["B023"]
-"loopy/target/c/compyte/ndarray/**/*.py" = ["Q", "B", "E", "F", "N", "C4"]
 "loopy/frontend/fortran/translator.py" = ["N802", "B028"]
 "proto-tests/*.py" = ["B"]
 "contrib/**/*.py" = ["I002"]
-"doc/conf.py" = ["I002"]
+"doc/conf.py" = ["I002", "S102"]
 "*.ipynb" = ["I002"]
 "examples/**/*.py" = ["I002"]
-"proto-tests/**/*.py" = ["I002"]
+"proto-tests/**/*.py" = ["I002", "S102"]
 "test/**/*.py" = ["I002"]
+"test/test_*.py" = ["S102"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"

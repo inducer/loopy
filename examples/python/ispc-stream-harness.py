@@ -25,9 +25,7 @@ def transform(knl, vars, stream_dtype):
 
     knl = lp.add_and_infer_dtypes(knl, dict.fromkeys(vars, stream_dtype))
 
-    knl = lp.set_argument_order(knl, [*vars, "n"])
-
-    return knl
+    return lp.set_argument_order(knl, [*vars, "n"])
 
 
 def gen_code(knl):
@@ -67,8 +65,7 @@ def main():
                 target=lp.ISPCTarget(), index_dtype=INDEX_DTYPE,
                 name="stream_"+name+"_tasks")
 
-        knl = transform(knl, vars, STREAM_DTYPE)
-        return knl
+        return transform(knl, vars, STREAM_DTYPE)
 
     init_knl = make_knl("init", """
                 a[i] = 1

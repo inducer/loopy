@@ -39,7 +39,7 @@ from loopy.symbolic import DependencyMapper, SubArrayRef, WalkMapper
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping, Sequence, Set
+    from collections.abc import Iterator, Mapping, Sequence, Set as AbstractSet
 
     import islpy as isl
     from pymbolic.typing import ArithmeticExpression, Expression
@@ -532,7 +532,8 @@ class InKernelCallable(ABC):
 
     @abstractmethod
     def get_used_hw_axes(self,
-                         callables_table: CallablesTable) -> tuple[Set[int], Set[int]]:
+                 callables_table: CallablesTable
+            ) -> tuple[AbstractSet[int], AbstractSet[int]]:
         """
         Returns a tuple ``group_axes_used, local_axes_used``, where
         ``(group|local)_axes_used`` are :class:`frozenset` of hardware axes
@@ -696,7 +697,8 @@ class ScalarCallable(InKernelCallable):
 
     @override
     def get_used_hw_axes(self,
-                         callables_table: CallablesTable) -> tuple[Set[int], Set[int]]:
+                 callables_table: CallablesTable
+            ) -> tuple[AbstractSet[int], AbstractSet[int]]:
         return frozenset(), frozenset()
 
     @override
@@ -1044,7 +1046,8 @@ class CallableKernel(InKernelCallable):
 
     @override
     def get_used_hw_axes(self,
-                         callables_table: CallablesTable) -> tuple[Set[int], Set[int]]:
+                 callables_table: CallablesTable
+            ) -> tuple[AbstractSet[int], AbstractSet[int]]:
         gsize, lsize = self.subkernel.get_grid_size_upper_bounds(callables_table,
                                                                  return_dict=True)
 

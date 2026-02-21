@@ -3,7 +3,7 @@ import numpy.linalg as la
 
 import pyopencl as cl
 import pyopencl.array as cla
-import pyopencl.clrandom as clrandom
+from pyopencl import clrandom
 
 import loopy as lp
 

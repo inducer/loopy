@@ -218,9 +218,8 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
     if not made_changes:
         return kernel
 
-    kernel = kernel.copy(args=new_args)
+    return kernel.copy(args=new_args)
 
-    return kernel
 
 # }}}
 
@@ -883,7 +882,7 @@ def preprocess_program(t_unit: TranslationUnit) -> TranslationUnit:
 
     # Ordering restriction:
     # callees with gbarrier in them must be inlined after inferrring arg_descr.
-    t_unit = inline_kernels_with_gbarriers(t_unit)
+    return inline_kernels_with_gbarriers(t_unit)
 
     # {{{ prepare for caching
 
@@ -893,8 +892,6 @@ def preprocess_program(t_unit: TranslationUnit) -> TranslationUnit:
     # this target information.
 
     # }}}
-
-    return t_unit
 
 
 # FIXME: Do we add a deprecation warning?

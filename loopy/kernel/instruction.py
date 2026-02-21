@@ -28,7 +28,7 @@ from collections.abc import (
     Mapping,
     Mapping as abc_Mapping,
     Sequence,
-    Set as abc_Set,
+    Set as AbstractSet,
 )
 from dataclasses import dataclass
 from functools import cached_property
@@ -108,7 +108,6 @@ class UseStreamingStoreTag(Tag):
         continue to work. Whether this is safe is target-dependent and
         program-dependent. No promise of safety is made.
     """
-    pass
 
 # }}}
 
@@ -398,7 +397,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         if priority is None:
             priority = 0
 
-        if not isinstance(tags, abc_Set):
+        if not isinstance(tags, AbstractSet):
             # was previously allowed to be tuple
             tags = frozenset(tags)
 
@@ -413,10 +412,10 @@ class InstructionBase(ImmutableRecord, Taggable):
         # assert all(is_interned(iname) for iname in within_inames)
         # assert all(is_interned(pred) for pred in predicates)
 
-        assert isinstance(within_inames, abc_Set)
+        assert isinstance(within_inames, AbstractSet)
         assert isinstance(happens_after, abc_Mapping) or happens_after is None
-        assert isinstance(groups, abc_Set)
-        assert isinstance(conflicts_with_groups, abc_Set)
+        assert isinstance(groups, AbstractSet)
+        assert isinstance(conflicts_with_groups, AbstractSet)
 
         from loopy.tools import is_hashable
         assert is_hashable(happens_after)
@@ -454,7 +453,7 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # {{{ abstract interface
 
-    def read_dependency_names(self) -> abc_Set[str]:
+    def read_dependency_names(self) -> AbstractSet[str]:
         from loopy.symbolic import get_dependencies
         result: frozenset[str] = frozenset()
 
@@ -463,10 +462,10 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         return result
 
-    def reduction_inames(self) -> abc_Set[str]:
+    def reduction_inames(self) -> AbstractSet[str]:
         raise NotImplementedError
 
-    def sub_array_ref_inames(self) -> abc_Set[str]:
+    def sub_array_ref_inames(self) -> AbstractSet[str]:
         raise NotImplementedError
 
     def assignee_var_names(self) -> Sequence[str]:

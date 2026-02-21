@@ -146,6 +146,4 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
         elif isinstance(sched_item, ReturnFromKernel):
             new_schedule[idx] = sched_item.copy(kernel_name=last_kernel_name)
 
-    new_kernel = kernel.copy(linearization=new_schedule)
-
-    return new_kernel
+    return kernel.copy(linearization=new_schedule)

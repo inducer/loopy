@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import ToMatchConvertible
+    from loopy.typing import InsnId
 
 
 # {{{ find_instructions
@@ -365,8 +366,14 @@ def tag_instructions(kernel, new_tag, within: ToMatchConvertible = None):
 # {{{ add nosync
 
 @for_each_kernel
-def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
-        empty_ok=False):
+def add_nosync(
+            kernel: LoopKernel,
+            scope,
+            source,
+            sink,
+            bidirectional: bool = False,
+            force: bool = False,
+            empty_ok: bool = False):
     """Add a *no_sync_with* directive between *source* and *sink*.
     *no_sync_with* is only added if *sink* depends on *source* or
     if the instruction pair is in a conflicting group.
@@ -417,8 +424,10 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         raise LoopyError("No match found for source specification '%s'." % source)
     if not sinks and not empty_ok:
         raise LoopyError("No match found for sink specification '%s'." % sink)
+    del source
+    del sink
 
-    def insns_in_conflicting_groups(insn1_id, insn2_id):
+    def insns_in_conflicting_groups(insn1_id: InsnId, insn2_id: InsnId):
         insn1 = kernel.id_to_insn[insn1_id]
         insn2 = kernel.id_to_insn[insn2_id]
         return (
