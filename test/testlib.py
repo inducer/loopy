@@ -45,7 +45,6 @@ class Log2Callable(lp.ScalarCallable):
             name_in_target = "log2f"
         elif dtype.type == np.float64:
             name_in_target = "log2"
-            pass
         else:
             raise TypeError(f"log2: unexpected type {dtype}")
 

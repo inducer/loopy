@@ -31,7 +31,7 @@ from collections.abc import (
     Iterator,
     Mapping,
     Sequence,
-    Set,
+    Set as AbstractSet,
 )
 from typing import TYPE_CHECKING, Any, Concatenate, Literal, TypeAlias, final
 from warnings import warn
@@ -282,9 +282,7 @@ def _split_iname_in_set(
                     var_length_iname: -fixed_length})))
 
     dup_iname_dim_type, dup_name_idx = space.get_var_dict()[dup_iname_to_split]
-    s = s.project_out(dup_iname_dim_type, dup_name_idx, 1)
-
-    return s
+    return s.project_out(dup_iname_dim_type, dup_name_idx, 1)
 
 
 def _split_iname_backend(
@@ -547,9 +545,7 @@ def chunk_iname(
                 )
 
         if not (
-                box_dom <= dom
-                and
-                dom <= box_dom):
+                box_dom <= dom <= box_dom):
             raise LoopyError(
                     f"domain '{dom}' is not box-shape about iname "
                     f"'{split_iname}', cannot use chunk_iname()")
@@ -841,8 +837,7 @@ def tag_inames(
     unpack_iname_to_tag: list[tuple[InameStr, ToInameTagConvertible]] = []
     for iname, tags in iname_to_tags_seq:
         if isinstance(tags, Iterable) and not isinstance(tags, str):
-            for tag in tags:
-                unpack_iname_to_tag.append((iname, tag))
+            unpack_iname_to_tag.extend((iname, tag) for tag in tags)
         else:
             unpack_iname_to_tag.append((iname, tags))
 
@@ -1297,11 +1292,9 @@ def remove_unused_inames(
 
         domains = new_domains
 
-    kernel = kernel.copy(domains=domains)
+    return kernel.copy(domains=domains)
 
     # }}}
-
-    return kernel
 
 
 def remove_any_newly_unused_inames(
@@ -1867,11 +1860,10 @@ def make_reduction_inames_unique(
     for old_iname, new_iname in r_uniq.old_to_new:
         inames[new_iname] = inames[old_iname].copy(name=new_iname)
 
-    kernel = kernel.copy(inames=inames)
+    return kernel.copy(inames=inames)
 
     # }}}
 
-    return kernel
 
 # }}}
 
@@ -2002,13 +1994,13 @@ def remove_predicates_from_insn(
 
 @final
 class _MapDomainMapper(RuleAwareIdentityMapper[[]]):
-    old_inames: Set[InameStr]
-    new_inames: Set[InameStr]
+    old_inames: AbstractSet[InameStr]
+    new_inames: AbstractSet[InameStr]
     substitutions: Mapping[str, ArithmeticExpression]
 
     def __init__(self,
                 rule_mapping_context: SubstitutionRuleMappingContext,
-                new_inames: Set[InameStr],
+                new_inames: AbstractSet[InameStr],
                 substitutions: Mapping[str, ArithmeticExpression]
             ) -> None:
         super().__init__(rule_mapping_context)
@@ -2338,9 +2330,8 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
             rule_mapping_context, transform_map_out_dims, substitutions)
 
     kernel = ins.map_kernel(kernel)
-    kernel = rule_mapping_context.finish_kernel(kernel)
+    return rule_mapping_context.finish_kernel(kernel)
 
-    return kernel
 
 # }}}
 
@@ -2559,7 +2550,7 @@ def rename_inames(
                                           if old_idx < new_idx
                                           else old_idx - 1, 1)
 
-            if not (dom_old <= dom_new and dom_new <= dom_old):
+            if not (dom_old <= dom_new <= dom_old):
                 raise LoopyError(
                         f"inames {old_iname} and {new_iname} do not iterate over "
                         "the same domain")

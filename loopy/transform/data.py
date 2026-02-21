@@ -550,7 +550,6 @@ set_array_dim_names = (MovedFunctionDeprecationWrapper(
 
 @for_each_kernel
 def remove_unused_arguments(kernel):
-    new_args = []
 
     import loopy as lp
     exp_kernel = lp.expand_subst(kernel)
@@ -580,9 +579,7 @@ def remove_unused_arguments(kernel):
                     refd_vars.update(
                             tolerant_get_deps(dim_tag.stride))
 
-    for arg in kernel.args:
-        if arg.name in refd_vars:
-            new_args.append(arg)
+    new_args = [arg for arg in kernel.args if arg.name in refd_vars]
 
     return kernel.copy(args=new_args)
 

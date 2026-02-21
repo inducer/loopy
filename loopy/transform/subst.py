@@ -98,8 +98,7 @@ def extract_subst(kernel, subst_name, template, parameters=(),
     def get_unique_var_name():
         based_on = subst_name+"_wc"
 
-        result = var_name_gen(based_on)
-        return result
+        return var_name_gen(based_on)
 
     from loopy.symbolic import WildcardToUniqueVariableMapper
     wc_map = WildcardToUniqueVariableMapper(get_unique_var_name)

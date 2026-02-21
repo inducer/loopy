@@ -28,7 +28,7 @@ import dataclasses
 import itertools
 import logging
 import sys
-from collections.abc import Set
+from collections.abc import Set as AbstractSet
 from functools import reduce
 from sys import intern
 from typing import (
@@ -51,7 +51,7 @@ from pytools import fset_union, memoize_on_first_arg, natsorted, set_union
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import KernelArgument, TemporaryVariable
+from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (
     CInstruction,
@@ -641,27 +641,26 @@ def get_dot_dependency_graph(kernel, callables_table, iname_cluster=True,
     while True:
         changed_something = False
 
-        for insn_1 in dep_graph:
+        for insn_1, deps in dep_graph.items():
             for insn_2 in dep_graph.get(insn_1, set()).copy():
                 for insn_3 in dep_graph.get(insn_2, set()).copy():
                     if insn_3 not in dep_graph.get(insn_1, set()):
                         changed_something = True
-                        dep_graph[insn_1].add(insn_3)
+                        deps.add(insn_3)
 
         if not changed_something:
             break
 
-    for insn_1 in dep_graph:
+    for insn_1, deps in dep_graph.items():
         for insn_2 in dep_graph.get(insn_1, set()).copy():
             for insn_3 in dep_graph.get(insn_2, set()).copy():
                 if insn_3 in dep_graph.get(insn_1, set()):
-                    dep_graph[insn_1].remove(insn_3)
+                    deps.remove(insn_3)
 
     # }}}
 
     for insn_1 in dep_graph:
-        for insn_2 in dep_graph.get(insn_1, set()):
-            lines.append(f"{insn_2} -> {insn_1}")
+        lines.extend(f"{insn_2} -> {insn_1}" for insn_2 in dep_graph.get(insn_1, set()))
 
     if iname_cluster:
         from loopy.schedule import (
@@ -726,7 +725,7 @@ def show_dependency_graph(*args, **kwargs):
 # {{{ is domain dependent on inames
 
 def is_domain_dependent_on_inames(kernel: LoopKernel,
-        domain_index: int, inames: Set[str]) -> bool:
+        domain_index: int, inames: AbstractSet[str]) -> bool:
     dom = kernel.domains[domain_index]
     dom_parameters = set(dom.get_var_names_not_none(dim_type.param))
 
@@ -764,7 +763,10 @@ def is_domain_dependent_on_inames(kernel: LoopKernel,
 
 # {{{ rank inames by stride
 
-def get_auto_axis_iname_ranking_by_stride(kernel, insn):
+def get_auto_axis_iname_ranking_by_stride(
+            kernel: LoopKernel,
+            insn
+        ) -> list[InameStr] | None:
     from loopy.kernel.data import ImageArg, ValueArg
 
     approximate_arg_values = {}
@@ -783,9 +785,9 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     from pymbolic.primitives import Subscript
 
-    for assignee in insn.assignees:
-        if isinstance(assignee, Subscript):
-            ary_acc_exprs.append(assignee)
+    ary_acc_exprs.extend(
+        assignee for assignee in insn.assignees
+        if isinstance(assignee, Subscript))
 
     # }}}
 
@@ -830,7 +832,8 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
             index_expr = (index_expr,)
 
         ary_name = aae.aggregate.name
-        arg = kernel.arg_dict.get(ary_name)
+        arg = kernel.arg_dict[ary_name]
+        assert isinstance(arg, ArrayArg)
 
         if arg.dim_tags is None:
             from warnings import warn
@@ -1235,10 +1238,10 @@ class SetTrie:
 
     def descend(self, on_found=lambda prefix: None, prefix=frozenset()):
         on_found(prefix)
-        for prefix, child in sorted(
+        for ch_prefix, child in sorted(
                 self.children.items(),
                 key=lambda it: sorted(it[0])):
-            child.descend(on_found, prefix=prefix)
+            child.descend(on_found, prefix=ch_prefix)
 
     def check_consistent_insert(self, items_to_insert):
         if items_to_insert & self.all_items:
@@ -1754,7 +1757,7 @@ def kernel_has_global_barriers(kernel):
 
 
 @memoize_on_first_arg
-def get_global_barrier_order(kernel):
+def get_global_barrier_order(kernel: LoopKernel):
     """Return a :class:`tuple` of the listing the ids of global barrier instructions
     as they appear in order in the kernel.
 
@@ -1790,8 +1793,7 @@ def get_global_barrier_order(kernel):
         while stack:
             top = stack[-1]
 
-            if top in visiting:
-                visiting.remove(top)
+            visiting.discard(top)
 
             if top in visited:
                 stack.pop()
@@ -1804,8 +1806,7 @@ def get_global_barrier_order(kernel):
                 visiting.clear()
                 break
 
-            for child in kernel.id_to_insn[top].depends_on:
-                stack.append(child)
+            stack.extend(kernel.id_to_insn[top].depends_on)
         else:
             # Search exhausted and we did not find prev_barrier.
             raise LoopyError("barriers '%s' and '%s' are not ordered"
@@ -2159,7 +2160,7 @@ def get_resolved_callable_ids_called_by_knl(knl, callables, recursive=True):
 def get_call_graph(
             t_unit: TranslationUnit,
             only_kernel_callables: bool = False
-        ) -> Mapping[CallableId, Set[CallableId]]:
+        ) -> Mapping[CallableId, AbstractSet[CallableId]]:
     """
     Returns a mapping from a callable name to the calls seen in it.
 
@@ -2228,15 +2229,14 @@ def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
 
     assert kernel.iname_tags_of_type(iname, HardwareConcurrentTag)
     bounds = kernel.get_iname_bounds(iname)
-    lower_bound = static_min_of_pw_aff(bounds.lower_bound_pw_aff,
+    return static_min_of_pw_aff(bounds.lower_bound_pw_aff,
                                        constants_only=False)
-    return lower_bound
 
 
 # {{{ get access map from an instruction
 
 @dataclasses.dataclass
-class _IndexCollector(CombineMapper[Set[tuple[Expression, ...]], []]):
+class _IndexCollector(CombineMapper[AbstractSet[tuple[Expression, ...]], []]):
     var: str
 
     def __post_init__(self) -> None:
@@ -2244,12 +2244,12 @@ class _IndexCollector(CombineMapper[Set[tuple[Expression, ...]], []]):
 
     @override
     def combine(self,
-                values: Iterable[Set[tuple[Expression, ...]]]
-            ) -> Set[tuple[Expression, ...]]:
+                values: Iterable[AbstractSet[tuple[Expression, ...]]]
+            ) -> AbstractSet[tuple[Expression, ...]]:
         return set_union(values)
 
     @override
-    def map_subscript(self, expr: p.Subscript) -> Set[tuple[Expression, ...]]:
+    def map_subscript(self, expr: p.Subscript) -> AbstractSet[tuple[Expression, ...]]:
         assert isinstance(expr.aggregate, p.Variable)
         if expr.aggregate.name == self.var:
             return (super().map_subscript(expr) | frozenset([expr.index_tuple]))

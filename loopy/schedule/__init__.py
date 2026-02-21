@@ -30,10 +30,10 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
-    TypeVar,
 )
 
 from constantdict import constantdict
+from typing_extensions import Self
 
 import islpy as isl
 from pytools import MinRecursionLimit, ProcessLogger
@@ -46,7 +46,13 @@ from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
-    from collections.abc import Hashable, Iterator, Mapping, Sequence, Set
+    from collections.abc import (
+        Hashable,
+        Iterator,
+        Mapping,
+        Sequence,
+        Set as AbstractSet,
+    )
 
     from loopy.kernel import LoopKernel
     from loopy.kernel.function_interface import InKernelCallable
@@ -74,14 +80,11 @@ __doc__ = """
 """
 
 
-_SchedItemSelfT = TypeVar("_SchedItemSelfT", bound="ScheduleItem")
-
-
 # {{{ schedule items
 
 @dataclass(frozen=True)
 class ScheduleItem:
-    def copy(self: _SchedItemSelfT, **kwargs: Any) -> _SchedItemSelfT:
+    def copy(self, **kwargs: Any) -> Self:
         return replace(self, **kwargs)
 
 
@@ -291,8 +294,8 @@ def find_loop_nest_around_map(kernel: LoopKernel) -> Mapping[str, set[str]]:
 
 def find_loop_insn_dep_map(
         kernel: LoopKernel,
-        loop_nest_with_map: Mapping[str, Set[str]],
-        loop_nest_around_map: Mapping[str, Set[str]]
+        loop_nest_with_map: Mapping[str, AbstractSet[str]],
+        loop_nest_around_map: Mapping[str, AbstractSet[str]]
         ) -> Mapping[str, set[str]]:
     """Returns a dictionary mapping inames to other instruction ids that need to
     be scheduled before the iname should be eligible for scheduling.
@@ -370,7 +373,7 @@ def group_insn_counts(kernel: LoopKernel) -> Mapping[str, int]:
 
 
 def gen_dependencies_except(
-        kernel: LoopKernel, insn_id: str, except_insn_ids: Set[str]
+        kernel: LoopKernel, insn_id: str, except_insn_ids: AbstractSet[str]
         ) -> Iterator[str]:
     insn = kernel.id_to_insn[insn_id]
     for dep_id in insn.depends_on:
@@ -384,9 +387,9 @@ def gen_dependencies_except(
 
 
 def get_priority_tiers(
-        wanted: Set[InameStr],
-        priorities: Set[Sequence[InameStr]]
-        ) -> Iterator[Set[InameStr]]:
+        wanted: AbstractSet[InameStr],
+        priorities: AbstractSet[Sequence[InameStr]]
+        ) -> Iterator[AbstractSet[InameStr]]:
     # Get highest priority tier candidates: These are the first inames
     # of all the given priority constraints
     candidates = set()

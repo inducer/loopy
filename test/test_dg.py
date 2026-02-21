@@ -80,27 +80,23 @@ def test_dg_volume(ctx_factory: cl.CtxFactory):
     seq_knl = knl
 
     def variant_basic(knl):
-        knl = lp.tag_inames(knl, {"k": "g.0", "n": "l.0"})
-        return knl
+        return lp.tag_inames(knl, {"k": "g.0", "n": "l.0"})
 
     def variant_more_per_work_group(knl):
         knl = lp.tag_inames(knl, {"n": "l.0"})
-        knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
-        return knl
+        return lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
 
     def variant_image_d(knl):
         knl = lp.tag_inames(knl, {"n": "l.0"})
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
-        knl = lp.change_arg_to_image(knl, "DrDsDt")
-        return knl
+        return lp.change_arg_to_image(knl, "DrDsDt")
 
     def variant_prefetch_d(knl):
         knl = lp.tag_inames(knl, {"n": "l.0"})
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
-        knl = lp.add_prefetch(knl, "DrDsDt[:,:]",
+        return lp.add_prefetch(knl, "DrDsDt[:,:]",
                 fetch_outer_inames="k_outer",
                 default_tag="l.auto")
-        return knl
 
     def variant_prefetch_fields(knl):
         knl = lp.tag_inames(knl, {"n": "l.0"})
@@ -115,8 +111,7 @@ def test_dg_volume(ctx_factory: cl.CtxFactory):
         knl = lp.tag_inames(knl, {"n": "l.0"})
 
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="ilp")
-        knl = lp.tag_inames(knl, {"m": "unr"})
-        return knl
+        return lp.tag_inames(knl, {"m": "unr"})
 
     def variant_simple_padding(knl):
         knl = lp.tag_inames(knl, {"n": "l.0"})
@@ -131,9 +126,7 @@ def test_dg_volume(ctx_factory: cl.CtxFactory):
         for name in arg_names:
             knl = lp.add_padding(knl, name, axis=0, align_bytes=32)
 
-        knl = lp.tag_inames(knl, {"m": "unr"})
-
-        return knl
+        return lp.tag_inames(knl, {"m": "unr"})
 
     def variant_fancy_padding(knl):
         knl = lp.tag_inames(knl, {"n": "l.0"})
@@ -145,9 +138,7 @@ def test_dg_volume(ctx_factory: cl.CtxFactory):
                 for name in ["u", "v", "w", "p"]
                 for prefix in ["", "rhs"]]
 
-        knl = lp.split_array_dim(knl, [(nm, 0) for nm in arg_names], pad_mult)
-
-        return knl
+        return lp.split_array_dim(knl, [(nm, 0) for nm in arg_names], pad_mult)
 
     parameters_dict = {"K": K}
 

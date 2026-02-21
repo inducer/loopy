@@ -597,11 +597,11 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 class OpenCLTarget(CFamilyTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
-    atomics_flavor: Literal["cl1"] | Literal["cl2"]
+    atomics_flavor: Literal["cl1", "cl2"]
     use_int8_for_bool: bool
 
     def __init__(self,
-                atomics_flavor: Literal["cl1"] | Literal["cl2"] | None = None,
+                atomics_flavor: Literal["cl1", "cl2"] | None = None,
                 use_int8_for_bool: bool = True
             ):
         """

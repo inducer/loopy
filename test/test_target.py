@@ -28,8 +28,8 @@ from typing_extensions import override
 
 import pymbolic.primitives as prim
 import pyopencl as cl
-import pyopencl.clrandom as clrandom
 import pyopencl.tools as cl_tools
+from pyopencl import clrandom
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )

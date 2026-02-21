@@ -28,7 +28,7 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-import pyopencl.cltypes as cltypes
+from pyopencl import cltypes
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -103,17 +103,15 @@ def test_axpy(ctx_factory: cl.CtxFactory):
             block_size = unroll*4096
             knl = lp.split_iname(knl, "i", block_size, outer_tag="g.0", slabs=(0, 1))
             knl = lp.split_iname(knl, "i_inner", unroll, inner_tag="unr")
-            knl = lp.prioritize_loops(knl, "i_outer, i_inner_outer, i_inner_inner")
-            return knl
+            return lp.prioritize_loops(knl, "i_outer, i_inner_outer, i_inner_inner")
 
         def variant_gpu(knl: TranslationUnit):
             unroll = 4
             block_size = 256
             knl = lp.split_iname(knl, "i", unroll*block_size,
                     outer_tag="g.0", slabs=(0, 1))
-            knl = lp.split_iname(knl, "i_inner", block_size,
+            return lp.split_iname(knl, "i_inner", block_size,
                     outer_tag="unr", inner_tag="l.0")
-            return knl
 
         # for variant in [ variant_gpu]:
         for variant in [variant_cpu, variant_gpu]:
@@ -308,8 +306,7 @@ def test_rank_one(ctx_factory: cl.CtxFactory):
         knl = lp.add_prefetch(knl, "a", default_tag="l.auto")
         knl = lp.add_prefetch(knl, "b", default_tag="l.auto")
         knl = lp.prioritize_loops(knl, ["i", "j"])
-        knl = lp.add_inames_to_insn(knl, "i", "writes:b_fetch")
-        return knl
+        return lp.add_inames_to_insn(knl, "i", "writes:b_fetch")
 
     def variant_2(knl):
         knl = lp.split_iname(knl, "i", 16,
@@ -319,9 +316,8 @@ def test_rank_one(ctx_factory: cl.CtxFactory):
 
         knl = lp.add_prefetch(knl, "a",
                 fetch_outer_inames="i_outer, i_inner, j_outer, j_inner")
-        knl = lp.add_prefetch(knl, "b",
+        return lp.add_prefetch(knl, "b",
                 fetch_outer_inames="i_outer, i_inner, j_outer, j_inner")
-        return knl
 
     def variant_3(knl):
         knl = lp.split_iname(knl, "i", 16,
@@ -333,12 +329,10 @@ def test_rank_one(ctx_factory: cl.CtxFactory):
                     fetch_outer_inames="i_outer, j_outer, j_inner",
                     temporary_address_space=lp.AddressSpace.LOCAL,
                     default_tag="l.auto")
-        knl = lp.add_prefetch(knl, "b", ["j_inner"],
+        return lp.add_prefetch(knl, "b", ["j_inner"],
                     fetch_outer_inames="i_outer, j_outer, j_inner",
                     temporary_address_space=lp.AddressSpace.LOCAL,
                     default_tag="l.auto")
-
-        return knl
 
     def variant_4(knl):
         knl = lp.split_iname(knl, "i", 256,
@@ -358,9 +352,8 @@ def test_rank_one(ctx_factory: cl.CtxFactory):
 
         knl = lp.split_iname(knl, "a_dim_0", 16,
                 outer_tag="l.1", inner_tag="l.0")
-        knl = lp.split_iname(knl, "b_dim_0", 16,
+        return lp.split_iname(knl, "b_dim_0", 16,
                 outer_tag="l.1", inner_tag="l.0")
-        return knl
 
     seq_knl = knl
 

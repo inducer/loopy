@@ -44,7 +44,13 @@ from loopy.schedule import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Hashable, Sequence, Set
+    from collections.abc import (
+        Callable,
+        Collection,
+        Hashable,
+        Sequence,
+        Set as AbstractSet,
+    )
 
     from pymbolic import Expression
 
@@ -288,9 +294,9 @@ def build_loop_nest(
     @dataclass(frozen=True)
     class ScheduleIndexInfo:
         schedule_indices: Sequence[int]
-        admissible_cond_inames: Set[InameStr]
+        admissible_cond_inames: AbstractSet[InameStr]
         required_predicates: frozenset[Expression]
-        used_inames_within: Set[InameStr]
+        used_inames_within: AbstractSet[InameStr]
 
     from loopy.codegen.bounds import get_usable_inames_for_conditional
     from loopy.schedule import find_used_inames_within
@@ -388,7 +394,9 @@ def build_loop_nest(
         bounds_check_cache = BoundsCheckCache(
                 kernel, codegen_state.implemented_domain)
 
-        found_hoists: list[tuple[int, Sequence[isl.Constraint], Set[Expression]]] = []
+        found_hoists: list[
+                tuple[int, Sequence[isl.Constraint], AbstractSet[Expression]]
+            ] = []
 
         candidate_group_length = 1
         while candidate_group_length <= len(sched_index_info_entries):

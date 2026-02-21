@@ -213,12 +213,11 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
                         from loopy.symbolic import simplify_using_aff
 
                         subscript = _apply_offset(0, arg)
-                        result = self.make_subscript(
+                        return self.make_subscript(
                                 arg,
                                 var(expr.name),
                                 simplify_using_aff(
                                     self.kernel, self.rec_arith(subscript, "i")))
-                        return result
                     else:
                         return var(expr.name)[0]
                 else:

@@ -439,8 +439,7 @@ class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
                 if iinfo.min <= expr <= iinfo.max:
                     return [NumpyType(np.dtype(tp))]
 
-            else:
-                raise TypeInferenceFailure("integer constant '%s' too large" % expr)
+            raise TypeInferenceFailure("integer constant '%s' too large" % expr)
 
         dt = np.asarray(expr).dtype
         if hasattr(expr, "dtype"):

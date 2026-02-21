@@ -238,9 +238,7 @@ class DifferentiationContext:
         del new_args
         del new_temp_vars
 
-        knl = self.rule_mapping_context.finish_kernel(knl)
-
-        return knl
+        return self.rule_mapping_context.finish_kernel(knl)
 
     # {{{ kernel gen entrypoints
 

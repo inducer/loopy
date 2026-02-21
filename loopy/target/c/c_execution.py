@@ -102,7 +102,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             if dtype.name == "bool":
                 name = "bool_"
             return f"_lpy_np.dtype(_lpy_np.{name})"
-        raise Exception(f"dtype: {dtype} not recognized")
+        raise TypeError(f"dtype: {dtype} not recognized")
 
     # {{{ handle non numpy arguments
 
@@ -193,7 +193,6 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         """
         Initializes possibly empty system arguments
         """
-        pass
 
     # {{{ generate invocation
 
@@ -511,7 +510,7 @@ class CExecutor(ExecutorBase):
 
         dev_code = codegen_result.device_code()
         host_code = codegen_result.host_code()
-        all_code = "\n".join([dev_code, "", host_code])
+        all_code = f"{dev_code}\n\n{host_code}"
 
         if t_unit[self.entrypoint].options.write_code:
             output = all_code
@@ -528,16 +527,13 @@ class CExecutor(ExecutorBase):
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
             # update code from editor
-            all_code = "\n".join([dev_code, "", host_code])
-
-        c_kernels = []
+            all_code = f"{dev_code}\n\n{host_code}"
 
         from loopy.schedule.tools import get_kernel_arg_info
         kai = get_kernel_arg_info(t_unit[self.entrypoint])
-        for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(
+        c_kernels = [CompiledCKernel(
                 t_unit[self.entrypoint], dp, kai.passed_names, all_code,
-                self.compiler))
+                self.compiler) for dp in codegen_result.device_programs]
 
         return _KernelInfo(
                 t_unit=t_unit,

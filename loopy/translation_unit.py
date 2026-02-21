@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 import collections
-from collections.abc import Callable, Mapping, Set as abc_Set
+from collections.abc import Callable, Mapping, Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from typing import (
@@ -239,7 +239,7 @@ class TranslationUnit:
     entrypoints: frozenset[str]
 
     def __post_init__(self):
-        assert isinstance(self.entrypoints, abc_Set)
+        assert isinstance(self.entrypoints, AbstractSet)
         assert isinstance(self.callables_table, constantdict)
 
     def copy(self, **kwargs: Any) -> Self:
@@ -277,7 +277,7 @@ class TranslationUnit:
             entrypoints = frozenset([e.strip() for e in
                 entrypoints.split(",")])
 
-        assert isinstance(entrypoints, abc_Set)
+        assert isinstance(entrypoints, AbstractSet)
 
         return self.copy(entrypoints=entrypoints)
 
@@ -504,7 +504,7 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
 
 def get_reachable_resolved_callable_ids(
             callables: CallablesTable,
-            entrypoints: abc_Set[CallableId]
+            entrypoints: AbstractSet[CallableId]
         ) -> frozenset[CallableId]:
     """
     Returns a :class:`frozenset` of callables ids that are resolved and

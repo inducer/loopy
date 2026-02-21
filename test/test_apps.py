@@ -73,13 +73,11 @@ def test_convolution(ctx_factory: cl.CtxFactory):
 
     def variant_0(knl):
         # knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
-        knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
-        return knl
+        return lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
 
     def variant_1(knl):
         knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
-        knl = lp.prioritize_loops(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
-        return knl
+        return lp.prioritize_loops(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
 
     def variant_2(knl):
         knl = lp.split_iname(knl, "im_x", 16, outer_tag="g.0", inner_tag="l.0")
@@ -88,10 +86,9 @@ def test_convolution(ctx_factory: cl.CtxFactory):
         knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]",
                 fetch_outer_inames="im_x_outer, im_y_outer, ifeat",
                 default_tag="l.auto")
-        knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y",
+        return lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y",
                 fetch_outer_inames="iimg, im_x_outer, im_y_outer, ifeat, icolor",
                 default_tag="l.auto")
-        return knl
 
     for variant in [
             # variant_0,
@@ -144,13 +141,11 @@ def test_convolution_with_nonzero_base(ctx_factory: cl.CtxFactory):
 
     def variant_0(knl):
         # knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
-        knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
-        return knl
+        return lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
 
     def variant_1(knl):
         knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
-        knl = lp.prioritize_loops(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
-        return knl
+        return lp.prioritize_loops(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
 
     for variant in [
             variant_0,
@@ -331,16 +326,14 @@ def test_stencil(ctx_factory: cl.CtxFactory):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"], default_tag="l.auto")
-        knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
-        return knl
+        return lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
 
     def variant_2(knl):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True, default_tag="l.auto")
-        knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
-        return knl
+        return lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
 
     for variant in [
             # variant_1,
@@ -386,8 +379,7 @@ def test_stencil_with_overfetch(ctx_factory: cl.CtxFactory):
                slabs=(1, 1))
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True, default_tag="l.auto")
-        knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
-        return knl
+        return lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
 
     for variant in [variant_overfetch]:
         n = 200
@@ -573,13 +565,11 @@ def test_poisson_fem(ctx_factory: cl.CtxFactory):
 
     def variant_1(knl):
         knl = lp.precompute(knl, "dpsi", "i,k,ell", default_tag="for")
-        knl = lp.prioritize_loops(knl, "c,i,j")
-        return knl
+        return lp.prioritize_loops(knl, "c,i,j")
 
     def variant_2(knl):
         knl = lp.precompute(knl, "dpsi", "i,ell", default_tag="for")
-        knl = lp.prioritize_loops(knl, "c,i,j")
-        return knl
+        return lp.prioritize_loops(knl, "c,i,j")
 
     def add_types(knl):
         return lp.add_and_infer_dtypes(knl, {
