@@ -125,7 +125,7 @@ def _normalize_string_tag(tag):
     if tag == "!streaming_store":
         return UseStreamingStoreTag()
     else:
-        from pytools import resolve_name
+        from pkgutil import resolve_name
         try:
             tag_cls = resolve_name(tag)
         except ImportError:
