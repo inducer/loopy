@@ -187,7 +187,7 @@ def simplify_pw_aff(pw_aff, context=None):
                 if i == j:
                     continue
 
-                if aff_i.gist(dom_j).is_equal(aff_j):
+                if aff_i.gist(dom_j).to_pw_aff().is_equal(aff_j):
                     # aff_i is sufficient to cover aff_j, eliminate aff_j
                     new_pieces = pieces[:]
                     if i < j:
@@ -895,7 +895,7 @@ def find_and_rename_dim(isl_obj, dt, old_name, new_name):
 
     """
     return isl_obj.set_dim_name(
-            dt, isl_obj.find_dim_by_name(dt, old_name), new_name)
+            dt, isl_obj.to_set().find_dim_by_name(dt, old_name), new_name)
 
 # }}}
 

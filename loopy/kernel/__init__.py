@@ -463,7 +463,7 @@ class LoopKernel(Taggable):
                     dim_type.set,
                     result.dim(dim_type.set),
                     dim_type.param,
-                    result.find_dim_by_name(dim_type.param, actual_iname),
+                    result.to_set().find_dim_by_name(dim_type.param, actual_iname),
                     1)
 
         return result
