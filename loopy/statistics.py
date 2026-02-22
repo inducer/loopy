@@ -1445,19 +1445,22 @@ def count(kernel, set, space=None):
             .drop_dims(dim_type.set, 0, set.dim(dim_type.set))
             .add_dims(dim_type.set, 1))
 
+    if isinstance(set, isl.BasicSet):
+        set = set.to_set()
     set = set.make_disjoint()
 
     from loopy.isl_helpers import get_simple_strides
 
     for bset in set.get_basic_sets():
+        bset_as_set = bset.to_set()
         bset_count = None
         bset_rebuilt = bset.universe(bset.space)
 
         bset_strides = get_simple_strides(bset, key_by="index")
 
         for i in range(bset.dim(isl.dim_type.set)):
-            dmax = bset.dim_max(i)
-            dmin = bset.dim_min(i)
+            dmax = bset_as_set.dim_max(i)
+            dmin = bset_as_set.dim_min(i)
 
             stride = bset_strides.get((dim_type.set, i))
             if stride is None:
@@ -1483,8 +1486,8 @@ def count(kernel, set, space=None):
             dmax_matched = dmax.insert_dims(
                     dim_type.in_, 0, bset.dim(isl.dim_type.set))
             for idx in range(bset.dim(isl.dim_type.set)):
-                if bset.has_dim_id(isl.dim_type.set, idx):
-                    dim_id = bset.get_dim_id(isl.dim_type.set, idx)
+                if bset_as_set.has_dim_id(isl.dim_type.set, idx):
+                    dim_id = bset_as_set.get_dim_id(isl.dim_type.set, idx)
                     dmin_matched = dmin_matched.set_dim_id(
                             isl.dim_type.in_, idx, dim_id)
                     dmax_matched = dmax_matched.set_dim_id(
@@ -1501,8 +1504,8 @@ def count(kernel, set, space=None):
         if bset_count is not None:
             total_count += bset_count
 
-        is_subset = bset <= bset_rebuilt
-        is_superset = bset >= bset_rebuilt
+        is_subset = bset_as_set <= bset_rebuilt
+        is_superset = bset_as_set >= bset_rebuilt
 
         if not (is_subset and is_superset):
             if is_subset:

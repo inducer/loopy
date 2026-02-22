@@ -541,11 +541,11 @@ def chunk_iname(
                 dom
                 .eliminate(dt, idx, 1)
                 & aff_zero.le_set(aff_split_iname)
-                & aff_split_iname.lt_set(aligned_size)
+                & aff_split_iname.to_pw_aff().lt_set(aligned_size)
                 )
 
         if not (
-                box_dom <= dom <= box_dom):
+                box_dom <= dom.to_set() <= box_dom):
             raise LoopyError(
                     f"domain '{dom}' is not box-shape about iname "
                     f"'{split_iname}', cannot use chunk_iname()")
