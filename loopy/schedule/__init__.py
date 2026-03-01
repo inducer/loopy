@@ -2354,9 +2354,7 @@ def _generate_loop_schedules_inner(
                 sched_state, debug=debug, **schedule_gen_kwargs):
             debug.stop()
 
-            new_kernel = _postprocess_schedule(kernel, callables_table, gen_sched)
-
-            yield new_kernel
+            yield _postprocess_schedule(kernel, callables_table, gen_sched)
 
             debug.start()
 
