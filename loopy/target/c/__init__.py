@@ -874,6 +874,8 @@ class GSLCallable(ScalarCallable):
         if self.name == "hyperg_2F1":
             # gsl_sf_hyperg_2F1 is declared in <gsl/gsl_sf_hyperg.h>
             yield ("41_c_gsl_sf_hyperg", "#include <gsl/gsl_sf_hyperg.h>")
+
+
 def get_c_callables():
     """
     Returns an instance of :class:`InKernelCallable` if the function
