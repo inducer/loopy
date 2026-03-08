@@ -453,7 +453,7 @@ class TranslationUnit:
 
         return "\n".join(
                 str(clbl.subkernel)
-                for _name, clbl in self.callables_table.items()
+                for clbl in self.callables_table.values()
                 if isinstance(clbl, CallableKernel))
 
     # FIXME: This is here because Firedrake expects it, for some legacy reason.
