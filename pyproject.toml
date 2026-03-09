@@ -43,6 +43,7 @@ dependencies = [
     "constantdict",
 
     "typing-extensions>=4",
+    "strenum>=0.4.15",
 ]
 [project.optional-dependencies]
 pyopencl = [
