@@ -1622,6 +1622,13 @@ class ExecutableCWithGNULibcTarget(ExecutableCTarget):
     def get_device_ast_builder(self):
         return CWithGNULibcASTBuilder(self)
 
+    @property
+    @override
+    def known_device_callables(self):
+        callables = super().known_device_callables
+        callables.update(get_gnu_libc_callables())
+        return callables
+
 # }}}
 
 # vim: foldmethod=marker
