@@ -873,7 +873,7 @@ def resolve_callables(t_unit: TranslationUnit) -> TranslationUnit:
     # get registered callables
     known_callables = dict(t_unit.callables_table)
     # get target specific callables
-    known_callables.update(t_unit.target.get_device_ast_builder().known_callables)
+    known_callables.update(t_unit.target.known_callables)
     # get loopy specific callables
     known_callables.update(get_loopy_callables())
 

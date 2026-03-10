@@ -368,7 +368,7 @@ class MaxReductionOperation(ScalarReductionOperation):
         from loopy.translation_unit import add_callable_to_table
 
         # getting the callable 'max' from target
-        max_scalar_callable = target.get_device_ast_builder().known_callables["max"]
+        max_scalar_callable = target.known_callables["max"]
 
         # type specialize the callable
         max_scalar_callable, callables_table = max_scalar_callable.with_types(
@@ -404,7 +404,7 @@ class MinReductionOperation(ScalarReductionOperation):
         from loopy.translation_unit import add_callable_to_table
 
         # getting the callable 'min' from target
-        min_scalar_callable = target.get_device_ast_builder().known_callables["min"]
+        min_scalar_callable = target.known_callables["min"]
 
         # type specialize the callable
         min_scalar_callable, callables_table = min_scalar_callable.with_types(

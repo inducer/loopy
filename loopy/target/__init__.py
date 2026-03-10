@@ -191,6 +191,15 @@ class TargetBase(ABC):
         """
         raise NotImplementedError()
 
+    @property
+    def known_callables(self):
+        """
+        Returns a mapping from function ids to corresponding
+        :class:`loopy.kernel.function_interface.InKernelCallable` for the
+        function ids known to *self*.
+        """
+        return {}
+
 
 @dataclass(frozen=True)
 class ASTBuilderBase(ABC, Generic[ASTType]):
@@ -208,8 +217,7 @@ class ASTBuilderBase(ABC, Generic[ASTType]):
         :class:`loopy.kernel.function_interface.InKernelCallable` for the
         function ids known to *self.target*.
         """
-        # FIXME: @inducer: Do we need to move this to TargetBase?
-        return {}
+        return dict(self.target.known_callables)
 
     def symbol_manglers(self):
         return []
