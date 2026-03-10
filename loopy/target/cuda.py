@@ -250,8 +250,8 @@ class CudaTarget(CFamilyTarget):
         return CUDACASTBuilder(self)
 
     @property
-    def known_callables(self):
-        callables = super().known_callables
+    def known_device_callables(self):
+        callables = super().known_device_callables
         callables.update(get_cuda_callables())
         return callables
 

@@ -190,6 +190,10 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     """A Python host AST builder for integration with PyOpenCL.
     """
 
+    @property
+    def known_callables(self):
+        return dict(self.target.known_host_callables)
+
     def preamble_generators(self):
         return (
                 [*super().preamble_generators(), _base_python_preamble_generator])

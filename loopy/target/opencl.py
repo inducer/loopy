@@ -634,8 +634,8 @@ class OpenCLTarget(CFamilyTarget):
 
     @property
     @override
-    def known_callables(self):
-        callables = super().known_callables
+    def known_device_callables(self):
+        callables = super().known_device_callables
         callables.update(get_opencl_callables())
         return callables
 

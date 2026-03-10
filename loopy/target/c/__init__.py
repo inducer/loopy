@@ -511,8 +511,8 @@ class CFamilyTarget(TargetBase):
 
     @property
     @override
-    def known_callables(self):
-        callables = super().known_callables
+    def known_device_callables(self):
+        callables = super().known_device_callables
         callables.update(get_c_callables())
         return callables
 
@@ -1608,8 +1608,8 @@ class CWithGNULibcTarget(CTarget):
 
     @property
     @override
-    def known_callables(self):
-        callables = super().known_callables
+    def known_device_callables(self):
+        callables = super().known_device_callables
         callables.update(get_gnu_libc_callables())
         return callables
 

@@ -586,14 +586,22 @@ class PyOpenCLTarget(OpenCLTarget):
 
     @property
     @override
-    def known_callables(self):
+    def known_device_callables(self):
         from loopy.library.random123 import get_random123_callables
 
         # order matters: e.g. prefer our abs() over that of the
         # superclass
-        callables = super().known_callables
+        callables = super().known_device_callables
         callables.update(get_pyopencl_callables())
         callables.update(get_random123_callables(self))
+        return callables
+
+    @property
+    @override
+    def known_host_callables(self):
+        from loopy.target.c import get_c_callables
+        callables = super().known_host_callables
+        callables.update(get_c_callables())
         return callables
 
     # {{{ types
