@@ -55,6 +55,7 @@ from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel
 from loopy.kernel.instruction import (
     CInstruction,
+    InstructionBase,
     MultiAssignmentBase,
     _DataObliviousInstruction,
 )
@@ -75,7 +76,7 @@ if TYPE_CHECKING:
     from pytools.tag import Tag
 
     from loopy.types import ToLoopyTypeConvertible
-    from loopy.typing import InameStr, ShapeType
+    from loopy.typing import InameStr, InameStrSet, ShapeType
 
 
 logger = logging.getLogger(__name__)
@@ -209,7 +210,11 @@ def _add_and_infer_dtypes_overdetermined(kernel, dtype_dict):
 
 # {{{ find_all_insn_inames fixed point iteration (deprecated)
 
-def guess_iname_deps_based_on_var_use(kernel, insn, insn_id_to_inames=None):
+def guess_iname_deps_based_on_var_use(
+        kernel: LoopKernel,
+        insn: InstructionBase,
+        insn_id_to_inames: dict[str, InameStrSet] | None = None,
+    ) -> InameStrSet:
     # For all variables that insn depends on, find the intersection
     # of iname deps of all writers, and add those to insn's
     # dependencies.
@@ -243,23 +248,23 @@ def guess_iname_deps_based_on_var_use(kernel, insn, insn_id_to_inames=None):
     return result - insn.reduction_inames()
 
 
-def find_all_insn_inames(kernel):
+def find_all_insn_inames(kernel: LoopKernel) -> dict[str, InameStrSet]:
     logger.debug("%s: find_all_insn_inames: start" % kernel.name)
 
     writer_map = kernel.writer_map()
 
-    insn_id_to_inames = {}
-    insn_assignee_inames = {}
+    insn_id_to_inames: dict[str, frozenset[str]] = {}
+    insn_assignee_inames: dict[str, frozenset[str]] = {}
 
-    all_read_deps = {}
-    all_write_deps = {}
+    all_read_deps: dict[str, frozenset[str]] = {}
+    all_write_deps: dict[str, frozenset[str]] = {}
 
     from loopy.transform.subst import expand_subst
     kernel = expand_subst(kernel)
 
     for insn in kernel.instructions:
-        all_read_deps[insn.id] = read_deps = insn.read_dependency_names()
-        all_write_deps[insn.id] = write_deps = insn.write_dependency_names()
+        all_read_deps[insn.id] = read_deps = frozenset(insn.read_dependency_names())
+        all_write_deps[insn.id] = write_deps = frozenset(insn.write_dependency_names())
         deps = read_deps | write_deps
 
         if insn.within_inames_is_final:
@@ -343,6 +348,7 @@ def find_all_insn_inames(kernel):
                     # in.
 
                     if par in kernel.temporary_variables:
+                        assert par is not None
                         for writer_id in writer_map.get(par, []):
                             inames_new.update(insn_id_to_inames[writer_id])
 
@@ -405,7 +411,7 @@ P = ParamSpec("P")
 class SetOperationCacheManager:
     cache: dict[int, list[tuple[isl.Set | isl.BasicSet, object]]]
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.cache = {}
 
     def op(self,
@@ -446,8 +452,13 @@ class SetOperationCacheManager:
         # FIXME: I can't figure out how to teach the type system what's going on.
         return self.op(set_, _eliminate_except, except_inames, dts)  # pyright: ignore[reportReturnType, reportArgumentType]
 
-    def base_index_and_length(self, set_, iname, context=None,
-            n_allowed_params_in_length=None):
+    def base_index_and_length(
+            self,
+            set_: isl.Set | isl.BasicSet,
+            iname: int | InameStr,
+            context: isl.Set | isl.BasicSet | None = None,
+            n_allowed_params_in_length: int | None = None
+        ) -> tuple[ArithmeticExpression, ArithmeticExpression]:
         """
         :arg n_allowed_params_in_length: Simplifies the 'length'
             argument so that only the first that many params
