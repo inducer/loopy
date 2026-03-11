@@ -758,7 +758,7 @@ P = ParamSpec("P")
 
 def check_each_kernel(
             check: Callable[Concatenate[LoopKernel, P], None]
-        ) -> Callable[Concatenate[TranslationUnit, P], None]:
+        ) -> Callable[Concatenate[TranslationUnit | LoopKernel, P], None]:
     def _collective_check(
                 t_unit_or_kernel: TranslationUnit | LoopKernel, /,
                 *args: P.args,
