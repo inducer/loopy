@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 from collections.abc import (
     Callable,
+    Collection,
     Mapping,
     Mapping as abc_Mapping,
     Sequence,
@@ -435,7 +436,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                 # The Taggable constructor call does extra validation.
                 tags=tags)
 
-    def get_copy_kwargs(self, **kwargs):
+    def get_copy_kwargs(self, **kwargs: Any) -> dict[str, Any]:
         passed_depends_on = "depends_on" in kwargs
 
         if passed_depends_on:
@@ -474,7 +475,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         """
         raise NotImplementedError
 
-    def assignee_subscript_deps(self):
+    def assignee_subscript_deps(self) -> Collection[AbstractSet[str]]:
         """Return a list of sets of variable names referred to in the subscripts
         of the quantities being assigned to, one for each assignee.
         """
@@ -496,14 +497,14 @@ class InstructionBase(ImmutableRecord, Taggable):
     # }}}
 
     @property
-    def depends_on(self):
+    def depends_on(self) -> AbstractSet[str]:
         # FIXME Enable once we realistically check detailed dependencies.
         # warn("depends_on is deprecated and will stop working in 2026. "
         #      "Use happens_after instead.", DeprecationWarning, stacklevel=2)
         return frozenset(self.happens_after)
 
     @property
-    def assignee_name(self):
+    def assignee_name(self) -> str:
         """A convenience wrapper around :meth:`assignee_var_names`
         that returns the the name of the variable being assigned.
         If more than one variable is being modified in the instruction,
@@ -521,7 +522,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         return name
 
     @memoize_method
-    def write_dependency_names(self):
+    def write_dependency_names(self) -> AbstractSet[str]:
         """Return a set of dependencies of the left hand side of the
         assignments performed by this instruction, including written variables
         and indices.
@@ -535,11 +536,11 @@ class InstructionBase(ImmutableRecord, Taggable):
         return result
 
     @memoize_method
-    def dependency_names(self):
+    def dependency_names(self) -> AbstractSet[str]:
         return self.read_dependency_names() | self.write_dependency_names()
 
-    def get_str_options(self):
-        result = []
+    def get_str_options(self) -> Sequence[str]:
+        result: list[str] = []
 
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
@@ -1004,7 +1005,8 @@ class Assignment(MultiAssignmentBase):
     def assignee_var_names(self):
         return (_get_assignee_var_name(self.assignee),)
 
-    def assignee_subscript_deps(self):
+    @override
+    def assignee_subscript_deps(self) -> Collection[AbstractSet[str]]:
         return frozenset({_get_assignee_subscript_deps(self.assignee)})
 
     @override
@@ -1181,7 +1183,8 @@ class CallInstruction(MultiAssignmentBase):
     def assignee_var_names(self):
         return tuple(_get_assignee_var_name(a) for a in self.assignees)
 
-    def assignee_subscript_deps(self):
+    @override
+    def assignee_subscript_deps(self) -> Collection[AbstractSet[str]]:
         return tuple(
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
@@ -1481,7 +1484,7 @@ class CInstruction(InstructionBase):
             assignees = [i.strip() for i in assignees.split(";")]
             assignees = [i for i in assignees if i]
 
-        new_assignees = []
+        new_assignees: list[Expression] = []
         from loopy.symbolic import parse
         for i in assignees:
             if isinstance(i, str):
@@ -1524,7 +1527,8 @@ class CInstruction(InstructionBase):
     def assignee_var_names(self):
         return tuple(_get_assignee_var_name(expr) for expr in self.assignees)
 
-    def assignee_subscript_deps(self):
+    @override
+    def assignee_subscript_deps(self) -> Collection[AbstractSet[str]]:
         return tuple(
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
