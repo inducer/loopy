@@ -662,6 +662,8 @@ Helper values
 
 .. {{{
 
+.. class:: loopy.tools.T_co
+
 .. autoclass:: UniqueName
 
 .. autoclass:: Optional
