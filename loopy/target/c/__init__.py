@@ -509,6 +509,13 @@ class CFamilyTarget(TargetBase):
     def get_device_ast_builder(self):
         return CFamilyASTBuilder(self)
 
+    @property
+    @override
+    def known_device_callables(self):
+        callables = super().known_device_callables
+        callables.update(get_c_callables())
+        return callables
+
     # {{{ types
 
     @memoize_method
@@ -889,13 +896,6 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
                 [*super().preamble_generators(),
                     lambda preamble_info: _preamble_generator(
                           preamble_info, self.preamble_function_qualifier)])
-
-    @property
-    @override
-    def known_callables(self):
-        callables = super().known_callables
-        callables.update(get_c_callables())
-        return callables
 
     # }}}
 
@@ -1606,18 +1606,28 @@ class CWithGNULibcTarget(CTarget):
     def get_device_ast_builder(self):
         return CWithGNULibcASTBuilder(self)
 
-
-class CWithGNULibcASTBuilder(CASTBuilder):
     @property
-    def known_callables(self):
-        callables = super().known_callables
+    @override
+    def known_device_callables(self):
+        callables = super().known_device_callables
         callables.update(get_gnu_libc_callables())
         return callables
+
+
+class CWithGNULibcASTBuilder(CASTBuilder):
+    pass
 
 
 class ExecutableCWithGNULibcTarget(ExecutableCTarget):
     def get_device_ast_builder(self):
         return CWithGNULibcASTBuilder(self)
+
+    @property
+    @override
+    def known_device_callables(self):
+        callables = super().known_device_callables
+        callables.update(get_gnu_libc_callables())
+        return callables
 
 # }}}
 

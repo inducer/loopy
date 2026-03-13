@@ -632,6 +632,13 @@ class OpenCLTarget(CFamilyTarget):
     def get_device_ast_builder(self):
         return OpenCLCASTBuilder(self)
 
+    @property
+    @override
+    def known_device_callables(self):
+        callables = super().known_device_callables
+        callables.update(get_opencl_callables())
+        return callables
+
     @memoize_method
     def get_dtype_registry(self) -> DTypeRegistry:
         from loopy.target.c.compyte.dtypes import (
@@ -672,12 +679,6 @@ class OpenCLTarget(CFamilyTarget):
 
 class OpenCLCASTBuilder(CFamilyASTBuilder):
     # {{{ library
-
-    @property
-    def known_callables(self):
-        callables = super().known_callables
-        callables.update(get_opencl_callables())
-        return callables
 
     def symbol_manglers(self):
         return (

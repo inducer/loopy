@@ -674,7 +674,7 @@ class _CallablesUnresolver(RuleAwareIdentityMapper[[]]):
     @cached_property
     def known_callables(self):
         from loopy.kernel.function_interface import CallableKernel
-        return (frozenset(self.target.get_device_ast_builder().known_callables)
+        return (frozenset(self.target.known_device_callables)
                 | {name
                    for name, clbl in self.callables_table.items()
                    if isinstance(clbl, CallableKernel)})
