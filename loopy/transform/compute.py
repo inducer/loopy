@@ -1,30 +1,35 @@
+from collections.abc import Sequence, Set
+from dataclasses import dataclass
+from typing import override
 import loopy as lp
 from loopy.kernel.tools import DomainChanger
 import namedisl as nisl
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import AddressSpace
-from loopy.match import parse_stack_match
+from loopy.kernel.data import AddressSpace, SubstitutionRule
+from loopy.match import StackMatch, parse_stack_match
 from loopy.symbolic import (
+    ExpansionState,
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
+    SubstitutionRuleExpander,
     SubstitutionRuleMappingContext,
+    get_dependencies,
     pw_aff_to_expr,
     pwaff_from_expr
 )
 from loopy.transform.precompute import (
-    RuleInvocationGatherer,
     contains_a_subst_rule_invocation
 )
 from loopy.translation_unit import for_each_kernel
-from pymbolic import var
+from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.substitutor import make_subst_func
 
 import islpy as isl
 import pymbolic.primitives as p
 from pymbolic.mapper.dependency import DependencyMapper
-
-from pymbolic.mapper import IdentityMapper
+from pymbolic.typing import Expression
+from pytools.tag import Tag
 
 
 def gather_vars(expr) -> set[str]:
@@ -35,6 +40,7 @@ def gather_vars(expr) -> set[str]:
         if isinstance(dep, p.Variable)
     }
 
+
 def space_from_exprs(exprs, ctx=isl.DEFAULT_CONTEXT):
     names = sorted(set().union(*(gather_vars(expr) for expr in exprs)))
     set_names = [name for name in names]
@@ -44,12 +50,181 @@ def space_from_exprs(exprs, ctx=isl.DEFAULT_CONTEXT):
         set=set_names
     )
 
+
+@dataclass(frozen=True)
+class UsageDescriptor:
+    usage: Sequence[Expression]
+    global_map: isl.Map
+    local_map: isl.Map
+
+    @override
+    def __str__(self):
+        return (
+            f"USAGE      = {self.usage}\n" +
+            f"GLOBAL MAP = {self.global_map}\n" +
+            f"LOCAL MAP  = {self.local_map}"
+        )
+
+
+class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
+    """
+    Gathers all expressions used as inputs to a particular substitution rule,
+    identified by name.
+    """
+    def __init__(
+            self,
+            rule_mapping_ctx: SubstitutionRuleMappingContext,
+            subst_expander: SubstitutionRuleExpander,
+            kernel: LoopKernel,
+            subst_name: str,
+            subst_tag: Set[Tag] | Tag | None = None
+        ) -> None:
+
+        super().__init__(rule_mapping_ctx)
+
+        self.subst_expander: SubstitutionRuleExpander = subst_expander
+        self.kernel: LoopKernel = kernel
+        self.subst_name: str = subst_name
+        self.subst_tag: Set[Tag] | None = (
+            {subst_tag} if isinstance(subst_tag, Tag) else subst_tag
+        )
+
+        self.usage_expressions: list[Sequence[Expression]] = []
+
+
+    @override
+    def map_subst_rule(
+            self,
+            name: str,
+            tags: Set[Tag] | None,
+            arguments: Sequence[Expression],
+            expn_state: ExpansionState,
+        ) -> Expression:
+
+        if name != self.subst_name:
+            return super().map_subst_rule(
+                name, tags, arguments, expn_state
+            )
+
+        if self.subst_tag is not None and self.subst_tag != tags:
+            return super().map_subst_rule(
+                name, tags, arguments, expn_state
+            )
+
+        rule = self.rule_mapping_context.old_subst_rules[name]
+        arg_ctx = self.make_new_arg_context(
+            name, rule.arguments, arguments, expn_state.arg_context
+        )
+
+        self.usage_expressions.append([
+            arg_ctx[arg_name] for arg_name in rule.arguments
+        ])
+
+        return 0
+
+
+class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
+    def __init__(
+            self,
+            ctx: SubstitutionRuleMappingContext,
+            subst_name: str,
+            subst_tag: Sequence[Tag] | None,
+            usage_descriptors: Sequence[UsageDescriptor],
+            storage_indices: Sequence[str],
+            temporary_name: str,
+            compute_insn_id: str,
+            compute_map: isl.Map
+        ) -> None:
+
+        super().__init__(ctx)
+
+        self.subst_name: str = subst_name
+        self.subst_tag: Sequence[Tag] | None = subst_tag
+
+        self.usage_descriptors: Sequence[UsageDescriptor] = usage_descriptors
+        self.storage_indices: Sequence[str] = storage_indices
+
+        self.temporary_name: str = temporary_name
+        self.compute_insn_id: str = compute_insn_id
+
+
+    @override
+    def map_subst_rule(
+            self,
+            name: str,
+            tags: Set[Tag] | None,
+            arguments: Sequence[Expression],
+            expn_state: ExpansionState
+        ) -> Expression:
+
+        if not name == self.subst_name:
+            return super().map_subst_rule(name, tags, arguments, expn_state)
+
+        rule = self.rule_mapping_context.old_subst_rules[name]
+        arg_ctx = self.make_new_arg_context(
+            name, rule.arguments, arguments, expn_state.arg_context
+        )
+        args = [arg_ctx[arg_name] for arg_name in rule.arguments]
+
+        # FIXME: footprint check? likely required if user supplies bounds on
+        # storage indices because we are not guaranteed to capture the footprint
+        # of all usage sites
+
+        if not len(arguments) == len(rule.arguments):
+            raise ValueError("Number of arguments passed to rule {name} ",
+                             "does not match the signature of {name}.")
+
+        index_exprs: Sequence[Expression] = []
+        for usage_descr in self.usage_descriptors:
+            if args == usage_descr.usage:
+                local_pwmaff = usage_descr.local_map.as_pw_multi_aff()
+
+                for dim in range(local_pwmaff.dim(isl.dim_type.out)):
+                    index_exprs.append(pw_aff_to_expr(local_pwmaff.get_at(dim)))
+
+                break
+
+        new_expression = var(self.temporary_name)[tuple(index_exprs)]
+
+        return new_expression
+
+
+    @override
+    def map_kernel(
+            self,
+            kernel: LoopKernel,
+            within: StackMatch = lambda knl, insn, stack: True,
+            map_args: bool = True,
+            map_tvs: bool = True
+        ) -> LoopKernel:
+
+        new_insns = []
+        for insn in kernel.instructions:
+            if (isinstance(insn, lp.MultiAssignmentBase) and not
+                contains_a_subst_rule_invocation(kernel, insn)):
+                new_insns.append(insn)
+                continue
+
+            insn = insn.with_transformed_expressions(
+                lambda expr: self(expr, kernel, insn)
+            )
+
+            new_insns.append(insn)
+
+        return kernel.copy(instructions=new_insns)
+
+
 @for_each_kernel
 def compute(
         kernel: LoopKernel,
         substitution: str,
         compute_map: nisl.Map,
-        storage_indices: frozenset[str],
+        storage_indices: Sequence[str],
+
+        # NOTE: how can we deduce this?
+        temporal_inames: Sequence[str],
+
+        temporary_name: str | None = None,
         temporary_address_space: AddressSpace | None = None
     ) -> LoopKernel:
     """
@@ -64,64 +239,75 @@ def compute(
     substitution rule indices and tuples `(a, l)`, where `a` is a vector of
     storage indices and `l` is a vector of "timestamps".
 
-    :arg storage_indices: A :class:`frozenset` of names of storage indices. Used
-    to create inames for the loops that cover the required footprint.
+    :arg storage_indices: An ordered sequence of names of storage indices. Used
+    to create inames for the loops that cover the required set of compute points.
     """
     compute_map = compute_map._reconstruct_isl_object()
 
     # construct union of usage footprints to determine bounds on compute inames
     ctx = SubstitutionRuleMappingContext(
         kernel.substitutions, kernel.get_var_name_generator())
-    inv_gatherer = RuleInvocationGatherer(
-        ctx, kernel, substitution, None, parse_stack_match(None)
+    expander = SubstitutionRuleExpander(kernel.substitutions)
+    expr_gatherer = UsageSiteExpressionGatherer(
+        ctx, expander, kernel, substitution, None
     )
 
-    for insn in kernel.instructions:
-        if (isinstance(insn, lp.MultiAssignmentBase) and
-            contains_a_subst_rule_invocation(kernel, insn)):
-            for assignee in insn.assignees:
-                _ = inv_gatherer(assignee, kernel, insn)
-            _ = inv_gatherer(insn.expression, kernel, insn)
+    _ = expr_gatherer.map_kernel(kernel)
+    usage_exprs = expr_gatherer.usage_expressions
 
-    access_descriptors = inv_gatherer.access_descriptors
-
-    acc_desc_exprs = [
-        arg
-        for ad in access_descriptors
-        if ad.args is not None
-        for arg in ad.args
+    all_exprs = [
+        expr
+        for usage in usage_exprs
+        for expr in usage
     ]
 
-    space = space_from_exprs(acc_desc_exprs)
+    space = space_from_exprs(all_exprs)
 
-    footprint = isl.Set.empty(isl.Space.create_from_names(
-        ctx=space.get_ctx(),
-        set=list(storage_indices)
-    ))
-    for ad in access_descriptors:
-        if not ad.args:
-            continue
+    footprint = isl.Set.empty(
+        isl.Space.create_from_names(
+            ctx=space.get_ctx(),
+            set=list(storage_indices)
+        )
+    )
 
-        nout = len(ad.args)
+    usage_descrs: Sequence[UsageDescriptor] = []
+    for usage in usage_exprs:
 
-        range_space = isl.Space.alloc(space.get_ctx(), 0, nout, 0).domain()
+        range_space = isl.Space.create_from_names(
+            ctx=space.get_ctx(),
+            set=list(storage_indices)
+        )
         map_space = space.map_from_domain_and_range(range_space)
+
         pw_multi_aff = isl.MultiPwAff.zero(map_space)
 
-        for i, arg in enumerate(ad.args):
-            if arg is not None:
-                pw_multi_aff = pw_multi_aff.set_pw_aff(
-                    i,
-                    pwaff_from_expr(space, arg)
-                )
+        for i, arg in enumerate(usage):
+            pw_multi_aff = pw_multi_aff.set_pw_aff(
+                i,
+                pwaff_from_expr(space, arg)
+            )
 
         usage_map = pw_multi_aff.as_map()
-        iname_to_timespace = usage_map.apply_range(compute_map).coalesce()
+
+        iname_to_timespace = usage_map.apply_range(compute_map)
         iname_to_storage = iname_to_timespace.project_out_except(
             storage_indices, [isl.dim_type.out]
         )
 
+        local_map = iname_to_storage.project_out_except(
+            kernel.all_inames() - frozenset(temporal_inames),
+            [isl.dim_type.in_]
+        )
+
         footprint = footprint | iname_to_storage.range()
+
+        usage_descrs.append(
+            UsageDescriptor(
+                usage,
+                iname_to_storage,
+                local_map
+            )
+        )
 
     # add compute inames to domain / kernel
     domain_changer = DomainChanger(kernel, kernel.all_inames())
@@ -138,7 +324,7 @@ def compute(
     storage_ax_to_global_expr = {
         compute_pw_aff.get_dim_name(isl.dim_type.out, dim) :
         pw_aff_to_expr(compute_pw_aff.get_at(dim))
-        for dim in range(compute_pw_aff.dim(isl.dim_type.out))
+       for dim in range(compute_pw_aff.dim(isl.dim_type.out))
     }
 
     expr_subst_map = RuleAwareSubstitutionMapper(
@@ -150,7 +336,9 @@ def compute(
     subst_expr = kernel.substitutions[substitution].expression
     compute_expression = expr_subst_map(subst_expr, kernel, None)
 
-    temporary_name = substitution + "_temp"
+    if not temporary_name:
+        temporary_name = substitution + "_temp"
+
     assignee = var(temporary_name)[tuple(
         var(iname) for iname in storage_indices
     )]
@@ -171,6 +359,23 @@ def compute(
     new_insns = list(kernel.instructions)
     new_insns.append(compute_insn)
     kernel = kernel.copy(instructions=new_insns)
+
+    ctx = SubstitutionRuleMappingContext(
+        kernel.substitutions, kernel.get_var_name_generator()
+    )
+
+    replacer = RuleInvocationReplacer(
+        ctx,
+        substitution,
+        None,
+        usage_descrs,
+        storage_indices,
+        temporary_name,
+        compute_insn_id,
+        compute_map
+    )
+
+    kernel = replacer.map_kernel(kernel)
 
     print(kernel)
     return kernel
