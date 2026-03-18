@@ -311,7 +311,7 @@ def compute(
     domain = domain_changer.domain
 
     footprint_tmp, domain = isl.align_two(footprint, domain)
-    domain = domain & footprint_tmp
+    domain = (domain & footprint_tmp).get_basic_sets()[0]
 
     new_domains = domain_changer.get_domains_with(domain)
     kernel = kernel.copy(domains=new_domains)
