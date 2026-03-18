@@ -12,7 +12,9 @@ import pyopencl as cl
 def main(
         use_precompute: bool = False,
         use_compute: bool = False,
-        run_kernel: bool = False
+        run_kernel: bool = False,
+        print_kernel: bool = False,
+        print_device_code: bool = False
     ) -> None:
 
     knl = lp.make_kernel(
@@ -98,11 +100,12 @@ def main(
         ex = knl.executor(ctx)
         _, out = ex(queue, a=a, b=b)
 
-        print(la.norm((a @ b) - out) / la.norm(out))
+        print(f"Relative error = {la.norm((a @ b) - out) / la.norm(out)}")
 
-        knl = lp.generate_code_v2(knl).device_code()
-
-    print(knl)
+    if print_device_code:
+        print(lp.generate_code_v2(knl).device_code())
+    elif print_kernel:
+        print(knl)
 
 
 
@@ -114,7 +117,15 @@ if __name__ == "__main__":
     _ = parser.add_argument("--precompute", action="store_true")
     _ = parser.add_argument("--compute", action="store_true")
     _ = parser.add_argument("--run-kernel", action="store_true")
+    _ = parser.add_argument("--print-kernel", action="store_true")
+    _ = parser.add_argument("--print-device-code", action="store_true")
 
     args = parser.parse_args()
 
-    main(args.precompute, args.compute, args.run_kernel)
+    main(
+        args.precompute,
+        args.compute,
+        args.run_kernel,
+        args.print_kernel,
+        args.print_device_code
+    )
