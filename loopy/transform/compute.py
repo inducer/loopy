@@ -1,8 +1,9 @@
-from collections.abc import Sequence, Set
+from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass
 from typing import override
 import loopy as lp
 from loopy.kernel.tools import DomainChanger
+from loopy.types import to_loopy_type
 import namedisl as nisl
 
 from loopy.kernel import LoopKernel
@@ -49,22 +50,6 @@ def space_from_exprs(exprs, ctx=isl.DEFAULT_CONTEXT):
         ctx,
         set=set_names
     )
-
-
-@dataclass(frozen=True)
-class UsageDescriptor:
-    usage: Sequence[Expression]
-    global_map: isl.Map
-    local_map: isl.Map
-
-    @override
-    def __str__(self):
-        return (
-            f"USAGE      = {self.usage}\n" +
-            f"GLOBAL MAP = {self.global_map}\n" +
-            f"LOCAL MAP  = {self.local_map}"
-        )
-
 
 class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
     """
@@ -129,7 +114,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             ctx: SubstitutionRuleMappingContext,
             subst_name: str,
             subst_tag: Sequence[Tag] | None,
-            usage_descriptors: Sequence[UsageDescriptor],
+            usage_descriptors: Mapping[tuple[Expression, ...], isl.Map],
             storage_indices: Sequence[str],
             temporary_name: str,
             compute_insn_id: str,
@@ -141,11 +126,18 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
         self.subst_name: str = subst_name
         self.subst_tag: Sequence[Tag] | None = subst_tag
 
-        self.usage_descriptors: Sequence[UsageDescriptor] = usage_descriptors
+        self.usage_descriptors: Mapping[tuple[Expression, ...], isl.Map] = \
+            usage_descriptors
         self.storage_indices: Sequence[str] = storage_indices
 
         self.temporary_name: str = temporary_name
         self.compute_insn_id: str = compute_insn_id
+
+        # FIXME: may not always be the case (i.e. global barrier between
+        # compute insn and uses)
+        self.compute_dep_id: str = compute_insn_id
+
+        self.replaced_something: bool = False
 
 
     @override
@@ -175,16 +167,16 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
                              "does not match the signature of {name}.")
 
         index_exprs: Sequence[Expression] = []
-        for usage_descr in self.usage_descriptors:
-            if args == usage_descr.usage:
-                local_pwmaff = usage_descr.local_map.as_pw_multi_aff()
 
-                for dim in range(local_pwmaff.dim(isl.dim_type.out)):
-                    index_exprs.append(pw_aff_to_expr(local_pwmaff.get_at(dim)))
+        # FIXME: make self.usage_descriptors a constantdict
+        local_pwmaff = self.usage_descriptors[tuple(args)].as_pw_multi_aff()
 
-                break
+        for dim in range(local_pwmaff.dim(isl.dim_type.out)):
+            index_exprs.append(pw_aff_to_expr(local_pwmaff.get_at(dim)))
 
         new_expression = var(self.temporary_name)[tuple(index_exprs)]
+
+        self.replaced_something = True
 
         return new_expression
 
@@ -198,8 +190,10 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             map_tvs: bool = True
         ) -> LoopKernel:
 
-        new_insns = []
+        new_insns: Sequence[lp.InstructionBase] = []
         for insn in kernel.instructions:
+            self.replaced_something = False
+
             if (isinstance(insn, lp.MultiAssignmentBase) and not
                 contains_a_subst_rule_invocation(kernel, insn)):
                 new_insns.append(insn)
@@ -208,6 +202,15 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             insn = insn.with_transformed_expressions(
                 lambda expr: self(expr, kernel, insn)
             )
+
+            if self.replaced_something:
+                insn = insn.copy(
+                    depends_on=(
+                        insn.depends_on | frozenset([self.compute_insn_id])
+                    )
+                )
+
+                # FIXME: determine compute insn dependencies
 
             new_insns.append(insn)
 
@@ -270,7 +273,7 @@ def compute(
         )
     )
 
-    usage_descrs: Sequence[UsageDescriptor] = []
+    usage_descrs: Mapping[tuple[Expression, ...], isl.Map] = {}
     for usage in usage_exprs:
 
         range_space = isl.Space.create_from_names(
@@ -301,20 +304,14 @@ def compute(
 
         footprint = footprint | iname_to_storage.range()
 
-        usage_descrs.append(
-            UsageDescriptor(
-                usage,
-                iname_to_storage,
-                local_map
-            )
-        )
+        usage_descrs[tuple(usage)] = local_map
 
     # add compute inames to domain / kernel
     domain_changer = DomainChanger(kernel, kernel.all_inames())
     domain = domain_changer.domain
 
-    footprint, domain = isl.align_two(footprint, domain)
-    domain = domain & footprint
+    footprint_tmp, domain = isl.align_two(footprint, domain)
+    domain = domain & footprint_tmp
 
     new_domains = domain_changer.get_domains_with(domain)
     kernel = kernel.copy(domains=new_domains)
@@ -377,5 +374,34 @@ def compute(
 
     kernel = replacer.map_kernel(kernel)
 
-    print(kernel)
+    # FIXME: accept dtype as an argument
+    import numpy as np
+    loopy_type = to_loopy_type(np.float64, allow_none=True)
+
+    # WARNING: this can result in symbolic shapes, is that allowed?
+    temp_shape = tuple(
+        pw_aff_to_expr(footprint.dim_max(dim)) + 1
+        for dim in range(footprint.dim(isl.dim_type.out))
+    )
+
+    new_temp_vars = dict(kernel.temporary_variables)
+
+    # FIXME: temp_var might already exist, handle the case where it does
+    temp_var = lp.TemporaryVariable(
+        name=temporary_name,
+        dtype=loopy_type,
+        base_indices=(0,)*len(temp_shape),
+        shape=temp_shape,
+        address_space=temporary_address_space,
+        dim_names=tuple(storage_indices)
+    )
+
+    new_temp_vars[temporary_name] = temp_var
+
+    kernel = kernel.copy(
+        temporary_variables=new_temp_vars
+    )
+
+    # FIXME: handle iname tagging
+
     return kernel
