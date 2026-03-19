@@ -1,5 +1,4 @@
 from collections.abc import Mapping, Sequence, Set
-from dataclasses import dataclass
 from typing import override
 import loopy as lp
 from loopy.kernel.tools import DomainChanger
@@ -7,7 +6,7 @@ from loopy.types import to_loopy_type
 import namedisl as nisl
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import AddressSpace, SubstitutionRule
+from loopy.kernel.data import AddressSpace
 from loopy.match import StackMatch, parse_stack_match
 from loopy.symbolic import (
     ExpansionState,
@@ -15,7 +14,6 @@ from loopy.symbolic import (
     RuleAwareSubstitutionMapper,
     SubstitutionRuleExpander,
     SubstitutionRuleMappingContext,
-    get_dependencies,
     pw_aff_to_expr,
     pwaff_from_expr
 )
@@ -23,7 +21,7 @@ from loopy.transform.precompute import (
     contains_a_subst_rule_invocation
 )
 from loopy.translation_unit import for_each_kernel
-from pymbolic import ArithmeticExpression, var
+from pymbolic import var
 from pymbolic.mapper.substitutor import make_subst_func
 
 import islpy as isl

@@ -10,18 +10,18 @@ import pyopencl as cl
 
 
 def main(
-    M: int = 128,
-    N: int = 128,
-    K: int = 128,
-    bm: int = 32,
-    bn: int = 32,
-    bk: int = 16,
-    use_precompute: bool = False,
-    use_compute: bool = False,
-    run_kernel: bool = False,
-    print_kernel: bool = False,
-    print_device_code: bool = False
-) -> None:
+        M: int = 128,
+        N: int = 128,
+        K: int = 128,
+        bm: int = 32,
+        bn: int = 32,
+        bk: int = 16,
+        use_precompute: bool = False,
+        use_compute: bool = False,
+        run_kernel: bool = False,
+        print_kernel: bool = False,
+        print_device_code: bool = False
+    ) -> None:
 
     knl = lp.make_kernel(
         "{ [i, j, k] : 0 <= i < M and 0 <= j < N and 0 <= k < K }",
@@ -37,6 +37,9 @@ def main(
                          is_output=True)
         ]
     )
+
+    # FIXME: without this, there are complaints about in-bounds access guarantees
+    knl = lp.fix_parameters(knl, M=M, N=N, K=K)
 
     knl = lp.split_iname(knl, "i", bm, inner_iname="ii", outer_iname="io")
     knl = lp.split_iname(knl, "j", bn, inner_iname="ji", outer_iname="jo")
@@ -75,8 +78,6 @@ def main(
             temporary_address_space=lp.AddressSpace.LOCAL
         )
 
-        # knl = lp.add_inames_for_unused_hw_axes(knl)
-
     if use_precompute:
         knl = lp.precompute(
             knl,
@@ -84,16 +85,21 @@ def main(
             sweep_inames=["ii", "ki"],
         )
 
-    # knl = lp.tag_inames(
-    #     knl, {
-    #         "io"  : "g.0",
-    #         "jo"  : "g.1",
-    #         "ii"  : "l.0",
-    #         "ji"  : "l.1",
-    #         "ii_s": "l.0",
-    #         "ji_s": "l.1"
-    #     }
-    # )
+    knl = lp.tag_inames(
+        knl, {
+            "io"   : "g.0", # outer block loop over block rows
+            "jo"   : "g.1", # outer block loop over block cols
+
+            "ii"   : "l.0", # inner block loop over rows
+            "ji"   : "l.1", # inner block loop over cols
+
+            "ii_s" : "l.0", # inner storage loop over a rows
+            "ji_s" : "l.0", # inner storage loop over b cols
+            "ki_s" : "l.1"  # inner storage loop over a cols / b rows
+        }
+    )
+
+    knl = lp.add_inames_for_unused_hw_axes(knl)
 
     if run_kernel:
         a = np.random.randn(M, K)
@@ -109,9 +115,9 @@ def main(
 
     if print_device_code:
         print(lp.generate_code_v2(knl).device_code())
-    elif print_kernel:
-        print(knl)
 
+    if print_kernel:
+        print(knl)
 
 
 if __name__ == "__main__":
