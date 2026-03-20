@@ -1,5 +1,6 @@
 from collections.abc import Mapping, Sequence, Set
 from typing import override
+from typing_extensions import TypeAlias
 import loopy as lp
 from loopy.kernel.tools import DomainChanger
 from loopy.types import to_loopy_type
@@ -29,6 +30,9 @@ import pymbolic.primitives as p
 from pymbolic.mapper.dependency import DependencyMapper
 from pymbolic.typing import Expression
 from pytools.tag import Tag
+
+
+AccessTuple: TypeAlias = AccessTuple
 
 
 def gather_vars(expr) -> set[str]:
@@ -112,7 +116,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             ctx: SubstitutionRuleMappingContext,
             subst_name: str,
             subst_tag: Sequence[Tag] | None,
-            usage_descriptors: Mapping[tuple[Expression, ...], isl.Map],
+            usage_descriptors: Mapping[AccessTuple, isl.Map],
             storage_indices: Sequence[str],
             temporary_name: str,
             compute_insn_id: str,
@@ -124,7 +128,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
         self.subst_name: str = subst_name
         self.subst_tag: Sequence[Tag] | None = subst_tag
 
-        self.usage_descriptors: Mapping[tuple[Expression, ...], isl.Map] = \
+        self.usage_descriptors: Mapping[AccessTuple, isl.Map] = \
             usage_descriptors
         self.storage_indices: Sequence[str] = storage_indices
 
@@ -271,7 +275,7 @@ def compute(
         )
     )
 
-    usage_descrs: Mapping[tuple[Expression, ...], isl.Map] = {}
+    usage_descrs: Mapping[AccessTuple, isl.Map] = {}
     for usage in usage_exprs:
 
         range_space = isl.Space.create_from_names(
@@ -291,6 +295,7 @@ def compute(
         usage_map = pw_multi_aff.as_map()
 
         iname_to_timespace = usage_map.apply_range(compute_map)
+
         iname_to_storage = iname_to_timespace.project_out_except(
             storage_indices, [isl.dim_type.out]
         )

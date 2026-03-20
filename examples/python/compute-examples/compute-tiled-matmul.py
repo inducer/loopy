@@ -16,6 +16,7 @@ def main(
         bm: int = 32,
         bn: int = 32,
         bk: int = 16,
+        run_sequentially: bool = False,
         use_precompute: bool = False,
         use_compute: bool = False,
         run_kernel: bool = False,
@@ -85,19 +86,20 @@ def main(
             sweep_inames=["ii", "ki"],
         )
 
-    knl = lp.tag_inames(
-        knl, {
-            "io"   : "g.0", # outer block loop over block rows
-            "jo"   : "g.1", # outer block loop over block cols
+    if not run_sequentially:
+        knl = lp.tag_inames(
+            knl, {
+                "io"   : "g.0", # outer block loop over block rows
+                "jo"   : "g.1", # outer block loop over block cols
 
-            "ii"   : "l.0", # inner block loop over rows
-            "ji"   : "l.1", # inner block loop over cols
+                "ii"   : "l.0", # inner block loop over rows
+                "ji"   : "l.1", # inner block loop over cols
 
-            "ii_s" : "l.0", # inner storage loop over a rows
-            "ji_s" : "l.0", # inner storage loop over b cols
-            "ki_s" : "l.1"  # inner storage loop over a cols / b rows
-        }
-    )
+                "ii_s" : "l.0", # inner storage loop over a rows
+                "ji_s" : "l.0", # inner storage loop over b cols
+                "ki_s" : "l.1"  # inner storage loop over a cols / b rows
+            }
+        )
 
     knl = lp.add_inames_for_unused_hw_axes(knl)
 
@@ -111,7 +113,11 @@ def main(
         ex = knl.executor(ctx)
         _, out = ex(queue, a=a, b=b)
 
+        print(20*"=", "Tiled matmul report", 20*"=")
+        print(f"Problem size:  M = {M:-4},  N = {N:-4},  K = {K:-4}")
+        print(f"Tile size   : BM = {bm:-4}, BN = {bn:-4}, BK = {bk:-4}")
         print(f"Relative error = {la.norm((a @ b) - out) / la.norm(out)}")
+        print((40 + len(" Tiled matmul report "))*"=")
 
     if print_device_code:
         print(lp.generate_code_v2(knl).device_code())
@@ -130,6 +136,7 @@ if __name__ == "__main__":
     _ = parser.add_argument("--run-kernel", action="store_true")
     _ = parser.add_argument("--print-kernel", action="store_true")
     _ = parser.add_argument("--print-device-code", action="store_true")
+    _ = parser.add_argument("--run-sequentially", action="store_true")
 
     _ = parser.add_argument("--m", action="store", type=int, default=128)
     _ = parser.add_argument("--n", action="store", type=int, default=128)
@@ -142,15 +149,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(
-        args.m,
-        args.n,
-        args.k,
-        args.bm,
-        args.bn,
-        args.bk,
-        args.precompute,
-        args.compute,
-        args.run_kernel,
-        args.print_kernel,
-        args.print_device_code
+        M=args.m,
+        N=args.n,
+        K=args.k,
+        bm=args.bm,
+        bn=args.bn,
+        bk=args.bk,
+        use_precompute=args.precompute,
+        use_compute=args.compute,
+        run_kernel=args.run_kernel,
+        print_kernel=args.print_kernel,
+        print_device_code=args.print_device_code,
+        run_sequentially=args.run_sequentially
     )
