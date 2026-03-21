@@ -3724,6 +3724,15 @@ def test_parse_type_cast():
     assert knl1 == knl2
 
 
+def test_type_cast_parse_stringify_roundtrip():
+    from loopy.symbolic import StringifyMapper, parse
+
+    expr = lp.TypeCast(np.float64, parse("x[i]"))
+    stringified = StringifyMapper()(expr, 0)
+    parsed = parse(stringified)
+    assert expr == parsed
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
