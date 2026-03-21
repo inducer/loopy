@@ -1853,7 +1853,23 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper[[]]):
                 }[name](tuple(self.rec(p) for p in expr.parameters))
             else:
                 raise TypeError(f"{name} takes two arguments")
-
+        elif name == "cast":
+            if len(expr.parameters) == 2:
+                type_arg, child = expr.parameters
+                if isinstance(type_arg, p.Variable):
+                    try:
+                        dtype = np.dtype(type_arg.name)
+                    except TypeError as e:
+                        raise TypeError(
+                            f"cast(): unrecognised numpy dtype '{type_arg.name}'"
+                        ) from e
+                else:
+                    raise TypeError(
+                        "first argument to cast() must be a dtype or type name"
+                    )
+                return TypeCast(dtype, self.rec(child))
+            else:
+                raise TypeError("cast takes two arguments")
         else:
             # see if 'name' is an existing reduction op
 
@@ -1877,12 +1893,15 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper[[]]):
 # {{{ customization to pymbolic parser
 
 _open_dbl_bracket = intern("open_dbl_bracket")
+_np_dtype = intern("np_dtype")
 
 TRAILING_FLOAT_TAG_RE = re.compile(r"^(.*?)([a-zA-Z]*)$")
+_NP_DTYPE_RE = re.compile(r"^np:dtype\('([^']+)'\)$")
 
 
 class LoopyParser(ParserBase):
     lex_table: ClassVar[pytools.lex.LexTable] = [
+            (_np_dtype, pytools.lex.RE(r"np:dtype\('[^']+'\)")),
             (_open_dbl_bracket, pytools.lex.RE(r"\[\[")),
             *ParserBase.lex_table
             ]
@@ -1920,7 +1939,13 @@ class LoopyParser(ParserBase):
 
         import loopy as lp
 
-        if pstate.is_next(_less):
+        if pstate.is_next(_np_dtype):
+            m = _NP_DTYPE_RE.match(pstate.next_str())
+            assert m is not None
+            result = p.Variable(m.group(1))
+            pstate.advance()
+            return result
+        elif pstate.is_next(_less):
             pstate.advance()
             if pstate.is_next(_greater):
                 typename = lp.Optional(None)
