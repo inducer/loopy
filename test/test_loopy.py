@@ -3728,7 +3728,7 @@ def test_type_cast_parse_stringify_roundtrip():
     from loopy.symbolic import StringifyMapper, parse
 
     expr = lp.TypeCast(np.float64, parse("x[i]"))
-    stringified = StringifyMapper()(expr, 0)
+    stringified = StringifyMapper()(expr)
     parsed = parse(stringified)
     assert expr == parsed
 
