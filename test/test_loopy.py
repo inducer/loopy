@@ -3707,6 +3707,23 @@ def test_loop_imperfect_nest_priorities_in_v2_scheduler():
     lp.generate_code_v2(knl)
 
 
+def test_parse_type_cast():
+    from pymbolic import parse
+
+    knl1 = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        [lp.Assignment("out[i]", lp.TypeCast(np.float64, parse("x[i]")))],
+    )
+
+    knl2 = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        out[i] = cast(np:dtype('float64'), x[i])
+        """,
+    )
+    assert knl1 == knl2
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
