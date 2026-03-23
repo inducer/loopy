@@ -286,6 +286,7 @@ def compute(
         )
         map_space = space.map_from_domain_and_range(range_space)
 
+        # FIXME package sequence of pymbolic exprs -> multipwaff up as a function in loopy.symbolic
         pw_multi_aff = isl.MultiPwAff.zero(map_space)
 
         # FIXME: this will not work if usages are not ordered properly
@@ -295,8 +296,10 @@ def compute(
                 pwaff_from_expr(space, usage[i])
             )
 
+        # FIXME intersect the (kernel) domain with the domain (of the map) here.
         usage_map = pw_multi_aff.as_map()
 
+        # FIXME defer as much of this project-y work to be done once, later
         iname_to_timespace = usage_map.apply_range(compute_map)
         iname_to_storage = iname_to_timespace.project_out_except(
             storage_indices, [isl.dim_type.out]

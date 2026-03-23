@@ -40,22 +40,21 @@ def main(
     )
 
     # FIXME: without this, there are complaints about in-bounds access guarantees
-    knl = lp.fix_parameters(knl, M=M, N=N, K=K)
+    # knl = lp.fix_parameters(knl, M=M, N=N, K=K)
 
     knl = lp.split_iname(knl, "i", bm, inner_iname="ii", outer_iname="io")
     knl = lp.split_iname(knl, "j", bn, inner_iname="ji", outer_iname="jo")
     knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
 
+    # FIXME: Given the input is already tiled, we shouldn't have to supply compute bounds here.
     compute_map_a = nisl.make_map(f"""{{
         [is, ks] -> [io, ii_s, ko, ki_s] :
-            0 <= ii_s < {bm} and 0 <= ki_s < {bk} and
             is = io * {bm} + ii_s and
             ks = ko * {bk} + ki_s
     }}""")
 
     compute_map_b = nisl.make_map(f"""{{
         [ks, js] -> [ko, ki_s, jo, ji_s] :
-            0 <= ji_s < {bn} and 0 <= ki_s < {bk} and
             js = jo * {bn} + ji_s and
             ks = ko * {bk} + ki_s
     }}""")
