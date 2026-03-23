@@ -32,7 +32,7 @@ from pymbolic.typing import Expression
 from pytools.tag import Tag
 
 
-AccessTuple: TypeAlias = AccessTuple
+AccessTuple: TypeAlias = tuple[Expression, ...]
 
 
 def gather_vars(expr) -> set[str]:
@@ -230,7 +230,10 @@ def compute(
         temporal_inames: Sequence[str],
 
         temporary_name: str | None = None,
-        temporary_address_space: AddressSpace | None = None
+        temporary_address_space: AddressSpace | None = None,
+
+        # FIXME: typing
+        temporary_dtype = None
     ) -> LoopKernel:
     """
     Inserts an instruction to compute an expression given by :arg:`substitution`
@@ -277,7 +280,6 @@ def compute(
 
     usage_descrs: Mapping[AccessTuple, isl.Map] = {}
     for usage in usage_exprs:
-
         range_space = isl.Space.create_from_names(
             ctx=space.get_ctx(),
             set=list(storage_indices)
@@ -286,27 +288,26 @@ def compute(
 
         pw_multi_aff = isl.MultiPwAff.zero(map_space)
 
-        for i, arg in enumerate(usage):
+        # FIXME: this will not work if usages are not ordered properly
+        for i in range(len(storage_indices)):
             pw_multi_aff = pw_multi_aff.set_pw_aff(
                 i,
-                pwaff_from_expr(space, arg)
+                pwaff_from_expr(space, usage[i])
             )
 
         usage_map = pw_multi_aff.as_map()
 
         iname_to_timespace = usage_map.apply_range(compute_map)
-
         iname_to_storage = iname_to_timespace.project_out_except(
             storage_indices, [isl.dim_type.out]
         )
+
+        footprint = footprint | iname_to_storage.range()
 
         local_map = iname_to_storage.project_out_except(
             kernel.all_inames() - frozenset(temporal_inames),
             [isl.dim_type.in_]
         )
-
-        footprint = footprint | iname_to_storage.range()
-
         usage_descrs[tuple(usage)] = local_map
 
     # add compute inames to domain / kernel
@@ -379,7 +380,7 @@ def compute(
 
     # FIXME: accept dtype as an argument
     import numpy as np
-    loopy_type = to_loopy_type(np.float64, allow_none=True)
+    loopy_type = to_loopy_type(temporary_dtype, allow_none=True)
 
     # WARNING: this can result in symbolic shapes, is that allowed?
     temp_shape = tuple(
