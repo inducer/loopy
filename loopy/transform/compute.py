@@ -53,6 +53,40 @@ def space_from_exprs(exprs, ctx=isl.DEFAULT_CONTEXT):
         set=set_names
     )
 
+
+def align_map_domain_to_set(m: isl.Map, s: isl.Set) -> isl.Map:
+    """
+    Permute the domain dimensions of `m` to match the ordering of `s`,
+    by routing through the parameter space to preserve constraints.
+
+    Example:
+        m = { [a, b, c, d] -> [e, f, g, h] }
+        s = { [d, c, b, a] }
+        result = { [d, c, b, a] -> [e, f, g, h] }
+    """
+    dom_space = m.get_space().domain()
+    set_space = s.get_space()
+
+    n = dom_space.dim(isl.dim_type.set)
+    assert set_space.dim(isl.dim_type.set) == n, "dimension count mismatch"
+
+    dom_names = [dom_space.get_dim_name(isl.dim_type.set, i) for i in range(n)]
+    set_names = [set_space.get_dim_name(isl.dim_type.set, i) for i in range(n)]
+    assert set(dom_names) == set(set_names), "dimension names must be the same set"
+
+    # Step 1: move all domain dims into the parameter space
+    n_params = m.dim(isl.dim_type.param)
+    m = m.move_dims(isl.dim_type.param, n_params, isl.dim_type.in_, 0, n)
+
+    # Step 2: move each param back to in_ in the order dictated by set_names.
+    # find_dim_by_name accounts for shifting indices as dims are moved out.
+    for i, name in enumerate(set_names):
+        param_idx = m.find_dim_by_name(isl.dim_type.param, name)
+        m = m.move_dims(isl.dim_type.in_, i, isl.dim_type.param, param_idx, 1)
+
+    return m
+
+
 class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
     """
     Gathers all expressions used as inputs to a particular substitution rule,
@@ -120,7 +154,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             storage_indices: Sequence[str],
             temporary_name: str,
             compute_insn_id: str,
-            compute_map: isl.Map
+            global_usage_map: isl.Map
         ) -> None:
 
         super().__init__(ctx)
@@ -278,50 +312,112 @@ def compute(
         )
     )
 
-    usage_descrs: Mapping[AccessTuple, isl.Map] = {}
+    # add compute inames to domain / kernel
+    domain_changer = DomainChanger(kernel, kernel.all_inames())
+    domain = domain_changer.domain
+
+    range_space = isl.Space.create_from_names(
+        ctx=space.get_ctx(),
+        set=list(storage_indices)
+    )
+    map_space = space.map_from_domain_and_range(range_space)
+    global_usage_map = isl.Map.empty(map_space)
+
     for usage in usage_exprs:
-        range_space = isl.Space.create_from_names(
-            ctx=space.get_ctx(),
-            set=list(storage_indices)
-        )
-        map_space = space.map_from_domain_and_range(range_space)
 
         # FIXME package sequence of pymbolic exprs -> multipwaff up as a function in loopy.symbolic
-        pw_multi_aff = isl.MultiPwAff.zero(map_space)
+        local_usage_mpwaff = isl.MultiPwAff.zero(map_space)
 
         # FIXME: this will not work if usages are not ordered properly
         for i in range(len(storage_indices)):
-            pw_multi_aff = pw_multi_aff.set_pw_aff(
+            local_usage_mpwaff = local_usage_mpwaff.set_pw_aff(
                 i,
                 pwaff_from_expr(space, usage[i])
             )
 
         # FIXME intersect the (kernel) domain with the domain (of the map) here.
-        usage_map = pw_multi_aff.as_map()
+        local_usage_map = local_usage_mpwaff.as_map()
 
-        # FIXME defer as much of this project-y work to be done once, later
-        iname_to_timespace = usage_map.apply_range(compute_map)
-        iname_to_storage = iname_to_timespace.project_out_except(
-            storage_indices, [isl.dim_type.out]
+        # FIXME: fix with namedisl
+        # remove unnecessary names from domain and intersect with usage map
+        usage_names = frozenset(
+            local_usage_map.get_dim_name(isl.dim_type.in_, dim)
+            for dim in range(local_usage_map.dim(isl.dim_type.in_))
         )
 
-        footprint = footprint | iname_to_storage.range()
-
-        local_map = iname_to_storage.project_out_except(
-            kernel.all_inames() - frozenset(temporal_inames),
-            [isl.dim_type.in_]
+        domain_names = frozenset(
+            domain.get_dim_name(isl.dim_type.set, dim)
+            for dim in range(domain.dim(isl.dim_type.set))
         )
-        usage_descrs[tuple(usage)] = local_map
 
-    # add compute inames to domain / kernel
-    domain_changer = DomainChanger(kernel, kernel.all_inames())
-    domain = domain_changer.domain
+        domain_tmp = domain.project_out_except(
+            usage_names & domain_names, [isl.dim_type.set]
+        )
 
+        local_usage_map = align_map_domain_to_set(local_usage_map, domain_tmp)
+
+        local_usage_map = local_usage_map.intersect_domain(domain_tmp)
+
+        # U : G -> S
+        # C : S -> I
+        # C o U : G -> I
+        global_usage_map = global_usage_map | local_usage_map
+
+
+    # {{{ FIXME: this shouldn't need to be done here; will be handled by namedisl
+
+    global_usage_map = global_usage_map.apply_range(compute_map)
+    common_dims = {
+        dim1 : dim2
+        for dim1 in range(global_usage_map.dim(isl.dim_type.in_))
+        for dim2 in range(global_usage_map.dim(isl.dim_type.out))
+        if (
+            global_usage_map.get_dim_name(isl.dim_type.in_, dim1)
+            ==
+            global_usage_map.get_dim_name(isl.dim_type.out, dim2)
+        )
+    }
+
+    for pos1, pos2 in common_dims.items():
+        global_usage_map = global_usage_map.equate(
+            isl.dim_type.in_, pos1,
+            isl.dim_type.out, pos2
+        )
+
+    # }}}
+
+    print(domain)
+    footprint = global_usage_map.range()
     footprint_tmp, domain = isl.align_two(footprint, domain)
     domain = (domain & footprint_tmp).get_basic_sets()[0]
 
     new_domains = domain_changer.get_domains_with(domain)
     kernel = kernel.copy(domains=new_domains)
+
+    # {{{ find all index expressions
+
+    usage_substs: Mapping[AccessTuple, isl.Map] = {}
+    for usage in usage_exprs:
+        # find the relevant names
+        relevant_names = gather_vars(usage)
+
+        # project out irrelevant names
+        relevant_names = frozenset(relevant_names) - frozenset(temporal_inames)
+
+        local_iname_to_storage = global_usage_map.project_out_except(
+            relevant_names,
+            [isl.dim_type.in_]
+        )
+
+        local_iname_to_storage = local_iname_to_storage.project_out_except(
+            storage_indices,
+            [isl.dim_type.out]
+        )
+
+        # map usage -> resulting map
+        usage_substs[tuple(usage)] = local_iname_to_storage
+
+    # }}}
 
     # create compute instruction in kernel
     compute_pw_aff = compute_map.reverse().as_pw_multi_aff()
@@ -372,23 +468,26 @@ def compute(
         ctx,
         substitution,
         None,
-        usage_descrs,
+        usage_substs,
         storage_indices,
         temporary_name,
         compute_insn_id,
-        compute_map
+        global_usage_map
     )
 
     kernel = replacer.map_kernel(kernel)
 
     # FIXME: accept dtype as an argument
-    import numpy as np
     loopy_type = to_loopy_type(temporary_dtype, allow_none=True)
 
-    # WARNING: this can result in symbolic shapes, is that allowed?
+    # FIXME: need a better way to determine the shape
+    shape_domain = footprint.project_out_except(storage_indices,
+                                                [isl.dim_type.set])
+    shape_domain = shape_domain.project_out_except("", [isl.dim_type.param])
+
     temp_shape = tuple(
-        pw_aff_to_expr(footprint.dim_max(dim)) + 1
-        for dim in range(footprint.dim(isl.dim_type.out))
+        pw_aff_to_expr(shape_domain.dim_max(dim)) + 1
+        for dim in range(shape_domain.dim(isl.dim_type.out))
     )
 
     new_temp_vars = dict(kernel.temporary_variables)
