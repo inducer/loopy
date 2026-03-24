@@ -35,6 +35,7 @@ from pytools.tag import Tag
 AccessTuple: TypeAlias = tuple[Expression, ...]
 
 
+# FIXME: move to loopy/symbolic.py
 def gather_vars(expr) -> set[str]:
     deps = DependencyMapper()(expr)
     return {
@@ -44,6 +45,7 @@ def gather_vars(expr) -> set[str]:
     }
 
 
+# FIXME: move to loopy/symbolic.py
 def space_from_exprs(exprs, ctx=isl.DEFAULT_CONTEXT):
     names = sorted(set().union(*(gather_vars(expr) for expr in exprs)))
     set_names = [name for name in names]
@@ -54,6 +56,7 @@ def space_from_exprs(exprs, ctx=isl.DEFAULT_CONTEXT):
     )
 
 
+# FIXME: remove this and rely on namedisl
 def align_map_domain_to_set(m: isl.Map, s: isl.Set) -> isl.Map:
     """
     Permute the domain dimensions of `m` to match the ordering of `s`,
@@ -74,12 +77,9 @@ def align_map_domain_to_set(m: isl.Map, s: isl.Set) -> isl.Map:
     set_names = [set_space.get_dim_name(isl.dim_type.set, i) for i in range(n)]
     assert set(dom_names) == set(set_names), "dimension names must be the same set"
 
-    # Step 1: move all domain dims into the parameter space
     n_params = m.dim(isl.dim_type.param)
     m = m.move_dims(isl.dim_type.param, n_params, isl.dim_type.in_, 0, n)
 
-    # Step 2: move each param back to in_ in the order dictated by set_names.
-    # find_dim_by_name accounts for shifting indices as dims are moved out.
     for i, name in enumerate(set_names):
         param_idx = m.find_dim_by_name(isl.dim_type.param, name)
         m = m.move_dims(isl.dim_type.in_, i, isl.dim_type.param, param_idx, 1)
@@ -194,9 +194,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
         )
         args = [arg_ctx[arg_name] for arg_name in rule.arguments]
 
-        # FIXME: footprint check? likely required if user supplies bounds on
-        # storage indices because we are not guaranteed to capture the footprint
-        # of all usage sites
+        # FIXME: usage within footprint check? likely required if user supplies
+        # bounds on storage indices because we are not guaranteed to capture the
+        # footprint of all usage sites
 
         if not len(arguments) == len(rule.arguments):
             raise ValueError("Number of arguments passed to rule {name} ",
@@ -204,7 +204,6 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
 
         index_exprs: Sequence[Expression] = []
 
-        # FIXME: make self.usage_descriptors a constantdict
         local_pwmaff = self.usage_descriptors[tuple(args)].as_pw_multi_aff()
 
         for dim in range(local_pwmaff.dim(isl.dim_type.out)):
@@ -284,9 +283,11 @@ def compute(
     :arg storage_indices: An ordered sequence of names of storage indices. Used
     to create inames for the loops that cover the required set of compute points.
     """
+    # FIXME: use namedisl directly
     compute_map = compute_map._reconstruct_isl_object()
 
-    # construct union of usage footprints to determine bounds on compute inames
+    # {{{ construct necessary pieces; footprint, global usage map
+
     ctx = SubstitutionRuleMappingContext(
         kernel.substitutions, kernel.get_var_name_generator())
     expander = SubstitutionRuleExpander(kernel.substitutions)
@@ -328,14 +329,12 @@ def compute(
         # FIXME package sequence of pymbolic exprs -> multipwaff up as a function in loopy.symbolic
         local_usage_mpwaff = isl.MultiPwAff.zero(map_space)
 
-        # FIXME: this will not work if usages are not ordered properly
         for i in range(len(storage_indices)):
             local_usage_mpwaff = local_usage_mpwaff.set_pw_aff(
                 i,
                 pwaff_from_expr(space, usage[i])
             )
 
-        # FIXME intersect the (kernel) domain with the domain (of the map) here.
         local_usage_map = local_usage_mpwaff.as_map()
 
         # FIXME: fix with namedisl
@@ -355,14 +354,8 @@ def compute(
         )
 
         local_usage_map = align_map_domain_to_set(local_usage_map, domain_tmp)
-
         local_usage_map = local_usage_map.intersect_domain(domain_tmp)
-
-        # U : G -> S
-        # C : S -> I
-        # C o U : G -> I
         global_usage_map = global_usage_map | local_usage_map
-
 
     # {{{ FIXME: this shouldn't need to be done here; will be handled by namedisl
 
@@ -386,7 +379,10 @@ def compute(
 
     # }}}
 
-    print(domain)
+    # }}}
+
+    # {{{ compute bounds and update kernel domain
+
     footprint = global_usage_map.range()
     footprint_tmp, domain = isl.align_two(footprint, domain)
     domain = (domain & footprint_tmp).get_basic_sets()[0]
@@ -394,7 +390,9 @@ def compute(
     new_domains = domain_changer.get_domains_with(domain)
     kernel = kernel.copy(domains=new_domains)
 
-    # {{{ find all index expressions
+    # }}}
+
+    # {{{ compute index expressions
 
     usage_substs: Mapping[AccessTuple, isl.Map] = {}
     for usage in usage_exprs:
@@ -419,7 +417,8 @@ def compute(
 
     # }}}
 
-    # create compute instruction in kernel
+    # {{{ create compute instruction in kernel
+
     compute_pw_aff = compute_map.reverse().as_pw_multi_aff()
     storage_ax_to_global_expr = {
         compute_pw_aff.get_dim_name(isl.dim_type.out, dim) :
@@ -460,6 +459,10 @@ def compute(
     new_insns.append(compute_insn)
     kernel = kernel.copy(instructions=new_insns)
 
+    # }}}
+
+    # {{{ replace invocations with new compute instruction
+
     ctx = SubstitutionRuleMappingContext(
         kernel.substitutions, kernel.get_var_name_generator()
     )
@@ -477,10 +480,13 @@ def compute(
 
     kernel = replacer.map_kernel(kernel)
 
-    # FIXME: accept dtype as an argument
+    # }}}
+
+    # {{{ create temporary variable for result of compute
+
     loopy_type = to_loopy_type(temporary_dtype, allow_none=True)
 
-    # FIXME: need a better way to determine the shape
+    # FIXME: fix with namedisl?
     shape_domain = footprint.project_out_except(storage_indices,
                                                 [isl.dim_type.set])
     shape_domain = shape_domain.project_out_except("", [isl.dim_type.param])
@@ -508,6 +514,8 @@ def compute(
         temporary_variables=new_temp_vars
     )
 
-    # FIXME: handle iname tagging
+    # }}}
+
+    # FIXME: anything else?
 
     return kernel
