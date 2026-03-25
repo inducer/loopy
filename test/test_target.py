@@ -875,6 +875,22 @@ def test_float3():
     assert "float3" in device_code
 
 
+def test_argmax_ctarget_floating_point():
+    for dtype in (np.float32, np.float64):
+        knl = lp.make_kernel(
+                "{[i]: 0<=i<n}",
+                """
+                max_val[0], max_ind[0] = argmax(i, a[i], i)
+                """,
+                target=lp.ExecutableCTarget())
+
+        knl = lp.set_options(knl, return_dict=True)
+        _evt, out_dict = knl(a=np.array([1, 3, 70, 5, 4], dtype=dtype))
+
+        assert out_dict["max_val"][0] == 70
+        assert out_dict["max_ind"][0] == 2
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
