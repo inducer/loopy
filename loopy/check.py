@@ -291,8 +291,6 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
 
     for tv in kernel.temporary_variables.values():
         what = f"offset of temporary '{tv.name}'"
-        if tv.offset is None:
-            pass
         if tv.offset is auto:
             pass
         elif isinstance(tv.offset, (int, np.integer, ExpressionNode, str)):
@@ -1469,22 +1467,18 @@ def _check_for_unused_hw_axes_in_kernel_chunk(
             if group_axes != group_axes_used:
                 raise LoopyError(
                         f"instruction '{insn.id}' does not use all group hw axes "
-                        "(available: %s used: %s). "
+                        f"(available: {','.join(str(i) for i in group_axes)} "
+                        f"used: {','.join(str(i) for i in group_axes_used)}). "
                         "Calling loopy.add_inames_for_unused_hw_axes(...) "
-                        "might help."
-                        % (
-                            ",".join(str(i) for i in group_axes),
-                            ",".join(str(i) for i in group_axes_used)))
+                        "might help.")
 
             if local_axes != local_axes_used:
                 raise LoopyError(
                         f"instruction '{insn.id}' does not use all local hw axes "
-                        "(available: %s used: %s). "
+                        f"(available: {','.join(str(i) for i in local_axes)} "
+                        f"used: {','.join(str(i) for i in local_axes_used)}). "
                         "Calling loopy.add_inames_for_unused_hw_axes(...) "
-                        "might help."
-                        % (
-                            ",".join(str(i) for i in local_axes),
-                            ",".join(str(i) for i in local_axes_used)))
+                        "might help.")
 
         elif isinstance(sched_item, (Barrier, EnterLoop, LeaveLoop)):
             i += 1
