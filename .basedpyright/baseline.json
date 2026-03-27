@@ -6740,32 +6740,32 @@
             {
                 "code": "reportUnknownArgumentType",
                 "range": {
-                    "startColumn": 41,
-                    "endColumn": 42,
+                    "startColumn": 52,
+                    "endColumn": 53,
                     "lineCount": 1
                 }
             },
             {
                 "code": "reportUnknownArgumentType",
                 "range": {
-                    "startColumn": 41,
-                    "endColumn": 42,
+                    "startColumn": 46,
+                    "endColumn": 47,
                     "lineCount": 1
                 }
             },
             {
                 "code": "reportUnknownArgumentType",
                 "range": {
-                    "startColumn": 41,
-                    "endColumn": 42,
+                    "startColumn": 52,
+                    "endColumn": 53,
                     "lineCount": 1
                 }
             },
             {
                 "code": "reportUnknownArgumentType",
                 "range": {
-                    "startColumn": 41,
-                    "endColumn": 42,
+                    "startColumn": 46,
+                    "endColumn": 47,
                     "lineCount": 1
                 }
             },
