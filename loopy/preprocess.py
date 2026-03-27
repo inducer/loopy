@@ -241,8 +241,6 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
     for arg in kernel.args:
         if isinstance(arg, ArrayArg) and not arg._separation_info:
             what = f"offset for argument '{arg.name}'"
-            if arg.offset is None:
-                pass
             if arg.offset is auto:
                 offset_name = vng(arg.name+"_offset")
                 additional_args.append(ValueArg(
@@ -300,8 +298,6 @@ def zero_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
     new_args = []
     for arg in kernel.args:
         if isinstance(arg, ArrayArg):
-            if arg.offset is None:
-                pass
             if arg.offset is auto:
                 made_changes = True
                 arg = arg.copy(offset=0)
