@@ -931,8 +931,8 @@ class Reduction(LoopyExpressionBase):
         return self.operation.arg_count > 1
 
     @cached_property
-    def inames_set(self) -> set[str]:
-        return set(self.inames)
+    def inames_set(self) -> frozenset[str]:
+        return frozenset(self.inames)
 
 
 @p.expr_dataclass()
