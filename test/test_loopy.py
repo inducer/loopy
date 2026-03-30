@@ -3733,6 +3733,20 @@ def test_type_cast_parse_stringify_roundtrip():
     assert expr == parsed
 
 
+def test_floor_div_modulo_with_uint_index():
+    # See <https://github.com/inducer/loopy/issues/999>
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        "a[map[i] // 2, map[i] % 35] = i",
+        [
+            lp.GlobalArg("map", dtype=np.uint64, shape=lp.auto),
+            lp.GlobalArg("a", dtype=np.float64, shape=(10, 4)),
+        ],
+    )
+    # check the codegen is successful
+    lp.generate_code_v2(knl).device_code()
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
