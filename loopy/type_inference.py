@@ -429,6 +429,53 @@ class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
         else:
             return self.combine([n_dtype_set, d_dtype_set])
 
+    def _map_int_div_modulo(self, expr: p.FloorDiv | p.Remainder):
+        # This is pretty gross, but generally appears to lack alternatives.
+        # See https://github.com/inducer/loopy/pull/1000 for some discussion.
+        # In general, for array // array, numpy is very eager to infer
+        # float dtypes (for example for u64/i32), which doesn't work for us:
+        # integers should stay integers to stay usable as array indices.
+
+        n_dtype_set = self.rec(expr.numerator)
+        d_dtype_set = self.rec(expr.denominator)
+
+        if not (n_dtype_set and d_dtype_set):
+            return cast("list[NumpyType]", [])
+
+        n_dtype = n_dtype_set[0].numpy_dtype
+        d_dtype = d_dtype_set[0].numpy_dtype
+        num = (
+            np.empty(0, dtype=n_dtype)
+            if not is_integer(expr.numerator)
+            else expr.numerator
+        )
+        denom = (
+            np.empty(0, dtype=d_dtype)
+            if not is_integer(expr.denominator)
+            else expr.denominator
+        )
+        denom = (
+            cast("int | np.integer", denom + 1)
+            if is_integer(denom) and denom == 0
+            else denom
+        )  # avoid divide by zero.
+
+        if is_integer(num) and is_integer(denom):
+            return self.rec(num // denom)
+
+        floor_div_np = num // denom
+        assert isinstance(floor_div_np, np.ndarray)
+
+        return [NumpyType(floor_div_np.dtype)]
+
+    @override
+    def map_floor_div(self, expr: p.FloorDiv):
+        return self._map_int_div_modulo(expr)
+
+    @override
+    def map_remainder(self, expr: p.Remainder):
+        return self._map_int_div_modulo(expr)
+
     @override
     def map_constant(self, expr: object):
         if isinstance(expr, np.generic):
