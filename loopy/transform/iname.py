@@ -961,12 +961,14 @@ class _InameDuplicator(RuleAwareIdentityMapper[[]]):
 
 
 @for_each_kernel
-def duplicate_inames(kernel: LoopKernel,
-                     inames: ToInameStrSetConvertible,
-                     within: ToStackMatchConvertible,
-                     new_inames: InameStr | Sequence[InameStr | None] | None = None,
-                     suffix: str | None = None,
-                     tags: Mapping[str, Tag] | None = None) -> LoopKernel:
+def duplicate_inames(
+            kernel: LoopKernel,
+            inames: ToInameStrSetConvertible,
+            within: ToStackMatchConvertible,
+            new_inames: InameStr | Sequence[InameStr | None] | None = None,
+            suffix: str | None = None,
+            tags: Mapping[str, ToInameTagConvertible] | None = None
+        ) -> LoopKernel:
     """
     :arg within: a stack match as understood by :func:`loopy.match.parse_stack_match`.
     """
