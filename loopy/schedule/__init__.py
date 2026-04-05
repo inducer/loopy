@@ -971,7 +971,7 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
 
     # }}}
 
-    # {{{ add deps. between schedule items coming from insn. depepdencies
+    # {{{ add deps. between schedule items coming from insn. dependencies
 
     for insn in kernel.instructions:
         assert insn.id is not None
