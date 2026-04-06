@@ -271,7 +271,7 @@ def compute(
     """
     Inserts an instruction to compute an expression given by :arg:`substitution`
     and replaces all invocations of :arg:`substitution` with the result of the
-    compute instruction.
+    inserted compute instruction.
 
     :arg substitution: The substitution rule for which the compute
     transform should be applied.
@@ -283,8 +283,6 @@ def compute(
     :arg storage_indices: An ordered sequence of names of storage indices. Used
     to create inames for the loops that cover the required set of compute points.
     """
-    # FIXME: use namedisl directly
-    compute_map = compute_map._reconstruct_isl_object()
 
     # {{{ construct necessary pieces; footprint, global usage map
 
@@ -295,125 +293,74 @@ def compute(
         ctx, expander, kernel, substitution, None
     )
 
+    # add compute inames to domain / kernel
+    domain_changer = DomainChanger(kernel, kernel.all_inames())
+    named_domain = nisl.make_basic_set(domain_changer.domain)
+
     _ = expr_gatherer.map_kernel(kernel)
     usage_exprs = expr_gatherer.usage_expressions
 
-    all_exprs = [
-        expr
-        for usage in usage_exprs
-        for expr in usage
-    ]
+    all_exprs = [expr for usage in usage_exprs for expr in usage]
+    usage_inames = set.union(*(gather_vars(expr) for expr in all_exprs))
 
-    space = space_from_exprs(all_exprs)
+    usage_domain = nisl.make_set(f"{{ [{",".join(iname for iname in usage_inames)}] }}")
+    footprint = nisl.make_set(f"{{ [{",".join(idx for idx in storage_indices)}] }}")
 
-    footprint = isl.Set.empty(
-        isl.Space.create_from_names(
-            ctx=space.get_ctx(),
-            set=list(storage_indices)
-        )
+    global_usage_map = nisl.make_map_from_domain_and_range(
+        usage_domain,
+        compute_map.domain()
     )
 
-    # add compute inames to domain / kernel
-    domain_changer = DomainChanger(kernel, kernel.all_inames())
-    domain = domain_changer.domain
+    global_usage_map = nisl.make_map(isl.Map.empty(global_usage_map.get_space()))
 
-    range_space = isl.Space.create_from_names(
-        ctx=space.get_ctx(),
-        set=list(storage_indices)
-    )
-    map_space = space.map_from_domain_and_range(range_space)
-    global_usage_map = isl.Map.empty(map_space)
-
+    usage_substs: Mapping[AccessTuple, nisl.Map] = {}
     for usage in usage_exprs:
 
         # FIXME package sequence of pymbolic exprs -> multipwaff up as a function in loopy.symbolic
-        local_usage_mpwaff = isl.MultiPwAff.zero(map_space)
+        local_usage_mpwaff = isl.MultiPwAff.zero(global_usage_map.get_space())
 
         for i in range(len(storage_indices)):
+            local_space = local_usage_mpwaff.get_at(i).get_space().domain()
             local_usage_mpwaff = local_usage_mpwaff.set_pw_aff(
                 i,
-                pwaff_from_expr(space, usage[i])
+                pwaff_from_expr(local_space, usage[i])
             )
 
-        local_usage_map = local_usage_mpwaff.as_map()
+        local_usage_map = nisl.make_map(local_usage_mpwaff.as_map())
 
-        # FIXME: fix with namedisl
-        # remove unnecessary names from domain and intersect with usage map
-        usage_names = frozenset(
-            local_usage_map.get_dim_name(isl.dim_type.in_, dim)
-            for dim in range(local_usage_map.dim(isl.dim_type.in_))
-        )
-
-        domain_names = frozenset(
-            domain.get_dim_name(isl.dim_type.set, dim)
-            for dim in range(domain.dim(isl.dim_type.set))
-        )
-
-        domain_tmp = domain.project_out_except(
-            usage_names & domain_names, [isl.dim_type.set]
-        )
-
-        local_usage_map = align_map_domain_to_set(local_usage_map, domain_tmp)
-        local_usage_map = local_usage_map.intersect_domain(domain_tmp)
+        local_usage_map = local_usage_map.intersect_domain(named_domain)
         global_usage_map = global_usage_map | local_usage_map
 
-    # {{{ FIXME: this shouldn't need to be done here; will be handled by namedisl
+        local_storage_map = local_usage_map.apply_range(compute_map)
+        relevant_names = gather_vars(usage)
+
+        local_storage_map = local_storage_map.project_out_except(
+            (relevant_names - frozenset(temporal_inames)) | frozenset(storage_indices)
+        )
+
+        usage_substs[tuple(usage)] = local_storage_map
 
     global_usage_map = global_usage_map.apply_range(compute_map)
-    common_dims = {
-        dim1 : dim2
-        for dim1 in range(global_usage_map.dim(isl.dim_type.in_))
-        for dim2 in range(global_usage_map.dim(isl.dim_type.out))
-        if (
-            global_usage_map.get_dim_name(isl.dim_type.in_, dim1)
-            ==
-            global_usage_map.get_dim_name(isl.dim_type.out, dim2)
-        )
-    }
-
-    for pos1, pos2 in common_dims.items():
-        global_usage_map = global_usage_map.equate(
-            isl.dim_type.in_, pos1,
-            isl.dim_type.out, pos2
-        )
-
-    # }}}
 
     # }}}
 
     # {{{ compute bounds and update kernel domain
 
     footprint = global_usage_map.range()
-    footprint_tmp, domain = isl.align_two(footprint, domain)
-    domain = (domain & footprint_tmp).get_basic_sets()[0]
+    footprint = footprint.project_out_except(
+        frozenset(temporal_inames) | frozenset(storage_indices)
+    )
 
-    new_domains = domain_changer.get_domains_with(domain)
+    # FIXME: probably do not want this permanently here
+    footprint = nisl.make_set(footprint._reconstruct_isl_object().convex_hull())
+    named_domain = named_domain & footprint
+
+    # FIXME:
+    if len(named_domain.get_basic_sets()) != 1:
+        raise ValueError("New domain should be composed of a single basic set")
+
+    new_domains = domain_changer.get_domains_with(named_domain.get_basic_sets()[0])
     kernel = kernel.copy(domains=new_domains)
-
-    # }}}
-
-    # {{{ compute index expressions
-
-    usage_substs: Mapping[AccessTuple, isl.Map] = {}
-    for usage in usage_exprs:
-        # find the relevant names
-        relevant_names = gather_vars(usage)
-
-        # project out irrelevant names
-        relevant_names = frozenset(relevant_names) - frozenset(temporal_inames)
-
-        local_iname_to_storage = global_usage_map.project_out_except(
-            relevant_names,
-            [isl.dim_type.in_]
-        )
-
-        local_iname_to_storage = local_iname_to_storage.project_out_except(
-            storage_indices,
-            [isl.dim_type.out]
-        )
-
-        # map usage -> resulting map
-        usage_substs[tuple(usage)] = local_iname_to_storage
 
     # }}}
 
@@ -487,9 +434,7 @@ def compute(
     loopy_type = to_loopy_type(temporary_dtype, allow_none=True)
 
     # FIXME: fix with namedisl?
-    shape_domain = footprint.project_out_except(storage_indices,
-                                                [isl.dim_type.set])
-    shape_domain = shape_domain.project_out_except("", [isl.dim_type.param])
+    shape_domain = footprint.project_out_except(storage_indices)
 
     temp_shape = tuple(
         pw_aff_to_expr(shape_domain.dim_max(dim)) + 1

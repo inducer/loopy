@@ -76,11 +76,10 @@ def main(
         compute_map = nisl.make_map(
             f"""
             {{
-                [is, js, ks] -> [io, ii_s, jo, ji_s, k_s] :
-                0 <= ii_s < {bm} and 0 <= ji_s < {bn} and 0 <= k_s < {npts} and
-                is = io * {bm} + ii_s and
-                js = jo * {bn} + ji_s and
-                ks = k_s
+                [is, js, ks] -> [io, ii_s, jo, ji_s, k] :
+                is = io * {bm} + ii_s - {r} and
+                js = jo * {bn} + ji_s - {r} and
+                ks = k
             }}
             """
         )
@@ -89,8 +88,8 @@ def main(
             knl,
             "u_",
             compute_map=compute_map,
-            storage_indices=["ii_s", "ji_s", "k_s"],
-            temporal_inames=["io", "jo"],
+            storage_indices=["ii_s", "ji_s"],
+            temporal_inames=["io", "jo", "k"],
             temporary_name="u_compute",
             temporary_address_space=lp.AddressSpace.LOCAL,
             temporary_dtype=np.float32

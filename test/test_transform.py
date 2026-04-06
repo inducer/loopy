@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Mapping
 import logging
 
 import numpy as np
@@ -1743,6 +1744,108 @@ def test_duplicate_iname_not_read_only_nested(ctx_factory: cl.CtxFactory):
             == frozenset({"irow"}))
 
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+@pytest.mark.parametrize("case", (
+    {"M": 128, "N": 128, "K": 128, "BM": 32, "BN": 32, "BK": 16},
+    {"M": 200, "N": 200, "K": 200, "BM": 32, "BN": 32, "BK": 16},
+))
+def test_compute_simple_tiled_matmul(
+        ctx_factory: cl.CtxFactory,
+        case: Mapping[str, int]
+    ):
+
+    import namedisl as nisl
+
+    M = case["M"]
+    N = case["N"]
+    K = case["K"]
+    bm = case["BM"]
+    bn = case["BN"]
+    bk = case["BK"]
+
+    knl = lp.make_kernel(
+        "{ [i, j, k] : 0 <= i < M and 0 <= j < N and 0 <= k < K }",
+        """
+        a_(is, ks) := a[is, ks]
+        b_(ks, js) := b[ks, js]
+        c[i, j] = sum([k], a_(i, k) * b_(k, j))
+        """,
+        [
+            lp.GlobalArg("a", shape=(M, K), dtype=np.float64),
+            lp.GlobalArg("b", shape=(K, N), dtype=np.float64),
+            lp.GlobalArg("c", shape=(M, N), dtype=np.float64,
+                         is_output=True)
+        ]
+    )
+
+    knl = lp.fix_parameters(knl, M=M, N=N, K=K)
+
+    # shared memory tile-level splitting
+    knl = lp.split_iname(knl, "i", bm, inner_iname="ii", outer_iname="io")
+    knl = lp.split_iname(knl, "j", bn, inner_iname="ji", outer_iname="jo")
+    knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
+
+    compute_map_a = nisl.make_map(f"""{{
+        [is, ks] -> [ii_s, io, ki_s, ko] :
+            is = io * {bm} + ii_s and
+            ks = ko * {bk} + ki_s
+    }}""")
+
+    compute_map_b = nisl.make_map(f"""{{
+        [ks, js] -> [ki_s, ko, ji_s, jo] :
+            js = jo * {bn} + ji_s and
+            ks = ko * {bk} + ki_s
+    }}""")
+
+    from loopy.transform.compute import compute
+    knl = compute(
+        knl,
+        "a_",
+        compute_map=compute_map_a,
+        storage_indices=["ii_s", "ki_s"],
+        temporal_inames=["io", "ko", "jo"],
+        temporary_address_space=lp.AddressSpace.LOCAL,
+        temporary_dtype=np.float64
+    )
+
+    knl = compute(
+        knl,
+        "b_",
+        compute_map=compute_map_b,
+        storage_indices=["ki_s", "ji_s"],
+        temporal_inames=["io", "ko", "jo"],
+        temporary_address_space=lp.AddressSpace.LOCAL,
+        temporary_dtype=np.float64
+    )
+
+    knl = lp.tag_inames(
+        knl, {
+            "io"   : "g.0", # outer block loop over block rows
+            "jo"   : "g.1", # outer block loop over block cols
+
+            "ii"   : "l.0", # inner block loop over rows
+            "ji"   : "l.1", # inner block loop over cols
+
+            "ii_s" : "l.0", # inner storage loop over a rows
+            "ji_s" : "l.0", # inner storage loop over b cols
+            "ki_s" : "l.1"  # inner storage loop over a cols / b rows
+        }
+    )
+
+    knl = lp.add_inames_for_unused_hw_axes(knl)
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    a = np.random.randn(M, K)
+    b = np.random.randn(K, N)
+
+    ex = knl.executor(ctx)
+    _, out = ex(queue, a=a, b=b)
+
+    import numpy.linalg as la
+    assert (la.norm((a @ b) - out) / la.norm(a @ b)) < 1e-15
 
 
 if __name__ == "__main__":

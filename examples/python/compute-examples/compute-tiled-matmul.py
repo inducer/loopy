@@ -43,11 +43,11 @@ def main(
     # guarantees for the instruction that stores into c
     knl = lp.fix_parameters(knl, M=M, N=N, K=K)
 
+    # shared memory tile-level splitting
     knl = lp.split_iname(knl, "i", bm, inner_iname="ii", outer_iname="io")
     knl = lp.split_iname(knl, "j", bn, inner_iname="ji", outer_iname="jo")
     knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
 
-    # FIXME: Given the input is already tiled, we shouldn't have to supply compute bounds here.
     compute_map_a = nisl.make_map(f"""{{
         [is, ks] -> [ii_s, io, ki_s, ko] :
             is = io * {bm} + ii_s and
@@ -67,7 +67,8 @@ def main(
             compute_map=compute_map_a,
             storage_indices=["ii_s", "ki_s"],
             temporal_inames=["io", "ko", "jo"],
-            temporary_address_space=lp.AddressSpace.LOCAL
+            temporary_address_space=lp.AddressSpace.LOCAL,
+            temporary_dtype=np.float64
         )
 
         knl = compute(
@@ -76,7 +77,8 @@ def main(
             compute_map=compute_map_b,
             storage_indices=["ki_s", "ji_s"],
             temporal_inames=["io", "ko", "jo"],
-            temporary_address_space=lp.AddressSpace.LOCAL
+            temporary_address_space=lp.AddressSpace.LOCAL,
+            temporary_dtype=np.float64
         )
 
     if use_precompute:
@@ -116,7 +118,7 @@ def main(
         print(20*"=", "Tiled matmul report", 20*"=")
         print(f"Problem size:  M = {M:-4},  N = {N:-4},  K = {K:-4}")
         print(f"Tile size   : BM = {bm:-4}, BN = {bn:-4}, BK = {bk:-4}")
-        print(f"Relative error = {la.norm((a @ b) - out) / la.norm(out)}")
+        print(f"Relative error = {la.norm((a @ b) - out) / la.norm(a @ b)}")
         print((40 + len(" Tiled matmul report "))*"=")
 
     if print_device_code:
