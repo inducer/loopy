@@ -195,12 +195,11 @@ def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch"
             bvc.map_kernel(kernel))
 
     batch_iname_set = frozenset([batch_iname])
-    kernel = kernel.copy(
+    return kernel.copy(
             instructions=[
                 insn.copy(within_inames=insn.within_inames | batch_iname_set)
                 for insn in kernel.instructions])
 
-    return kernel
 
 # }}}
 

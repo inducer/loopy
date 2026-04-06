@@ -100,11 +100,10 @@ def add_barrier(
                                         mem_kind=mem_kind)
 
     new_kernel = kernel.copy(instructions=[*kernel.instructions, barrier_to_add])
-    new_kernel = add_dependency(
+    return add_dependency(
         new_kernel, insn_match=insn_after, depends_on="id:" + id
     )
 
-    return new_kernel
 
 # }}}
 

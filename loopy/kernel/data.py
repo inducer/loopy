@@ -314,7 +314,7 @@ def parse_tag(tag: ToInameTagConvertible) -> Tag | None:
         return tag
 
     if not isinstance(tag, str):
-        raise ValueError("cannot parse tag: %s" % tag)
+        raise ValueError(f"cannot parse tag: {tag!r}")
 
     if tag == "for":
         return None
@@ -342,7 +342,7 @@ def parse_tag(tag: ToInameTagConvertible) -> Tag | None:
         else:
             return LocalInameTag(int(axis))
     else:
-        raise ValueError("cannot parse tag: %s" % tag)
+        raise ValueError(f"cannot parse tag: {tag!r}")
 
 # }}}
 

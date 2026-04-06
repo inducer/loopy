@@ -24,7 +24,7 @@ THE SOFTWARE.
 """
 
 import collections
-from collections.abc import Callable, Mapping, Set as abc_Set
+from collections.abc import Callable, Mapping, Set as AbstractSet
 from dataclasses import dataclass, field, replace
 from functools import wraps
 from typing import (
@@ -239,7 +239,7 @@ class TranslationUnit:
     entrypoints: frozenset[str]
 
     def __post_init__(self):
-        assert isinstance(self.entrypoints, abc_Set)
+        assert isinstance(self.entrypoints, AbstractSet)
         assert isinstance(self.callables_table, constantdict)
 
     def copy(self, **kwargs: Any) -> Self:
@@ -277,7 +277,7 @@ class TranslationUnit:
             entrypoints = frozenset([e.strip() for e in
                 entrypoints.split(",")])
 
-        assert isinstance(entrypoints, abc_Set)
+        assert isinstance(entrypoints, AbstractSet)
 
         return self.copy(entrypoints=entrypoints)
 
@@ -453,7 +453,7 @@ class TranslationUnit:
 
         return "\n".join(
                 str(clbl.subkernel)
-                for _name, clbl in self.callables_table.items()
+                for clbl in self.callables_table.values()
                 if isinstance(clbl, CallableKernel))
 
     # FIXME: This is here because Firedrake expects it, for some legacy reason.
@@ -504,7 +504,7 @@ def rename_resolved_functions_in_a_single_kernel(kernel,
 
 def get_reachable_resolved_callable_ids(
             callables: CallablesTable,
-            entrypoints: abc_Set[CallableId]
+            entrypoints: AbstractSet[CallableId]
         ) -> frozenset[CallableId]:
     """
     Returns a :class:`frozenset` of callables ids that are resolved and
@@ -758,7 +758,7 @@ P = ParamSpec("P")
 
 def check_each_kernel(
             check: Callable[Concatenate[LoopKernel, P], None]
-        ) -> Callable[Concatenate[TranslationUnit, P], None]:
+        ) -> Callable[Concatenate[TranslationUnit | LoopKernel, P], None]:
     def _collective_check(
                 t_unit_or_kernel: TranslationUnit | LoopKernel, /,
                 *args: P.args,

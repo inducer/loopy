@@ -58,15 +58,13 @@ def test_nbody(ctx_factory: cl.CtxFactory):
         knl = lp.split_iname(knl, "i", 256,
                 outer_tag="g.0", inner_tag="l.0",
                 slabs=(0, 1))
-        knl = lp.split_iname(knl, "j", 256, slabs=(0, 1))
-        return knl
+        return lp.split_iname(knl, "j", 256, slabs=(0, 1))
 
     def variant_cpu(knl):
         knl = lp.expand_subst(knl)
         knl = lp.split_iname(knl, "i", 1024,
                 outer_tag="g.0", slabs=(0, 1))
-        knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
-        return knl
+        return lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
 
     def variant_gpu(knl):
         knl = lp.expand_subst(knl)
@@ -78,8 +76,7 @@ def test_nbody(ctx_factory: cl.CtxFactory):
                 fetch_outer_inames="i_outer, j_outer", default_tag=None)
         knl = lp.tag_inames(knl, {"x_fetch_k": "unr", "x_fetch_j": "l.0"})
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
-        knl = lp.prioritize_loops(knl, ["j_outer", "j_inner"])
-        return knl
+        return lp.prioritize_loops(knl, ["j_outer", "j_inner"])
 
     n = 3000
 

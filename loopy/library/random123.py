@@ -279,8 +279,6 @@ class Random123Callable(ScalarCallable):
                     rng_variant=rng_variant,
                     ))
 
-        return
-
 
 def get_random123_callables(target):
     return {id_: Random123Callable(id_, target=target) for id_ in FUNC_NAMES_TO_RNG}

@@ -551,7 +551,7 @@ class StackWildcardMatchComponent(StackMatchComponent):
     inner_match: StackMatchComponent
 
     def __call__(self, kernel: LoopKernel, stack: Sequence[Matchable]) -> bool:
-        return any(self.inner_match(kernel, stack[i:]) for i in range(0, len(stack)))
+        return any(self.inner_match(kernel, stack[i:]) for i in range(len(stack)))
 
 # }}}
 
@@ -618,6 +618,7 @@ def parse_stack_match(smatch: ToStackMatchConvertible) -> ConcreteStackMatch:
 
     if isinstance(smatch, ConcreteStackMatch):
         return smatch
+
     if isinstance(smatch, MatchExpressionBase):
         return ConcreteStackMatch(
                 StackItemMatchComponent(

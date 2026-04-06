@@ -73,16 +73,16 @@ def tuple_to_complex_literal(expr):
 
 class FortranExpressionParser(ExpressionParserBase):
     lex_table: ClassVar[LexTable] = [
-        (_less_than, pytools.lex.RE(r"\.lt\.", re.I)),
-        (_greater_than, pytools.lex.RE(r"\.gt\.", re.I)),
-        (_less_equal, pytools.lex.RE(r"\.le\.", re.I)),
-        (_greater_equal, pytools.lex.RE(r"\.ge\.", re.I)),
-        (_equal, pytools.lex.RE(r"\.eq\.", re.I)),
-        (_not_equal, pytools.lex.RE(r"\.ne\.", re.I)),
+        (_less_than, pytools.lex.RE(r"\.lt\.", re.IGNORECASE)),
+        (_greater_than, pytools.lex.RE(r"\.gt\.", re.IGNORECASE)),
+        (_less_equal, pytools.lex.RE(r"\.le\.", re.IGNORECASE)),
+        (_greater_equal, pytools.lex.RE(r"\.ge\.", re.IGNORECASE)),
+        (_equal, pytools.lex.RE(r"\.eq\.", re.IGNORECASE)),
+        (_not_equal, pytools.lex.RE(r"\.ne\.", re.IGNORECASE)),
 
-        (_not, pytools.lex.RE(r"\.not\.", re.I)),
-        (_and, pytools.lex.RE(r"\.and\.", re.I)),
-        (_or, pytools.lex.RE(r"\.or\.", re.I)),
+        (_not, pytools.lex.RE(r"\.not\.", re.IGNORECASE)),
+        (_and, pytools.lex.RE(r"\.and\.", re.IGNORECASE)),
+        (_or, pytools.lex.RE(r"\.or\.", re.IGNORECASE)),
         *ExpressionParserBase.lex_table,
         ]
 
@@ -153,7 +153,7 @@ class FortranExpressionParser(ExpressionParserBase):
             }
 
     def parse_prefix(self, pstate, min_precedence=0):
-        import pymbolic.primitives as primitives
+        from pymbolic import primitives
         from pymbolic.parser import _PREC_UNARY
 
         pstate.expect_not_end()

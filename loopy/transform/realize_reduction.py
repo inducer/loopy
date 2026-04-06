@@ -511,7 +511,7 @@ def _try_infer_scan_and_sweep_bounds(
 
     domain = domain.project_out_except(
             {*within_inames, *kernel.non_iname_variable_names()},
-            (isl.dim_type.param,))
+            (isl.dim_type.param,)).to_set()
 
     try:
         sweep_lower_bound = domain.dim_min(sweep_idx)
@@ -535,7 +535,8 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
     domain_with_sweep_param = _move_set_to_param_dims_except(domain, (scan_iname,))
 
     domain_with_sweep_param = domain_with_sweep_param.project_out_except(
-            (sweep_iname, scan_iname), (dim_type.set, dim_type.param))
+            (sweep_iname, scan_iname), (dim_type.set, dim_type.param)
+    ).to_set()
 
     scan_iname_idx = domain_with_sweep_param.find_dim_by_name(
             dim_type.set, scan_iname)
@@ -600,6 +601,7 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
 
 def _get_domain_with_iname_as_param(domain, iname):
     dim_type = isl.dim_type
+    domain = domain.to_set()
 
     if domain.find_dim_by_name(dim_type.param, iname) >= 0:
         return domain

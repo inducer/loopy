@@ -73,7 +73,13 @@ from loopy.typing import InameStr, InameStrSet, InsnId, not_none
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Mapping, Sequence, Set
+    from collections.abc import (
+        Callable,
+        Collection,
+        Mapping,
+        Sequence,
+        Set as AbstractSet,
+    )
 
     from pymbolic import Expression
 
@@ -221,7 +227,7 @@ def _should_temp_var_be_passed(tv: TemporaryVariable) -> bool:
 class _SupportingNameTracker:
     def __init__(self, kernel: LoopKernel):
         self.kernel: LoopKernel = kernel
-        self.name_to_main_name: dict[str, Set[str]] = {}
+        self.name_to_main_name: dict[str, AbstractSet[str]] = {}
 
     def add_supporting_names_for(self, name: str):
         var_descr = self.kernel.get_var_descriptor(name)
@@ -962,7 +968,7 @@ def _order_loop_nests(
 
 
 @memoize_on_first_arg
-def _get_parallel_inames(kernel: LoopKernel) -> Set[str]:
+def _get_parallel_inames(kernel: LoopKernel) -> AbstractSet[str]:
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
     concurrent_inames = {iname for iname in kernel.all_inames()

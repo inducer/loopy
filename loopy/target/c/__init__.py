@@ -201,6 +201,12 @@ class InfOrNanInExpressionRecorder(IdentityMapper[[]]):
         self.saw_inf_or_nan = True
         return super().map_nan(expr)
 
+    @override
+    def map_variable(self, expr: p.Variable):
+        if expr.name in ("HUGE_VAL", "INFINITY"):
+            self.saw_inf_or_nan = True
+        return super().map_variable(expr)
+
 
 def c99_preamble_generator(preamble_info: PreambleInfo) -> Iterator[tuple[str, str]]:
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
@@ -334,7 +340,7 @@ def _preamble_generator(
             static inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
-              {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.M)}
+              {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.MULTILINE)}
 
               {res_ctype} y = 1;
 
@@ -560,6 +566,11 @@ def c_symbol_mangler(kernel, name):
 
     if name in ["INT_MAX", "INT_MIN"]:
         return NumpyType(np.dtype(np.int32)), name
+
+    if name == "INFINITY":
+        return NumpyType(np.dtype(np.float32)), name
+    if name == "HUGE_VAL":
+        return NumpyType(np.dtype(np.float64)), name
 
     return None
 

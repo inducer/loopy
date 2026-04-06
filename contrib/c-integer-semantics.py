@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 import ctypes
 from os import system
 

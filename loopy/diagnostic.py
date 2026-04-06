@@ -140,7 +140,6 @@ class ExpressionNotAffineError(LoopyError):
     `ISL manual <http://isl.gforge.inria.fr//user.html#Primitive-Functions>`_
     for then definition of a quasi-affine expression.
     """
-    pass
 
 
 class ExpressionToAffineConversionError(LoopyError):

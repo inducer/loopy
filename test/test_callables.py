@@ -269,7 +269,7 @@ def test_multi_arg_array_call(ctx_factory: cl.CtxFactory):
                 lp.Assignment(id="init1", assignee=acc_i,
                     expression="214748367"),
                 lp.Assignment(id="insn", assignee=index,
-                    expression=p.If(p.Expression.eq(acc_i, a_i), i, index),
+                    expression=p.If(p.ExpressionNode.eq(acc_i, a_i), i, index),
                     depends_on="update"),
                 lp.Assignment(id="update", assignee=acc_i,
                     expression=p.Variable("min")(acc_i, a_i),

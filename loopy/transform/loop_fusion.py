@@ -46,7 +46,14 @@ from loopy.typing import InameStr
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence, Set
+    from collections.abc import (
+        Callable,
+        Collection,
+        Iterable,
+        Mapping,
+        Sequence,
+        Set as AbstractSet,
+    )
 
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import RuleStack
@@ -91,13 +98,13 @@ class LoopDependenceGraph:
         add edge, etc.).
     """
 
-    successors: Mapping[InameStr, Set[InameStr]]
+    successors: Mapping[InameStr, AbstractSet[InameStr]]
     predecessors: Mapping[InameStr, frozenset[InameStr]]
     is_infusible: Mapping[tuple[InameStr, InameStr], bool]
 
     @classmethod
     def new(cls,
-                successors: Mapping[InameStr, Set[InameStr]],
+                successors: Mapping[InameStr, AbstractSet[InameStr]],
                 is_infusible: Mapping[tuple[InameStr, InameStr], bool]
             ):
         predecessors = {node: cast("set[InameStr]", set()) for node in successors}
@@ -123,7 +130,7 @@ class LoopDependenceGraph:
             loop for loop, preds in self.predecessors.items() if len(preds) == 0
         }
 
-    def remove_nodes(self, nodes_to_remove: Set[InameStr]):
+    def remove_nodes(self, nodes_to_remove: AbstractSet[InameStr]):
         """
         Returns a copy of *self* after removing *nodes_to_remove* in the graph.
         This routine adds necessary edges after removing *nodes_to_remove* to
@@ -482,11 +489,9 @@ def _compute_isinfusible_via_access_map(
             prim.Variable(candidate_pred), ">", prim.Variable(candidate_succ)
         ),
     )
-    result = not (
+    return not (
         set_pred & set_succ & accesses_same_index_set & candidates_not_equal
     ).is_empty()
-
-    return result
 
 
 def _build_ldg(
@@ -789,8 +794,7 @@ def _get_partial_loop_nest_tree_for_fusion(kernel: LoopKernel):
     from loopy.schedule.tools import get_partial_loop_nest_tree
 
     tree = get_partial_loop_nest_tree(kernel)
-    tree = _add_reduction_loops_in_partial_loop_nest_tree(kernel, tree)
-    return tree
+    return _add_reduction_loops_in_partial_loop_nest_tree(kernel, tree)
 
 
 def get_kennedy_unweighted_fusion_candidates(

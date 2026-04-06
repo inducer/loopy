@@ -23,15 +23,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 import logging
+from typing import TYPE_CHECKING
 
-import pymbolic
+from typing_extensions import override
+
 import pymbolic.primitives as p
 
 from loopy.diagnostic import LoopyError
 from loopy.translation_unit import for_each_kernel
 
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from pymbolic.typing import ArithmeticExpression, Expression
+
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.instruction import InstructionBase
+    from loopy.typing import InameStr, InameStrSet
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +61,20 @@ from loopy.symbolic import IdentityMapper, flatten
 
 
 class ExtraInameIndexInserter(IdentityMapper[[]]):
-    def __init__(self, var_to_new_inames, iname_to_lbound):
+    var_to_new_inames: Mapping[str, Sequence[p.Variable]]
+    iname_to_lbound: Mapping[str, ArithmeticExpression]
+    seen_priv_axis_inames: set[str]
+
+    def __init__(self,
+                 var_to_new_inames: Mapping[str, Sequence[p.Variable]],
+                 iname_to_lbound: Mapping[str, ArithmeticExpression]) -> None:
         self.var_to_new_inames = var_to_new_inames
         self.iname_to_lbound = iname_to_lbound
         self.seen_priv_axis_inames = set()
         super().__init__()
 
-    def map_subscript(self, expr: p.Subscript):
+    @override
+    def map_subscript(self, expr: p.Subscript, /) -> Expression:
         assert isinstance(expr.aggregate, p.Variable)
         try:
             extra_idx = self.var_to_new_inames[expr.aggregate.name]
@@ -71,14 +88,16 @@ class ExtraInameIndexInserter(IdentityMapper[[]]):
 
             self.seen_priv_axis_inames.update(v.name for v in extra_idx)
 
-            new_idx = index + tuple(flatten(v - self.iname_to_lbound[v.name])
-                            for v in extra_idx)
+            new_idx = index + tuple(
+                flatten(v - self.iname_to_lbound[v.name]) for v in extra_idx
+            )
 
             if len(new_idx) == 1:
                 new_idx = new_idx[0]
             return expr.aggregate[new_idx]
 
-    def map_variable(self, expr: p.Variable):
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Expression:
         try:
             new_idx = self.var_to_new_inames[expr.name]
         except KeyError:
@@ -86,17 +105,19 @@ class ExtraInameIndexInserter(IdentityMapper[[]]):
         else:
             self.seen_priv_axis_inames.update(v.name for v in new_idx)
 
-            new_idx = tuple(flatten(v - self.iname_to_lbound[v.name])
-                            for v in new_idx)
-
+            new_idx = tuple(flatten(v - self.iname_to_lbound[v.name]) for v in new_idx)
             if len(new_idx) == 1:
                 new_idx = new_idx[0]
+
             return expr[new_idx]
 
 
 @for_each_kernel
 def privatize_temporaries_with_inames(
-        kernel, privatizing_inames, only_var_names=None):
+        kernel: LoopKernel,
+        privatizing_inames: InameStr | InameStrSet,
+        only_var_names: InameStr | InameStrSet | None = None,
+    ) -> LoopKernel:
     """This function provides each loop iteration of the *privatizing_inames*
     with its own private entry in the temporaries it accesses (possibly
     restricted to *only_var_names*).
@@ -124,32 +145,32 @@ def privatize_temporaries_with_inames(
         end
 
     facilitating loop interchange of the *imatrix* loop.
+
     .. versionadded:: 2018.1
     """
 
     if isinstance(privatizing_inames, str):
         privatizing_inames = frozenset(
-                s.strip()
-                for s in privatizing_inames.split(","))
+            s.strip() for s in privatizing_inames.split(",")
+        )
 
     if isinstance(only_var_names, str):
         only_var_names = frozenset(
-                s.strip()
-                for s in only_var_names.split(","))
+            s.strip() for s in only_var_names.split(",")
+        )
 
     # {{{ sanity checks
 
     if (only_var_names is not None
             and privatizing_inames <= kernel.all_inames()
             and not (frozenset(only_var_names) <= kernel.all_variable_names())):
-        raise LoopyError(f"Some variables in '{only_var_names}'"
-                         f" not used in kernel '{kernel.name}'.")
+        raise LoopyError(f"some variables in '{only_var_names}'"
+                         f" not used in kernel '{kernel.name}'")
 
     # }}}
 
     wmap = kernel.writer_map()
-
-    var_to_new_priv_axis_iname = {}
+    var_to_new_priv_axis_iname: dict[str, frozenset[str]] = {}
 
     # {{{ find variables that need extra indices
 
@@ -162,8 +183,8 @@ def privatize_temporaries_with_inames(
 
             priv_axis_inames = writer_insn.within_inames & privatizing_inames
 
-            referenced_priv_axis_inames = (priv_axis_inames
-                    & writer_insn.write_dependency_names())
+            referenced_priv_axis_inames = (
+                priv_axis_inames & writer_insn.write_dependency_names())
 
             new_priv_axis_inames = priv_axis_inames - referenced_priv_axis_inames
 
@@ -171,18 +192,18 @@ def privatize_temporaries_with_inames(
                 break
 
             if tv.name in var_to_new_priv_axis_iname:
-                if new_priv_axis_inames != set(var_to_new_priv_axis_iname[tv.name]):
-                    raise LoopyError("instruction '%s' requires adding "
-                            "indices for privatizing var '%s' on iname(s) '%s', "
-                            "but previous instructions required different "
-                            "inames '%s'"
-                            % (writer_insn_id, tv.name,
-                                ", ".join(new_priv_axis_inames),
-                                ", ".join(var_to_new_priv_axis_iname[tv.name])))
+                if new_priv_axis_inames != var_to_new_priv_axis_iname[tv.name]:
+                    new_inames_str = ", ".join(new_priv_axis_inames)
+                    prev_inames_str = ", ".join(var_to_new_priv_axis_iname[tv.name])
+                    raise LoopyError(
+                        f"instruction '{writer_insn_id}' requires adding indices "
+                        "for privatizing var '{tv.name}' on iname(s) "
+                        f"'{new_inames_str}', but previous instructions required "
+                        f"different inames '{prev_inames_str}'")
 
                 continue
 
-            var_to_new_priv_axis_iname[tv.name] = set(new_priv_axis_inames)
+            var_to_new_priv_axis_iname[tv.name] = frozenset(new_priv_axis_inames)
 
     # }}}
 
@@ -191,8 +212,8 @@ def privatize_temporaries_with_inames(
     from loopy.isl_helpers import static_max_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
-    priv_axis_iname_to_length = {}
-    iname_to_lbound = {}
+    priv_axis_iname_to_length: dict[str, ArithmeticExpression] = {}
+    iname_to_lbound: dict[str, ArithmeticExpression] = {}
     for priv_axis_inames in var_to_new_priv_axis_iname.values():
         for iname in priv_axis_inames:
             if iname in priv_axis_iname_to_length:
@@ -209,7 +230,7 @@ def privatize_temporaries_with_inames(
 
     from loopy.kernel.data import VectorizeTag
 
-    new_temp_vars = kernel.temporary_variables.copy()
+    new_temp_vars = dict(kernel.temporary_variables)
     for tv_name, inames in var_to_new_priv_axis_iname.items():
         tv = new_temp_vars[tv_name]
         extra_shape = tuple(priv_axis_iname_to_length[iname] for iname in inames)
@@ -218,10 +239,14 @@ def privatize_temporaries_with_inames(
         if shape is None:
             shape = ()
 
-        dim_tags = ["c"] * (len(shape) + len(extra_shape))
+        # NOTE: could be auto?
+        assert isinstance(shape, tuple)
+        ndim = len(shape)
+
+        dim_tags = ["c"] * (ndim + len(extra_shape))
         for i, iname in enumerate(inames):
             if kernel.iname_tags_of_type(iname, VectorizeTag):
-                dim_tags[len(shape) + i] = "vec"
+                dim_tags[ndim + i] = "vec"
 
         base_indices = tv.base_indices
         if base_indices is not None:
@@ -229,20 +254,17 @@ def privatize_temporaries_with_inames(
 
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,
                 base_indices=base_indices,
-                # Forget what you knew about data layout,
-                # create from scratch.
+                # Forget what you knew about data layout, create from scratch.
                 dim_tags=dim_tags,
                 dim_names=None)
 
     # }}}
 
-    from pymbolic import var
     var_to_extra_iname = {
-            var_name: tuple(var(iname) for iname in inames)
+            var_name: tuple(p.Variable(iname) for iname in inames)
             for var_name, inames in var_to_new_priv_axis_iname.items()}
 
-    new_insns = []
-
+    new_insns: list[InstructionBase] = []
     for insn in kernel.instructions:
         eiii = ExtraInameIndexInserter(var_to_extra_iname,
                                        iname_to_lbound)
@@ -269,25 +291,34 @@ def privatize_temporaries_with_inames(
 # {{{ unprivatize temporaries with iname
 
 class _InameRemover(IdentityMapper[[bool]]):
-    def __init__(self, inames_to_remove, only_var_names):
+    only_var_names: frozenset[str] | None
+    inames_to_remove: frozenset[str]
+    var_name_to_remove_indices: dict[str, dict[int, str]]
+
+    def __init__(self,
+                 inames_to_remove: frozenset[str],
+                 only_var_names: frozenset[str] | None) -> None:
         self.only_var_names = only_var_names
         self.inames_to_remove = inames_to_remove
         self.var_name_to_remove_indices = {}
         super().__init__()
 
-    def map_subscript(self, expr: p.Subscript, in_subscript: bool = False):
+    @override
+    def map_subscript(self, expr: p.Subscript, /,
+                      in_subscript: bool = False) -> Expression:
         assert isinstance(expr.aggregate, p.Variable)
         name = expr.aggregate.name
+
         if not self.only_var_names or name in self.only_var_names:
             index = expr.index
             if not isinstance(index, tuple):
                 index = (index,)
 
-            remove_indices = {}
-            new_index = []
+            remove_indices: dict[int, str] = {}
+            new_index: list[Expression] = []
             for i, index_expr in enumerate(index):
-                if isinstance(index_expr, pymbolic.primitives.Variable) and \
-                        index_expr.name in self.inames_to_remove:
+                if (isinstance(index_expr, p.Variable)
+                        and index_expr.name in self.inames_to_remove):
                     remove_indices[i] = index_expr.name
                 else:
                     new_index.append(index_expr)
@@ -303,8 +334,9 @@ class _InameRemover(IdentityMapper[[bool]]):
                 self.var_name_to_remove_indices[name] = remove_indices
 
             if new_index:
-                new_index = new_index[0] if len(new_index) == 1 else tuple(new_index)
-                return expr.aggregate[new_index]
+                return expr.aggregate[
+                    new_index[0] if len(new_index) == 1 else tuple(new_index)
+                ]
             else:
                 return expr.aggregate
         else:
@@ -313,7 +345,9 @@ class _InameRemover(IdentityMapper[[bool]]):
 
 @for_each_kernel
 def unprivatize_temporaries_with_inames(
-        kernel, privatizing_inames, only_var_names=None):
+        kernel: LoopKernel,
+        privatizing_inames: InameStr | InameStrSet,
+        only_var_names: InameStr | InameStrSet | None = None) -> LoopKernel:
     """This function reverses the effects of
     :func:`privatize_temporaries_with_inames` and removes the private entries
     in the temporaries each loop iteration of the *privatizing_inames*
@@ -342,13 +376,13 @@ def unprivatize_temporaries_with_inames(
 
     if isinstance(privatizing_inames, str):
         privatizing_inames = frozenset(
-                s.strip()
-                for s in privatizing_inames.split(","))
+            s.strip() for s in privatizing_inames.split(",")
+        )
 
     if isinstance(only_var_names, str):
         only_var_names = frozenset(
-                s.strip()
-                for s in only_var_names.split(","))
+            s.strip() for s in only_var_names.split(",")
+        )
 
     # {{{ sanity checks
 
@@ -372,18 +406,20 @@ def unprivatize_temporaries_with_inames(
 
     from loopy.kernel.array import VectorArrayDimTag
 
-    new_temp_vars = kernel.temporary_variables.copy()
+    new_temp_vars = dict(kernel.temporary_variables)
     for tv_name, tv in new_temp_vars.items():
         remove_indices = var_name_to_remove_indices.get(tv_name, {})
         new_shape = tv.shape
         if new_shape is not None:
-            new_shape = tuple(dim for idim, dim in enumerate(new_shape)
+            assert isinstance(new_shape, tuple)
+            new_shape = tuple(
+                dim for idim, dim in enumerate(new_shape)
                 if idim not in remove_indices)
 
         new_dim_tags = tv.dim_tags
         if new_dim_tags is not None:
             new_dim_tags = ["vec" if isinstance(dim_tag, VectorArrayDimTag) else "c"
-                            for idim, dim_tag in enumerate(new_dim_tags)]
+                            for _idim, dim_tag in enumerate(new_dim_tags)]
             new_dim_tags = tuple(dim for idim, dim in enumerate(new_dim_tags)
                 if idim not in remove_indices)
 

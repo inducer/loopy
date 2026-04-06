@@ -166,14 +166,15 @@ def build_global_storage_to_sweep_map(
         else:
             global_stor2sweep = global_stor2sweep.union(stor2sweep)
 
+    assert global_stor2sweep is not None
+
     if isinstance(global_stor2sweep, isl.BasicMap):
         global_stor2sweep = isl.Map.from_basic_map(global_stor2sweep)
-    global_stor2sweep = global_stor2sweep.intersect_range(domain_dup_sweep)
+    return global_stor2sweep.intersect_range(domain_dup_sweep)
 
     # space for global_stor2sweep:
     # [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep](rn)
 
-    return global_stor2sweep
 
 # }}}
 

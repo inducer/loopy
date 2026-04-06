@@ -219,21 +219,14 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     @override
     def get_temporary_decls(self,
                 codegen_state: CodeGenerationState,
-                schedule_index: int):
+                schedule_index: int) -> Sequence[Generable]:
         kernel = codegen_state.kernel
         ecm = codegen_state.expression_to_code_mapper
-
-        result = []
 
         from genpy import Assign
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        for tv in sorted(
-                kernel.temporary_variables.values(),
-                key=lambda key_tv: key_tv.name):
-            if tv.shape:
-                result.append(
-                        Assign(
+        return [Assign(
                             tv.name,
                             "_lpy_np.empty(%s, dtype=%s)"
                             % (
@@ -242,9 +235,9 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
                                     tv.dtype.numpy_dtype.name
                                     if tv.dtype.numpy_dtype.name != "bool"
                                     else "bool_")
-                                )))
-
-        return result
+                                )) for tv in sorted(
+                kernel.temporary_variables.values(),
+                key=lambda key_tv: key_tv.name) if tv.shape]
 
     @override
     def get_expression_to_code_mapper(self, codegen_state: CodeGenerationState):

@@ -28,8 +28,8 @@ from typing_extensions import override
 
 import pymbolic.primitives as prim
 import pyopencl as cl
-import pyopencl.clrandom as clrandom
 import pyopencl.tools as cl_tools
+from pyopencl import clrandom
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -223,7 +223,7 @@ def test_tuple(ctx_factory: cl.CtxFactory):
     _evt, (a, b) = knl(queue)
 
     assert a.get() == 1
-    assert b.get() == 2.
+    assert b.get() == 2.  # noqa: RUF069
 
 
 def test_clamp(ctx_factory: cl.CtxFactory):
@@ -334,7 +334,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 7.
+    assert x[0] == 7.  # noqa: RUF069
 
     # test numpy input for x is written to and returned, even when a pyopencl array
     # is passed for y
@@ -343,7 +343,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 7.
+    assert x[0] == 7.  # noqa: RUF069
 
     # test numpy input for x is written to and returned, even when output-only
     knl = lp.make_kernel("{:}", ["x[0] = y[0] + 2"])
@@ -352,7 +352,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 5.
+    assert x[0] == 5.  # noqa: RUF069
 
 
 def test_opencl_support_for_bool(ctx_factory: cl.CtxFactory):
@@ -873,6 +873,22 @@ def test_float3():
     device_code = lp.generate_code_v2(knl).device_code()
 
     assert "float3" in device_code
+
+
+def test_argmax_ctarget_floating_point():
+    for dtype in (np.float32, np.float64):
+        knl = lp.make_kernel(
+                "{[i]: 0<=i<n}",
+                """
+                max_val[0], max_ind[0] = argmax(i, a[i], i)
+                """,
+                target=lp.ExecutableCTarget())
+
+        knl = lp.set_options(knl, return_dict=True)
+        _evt, out_dict = knl(a=np.array([1, 3, 70, 5, 4], dtype=dtype))
+
+        assert out_dict["max_val"][0] == 70
+        assert out_dict["max_ind"][0] == 2
 
 
 if __name__ == "__main__":

@@ -170,13 +170,9 @@ class PyOpenCLCallable(ScalarCallable):
 
     def generate_preambles(self, target: PyOpenCLTarget) -> Iterator[tuple[str, str]]:
         name = self.name_in_target
-        if (name.startswith("_lpy_real")
-                or name.startswith("_lpy_conj")
-                or name.startswith("_lpy_imag")):
-            if name.startswith("_lpy_real") or name.startswith("_lpy_conj"):
-                ret = "x"
-            else:
-                ret = "0"
+        if (name is not None
+                and name.startswith(("_lpy_real", "_lpy_conj", "_lpy_imag"))):
+            ret = "x" if name.startswith(("_lpy_real", "_lpy_conj")) else "0"
 
             dtype = self.arg_id_to_dtype[-1]
             ctype = target.dtype_to_typename(dtype)
@@ -579,13 +575,6 @@ class PyOpenCLTarget(OpenCLTarget):
         self.limit_arg_size_nbytes = limit_arg_size_nbytes
         self.pointer_size_nbytes = pointer_size_nbytes
 
-    @property
-    def device(self):
-        warn("PyOpenCLTarget.device is deprecated, it will stop working in 2022.",
-                DeprecationWarning, stacklevel=2)
-        return None
-
-    # NB: Not including 'device', as that is handled specially here.
     hash_fields = (*OpenCLTarget.hash_fields, "pyopencl_module_name")
     comparison_fields = (*OpenCLTarget.comparison_fields, "pyopencl_module_name")
 
@@ -618,7 +607,7 @@ class PyOpenCLTarget(OpenCLTarget):
 
     def is_vector_dtype(self, dtype):
         try:
-            import pyopencl.cltypes as cltypes
+            from pyopencl import cltypes
             vec_types = cltypes.vec_types
         except ImportError:
             from pyopencl.array import vec
@@ -629,7 +618,7 @@ class PyOpenCLTarget(OpenCLTarget):
 
     def vector_dtype(self, base, count):
         try:
-            import pyopencl.cltypes as cltypes
+            from pyopencl import cltypes
             vec_types = cltypes.vec_types
         except ImportError:
             from pyopencl.array import vec
@@ -854,7 +843,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_temporary_decls(self,
                 codegen_state: CodeGenerationState,
                 schedule_index: int
-            ):
+            ) -> list[genpy.Generable]:
         from genpy import Assign, Comment, Line
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)

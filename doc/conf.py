@@ -26,10 +26,19 @@ intersphinx_mapping = {
 
 nitpicky = True
 nitpick_ignore_regex = [
-    ("py:class", ".*ASTType"),
-    ("py:class", ".*EllipsisType"),
+    ("py:class", r".*ASTType"),
+    ("py:class", r".*EllipsisType"),
+    ("py:class", r".*_not_provided"),
+    ("py:class", r".*_no_value"),
     # FIXME: add to pytools docs
-    ("py:class", ".*ToTagSetConvertible"),
+    ("py:class", r".*ToTagSetConvertible"),
+    # sphinx >= 9.0 failures
+    # https://github.com/sphinx-doc/sphinx/issues/14159
+    ("py:class", r".*Mapping\[str"),
+    ("py:class", r".*frozenset\[tuple\[str"),
+    ("py:class", r".*tuple\[Expression"),
+    ("py:class", r".*tuple\[VarAtomicity"),
+    ("py:class", r".*tuple\[str"),
 ]
 
 sphinxconfig_missing_reference_aliases = {
@@ -62,9 +71,11 @@ sphinxconfig_missing_reference_aliases = {
     # loopy
     "InameStr": "obj:loopy.typing.InameStr",
     "InameStrSet": "obj:loopy.typing.InameStrSet",
+    "ToInameStrSetConvertible": "obj:loopy.typing.ToInameStrSetConvertible",
     "KernelIname": "obj:loopy.kernel.data.Iname",
     "LoopNestTree": "obj:loopy.schedule.tools.LoopNestTree",
     "LoopTree": "obj:loopy.schedule.tools.LoopTree",
+    "LoopyOptional": "obj:loopy.tools.Optional",
     "ShapeType": "obj:loopy.typing.ShapeType",
     "ToLoopyTypeConvertible": "obj:loopy.types.ToLoopyTypeConvertible",
 }

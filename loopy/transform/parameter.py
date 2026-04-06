@@ -80,7 +80,7 @@ def assume(kernel: LoopKernel, assumptions: str | isl.Set | isl.BasicSet) -> Loo
 def _fix_parameter(
             kernel: LoopKernel,
             name: str,
-            value: int | float,
+            value: float,
             within: ToStackMatchConvertible = None):
     def process_set(s: isl.BasicSet):
         var_dict = s.get_var_dict()
@@ -98,12 +98,10 @@ def _fix_parameter(
         from loopy.isl_helpers import iname_rel_aff
         name_equal_value_aff = iname_rel_aff(s.space, name, "==", value_aff)
 
-        s = (s
+        return (s
                 .add_constraint(
                     isl.Constraint.equality_from_aff(name_equal_value_aff))
                 .project_out(dt, idx, 1))
-
-        return s
 
     new_domains = [process_set(dom) for dom in kernel.domains]
 
@@ -157,7 +155,7 @@ def _fix_parameter(
 def fix_parameters(
         kernel: LoopKernel,
         *, within: ToStackMatchConvertible = None,
-        **value_dict: int | float,
+        **value_dict: float,
     ):
     """Fix the values of the arguments to specific constants.
 

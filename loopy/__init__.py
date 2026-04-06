@@ -358,7 +358,6 @@ __all__ = [
     "make_einsum",
     "make_function",
     "make_kernel",
-    "make_kernel",
     "make_program",
     "make_reduction_inames_unique",
     "map_domain",

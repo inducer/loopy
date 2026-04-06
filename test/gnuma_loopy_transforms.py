@@ -27,9 +27,7 @@ def set_q_storage_format(kernel, name):
 
     kernel = lp.split_array_dim(
         kernel, (name, 3, "F"), 4, auto_split_inames=False)
-    kernel = lp.tag_array_axes(kernel, name, "N0,N1,N2,vec,N4,N3")
-
-    return kernel
+    return lp.tag_array_axes(kernel, name, "N0,N1,N2,vec,N4,N3")
 
 
 def set_D_storage_format(kernel):  # noqa: N802
@@ -40,5 +38,4 @@ def set_up_volume_loop(kernel, Nq):  # noqa: N803
     kernel = lp.fix_parameters(kernel, Nq=Nq)
     kernel = lp.prioritize_loops(kernel, "e,k,j,i")
     kernel = lp.tag_inames(kernel, {"e": "g.0", "j": "l.1", "i": "l.0"})
-    kernel = lp.assume(kernel, "elements >= 1")
-    return kernel
+    return lp.assume(kernel, "elements >= 1")

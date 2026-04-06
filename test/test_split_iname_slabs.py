@@ -48,15 +48,13 @@ def vanilla():
                         lp.ValueArg("n", dtype="int32"),
                         lp.GlobalArg("a", shape=(None, ),
                                         dtype="int32")])
-    k = lp.assume(k, "k >= 0 and n >= k")
-    return k
+    return lp.assume(k, "k >= 0 and n >= k")
 
 
 @pytest.fixture
 def split(vanilla):
     k = lp.split_iname(vanilla, "i", 4, slabs=(1, 1))
-    k = lp.prioritize_loops(k, "i_outer,i_inner")
-    return k
+    return lp.prioritize_loops(k, "i_outer,i_inner")
 
 
 @pytest.fixture(params=[(1, 4), (1, 5), (4, 8)],

@@ -174,9 +174,7 @@ class ScalarReductionOperation(ReductionOperation, ABC):
 
     @override
     def __str__(self) -> str:
-        result = type(self).__name__.replace("ReductionOperation", "").lower()
-
-        return result
+        return type(self).__name__.replace("ReductionOperation", "").lower()
 
     def update_persistent_hash(self, key_hash: Hash, key_builder: KeyBuilder) -> None:
         # They're all stateless.
@@ -821,8 +819,6 @@ class ArgExtOpCallable(ReductionCallable):
                 comp=op.update_comparison,
                 ))
 
-        return
-
 
 class SegmentOpCallable(ReductionCallable):
 
@@ -851,7 +847,6 @@ class SegmentOpCallable(ReductionCallable):
                 combined=op.op % ("op1", "op2"),
                 ))
 
-        return
 
 # }}}
 

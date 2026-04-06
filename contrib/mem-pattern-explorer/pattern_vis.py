@@ -43,8 +43,8 @@ class ArrayAccessPatternContext:
         return div_ceil(product(self.lsize), self.subgroup_size)
 
     def animate(self, f, interval=200):
-        import matplotlib.animation as animation
         import matplotlib.pyplot as plt
+        from matplotlib import animation
 
         fig = plt.figure()
 
