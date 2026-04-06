@@ -88,17 +88,39 @@ class LoopyKeyBuilder(KeyBuilderBase):
     update_for_dict = KeyBuilderBase.update_for_constantdict
     update_for_defaultdict = KeyBuilderBase.update_for_constantdict
 
-    def update_for_BasicSet(self, key_hash, key):  # noqa: N802
+    def _update_for_isl_obj(self,
+                key_hash: Hash,
+                key: isl.BasicSet | isl.Set | isl.BasicMap | isl.Map
+            ):
         from islpy import Printer
         prn = Printer.to_str(key.get_ctx())
-        getattr(prn, "print_"+key._base_name)(key)
+        getattr(prn, "print_"+key._base_name)(key)  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType, reportAttributeAccessIssue]
         key_hash.update(prn.get_str().encode("utf8"))
 
-    def update_for_Map(self, key_hash, key):  # noqa: N802
+    @override
+    def update_for_Map(self, key_hash: Hash, key: isl.Map):
         if isinstance(key, isl.Map):
-            self.update_for_BasicSet(key_hash, key)
+            self._update_for_isl_obj(key_hash, key)
         else:
-            raise AssertionError()
+            super().update_for_Map(key_hash, key)
+
+    def update_for_BasicMap(self, key_hash: Hash, key: isl.BasicMap):  # noqa: N802
+        if isinstance(key, isl.BasicMap):
+            self._update_for_isl_obj(key_hash, key)
+        else:
+            raise TypeError("called on a non-isl type")
+
+    def update_for_Set(self, key_hash: Hash, key: isl.Set):  # noqa: N802
+        if isinstance(key, isl.Set):
+            self._update_for_isl_obj(key_hash, key)
+        else:
+            raise TypeError("called on a non-isl type")
+
+    def update_for_BasicSet(self, key_hash: Hash, key: isl.BasicSet):  # noqa: N802
+        if isinstance(key, isl.BasicSet):
+            self._update_for_isl_obj(key_hash, key)
+        else:
+            raise TypeError("called on a non-isl type")
 
 # }}}
 
