@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, ClassVar, Generic, Literal, TypeVar, cast, ove
 
 import numpy as np
 from constantdict import constantdict
-from typing_extensions import override
+from typing_extensions import ParamSpec, override
 
 import islpy as isl
 from pytools import Hash, ProcessLogger, memoize_method
@@ -936,7 +936,14 @@ def clear_in_mem_caches() -> None:
 
 # {{{ memoize_on_disk
 
-def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def memoize_on_disk(
+    func: abc.Callable[_P, _R],
+    key_builder_t: type[KeyBuilderBase] = LoopyKeyBuilder,
+) -> abc.Callable[_P, _R]:
     from functools import wraps
 
     from pytools.persistent_dict import WriteOncePersistentDict
@@ -956,7 +963,7 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     caches.append(transform_cache)
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         from loopy import CACHING_ENABLED
 
         if (not CACHING_ENABLED
