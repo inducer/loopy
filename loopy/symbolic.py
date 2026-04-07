@@ -2564,6 +2564,26 @@ def constraint_to_cond_expr(cns: isl.Constraint) -> ArithmeticExpression:
 # }}}
 
 
+# {{{ MultiPwAff from sequence of pymbolic exprs
+
+def multi_pw_aff_from_exprs(
+        exprs: Sequence[Expression],
+        space: isl.Space
+    ) -> isl.MultiPwAff:
+
+    mpwaff = isl.MultiPwAff.zero(space)
+    for i in range(len(exprs)):
+        local_space = mpwaff.get_at(i).get_space().domain()
+        mpwaff = mpwaff.set_pw_aff(
+            i,
+            pwaff_from_expr(local_space, exprs[i])
+        )
+
+    return mpwaff
+
+# }}}
+
+
 # {{{ isl_set_from_expr
 
 class ConditionExpressionToBooleanOpsExpression(IdentityMapper[[]]):

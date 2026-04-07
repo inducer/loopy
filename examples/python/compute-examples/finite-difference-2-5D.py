@@ -54,7 +54,7 @@ def main(
 
         lap_u[i,j,k] = sum(
             [l],
-            c[l+r] * (u_(i-l,j,k) + u_(i,j-l,k) + u[i,j,k-l])
+            c[l+r] * (u_(i-l,j,k) + u_(i,j-l,k) + u_(i,j,k-l))
         )
         """,
         [
@@ -94,6 +94,23 @@ def main(
             temporary_address_space=lp.AddressSpace.LOCAL,
             temporary_dtype=np.float32
         )
+
+    knl = lp.tag_inames(knl, {
+        # outer block loops
+        "io" : "g.0",
+        "jo" : "g.1",
+        "k"  : "g.2",
+        # "ko" : "g.2",
+
+        # inner tile loops
+        "ii" : "l.0",
+        "ji" : "l.1",
+        # "ki" : "l.2",
+
+        # 2D plane compute storage loops
+        "ii_s" : "l.0",
+        "ji_s" : "l.1"
+    })
 
     if print_device_code:
         print(lp.generate_code_v2(knl).device_code())

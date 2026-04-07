@@ -49,15 +49,15 @@ def main(
     knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
 
     compute_map_a = nisl.make_map(f"""{{
-        [is, ks] -> [ii_s, io, ki_s, ko] :
-            is = io * {bm} + ii_s and
-            ks = ko * {bk} + ki_s
+        [is, ks] -> [a_ii, io, a_ki, ko] :
+            is = io * {bm} + a_ii and
+            ks = ko * {bk} + a_ki
     }}""")
 
     compute_map_b = nisl.make_map(f"""{{
-        [ks, js] -> [ki_s, ko, ji_s, jo] :
-            js = jo * {bn} + ji_s and
-            ks = ko * {bk} + ki_s
+        [ks, js] -> [b_ki, ko, b_ji, jo] :
+            js = jo * {bn} + b_ji and
+            ks = ko * {bk} + b_ki
     }}""")
 
     if use_compute:
@@ -65,20 +65,24 @@ def main(
             knl,
             "a_",
             compute_map=compute_map_a,
-            storage_indices=["ii_s", "ki_s"],
-            temporal_inames=["io", "ko", "jo"],
+            storage_indices=["a_ii", "a_ki"],
+            temporal_inames=["io", "ko"],
+            temporary_name="a_tile",
             temporary_address_space=lp.AddressSpace.LOCAL,
-            temporary_dtype=np.float64
+            temporary_dtype=np.float64,
+            compute_insn_id="a_load"
         )
 
         knl = compute(
             knl,
             "b_",
             compute_map=compute_map_b,
-            storage_indices=["ki_s", "ji_s"],
-            temporal_inames=["io", "ko", "jo"],
+            storage_indices=["b_ki", "b_ji"],
+            temporal_inames=["ko", "jo"],
+            temporary_name="b_tile",
             temporary_address_space=lp.AddressSpace.LOCAL,
-            temporary_dtype=np.float64
+            temporary_dtype=np.float64,
+            compute_insn_id="b_load"
         )
 
     if use_precompute:
@@ -91,15 +95,21 @@ def main(
     if not run_sequentially:
         knl = lp.tag_inames(
             knl, {
+                # inames for tiles
                 "io"   : "g.0", # outer block loop over block rows
                 "jo"   : "g.1", # outer block loop over block cols
 
+                # inames for within tile
                 "ii"   : "l.0", # inner block loop over rows
                 "ji"   : "l.1", # inner block loop over cols
 
-                "ii_s" : "l.0", # inner storage loop over a rows
-                "ji_s" : "l.0", # inner storage loop over b cols
-                "ki_s" : "l.1"  # inner storage loop over a cols / b rows
+                # inames for 'a' compute
+                "a_ii" : "l.0", # inner storage loop over a rows
+                "a_ki" : "l.1", # inner storage loop over a cols
+
+                # inames for 'b' compute
+                "b_ki" : "l.0", # inner storage loop over b rows
+                "b_ji" : "l.1", # inner storage loop over b cols
             }
         )
 

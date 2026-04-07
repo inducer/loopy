@@ -3,7 +3,7 @@ from typing import override
 from typing_extensions import TypeAlias
 import loopy as lp
 from loopy.kernel.tools import DomainChanger
-from loopy.types import to_loopy_type
+from loopy.types import ToLoopyTypeConvertible, to_loopy_type
 import namedisl as nisl
 
 from loopy.kernel import LoopKernel
@@ -15,8 +15,8 @@ from loopy.symbolic import (
     RuleAwareSubstitutionMapper,
     SubstitutionRuleExpander,
     SubstitutionRuleMappingContext,
+    multi_pw_aff_from_exprs,
     pw_aff_to_expr,
-    pwaff_from_expr
 )
 from loopy.transform.precompute import (
     contains_a_subst_rule_invocation
@@ -35,8 +35,8 @@ from pytools.tag import Tag
 AccessTuple: TypeAlias = tuple[Expression, ...]
 
 
-# FIXME: move to loopy/symbolic.py
-def gather_vars(expr) -> set[str]:
+# helper for gathering names of variables in pymbolic expressions
+def _gather_vars(expr: Expression) -> set[str]:
     deps = DependencyMapper()(expr)
     return {
         dep.name
@@ -45,47 +45,7 @@ def gather_vars(expr) -> set[str]:
     }
 
 
-# FIXME: move to loopy/symbolic.py
-def space_from_exprs(exprs, ctx=isl.DEFAULT_CONTEXT):
-    names = sorted(set().union(*(gather_vars(expr) for expr in exprs)))
-    set_names = [name for name in names]
-
-    return isl.Space.create_from_names(
-        ctx,
-        set=set_names
-    )
-
-
-# FIXME: remove this and rely on namedisl
-def align_map_domain_to_set(m: isl.Map, s: isl.Set) -> isl.Map:
-    """
-    Permute the domain dimensions of `m` to match the ordering of `s`,
-    by routing through the parameter space to preserve constraints.
-
-    Example:
-        m = { [a, b, c, d] -> [e, f, g, h] }
-        s = { [d, c, b, a] }
-        result = { [d, c, b, a] -> [e, f, g, h] }
-    """
-    dom_space = m.get_space().domain()
-    set_space = s.get_space()
-
-    n = dom_space.dim(isl.dim_type.set)
-    assert set_space.dim(isl.dim_type.set) == n, "dimension count mismatch"
-
-    dom_names = [dom_space.get_dim_name(isl.dim_type.set, i) for i in range(n)]
-    set_names = [set_space.get_dim_name(isl.dim_type.set, i) for i in range(n)]
-    assert set(dom_names) == set(set_names), "dimension names must be the same set"
-
-    n_params = m.dim(isl.dim_type.param)
-    m = m.move_dims(isl.dim_type.param, n_params, isl.dim_type.in_, 0, n)
-
-    for i, name in enumerate(set_names):
-        param_idx = m.find_dim_by_name(isl.dim_type.param, name)
-        m = m.move_dims(isl.dim_type.in_, i, isl.dim_type.param, param_idx, 1)
-
-    return m
-
+# {{{ gathering usage expressions
 
 class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
     """
@@ -143,6 +103,10 @@ class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
 
         return 0
 
+# }}}
+
+
+# {{{ substitution rule use replacement
 
 class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
     def __init__(
@@ -150,11 +114,11 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             ctx: SubstitutionRuleMappingContext,
             subst_name: str,
             subst_tag: Sequence[Tag] | None,
-            usage_descriptors: Mapping[AccessTuple, isl.Map],
+            usage_descriptors: Mapping[AccessTuple, nisl.Map],
             storage_indices: Sequence[str],
             temporary_name: str,
             compute_insn_id: str,
-            global_usage_map: isl.Map
+            footprint: nisl.Set
         ) -> None:
 
         super().__init__(ctx)
@@ -162,18 +126,19 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
         self.subst_name: str = subst_name
         self.subst_tag: Sequence[Tag] | None = subst_tag
 
-        self.usage_descriptors: Mapping[AccessTuple, isl.Map] = \
+        self.usage_descriptors: Mapping[AccessTuple, nisl.Map] = \
             usage_descriptors
         self.storage_indices: Sequence[str] = storage_indices
+        self.footprint: nisl.Set = footprint
 
         self.temporary_name: str = temporary_name
         self.compute_insn_id: str = compute_insn_id
 
+        self.replaced_something: bool = False
+
         # FIXME: may not always be the case (i.e. global barrier between
         # compute insn and uses)
         self.compute_dep_id: str = compute_insn_id
-
-        self.replaced_something: bool = False
 
 
     @override
@@ -185,31 +150,46 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             expn_state: ExpansionState
         ) -> Expression:
 
-        if not name == self.subst_name:
-            return super().map_subst_rule(name, tags, arguments, expn_state)
-
         rule = self.rule_mapping_context.old_subst_rules[name]
         arg_ctx = self.make_new_arg_context(
             name, rule.arguments, arguments, expn_state.arg_context
         )
         args = [arg_ctx[arg_name] for arg_name in rule.arguments]
 
-        # FIXME: usage within footprint check? likely required if user supplies
-        # bounds on storage indices because we are not guaranteed to capture the
-        # footprint of all usage sites
+        # {{{ validation checks
+
+        if not name == self.subst_name:
+            return super().map_subst_rule(name, tags, arguments, expn_state)
+
+        if not tuple(args) in self.usage_descriptors:
+            return super().map_subst_rule(name, tags, arguments, expn_state)
 
         if not len(arguments) == len(rule.arguments):
             raise ValueError("Number of arguments passed to rule {name} ",
                              "does not match the signature of {name}.")
 
-        index_exprs: Sequence[Expression] = []
+        local_map = self.usage_descriptors[tuple(args)]
+        temp_footprint = self.footprint.move_dims(
+            frozenset(self.footprint.names) - frozenset(self.storage_indices),
+            isl.dim_type.param
+        )
+
+        if not local_map.range() <= temp_footprint:
+            return super().map_subst_rule(name, tags, arguments, expn_state)
+
+        # }}}
+
+        # {{{ get index expression in terms of global inames
 
         local_pwmaff = self.usage_descriptors[tuple(args)].as_pw_multi_aff()
 
+        index_exprs: Sequence[Expression] = []
         for dim in range(local_pwmaff.dim(isl.dim_type.out)):
             index_exprs.append(pw_aff_to_expr(local_pwmaff.get_at(dim)))
 
         new_expression = var(self.temporary_name)[tuple(index_exprs)]
+
+        # }}}
 
         self.replaced_something = True
 
@@ -251,6 +231,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
 
         return kernel.copy(instructions=new_insns)
 
+# }}}
+
 
 @for_each_kernel
 def compute(
@@ -259,14 +241,14 @@ def compute(
         compute_map: nisl.Map,
         storage_indices: Sequence[str],
 
-        # NOTE: how can we deduce this?
         temporal_inames: Sequence[str],
 
         temporary_name: str | None = None,
         temporary_address_space: AddressSpace | None = None,
 
-        # FIXME: typing
-        temporary_dtype = None
+        temporary_dtype: ToLoopyTypeConvertible = None,
+
+        compute_insn_id: str | None = None
     ) -> LoopKernel:
     """
     Inserts an instruction to compute an expression given by :arg:`substitution`
@@ -284,7 +266,10 @@ def compute(
     to create inames for the loops that cover the required set of compute points.
     """
 
-    # {{{ construct necessary pieces; footprint, global usage map
+    # {{{ setup and useful items
+
+    storage_set = frozenset(storage_indices)
+    temporal_set = frozenset(temporal_inames)
 
     ctx = SubstitutionRuleMappingContext(
         kernel.substitutions, kernel.get_var_name_generator())
@@ -293,50 +278,65 @@ def compute(
         ctx, expander, kernel, substitution, None
     )
 
-    # add compute inames to domain / kernel
-    domain_changer = DomainChanger(kernel, kernel.all_inames())
-    named_domain = nisl.make_basic_set(domain_changer.domain)
-
     _ = expr_gatherer.map_kernel(kernel)
     usage_exprs = expr_gatherer.usage_expressions
 
     all_exprs = [expr for usage in usage_exprs for expr in usage]
-    usage_inames = set.union(*(gather_vars(expr) for expr in all_exprs))
-
-    usage_domain = nisl.make_set(f"{{ [{",".join(iname for iname in usage_inames)}] }}")
-    footprint = nisl.make_set(f"{{ [{",".join(idx for idx in storage_indices)}] }}")
-
-    global_usage_map = nisl.make_map_from_domain_and_range(
-        usage_domain,
-        compute_map.domain()
+    usage_inames: frozenset[str] = frozenset(
+        set.union(*(_gather_vars(expr) for expr in all_exprs))
     )
 
+    # }}}
+
+    # {{{ construct necessary pieces; footprint, global usage map
+
+    # add compute inames to domain / kernel
+    domain_changer = DomainChanger(kernel, kernel.all_inames())
+    named_domain = nisl.make_basic_set(domain_changer.domain)
+
+    # restrict domain to used inames
+    usage_domain = named_domain.project_out_except(usage_inames)
+
+    # FIXME: gross. find a cleaner way to generate a space for an empty map
+    global_usage_map = nisl.make_map_from_domain_and_range(
+        nisl.make_set(isl.Set.empty(usage_domain.get_space())),
+        compute_map.domain()
+    )
     global_usage_map = nisl.make_map(isl.Map.empty(global_usage_map.get_space()))
 
     usage_substs: Mapping[AccessTuple, nisl.Map] = {}
     for usage in usage_exprs:
 
-        # FIXME package sequence of pymbolic exprs -> multipwaff up as a function in loopy.symbolic
-        local_usage_mpwaff = isl.MultiPwAff.zero(global_usage_map.get_space())
+        # {{{ compute local usage map, update global usage map
 
-        for i in range(len(storage_indices)):
-            local_space = local_usage_mpwaff.get_at(i).get_space().domain()
-            local_usage_mpwaff = local_usage_mpwaff.set_pw_aff(
-                i,
-                pwaff_from_expr(local_space, usage[i])
-            )
+        local_usage_mpwaff = multi_pw_aff_from_exprs(
+            usage,
+            global_usage_map.get_space()
+        )
 
         local_usage_map = nisl.make_map(local_usage_mpwaff.as_map())
 
-        local_usage_map = local_usage_map.intersect_domain(named_domain)
+        local_usage_map = local_usage_map.intersect_domain(usage_domain)
         global_usage_map = global_usage_map | local_usage_map
 
-        local_storage_map = local_usage_map.apply_range(compute_map)
-        relevant_names = gather_vars(usage)
+        # }}}
 
-        local_storage_map = local_storage_map.project_out_except(
-            (relevant_names - frozenset(temporal_inames)) | frozenset(storage_indices)
-        )
+        # {{{ compute storage map
+
+        local_storage_map = local_usage_map.apply_range(compute_map)
+
+        # check that no restrictions happened during composition (i.e. tile
+        # valid for a single point in the domain)
+        if not local_usage_map.domain() <= local_storage_map.domain():
+            continue
+
+        non_param_names = (usage_inames - temporal_set) | storage_set
+        parameter_names = frozenset(local_storage_map.names) - non_param_names
+
+        local_storage_map = local_storage_map.move_dims(parameter_names,
+                                                        isl.dim_type.param)
+
+        # }}}
 
         usage_substs[tuple(usage)] = local_storage_map
 
@@ -346,26 +346,37 @@ def compute(
 
     # {{{ compute bounds and update kernel domain
 
-    footprint = global_usage_map.range()
-    footprint = footprint.project_out_except(
-        frozenset(temporal_inames) | frozenset(storage_indices)
+    global_usage_map = global_usage_map.move_dims(
+        temporal_set,
+        isl.dim_type.param
     )
+    footprint = global_usage_map.range()
 
-    # FIXME: probably do not want this permanently here
+    # clean up ticked duplicate names
+    footprint = footprint.project_out_except(temporal_set | storage_set)
+    footprint = footprint.move_dims(temporal_set, isl.dim_type.set)
+
+    # {{{ FIXME: use Sets instead of BasicSets when loopy is ready
+
     footprint = nisl.make_set(footprint._reconstruct_isl_object().convex_hull())
     named_domain = named_domain & footprint
 
-    # FIXME:
     if len(named_domain.get_basic_sets()) != 1:
         raise ValueError("New domain should be composed of a single basic set")
 
-    new_domains = domain_changer.get_domains_with(named_domain.get_basic_sets()[0])
+    # FIXME: use named object once loopy is name-ified
+    domain = named_domain.get_basic_sets()[0]._reconstruct_isl_object()
+    new_domains = domain_changer.get_domains_with(domain)
+
+    # }}}
+
     kernel = kernel.copy(domains=new_domains)
 
     # }}}
 
     # {{{ create compute instruction in kernel
 
+    # FIXME:
     compute_pw_aff = compute_map.reverse().as_pw_multi_aff()
     storage_ax_to_global_expr = {
         compute_pw_aff.get_dim_name(isl.dim_type.out, dim) :
@@ -385,16 +396,12 @@ def compute(
     if not temporary_name:
         temporary_name = substitution + "_temp"
 
-    assignee = var(temporary_name)[tuple(
-        var(iname) for iname in storage_indices
-    )]
+    assignee = var(temporary_name)[tuple(var(idx) for idx in storage_indices)]
 
-    within_inames = frozenset(
-        compute_map.get_dim_name(isl.dim_type.out, dim)
-        for dim in range(compute_map.dim(isl.dim_type.out))
-    )
+    within_inames = compute_map.output_names
 
-    compute_insn_id = substitution + "_compute"
+    if not compute_insn_id:
+        compute_insn_id = substitution + "_compute"
     compute_insn = lp.Assignment(
         id=compute_insn_id,
         assignee=assignee,
@@ -422,7 +429,7 @@ def compute(
         storage_indices,
         temporary_name,
         compute_insn_id,
-        global_usage_map
+        footprint
     )
 
     kernel = replacer.map_kernel(kernel)
@@ -433,12 +440,9 @@ def compute(
 
     loopy_type = to_loopy_type(temporary_dtype, allow_none=True)
 
-    # FIXME: fix with namedisl?
-    shape_domain = footprint.project_out_except(storage_indices)
-
     temp_shape = tuple(
-        pw_aff_to_expr(shape_domain.dim_max(dim)) + 1
-        for dim in range(shape_domain.dim(isl.dim_type.out))
+        pw_aff_to_expr(footprint.dim_max(dim)) + 1
+        for dim in storage_indices
     )
 
     new_temp_vars = dict(kernel.temporary_variables)
@@ -460,7 +464,5 @@ def compute(
     )
 
     # }}}
-
-    # FIXME: anything else?
 
     return kernel
