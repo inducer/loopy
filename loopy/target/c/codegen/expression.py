@@ -464,8 +464,59 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
                 self.rec(expr.else_, type_context, result_type),
                 )
 
+    def _is_mixed_sign_integer_pair(
+                self,
+                dtype1: LoopyType,
+                dtype2: LoopyType,
+            ) -> bool:
+        """Return True if *dtype1* and *dtype2* are integers of opposite
+        signedness (one signed, one unsigned)."""
+        return (
+            isinstance(dtype1, NumpyType)
+            and isinstance(dtype2, NumpyType)
+            and dtype1.is_integral()
+            and dtype2.is_integral()
+            and dtype1.numpy_dtype.kind != dtype2.numpy_dtype.kind
+        )
+
+    def _common_signed_dtype(
+                self,
+                dtype1: np.dtype,
+                dtype2: np.dtype,
+            ) -> NumpyType:
+        """Return the narrowest signed integer dtype that can hold all values
+        of both *dtype1* and *dtype2* (which must be integer dtypes).
+
+        Used to pick a common cast target when comparing or combining
+        mixed-sign integers, so that C's implicit unsigned-promotion rule
+        cannot give wrong results.
+        """
+        common = np.result_type(dtype1, dtype2)
+        if common.kind == "i":
+            return NumpyType(common)
+        # int64 vs uint64: numpy says float64; fall back to int64 (the widest
+        # standard signed type) and accept that uint64 values above INT64_MAX
+        # will not be represented correctly.
+        return NumpyType(np.dtype(np.int64))
+
     @override
     def map_comparison(self, expr: p.Comparison, type_context: TypeContext):
+        left_dtype = self.infer_type(cast("ArithmeticExpression", expr.left))
+        right_dtype = self.infer_type(cast("ArithmeticExpression", expr.right))
+
+        if self._is_mixed_sign_integer_pair(left_dtype, right_dtype):
+            # C would silently convert the signed operand to unsigned (giving
+            # wrong results for negative values).  Cast both to a common
+            # signed type to get Python-like semantics.
+            assert isinstance(left_dtype, NumpyType)
+            assert isinstance(right_dtype, NumpyType)
+            common_type = self._common_signed_dtype(
+                left_dtype.numpy_dtype, right_dtype.numpy_dtype)
+            return type(expr)(
+                self.rec(expr.left, "i", common_type),
+                expr.operator,
+                self.rec(expr.right, "i", common_type))
+
         inner_type_context = dtype_to_type_context(
                 self.kernel.target,
                 self.infer_type(
@@ -476,6 +527,63 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
                     self.rec(expr.left, inner_type_context),
                     expr.operator,
                     self.rec(expr.right, inner_type_context))
+
+    @override
+    def map_sum(self, expr: p.Sum, type_context: TypeContext):
+        result_dtype = self.infer_type(expr)
+
+        if (isinstance(result_dtype, NumpyType)
+                and result_dtype.numpy_dtype.kind == "i"
+                and result_dtype.is_integral()):
+            # If any child is an unsigned integer, cast it to the signed
+            # result type before addition.  Without this, C's usual arithmetic
+            # conversions would let the unsigned operand "win" and silently
+            # turn the computation into unsigned arithmetic.
+            new_children = []
+            modified = False
+            for child in expr.children:
+                child_dtype = self.infer_type(
+                    cast("ArithmeticExpression", child))
+                if (isinstance(child_dtype, NumpyType)
+                        and child_dtype.numpy_dtype.kind == "u"):
+                    new_children.append(
+                        self.rec(child, type_context, result_dtype))
+                    modified = True
+                else:
+                    new_children.append(self.rec(child, type_context))
+            if modified:
+                return type(expr)(tuple(new_children))
+
+        return type(expr)(tuple(
+            self.rec(child, type_context) for child in expr.children))
+
+    @override
+    def map_product(self, expr: p.Product, type_context: TypeContext):
+        result_dtype = self.infer_type(expr)
+
+        if (isinstance(result_dtype, NumpyType)
+                and result_dtype.numpy_dtype.kind == "i"
+                and result_dtype.is_integral()):
+            # Same rationale as map_sum: cast unsigned factors to the signed
+            # result type so the C multiplication is performed in signed
+            # arithmetic.
+            new_children = []
+            modified = False
+            for child in expr.children:
+                child_dtype = self.infer_type(
+                    cast("ArithmeticExpression", child))
+                if (isinstance(child_dtype, NumpyType)
+                        and child_dtype.numpy_dtype.kind == "u"):
+                    new_children.append(
+                        self.rec(child, type_context, result_dtype))
+                    modified = True
+                else:
+                    new_children.append(self.rec(child, type_context))
+            if modified:
+                return type(expr)(tuple(new_children))
+
+        return type(expr)(tuple(
+            self.rec(child, type_context) for child in expr.children))
 
     @override
     def map_type_cast(self,
