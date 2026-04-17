@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PYTHON="${PYTHON:-/home/aj/miniforge3/envs/dev/bin/python}"
+PYTHON="$(which python)"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 cd "$SCRIPT_DIR"
