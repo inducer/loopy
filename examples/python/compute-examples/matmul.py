@@ -318,7 +318,7 @@ def main(
         tn: int = 4,
         shared_memory_tiled: bool = False,
         register_tiled: bool = False,
-        dtype=np.float32,
+        dtype: lp.ToLoopyTypeConvertible = np.float32,
         print_kernel: bool = False,
         print_device_code: bool = False
     ) -> None:

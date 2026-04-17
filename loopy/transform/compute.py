@@ -7,7 +7,6 @@ import namedisl as nisl
 import islpy as isl
 import pymbolic.primitives as p
 from pymbolic import var
-from pymbolic.mapper.dependency import DependencyMapper
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools.tag import Tag
 
@@ -15,6 +14,7 @@ import loopy as lp
 from loopy.kernel.tools import DomainChanger
 from loopy.match import StackMatch, parse_stack_match
 from loopy.symbolic import (
+    DependencyMapper,
     ExpansionState,
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,

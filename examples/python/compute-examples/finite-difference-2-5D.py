@@ -14,9 +14,6 @@ from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 def centered_second_derivative_coefficients(radius: int, dtype) -> np.ndarray:
     offsets = np.arange(-radius, radius + 1, dtype=dtype)
     powers = np.arange(2 * radius + 1)
-
-    # Enforce exactness for monomials through degree 2r. The second derivative
-    # of x**2 at zero is 2, all other monomial derivatives in this range vanish.
     vandermonde = offsets[np.newaxis, :] ** powers[:, np.newaxis]
     rhs = np.zeros(2 * radius + 1, dtype=dtype)
     rhs[2] = 2
