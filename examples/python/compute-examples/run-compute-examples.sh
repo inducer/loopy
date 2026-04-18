@@ -20,6 +20,16 @@ run_example finite-difference-2-5D.py \
     --warmup 2 \
     --iterations 3
 
+run_example finite-difference-diamond.py \
+    --ntime 96 \
+    --nspace 4096 \
+    --stencil-width 9 \
+    --time-block-size 8 \
+    --space-block-size 128 \
+    --run-kernel \
+    --warmup 2 \
+    --iterations 3
+
 run_example wave-equation-ring-buffer.py \
     --ntime 4096 \
     --compute \
