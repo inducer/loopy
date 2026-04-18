@@ -227,7 +227,8 @@ def test_op_counter_bitwise():
     m = 256
     ell = 128
     params = {"n": n, "m": m, "ell": ell}
-    print(op_map)
+    logger.info("%s", op_map)
+
     i32add = op_map[
             lp.Op(np.int32, "add", CG.SUBGROUP, "bitwise")
             ].eval_with_dict(params)
@@ -1030,7 +1031,8 @@ def test_barrier_counter_barriers():
     knl = lp.add_and_infer_dtypes(knl, {"a": np.int32})
     knl = lp.split_iname(knl, "k", 128, inner_tag="l.0")
     sync_map = lp.get_synchronization_map(knl)
-    print(sync_map)
+    logger.info("%s", sync_map)
+
     n = 512
     m = 256
     ell = 128
@@ -1049,7 +1051,8 @@ def test_barrier_count_single():
 
     knl = lp.tag_inames(knl, {"i": "l.0"})
     sync_map = lp.get_synchronization_map(knl)
-    print(sync_map)
+    logger.info("%s", sync_map)
+
     barrier_count = sync_map.filter_by(kind="barrier_local").eval_and_sum()
     assert barrier_count == 1
 
@@ -1288,7 +1291,7 @@ def test_gather_access_footprint():
     fp = gather_access_footprints(knl)
 
     for key, footprint in fp.items():
-        print(key, count(knl, footprint))
+        logger.info("key %s count %d", key, count(knl, footprint))
 
 
 def test_gather_access_footprint_2():
@@ -1304,7 +1307,7 @@ def test_gather_access_footprint_2():
     params = {"n": 200}
     for key, footprint in fp.items():
         assert count(knl, footprint).eval_with_dict(params) == 200
-        print(key, count(knl, footprint))
+        logger.info("key %s count %d", key, count(knl, footprint))
 
 
 def test_summations_and_filters():
@@ -1373,8 +1376,6 @@ def test_summations_and_filters():
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True,
                            count_within_subscripts=True)
-    # for k, v in op_map.items():
-    #    print(type(k), "\n", k.name, k.dtype, type(k.dtype), " :\n", v)
 
     op_map_dtype = op_map.group_by("dtype")
     f32 = op_map_dtype[lp.Op(dtype=np.float32)].eval_with_dict(params)
