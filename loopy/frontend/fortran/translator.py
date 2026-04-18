@@ -243,9 +243,7 @@ class Scope:
         expr = submap(expr)
 
         subshift = SubscriptIndexAdjuster(self)
-        expr = subshift(expr)
-
-        return expr
+        return subshift(expr)
 
     def written_vars(self):
         return frozenset().union(*(insn.write_dependency_names()

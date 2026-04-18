@@ -91,7 +91,7 @@ def test_c_target_strides_nonsquare():
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indices, sizes):
+        for idx, size in zip(indices, sizes, strict=True):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
@@ -140,7 +140,7 @@ def test_c_optimizations():
         # create domain strings
         domain_template = "{{ [{iname}]: 0 <= {iname} < {size} }}"
         domains = []
-        for idx, size in zip(indices, sizes):
+        for idx, size in zip(indices, sizes, strict=True):
             domains.append(domain_template.format(
                 iname=idx,
                 size=size))
@@ -363,7 +363,7 @@ def test_scalar_global_args():
             "res  = sum(i, i)",
             target=lp.ExecutableCTarget())(n=n)
 
-    assert out == (n*(n-1)/2)
+    assert out == (n*(n-1)/2)  # noqa: RUF069
 
 
 if __name__ == "__main__":

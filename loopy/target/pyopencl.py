@@ -70,7 +70,7 @@ from loopy.types import LoopyType, NumpyType
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Iterator, Mapping, Sequence
 
     import genpy
     import pyopencl as cl
@@ -78,6 +78,7 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.expression import TypeContext
     from loopy.kernel import LoopKernel
     from loopy.target.pyopencl_execution import PyOpenCLExecutor
     from loopy.translation_unit import (
@@ -167,15 +168,11 @@ class PyOpenCLCallable(ScalarCallable):
                 name_in_target=self.name_in_target).with_types(
                         arg_id_to_dtype, clbl_inf_ctx)
 
-    def generate_preambles(self, target):
+    def generate_preambles(self, target: PyOpenCLTarget) -> Iterator[tuple[str, str]]:
         name = self.name_in_target
-        if (name.startswith("_lpy_real")
-                or name.startswith("_lpy_conj")
-                or name.startswith("_lpy_imag")):
-            if name.startswith("_lpy_real") or name.startswith("_lpy_conj"):
-                ret = "x"
-            else:
-                ret = "0"
+        if (name is not None
+                and name.startswith(("_lpy_real", "_lpy_conj", "_lpy_imag"))):
+            ret = "x" if name.startswith(("_lpy_real", "_lpy_conj")) else "0"
 
             dtype = self.arg_id_to_dtype[-1]
             ctype = target.dtype_to_typename(dtype)
@@ -257,7 +254,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             return super().wrap_in_typecast(actual_type, needed_type, s)
 
     @override
-    def map_sum(self, expr: p.Sum, type_context: str) -> Expression:
+    def map_sum(self, expr: p.Sum, type_context: TypeContext) -> Expression:
         # I've added 'type_context == "i"' because of the following
         # idiotic corner case: Code generation for subscripts comes
         # through here, and it may involve variables that we know
@@ -283,7 +280,10 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             for child in expr.children:
                 rhs_is_complex = self.infer_type(child).is_complex()
                 if rhs_is_complex:
-                    child_val = self.rec_arith(child, type_context, tgt_dtype)
+                    # FIXME: Yes, rec_arith isn't supposed to take the extra
+                    # argument, but it passes it through to rec(), which does.
+                    # Kinda ugly, I agree. -AK
+                    child_val = self.rec_arith(child, type_context, tgt_dtype)  # pyright: ignore[reportCallIssue]
                 else:
                     child_val = self.rec_arith(child, type_context)
 
@@ -369,7 +369,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 return complex_sum
 
     @override
-    def map_product(self, expr: p.Product, type_context: str) -> Expression:
+    def map_product(self, expr: p.Product, type_context: TypeContext) -> Expression:
         # I've added 'type_context == "i"' because of the following
         # idiotic corner case: Code generation for subscripts comes
         # through here, and it may involve variables that we know
@@ -392,7 +392,10 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
             for child in expr.children:
                 rhs_is_complex = self.infer_type(child).is_complex()
                 if rhs_is_complex:
-                    child_val = self.rec_arith(child, type_context, tgt_dtype)
+                    # FIXME: Yes, rec_arith isn't supposed to take the extra
+                    # argument, but it passes it through to rec(), which does.
+                    # Kinda ugly, I agree. -AK
+                    child_val = self.rec_arith(child, type_context, tgt_dtype)  # pyright: ignore[reportCallIssue]
                 else:
                     child_val = self.rec_arith(child, type_context)
 
@@ -443,7 +446,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                 return complex_prd
 
     @override
-    def map_quotient(self, expr: p.Quotient, type_context: str):
+    def map_quotient(self, expr: p.Quotient, type_context: TypeContext):
         n_dtype = self.infer_type(expr.numerator).numpy_dtype
         d_dtype = self.infer_type(expr.denominator).numpy_dtype
         tgt_dtype = self.infer_type(expr)
@@ -467,7 +470,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
                     self.rec(expr.denominator, type_context, tgt_dtype))
 
     @override
-    def map_constant(self, expr: object, type_context: str):
+    def map_constant(self, expr: object, type_context: TypeContext):
         if isinstance(expr, (complex, np.complexfloating)):
             try:
                 dtype = expr.dtype
@@ -494,7 +497,7 @@ class ExpressionToPyOpenCLCExpressionMapper(ExpressionToOpenCLCExpressionMapper)
         return super().map_constant(expr, type_context)
 
     @override
-    def map_power(self, expr: p.Power, type_context: str):
+    def map_power(self, expr: p.Power, type_context: TypeContext):
         tgt_dtype = self.infer_type(expr)
         base_dtype = self.infer_type(expr.base)
         exponent_dtype = self.infer_type(expr.exponent)
@@ -548,7 +551,7 @@ class PyOpenCLTarget(OpenCLTarget):
             pointer_size_nbytes: int | None = None
             ) -> None:
         # This ensures the dtype registry is populated.
-        import pyopencl.tools
+        import pyopencl.tools  # pyright: ignore[reportUnusedImport]  # noqa: F401
 
         super().__init__(
             atomics_flavor=atomics_flavor,
@@ -572,13 +575,6 @@ class PyOpenCLTarget(OpenCLTarget):
         self.limit_arg_size_nbytes = limit_arg_size_nbytes
         self.pointer_size_nbytes = pointer_size_nbytes
 
-    @property
-    def device(self):
-        warn("PyOpenCLTarget.device is deprecated, it will stop working in 2022.",
-                DeprecationWarning, stacklevel=2)
-        return None
-
-    # NB: Not including 'device', as that is handled specially here.
     hash_fields = (*OpenCLTarget.hash_fields, "pyopencl_module_name")
     comparison_fields = (*OpenCLTarget.comparison_fields, "pyopencl_module_name")
 
@@ -611,7 +607,7 @@ class PyOpenCLTarget(OpenCLTarget):
 
     def is_vector_dtype(self, dtype):
         try:
-            import pyopencl.cltypes as cltypes
+            from pyopencl import cltypes
             vec_types = cltypes.vec_types
         except ImportError:
             from pyopencl.array import vec
@@ -622,7 +618,7 @@ class PyOpenCLTarget(OpenCLTarget):
 
     def vector_dtype(self, base, count):
         try:
-            import pyopencl.cltypes as cltypes
+            from pyopencl import cltypes
             vec_types = cltypes.vec_types
         except ImportError:
             from pyopencl.array import vec
@@ -644,9 +640,7 @@ class PyOpenCLTarget(OpenCLTarget):
     def get_kernel_executor_cache_key(self, queue, **kwargs):
         return (queue.context, kwargs["entrypoint"])
 
-    # type-ignore because we're making things from *args: Any more concrete,
-    # and mypy doesn't like it.
-    def get_kernel_executor(self, t_unit: TranslationUnit,  # type: ignore[override]
+    def get_kernel_executor(self, t_unit: TranslationUnit,
                             queue_or_context: cl.CommandQueue | cl.Context,
                             *args: Any, entrypoint: CallableId, **kwargs: Any
                             ) -> PyOpenCLExecutor:
@@ -849,7 +843,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
     def get_temporary_decls(self,
                 codegen_state: CodeGenerationState,
                 schedule_index: int
-            ):
+            ) -> list[genpy.Generable]:
         from genpy import Assign, Comment, Line
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)

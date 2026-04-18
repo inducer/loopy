@@ -42,15 +42,23 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     SubstitutionRuleMappingContext,
 )
+from loopy.typing import InameStr
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence, Set
+    from collections.abc import (
+        Callable,
+        Collection,
+        Iterable,
+        Mapping,
+        Sequence,
+        Set as AbstractSet,
+    )
 
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import RuleStack
     from loopy.schedule.tools import LoopNestTree
-    from loopy.typing import InameStr, InameStrSet, InsnId
+    from loopy.typing import InameStrSet, InsnId
 
 
 __doc__ = """
@@ -90,13 +98,13 @@ class LoopDependenceGraph:
         add edge, etc.).
     """
 
-    successors: Mapping[InameStr, Set[InameStr]]
+    successors: Mapping[InameStr, AbstractSet[InameStr]]
     predecessors: Mapping[InameStr, frozenset[InameStr]]
     is_infusible: Mapping[tuple[InameStr, InameStr], bool]
 
     @classmethod
     def new(cls,
-                successors: Mapping[InameStr, Set[InameStr]],
+                successors: Mapping[InameStr, AbstractSet[InameStr]],
                 is_infusible: Mapping[tuple[InameStr, InameStr], bool]
             ):
         predecessors = {node: cast("set[InameStr]", set()) for node in successors}
@@ -122,7 +130,7 @@ class LoopDependenceGraph:
             loop for loop, preds in self.predecessors.items() if len(preds) == 0
         }
 
-    def remove_nodes(self, nodes_to_remove: Set[InameStr]):
+    def remove_nodes(self, nodes_to_remove: AbstractSet[InameStr]):
         """
         Returns a copy of *self* after removing *nodes_to_remove* in the graph.
         This routine adds necessary edges after removing *nodes_to_remove* to
@@ -310,11 +318,11 @@ def _remove_non_candidate_pre_ldg_nodes(
 
     return (
         {
-            key.iname: frozenset({n.iname for n in value})  # type: ignore[attr-defined]
+            key.iname: frozenset({n.iname for n in value})
             for key, value in new_predecessors.items()
         },
         {
-            key.iname: frozenset({n.iname for n in value})  # type: ignore[attr-defined]
+            key.iname: frozenset({n.iname for n in value})
             for key, value in new_successors.items()
         },
         infusible_edges_in_statement_dag,
@@ -481,11 +489,9 @@ def _compute_isinfusible_via_access_map(
             prim.Variable(candidate_pred), ">", prim.Variable(candidate_succ)
         ),
     )
-    result = not (
+    return not (
         set_pred & set_succ & accesses_same_index_set & candidates_not_equal
     ).is_empty()
-
-    return result
 
 
 def _build_ldg(
@@ -675,7 +681,7 @@ def _fuse_sequential_loops_within_outer_loops(
 
 
 @final
-class ReductionLoopInserter(RuleAwareIdentityMapper[[]]):
+class ReductionLoopInserter(RuleAwareIdentityMapper[[frozenset[InameStr]]]):
     """
     Main mapper used by :func:`_add_reduction_loops_in_partial_loop_nest_tree`.
     """
@@ -753,7 +759,7 @@ class ReductionLoopInserter(RuleAwareIdentityMapper[[]]):
 
         assert not (outer_redn_inames & redn_inames)
         return super().map_reduction(
-            expr, expn_state, outer_redn_inames=(outer_redn_inames | redn_inames)
+            expr, expn_state, (outer_redn_inames | redn_inames)
         )
 
 
@@ -788,8 +794,7 @@ def _get_partial_loop_nest_tree_for_fusion(kernel: LoopKernel):
     from loopy.schedule.tools import get_partial_loop_nest_tree
 
     tree = get_partial_loop_nest_tree(kernel)
-    tree = _add_reduction_loops_in_partial_loop_nest_tree(kernel, tree)
-    return tree
+    return _add_reduction_loops_in_partial_loop_nest_tree(kernel, tree)
 
 
 def get_kennedy_unweighted_fusion_candidates(

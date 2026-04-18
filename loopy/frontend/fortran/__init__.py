@@ -41,8 +41,7 @@ def c_preprocess(source, defines=None, filename=None, include_paths=None):
     :return: a string
     """
     try:
-        import ply.cpp as cpp
-        import ply.lex as lex
+        from ply import cpp, lex
     except ImportError as err:
         raise LoopyError(
              "Using the C preprocessor requires PLY to be installed") from err
@@ -226,11 +225,11 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
 
         if pre_transform_code is not None:
             proc_dict["_MODULE_SOURCE_CODE"] = pre_transform_code
-            exec(compile(pre_transform_code,
+            exec(compile(pre_transform_code,  # noqa: S102
                 "<loopy pre-transform code>", "exec"), proc_dict)
 
         proc_dict["_MODULE_SOURCE_CODE"] = transform_code
-        exec(compile(transform_code, filename, "exec"), proc_dict)
+        exec(compile(transform_code, filename, "exec"), proc_dict)  # noqa: S102
 
     finally:
         sys.path = prev_sys_path
@@ -273,7 +272,8 @@ def _add_assignees_to_calls(knl, all_kernels):
                 assignees = []
                 new_params = []
                 subroutine = subroutine_dict[insn.expression.function.name]
-                for par, arg in zip(insn.expression.parameters, subroutine.args):
+                for par, arg in zip(insn.expression.parameters, subroutine.args,
+                                    strict=True):
                     if arg.name in subroutine.get_written_variables():
                         par = modify_assignee_for_array_call(par)
                         assignees.append(par)
@@ -290,7 +290,6 @@ def _add_assignees_to_calls(knl, all_kernels):
                                 insn.expression.function.name)(*new_params)))
             else:
                 new_insns.append(insn)
-            pass
         elif isinstance(insn, (Assignment, CInstruction,
                 _DataObliviousInstruction)):
             new_insns.append(insn)

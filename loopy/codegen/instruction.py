@@ -36,7 +36,7 @@ from loopy.codegen.result import CodeGenerationResult
 
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Set
+    from collections.abc import Collection, Set as AbstractSet
 
     from pymbolic import Expression
 
@@ -75,7 +75,7 @@ def to_codegen_result(
             insn_id: InsnId,
             domain: isl.BasicSet,
             check_inames: Collection[str],
-            required_preds: Set[Expression],
+            required_preds: AbstractSet[Expression],
             ast: ASTType
         ) -> CodeGenerationResult[ASTType] | None:
     chk_domain = isl.Set.from_basic_set(domain)
@@ -259,9 +259,7 @@ def generate_assignment_instruction_code(
             printf_args_str = ", " + ", ".join(str(v) for v in printf_args)
         else:
             printf_args_str = ""
-
-        printf_insn = S('printf("{}\\n"{})'.format(
-                    printf_format, printf_args_str))
+        printf_insn = S(f'printf("{printf_format}\\n"{printf_args_str})')
 
         from cgen import Block
         if kernel.options.trace_assignment_values:

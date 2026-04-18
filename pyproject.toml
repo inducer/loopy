@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "loopy"
-version = "2025.1"
+version = "2025.2"
 description = "A code generator for array-based code on CPUs and GPUs"
 readme = "README.rst"
 license = "MIT"
@@ -43,6 +43,7 @@ dependencies = [
     "constantdict",
 
     "typing-extensions>=4",
+    "strenum>=0.4.15",
 ]
 [project.optional-dependencies]
 pyopencl = [
@@ -66,6 +67,13 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.sdist]
 exclude = [
+  "/loopy/target/c/compyte/.*",
+  "/.test*.yml",
+  "/asv*.json",
+  "/MEMO",
+  "/requirements.txt",
+  "/.ci*",
+  "/.git*",
   "/.git*",
   "/doc/_build",
   "/run-*.sh",
@@ -90,46 +98,44 @@ extend-select = [
     "C",   # flake8-comprehensions
     "E",   # pycodestyle
     "F",   # pyflakes
-
+    "FA",  # flake8-future-annotations
     "I",   # flake8-isort
-
     "N",   # pep8-naming
     "NPY", # numpy
+    "PGH", # pygrep-hooks
     "Q",   # flake8-quotes
-    "W",   # pycodestyle
-
+    "RUF", # ruff
+    "SIM", # flake8-simplify
+    "TC",  # flake8-type-checking
     "UP",  # pyupgrade
-    "RUF",  # ruff
-    "FA",
-    "TC",
-    "SIM",
+    "W",   # pycodestyle
 ]
 extend-ignore = [
     "C90",  # McCabe complexity
-    "E221", # multiple spaces before operator
-    "E241", # multiple spaces after comma
-    "E402", # module level import not at the top of file
     "E226", # missing whitespace around operator
+    "E402", # module level import not at the top of file
     "N817", # CamelCase `SubstitutionRuleMappingContext` imported as acronym `SRMC`
     "SIM102", # combine if statements
+    "RUF067", # no code in __init__ *shrug*
+    "TRY004",
+    "TRY300",
 
     # FIXME
     "UP031", # .format instead of %s
-    "UP032", # .format instead of %s
-    "B905",  # zip without strict
+    "BLE001",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "test/test_loopy.py" = ["B023"]
-"loopy/target/c/compyte/ndarray/**/*.py" = ["Q", "B", "E", "F", "N", "C4"]
 "loopy/frontend/fortran/translator.py" = ["N802", "B028"]
 "proto-tests/*.py" = ["B"]
 "contrib/**/*.py" = ["I002"]
-"doc/conf.py" = ["I002"]
+"doc/conf.py" = ["I002", "S102"]
 "*.ipynb" = ["I002"]
 "examples/**/*.py" = ["I002"]
-"proto-tests/**/*.py" = ["I002"]
+"proto-tests/**/*.py" = ["I002", "S102"]
 "test/**/*.py" = ["I002"]
+"test/test_*.py" = ["S102"]
 
 [tool.ruff.lint.flake8-quotes]
 docstring-quotes = "double"

@@ -36,7 +36,6 @@ from typing import (
     cast,
 )
 
-import numpy  # FIXME: imported as numpy to allow sphinx to resolve things
 import numpy as np
 from typing_extensions import override
 
@@ -45,7 +44,7 @@ from pytools.tag import Tag, Taggable, TagT, UniqueTag as UniqueTagBase
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
-from loopy.kernel.instruction import (  # noqa
+from loopy.kernel.instruction import (  # noqa: F401
     Assignment,
     AtomicInit,
     AtomicUpdate,
@@ -89,17 +88,6 @@ __doc__ = """
 .. autoclass:: UnrollTag
 
 .. autoclass:: Iname
-
-References
-^^^^^^^^^^
-
-.. class:: ToLoopyTypeConvertible
-
-    See :class:`loopy.ToLoopyTypeConvertible`.
-
-.. class:: TagT
-
-    A type variable with a lower bound of :class:`pytools.tag.Tag`.
 """
 
 # This docstring is included in ref_internals. Do not include parts of the public
@@ -168,11 +156,14 @@ def filter_iname_tags_by_type(
             return tag_type.__name__
 
     if max_num is not None and len(result) > max_num:
-        raise LoopyError("cannot have more than {} tags "
-                "of type(s): {}".format(max_num, strify_tag_type()))
+        raise LoopyError(
+                f"cannot have less than {max_num} tags "
+                f"of type(s): {strify_tag_type()}")
+
     if min_num is not None and len(result) < min_num:
-        raise LoopyError("must have more than {} tags "
-                "of type(s): {}".format(max_num, strify_tag_type()))
+        raise LoopyError(
+                f"must have more than {min_num} tags "
+                f"of type(s): {strify_tag_type()}")
 
     return result
 
@@ -312,7 +303,7 @@ class InOrderSequentialSequentialTag(InameImplementationTag):
         return "ord"
 
 
-ToInameTagConvertible: TypeAlias  = str | Tag | None
+ToInameTagConvertible: TypeAlias = str | Tag | None
 
 
 def parse_tag(tag: ToInameTagConvertible) -> Tag | None:
@@ -323,7 +314,7 @@ def parse_tag(tag: ToInameTagConvertible) -> Tag | None:
         return tag
 
     if not isinstance(tag, str):
-        raise ValueError("cannot parse tag: %s" % tag)
+        raise ValueError(f"cannot parse tag: {tag!r}")
 
     if tag == "for":
         return None
@@ -351,7 +342,7 @@ def parse_tag(tag: ToInameTagConvertible) -> Tag | None:
         else:
             return LocalInameTag(int(axis))
     else:
-        raise ValueError("cannot parse tag: %s" % tag)
+        raise ValueError(f"cannot parse tag: {tag!r}")
 
 # }}}
 
@@ -666,7 +657,7 @@ class TemporaryVariable(ArrayBase):
     will be created.
     """
 
-    initializer: numpy.ndarray | None
+    initializer: np.typing.NDArray[Any] | None
     """*None* or a :class:`numpy.ndarray` of data to be used to initialize the
     array.
     """
@@ -713,7 +704,7 @@ class TemporaryVariable(ArrayBase):
                 storage_shape: ShapeType | None = None,
 
                 base_storage: str | None = None,
-                initializer: np.ndarray | None = None,
+                initializer: np.typing.NDArray[Any] | None = None,
                 read_only: bool = False,
 
                 _base_storage_access_may_be_aliasing: bool = False,
@@ -751,8 +742,9 @@ class TemporaryVariable(ArrayBase):
                 shape = initializer.shape
             else:
                 if shape != initializer.shape:
-                    raise LoopyError("Shape of '{}' does not match that of the"
-                            " initializer.".format(name))
+                    raise LoopyError(
+                            f"Shape of '{name}' does not match that of the"
+                            " initializer.")
         else:
             raise LoopyError(
                     "temporary variable '%s': "
@@ -914,6 +906,9 @@ class SubstitutionRule:
         key_builder.rec(key_hash, self.arguments)
         key_builder.rec(key_hash, self.expression)
 
+    @override
+    def __str__(self) -> str:
+        return f"{self.name}({', '.join(self.arguments)}) := {self.expression}"
 
 # }}}
 

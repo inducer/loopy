@@ -46,9 +46,8 @@ from warnings import warn
 
 import numpy as np
 from constantdict import constantdict
-from typing_extensions import overload
+from typing_extensions import overload, override
 
-import islpy  # to help out Sphinx
 import islpy as isl
 from islpy import dim_type
 from pytools import (
@@ -60,10 +59,11 @@ from pytools import (
 )
 from pytools.tag import Tag, Taggable, TagT
 
-import loopy.kernel.data  # to help out Sphinx
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError, StaticValueFindingError
 from loopy.kernel.data import (
     ArrayArg,
+    # NOTE: this is imported `as` to help Sphinx disambiguate `loopy.match.Iname`.
+    Iname as KernelIname,
     KernelArgument,
     SubstitutionRule,
     TemporaryVariable,
@@ -83,7 +83,7 @@ if TYPE_CHECKING:
         Hashable,
         Mapping,
         Sequence,
-        Set,
+        Set as AbstractSet,
     )
 
     from pymbolic import ArithmeticExpression, Expression
@@ -109,16 +109,16 @@ class KernelState(IntEnum):
 
 def _get_inames_from_domains(
             domains: Sequence[isl.Set | isl.BasicSet]
-        ) -> Set[InameStr]:
+        ) -> AbstractSet[InameStr]:
     return fset_union(
             frozenset(dom.get_var_names_not_none(dim_type.set)) for dom in domains)
 
 
 @dataclass(frozen=True)
 class _BoundsRecord:
-    lower_bound_pw_aff: islpy.PwAff
-    upper_bound_pw_aff: islpy.PwAff
-    size: islpy.PwAff
+    lower_bound_pw_aff: isl.PwAff
+    upper_bound_pw_aff: isl.PwAff
+    size: isl.PwAff
 
 
 @dataclass(frozen=True)
@@ -158,7 +158,7 @@ class LoopKernel(Taggable):
     .. automethod:: tagged
     .. automethod:: without_tags
     """
-    domains: Sequence[islpy.BasicSet]
+    domains: Sequence[isl.BasicSet]
     """Represents the :ref:`domain-tree`."""
 
     instructions: Sequence[InstructionBase]
@@ -167,13 +167,13 @@ class LoopKernel(Taggable):
     """
 
     args: Sequence[KernelArgument]
-    assumptions: islpy.BasicSet
+    assumptions: isl.BasicSet
     """
     Must be a :class:`islpy.BasicSet` parameter domain.
     """
 
     temporary_variables: Mapping[str, TemporaryVariable]
-    inames: Mapping[InameStr, loopy.kernel.data.Iname]
+    inames: Mapping[InameStr, KernelIname]
     """
     An entry is guaranteed to be present for each iname.
     """
@@ -281,6 +281,8 @@ class LoopKernel(Taggable):
         for id_str in generate_unique_names(based_on):
             if id_str not in used_ids:
                 return intern(id_str)
+
+        raise RuntimeError("Unreachable.")
 
     def all_group_names(self):
         result = set()
@@ -461,7 +463,7 @@ class LoopKernel(Taggable):
                     dim_type.set,
                     result.dim(dim_type.set),
                     dim_type.param,
-                    result.find_dim_by_name(dim_type.param, actual_iname),
+                    result.to_set().find_dim_by_name(dim_type.param, actual_iname),
                     1)
 
         return result
@@ -548,7 +550,7 @@ class LoopKernel(Taggable):
                 tag_type_or_types: type[TagT] | tuple[type[TagT], ...],
                 max_num: int | None = None,
                 min_num: int | None = None
-            ) -> Set[TagT]:
+            ) -> AbstractSet[TagT]:
         """Return a subset of *tags* that matches type *tag_type*. Raises exception
         if the number of tags found were greater than *max_num* or less than
         *min_num*.
@@ -607,7 +609,7 @@ class LoopKernel(Taggable):
         return insn.within_inames
 
     @memoize_method
-    def iname_to_insns(self) -> Mapping[InameStr, Set[InsnId]]:
+    def iname_to_insns(self) -> Mapping[InameStr, AbstractSet[InsnId]]:
         result: dict[InameStr, set[InsnId]] = {
                 iname: set() for iname in self.all_inames()}
         for insn in self.instructions:
@@ -617,7 +619,7 @@ class LoopKernel(Taggable):
         return result
 
     @memoize_method
-    def _remove_inames_for_shared_hw_axes(self, cond_inames: Set[InameStr]):
+    def _remove_inames_for_shared_hw_axes(self, cond_inames: AbstractSet[InameStr]):
         """
         See if cond_inames contains references to two (or more) inames that
         boil down to the same tag. If so, exclude them. (We shouldn't be writing
@@ -687,7 +689,7 @@ class LoopKernel(Taggable):
     # {{{ read and written variables
 
     @memoize_method
-    def reader_map(self) -> Mapping[str, Set[InsnId]]:
+    def reader_map(self) -> Mapping[str, AbstractSet[InsnId]]:
         """
         :return: a dict that maps variable names to ids of insns that read that
           variable.
@@ -705,7 +707,7 @@ class LoopKernel(Taggable):
         return result
 
     @memoize_method
-    def writer_map(self) -> Mapping[str, Set[InsnId]]:
+    def writer_map(self) -> Mapping[str, AbstractSet[InsnId]]:
         """
         :return: a dict that maps variable names to ids of insns that write
             to that variable.
@@ -719,7 +721,7 @@ class LoopKernel(Taggable):
         return result
 
     @memoize_method
-    def get_read_variables(self) -> Set[str]:
+    def get_read_variables(self) -> AbstractSet[str]:
         return fset_union(
             insn.read_dependency_names()
             for insn in self.instructions
@@ -728,7 +730,7 @@ class LoopKernel(Taggable):
             for domain in self.domains
         )
 
-    def get_written_variables(self) -> Set[str]:
+    def get_written_variables(self) -> AbstractSet[str]:
         try:
             return self._cached_written_variables
         except AttributeError:
@@ -1071,6 +1073,22 @@ class LoopKernel(Taggable):
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
+    @overload
+    def get_grid_size_upper_bounds(self,
+                callables_table: CallablesTable,
+                *,
+                ignore_auto: bool = ...,
+                return_dict: Literal[False] = ...
+            ) -> tuple[tuple[isl.PwAff, ...], tuple[isl.PwAff, ...]]: ...
+
+    @overload
+    def get_grid_size_upper_bounds(self,
+                callables_table: CallablesTable,
+                *,
+                ignore_auto: bool = ...,
+                return_dict: Literal[True]
+            ) -> tuple[dict[int, isl.PwAff], dict[int, isl.PwAff]]: ...
+
     def get_grid_size_upper_bounds(self,
                 callables_table: CallablesTable,
                 ignore_auto: bool = False,
@@ -1160,7 +1178,7 @@ class LoopKernel(Taggable):
         return frozenset(
             insn_id
             for insn_id, nosync_scope in self.id_to_insn[insn_id].no_sync_with
-            if nosync_scope == scope or nosync_scope == "any")
+            if nosync_scope in (scope, "any"))
 
     # }}}
 
@@ -1183,8 +1201,11 @@ class LoopKernel(Taggable):
 
         return embedding
 
-    def stringify(self, what=None, with_dependencies=False, use_separators=True,
-            show_labels=True):
+    def stringify(self,
+                what: str | set[str] | None = None,
+                with_dependencies: bool = False,
+                use_separators: bool = True,
+                show_labels: bool = True) -> str:
         all_what = {
             "name",
             "arguments",
@@ -1208,7 +1229,7 @@ class LoopKernel(Taggable):
 
         if isinstance(what, str):
             if "," in what:
-                what = what.split(",")
+                what = set(what.split(","))
                 what = {s.strip() for s in what}
             else:
                 what = {
@@ -1219,7 +1240,7 @@ class LoopKernel(Taggable):
             raise LoopyError("invalid 'what' passed: %s"
                     % ", ".join(what-all_what))
 
-        lines = []
+        lines: list[str] = []
 
         kernel = self
 
@@ -1234,14 +1255,15 @@ class LoopKernel(Taggable):
             if show_labels:
                 lines.append("ARGUMENTS:")
             # Arguments are ordered, do not be tempted to sort them.
-            for arg in kernel.args:
-                lines.append(str(arg))
+            lines.extend(str(arg) for arg in kernel.args)
 
         if "domains" in what:
             lines.extend(sep)
             if show_labels:
                 lines.append("DOMAINS:")
-            for dom, parents in zip(kernel.domains, kernel.all_parents_per_domain()):
+            for dom, parents in zip(
+                    kernel.domains,
+                    kernel.all_parents_per_domain(), strict=True):
                 lines.append(len(parents)*"  " + str(dom))
 
         if "tags" in what:
@@ -1260,16 +1282,17 @@ class LoopKernel(Taggable):
             lines.extend(sep)
             if show_labels:
                 lines.append("TEMPORARIES:")
-            for tv in natsorted(kernel.temporary_variables.values(),
-                    key=lambda key_tv: key_tv.name):
-                lines.append(str(tv))
+            lines.extend(str(tv)
+                for tv in natsorted(
+                        kernel.temporary_variables.values(),
+                        key=lambda key_tv: key_tv.name))
 
         if "rules" in what and kernel.substitutions:
             lines.extend(sep)
             if show_labels:
                 lines.append("SUBSTITUTION RULES:")
-            for rule_name in natsorted(kernel.substitutions.keys()):
-                lines.append(str(kernel.substitutions[rule_name]))
+            lines.extend(str(kernel.substitutions[rule_name])
+                for rule_name in natsorted(kernel.substitutions.keys()))
 
         if "instructions" in what:
             lines.extend(sep)
@@ -1279,11 +1302,8 @@ class LoopKernel(Taggable):
             from loopy.kernel.tools import stringify_instruction_list
             lines.extend(stringify_instruction_list(kernel))
 
-        dep_lines = []
-        for insn in kernel.instructions:
-            if insn.depends_on:
-                dep_lines.append("{} : {}".format(
-                    insn.id, ",".join(insn.depends_on)))
+        dep_lines = ["{} : {}".format(insn.id, ",".join(insn.depends_on))
+            for insn in kernel.instructions if insn.depends_on]
 
         if "Dependencies" in what and dep_lines:
             lines.extend(sep)
@@ -1303,10 +1323,8 @@ class LoopKernel(Taggable):
 
         return "\n".join(lines)
 
+    @override
     def __str__(self):
-        return self.stringify()
-
-    def __unicode__(self):
         return self.stringify()
 
     # }}}
@@ -1439,8 +1457,7 @@ class LoopKernel(Taggable):
         if "domains" in kwargs:
             inames = kwargs.get("inames", self.inames)
             domains = kwargs["domains"]
-            kwargs["inames"] = {name: inames.get(name,
-                                         loopy.kernel.data.Iname(name, frozenset()))
+            kwargs["inames"] = {name: inames.get(name, KernelIname(name, frozenset()))
                                 for name in _get_inames_from_domains(domains)}
 
             assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
@@ -1456,9 +1473,7 @@ class LoopKernel(Taggable):
             # Avoid carrying over an invalid cache when instructions are
             # modified.
             try:
-                # The type system does not know about this attribute, and we're
-                # not about to tell it. It's an internal caching hack.
-                cwv = self._cached_written_variables  # type: ignore[attr-defined]
+                cwv = self._cached_written_variables
             except AttributeError:
                 pass
             else:

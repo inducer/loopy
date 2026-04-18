@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 
 # {{{ vector types
 
-class vec:  # noqa
+class vec:  # noqa: N801
     pass
 
 
@@ -107,11 +107,15 @@ def _create_vector_types():
                     "titles": titles})
             except NotImplementedError:
                 try:
-                    dtype = np.dtype([((n, title), base_type)
-                                      for (n, title) in zip(names, titles)])
+                    dtype = np.dtype([
+                        ((n, title), base_type)
+                        for (n, title) in zip(names, titles, strict=True)
+                    ])
                 except TypeError:
-                    dtype = np.dtype([(n, base_type) for (n, title)
-                                      in zip(names, titles)])
+                    dtype = np.dtype([
+                        (n, base_type)
+                        for (n, title) in zip(names, titles, strict=True)
+                    ])
 
             setattr(vec, name, dtype)
 
@@ -531,8 +535,7 @@ class CUDACASTBuilder(CFamilyASTBuilder):
                 lhs_expr_code = ecm(lhs_expr)
                 rhs_expr_code = ecm(new_rhs_expr)
 
-                return Statement("atomicAdd(&{}, {})".format(
-                    lhs_expr_code, rhs_expr_code))
+                return Statement(f"atomicAdd(&{lhs_expr_code}, {rhs_expr_code})")
             else:
                 from cgen import Assign, Block, DoWhile, Line
 

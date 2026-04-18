@@ -1,4 +1,5 @@
 """isl helpers"""
+
 from __future__ import annotations
 
 
@@ -50,13 +51,14 @@ def pw_aff_to_aff(pw_aff: isl.Aff | isl.PwAff) -> isl.Aff:
 
     if len(pieces) == 0:
         raise RuntimeError("PwAff does not have any pieces")
+
     if len(pieces) > 1:
         _, first_aff = pieces[0]
         for _, other_aff in pieces[1:]:
             if not first_aff.plain_is_equal(other_aff):
                 raise NotImplementedError("only single-valued piecewise affine "
                         "expressions are supported here--encountered "
-                        "multi-valued expression '%s'" % pw_aff)
+                        f"multi-valued expression '{pw_aff}'")
 
         return first_aff
 
@@ -65,34 +67,24 @@ def pw_aff_to_aff(pw_aff: isl.Aff | isl.PwAff) -> isl.Aff:
 
 # {{{ make_slab
 
-def make_slab(space, iname, start, stop, iname_multiplier=1):
+def make_slab(space: isl.Space,
+              iname: str | tuple[dim_type, int],
+              start: isl.Aff | isl.PwAff | ArithmeticExpression,
+              stop: isl.Aff | isl.PwAff | ArithmeticExpression,
+              iname_multiplier: int = 1) -> isl.BasicSet:
     """
     Returns an instance of :class:`islpy._isl.BasicSet`, which satisfies the
     constraint ``start <= iname_multiplier*iname < stop``.
 
     :arg space: An instance of :class:`islpy._isl.Space`.
-
-    :arg iname:
-
-        Either an instance of :class:`str` as a name of the ``iname`` or a
+    :arg iname: Either an instance of :class:`str` as a name of the ``iname`` or a
         tuple of ``(iname_dt, iname_dx)`` indicating the *iname* in the space.
-
-    :arg start:
-
-        An instance of :class:`int`  or an instance of
-        :class:`islpy._isl.Aff` indicating the lower bound of
-        ``iname_multiplier*iname``(inclusive).
-
-    :arg stop:
-
-        An instance of :class:`int`  or an instance of
-        :class:`islpy._isl.Aff` indicating the upper bound of
-        ``iname_multiplier*iname``.
-
-    :arg iname_multiplier:
-
-        A strictly positive :class:`int` denoting *iname*'s coefficient in the
-        above inequality expression.
+    :arg start: An instance of :class:`int`  or an instance of :class:`islpy._isl.Aff`
+        indicating the lower bound of ``iname_multiplier*iname``(inclusive).
+    :arg stop: An instance of :class:`int`  or an instance of :class:`islpy._isl.Aff`
+        indicating the upper bound of ``iname_multiplier*iname``.
+    :arg iname_multiplier: A strictly positive :class:`int` denoting *iname*'s
+        coefficient in the above inequality expression.
     """
     zero = isl.Aff.zero_on_domain(space)
 
@@ -195,7 +187,7 @@ def simplify_pw_aff(pw_aff, context=None):
                 if i == j:
                     continue
 
-                if aff_i.gist(dom_j).is_equal(aff_j):
+                if aff_i.gist(dom_j).to_pw_aff().is_equal(aff_j):
                     # aff_i is sufficient to cover aff_j, eliminate aff_j
                     new_pieces = pieces[:]
                     if i < j:
@@ -245,8 +237,8 @@ def static_extremum_of_pw_aff(
     if len(pieces) == 1:
         (_, result), = pieces
         if constants_only and not result.is_cst():
-            raise StaticValueFindingError("a numeric %s was not found for PwAff '%s'"
-                    % (what, pw_aff))
+            raise StaticValueFindingError(
+                f"a numeric {what} was not found for PwAff '{pw_aff}'")
         return result
 
     from pytools import flatten, memoize
@@ -364,7 +356,7 @@ def duplicate_axes(
     if not duplicate_inames:
         return isl_obj
 
-    old_name_to_new_name = dict(zip(duplicate_inames, new_inames))
+    old_name_to_new_name = dict(zip(duplicate_inames, new_inames, strict=True))
 
     dup_isl_obj = isl_obj
 
@@ -659,7 +651,7 @@ def set_dim_name(
         raise NotImplementedError(f"not implemented for {type(obj)}.")
 
 
-PwAffOrPolynomialT = TypeVar("PwAffOrPolynomialT", isl.PwAff,  isl.PwQPolynomial)
+PwAffOrPolynomialT = TypeVar("PwAffOrPolynomialT", isl.PwAff, isl.PwQPolynomial)
 
 
 def get_param_subst_domain(
@@ -903,7 +895,7 @@ def find_and_rename_dim(isl_obj, dt, old_name, new_name):
 
     """
     return isl_obj.set_dim_name(
-            dt, isl_obj.find_dim_by_name(dt, old_name), new_name)
+            dt, isl_obj.to_set().find_dim_by_name(dt, old_name), new_name)
 
 # }}}
 

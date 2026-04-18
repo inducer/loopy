@@ -122,7 +122,7 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
 
     flux_store_idx = 0
 
-    for rflux_insn, sflux_insn in zip(r_fluxes, s_fluxes):
+    for rflux_insn, sflux_insn in zip(r_fluxes, s_fluxes, strict=True):
         for knl_tag, insn, flux_inames, tmps, flux_precomp_inames in [
                   ("rknl", rflux_insn, ("j", "n",), rtmps, ("jj", "ii",)),
                   ("sknl", sflux_insn, ("i", "n",), stmps, ("ii", "jj",)),
@@ -131,8 +131,7 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
             print(insn)
 
             reader, = lp.find_instructions(hsv,
-                  "tag:{knl_tag} and reads:{flux_var}"
-                  .format(knl_tag=knl_tag, flux_var=flux_var))
+                  f"tag:{knl_tag} and reads:{flux_var}")
 
             hsv = lp.assignment_to_subst(hsv, flux_var)
 
@@ -150,8 +149,7 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
                 hsv = lp.tag_array_axes(hsv, flux_store_name, "N1,N0,N2?")
 
             n_iname = "n_"+flux_var.replace("_r", "").replace("_s", "")
-            if n_iname.endswith("_0"):
-                n_iname = n_iname[:-2]
+            n_iname = n_iname.removesuffix("_0")
             hsv = lp.rename_iname(hsv, "n", n_iname, within="id:"+reader.id,
                   existing_ok=True)
 

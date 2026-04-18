@@ -269,7 +269,7 @@ def test_multi_arg_array_call(ctx_factory: cl.CtxFactory):
                 lp.Assignment(id="init1", assignee=acc_i,
                     expression="214748367"),
                 lp.Assignment(id="insn", assignee=index,
-                    expression=p.If(p.Expression.eq(acc_i, a_i), i, index),
+                    expression=p.If(p.ExpressionNode.eq(acc_i, a_i), i, index),
                     depends_on="update"),
                 lp.Assignment(id="update", assignee=acc_i,
                     expression=p.Variable("min")(acc_i, a_i),
@@ -723,7 +723,7 @@ def test_passing_and_getting_scalar_in_clbl_knl(ctx_factory: cl.CtxFactory, inli
 
 
 @pytest.mark.parametrize("inline", [False, True])
-def test_passing_scalar_as_indexed_subcript_in_clbl_knl(inline: bool):
+def test_passing_scalar_as_indexed_subscript_in_clbl_knl(inline: bool):
     ctx = cl.create_some_context()
     cq = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
@@ -991,7 +991,7 @@ def test_callee_with_auto_offset(ctx_factory: cl.CtxFactory):
         """
         y[i] = 2*y[i]
         """,
-        [lp.GlobalArg("y",  offset=lp.auto)],
+        [lp.GlobalArg("y", offset=lp.auto)],
         name="dosify")
 
     knl = lp.make_kernel(

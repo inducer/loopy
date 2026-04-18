@@ -24,10 +24,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+
 import contextlib
 import re
 from collections import defaultdict
-from collections.abc import Set
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, replace
 from functools import cached_property, reduce
 from sys import intern
@@ -36,10 +37,11 @@ from typing import (
     Any,
     ClassVar,
     Concatenate,
-    Generic,
-    Literal as LiteralT,
+    Literal as TypingLiteral,
+    TypeAlias,
     TypeVar,
     cast,
+    overload,
 )
 from warnings import warn
 
@@ -48,11 +50,8 @@ from constantdict import constantdict
 from typing_extensions import Self, override
 
 import islpy as isl
-import pymbolic.primitives  # FIXME: also import by full name to allow sphinx to resolve
 import pymbolic.primitives as p
 import pytools.lex
-from islpy import dim_type
-from pymbolic import ArithmeticExpression, Expression, Variable
 from pymbolic.mapper import (
     CachedCombineMapper as CombineMapperBase,
     CachedIdentityMapper as IdentityMapperBase,
@@ -64,7 +63,10 @@ from pymbolic.mapper import (
     ResultT,
     WalkMapper as UncachedWalkMapperBase,
 )
-from pymbolic.mapper.coefficient import CoefficientCollector as CoefficientCollectorBase
+from pymbolic.mapper.coefficient import (
+    CoefficientCollector as CoefficientCollectorBase,
+    CoeffsT,
+)
 from pymbolic.mapper.constant_folder import (
     ConstantFoldingMapper as ConstantFoldingMapperBase,
 )
@@ -77,8 +79,16 @@ from pymbolic.mapper.stringifier import StringifyMapper as StringifyMapperBase
 from pymbolic.mapper.substitutor import (
     CachedSubstitutionMapper as SubstitutionMapperBase,
 )
-from pymbolic.mapper.unifier import UnidirectionalUnifier as UnidirectionalUnifierBase
+from pymbolic.mapper.unifier import (
+    UnidirectionalUnifier as UnidirectionalUnifierBase,
+    UnificationRecord,
+)
 from pymbolic.parser import Parser as ParserBase
+from pymbolic.typing import (
+    ArithmeticExpression,
+    ArithmeticOrExpressionT,
+    Expression,
+)
 from pytools import memoize, memoize_method, memoize_on_first_arg
 from pytools.tag import Tag, Taggable, ToTagSetConvertible
 
@@ -94,7 +104,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 
     from pymbolic.mapper.dependency import Dependencies
-    from pymbolic.typing import ArithmeticOrExpressionT
 
     from loopy.kernel import LoopKernel
     from loopy.kernel.data import KernelArgument, SubstitutionRule, TemporaryVariable
@@ -108,24 +117,38 @@ __doc__ = """
 Loopy-specific expression types
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. autoclass:: LoopyExpressionBase
+    :show-inheritance:
 .. autoclass:: Literal
+    :show-inheritance:
 .. autoclass:: ArrayLiteral
+    :show-inheritance:
+.. autoclass:: GroupHardwareAxisIndex
+.. autoclass:: LocalHardwareAxisIndex
 .. autoclass:: FunctionIdentifier
+    :show-inheritance:
 .. autoclass:: TypedCSE
+    :show-inheritance:
 
 .. currentmodule:: loopy
 
 .. autoclass:: TypeCast
+    :show-inheritance:
 .. autoclass:: TaggedVariable
+    :show-inheritance:
 .. autoclass:: Reduction
-.. autoclass:: LinearSubscript
+    :show-inheritance:
 
 .. currentmodule:: loopy.symbolic
+
 .. autoclass:: SubArrayRef
-
-
+    :show-inheritance:
 .. autoclass:: RuleArgument
+    :show-inheritance:
+.. autoclass:: LinearSubscript
+    :show-inheritance:
 .. autoclass:: ResolvedFunction
+    :show-inheritance:
 
 Rule-aware Mappers
 ^^^^^^^^^^^^^^^^^^
@@ -134,30 +157,10 @@ Rule-aware Mappers
 .. autoclass:: ExpansionState
 .. autoclass:: RuleAwareIdentityMapper
 
-
 Expression Manipulation Helpers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: simplify_using_aff
-
-References
-^^^^^^^^^^
-
-.. class:: Variable
-
-    See :class:`pymbolic.Variable`.
-
-.. class:: Expression
-
-    See :data:`pymbolic.typing.Expression`.
-
-.. class:: ArithmeticExpression
-
-    See :data:`pymbolic.ArithmeticExpression`.
-
-.. class:: _Expression
-
-    See :class:`pymbolic.primitives.ExpressionNode`.
 """
 
 
@@ -167,37 +170,38 @@ T = TypeVar("T")
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(Mapper[Expression, P]):
-    def map_literal(self,
-                    expr: Literal, *args: P.args, **kwargs: P.kwargs) -> Expression:
+    def map_literal(self, expr: Literal, /,
+                    *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
-    def map_array_literal(
-                self,
-                expr: ArrayLiteral, *args: P.args, **kwargs: P.kwargs
-            ) -> Expression:
+    def map_array_literal(self, expr: ArrayLiteral, /,
+                          *args: P.args, **kwargs: P.kwargs) -> Expression:
         return type(expr)(tuple(self.rec(ch, *args, **kwargs)
                                 for ch in expr.children))
 
-    def map_group_hw_index(self, expr, *args: P.args, **kwargs: P.kwargs) -> Expression:
+    def map_group_hw_index(self, expr: GroupHardwareAxisIndex, /,
+                           *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
-    def map_local_hw_index(self, expr, *args: P.args, **kwargs: P.kwargs) -> Expression:
+    def map_local_hw_index(self, expr: LocalHardwareAxisIndex, /,
+                           *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
-    def map_loopy_function_identifier(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_loopy_function_identifier(self, expr: FunctionIdentifier, /,
+                                      *args: P.args, **kwargs: P.kwargs) -> Expression:
         return expr
 
-    def map_reduction(self,
-                      expr: Reduction, *args: P.args, **kwargs: P.kwargs) -> Expression:
+    def map_reduction(self, expr: Reduction, /,
+                      *args: P.args, **kwargs: P.kwargs) -> Expression:
         mapped_inames = [self.rec(p.Variable(iname), *args, **kwargs)
                          for iname in expr.inames]
 
-        new_inames = []
-        for iname, new_sym_iname in zip(expr.inames, mapped_inames):
-            if not isinstance(new_sym_iname, Variable):
+        new_inames: list[str] = []
+        for iname, new_sym_iname in zip(expr.inames, mapped_inames, strict=True):
+            if not isinstance(new_sym_iname, p.Variable):
                 from loopy.diagnostic import LoopyError
-                raise LoopyError("%s did not map iname '%s' to a variable"
-                        % (type(self).__name__, iname))
+                raise LoopyError(
+                    f"{type(self).__name__} did not map iname '{iname}' to a variable")
 
             new_inames.append(new_sym_iname.name)
 
@@ -210,15 +214,13 @@ class IdentityMapperMixin(Mapper[Expression, P]):
                 new_expr,
                 allow_simultaneous=expr.allow_simultaneous)
 
-    def map_tagged_variable(self, expr: TaggedVariable,
+    def map_tagged_variable(self, expr: TaggedVariable, /,
                             *args: P.args, **kwargs: P.kwargs) -> Expression:
         # leaf, doesn't change
         return expr
 
-    def map_type_annotation(
-                self, expr: TypeAnnotation,
-                *args: P.args, **kwargs: P.kwargs
-            ) -> Expression:
+    def map_type_annotation(self, expr: TypeAnnotation, /,
+                            *args: P.args, **kwargs: P.kwargs) -> Expression:
         new_child = self.rec(expr.child, *args, **kwargs)
 
         if new_child is expr.child:
@@ -226,7 +228,7 @@ class IdentityMapperMixin(Mapper[Expression, P]):
 
         return type(expr)(expr.type, new_child)
 
-    def map_sub_array_ref(self, expr: SubArrayRef,
+    def map_sub_array_ref(self, expr: SubArrayRef, /,
                           *args: P.args, **kwargs: P.kwargs) -> Expression:
         new_inames = self.rec(expr.swept_inames, *args, **kwargs)
         new_subscript = self.rec(expr.subscript, *args, **kwargs)
@@ -234,20 +236,20 @@ class IdentityMapperMixin(Mapper[Expression, P]):
         assert isinstance(new_inames, tuple)
         assert isinstance(new_subscript, p.Subscript)
         if (all(new_iname is old_iname
-                for new_iname, old_iname in zip(new_inames, expr.swept_inames))
-                and new_subscript is expr.subscript):
+                for new_iname, old_iname in
+                zip(new_inames, expr.swept_inames, strict=True))
+            and new_subscript is expr.subscript):
             return expr
 
-        return SubArrayRef(cast("tuple[Variable, ...]", new_inames), new_subscript)
+        return SubArrayRef(cast("tuple[p.Variable, ...]", new_inames), new_subscript)
 
-    def map_resolved_function(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_resolved_function(self, expr: ResolvedFunction, /,
+                              *args: P.args, **kwargs: P.kwargs) -> Expression:
         # leaf, doesn't change
         return expr
 
-    def map_type_cast(
-                self, expr: TypeCast,
-                *args: P.args, **kwargs: P.kwargs
-            ) -> Expression:
+    def map_type_cast(self, expr: TypeCast, /,
+                      *args: P.args, **kwargs: P.kwargs) -> Expression:
         new_child = self.rec(expr.child, *args, **kwargs)
 
         if new_child is expr.child:
@@ -255,15 +257,19 @@ class IdentityMapperMixin(Mapper[Expression, P]):
 
         return type(expr)(expr.type, new_child)
 
-    map_linear_subscript = IdentityMapperBase.map_subscript
+    def map_rule_argument(self, expr: RuleArgument, /,
+                           *args: P.args, **kwargs: P.kwargs) -> Expression:
+        return expr
 
-    map_rule_argument = map_group_hw_index
+    map_linear_subscript: Callable[Concatenate[Self, LinearSubscript, P],
+                                   Expression] = IdentityMapperBase.map_subscript
+    map_fortran_division: Callable[Concatenate[Self, FortranDivision, P],
+                                   Expression] = IdentityMapperBase.map_quotient
 
-    map_fortran_division = IdentityMapperBase.map_quotient
 
-
-class FlattenMapper(FlattenMapperBase, IdentityMapperMixin):
-    # FIXME: Lies! This needs to be made precise.
+class FlattenMapper(FlattenMapperBase, IdentityMapperMixin[[]]):
+    # FIXME(pyright): Lies! This needs to be made precise.
+    @override
     def is_expr_integer_valued(self, expr: Expression) -> bool:
         return True
 
@@ -272,7 +278,7 @@ def flatten(expr: ArithmeticOrExpressionT) -> ArithmeticOrExpressionT:
     return cast("ArithmeticOrExpressionT", FlattenMapper()(expr))
 
 
-class IdentityMapper(IdentityMapperBase, IdentityMapperMixin, Generic[P]):
+class IdentityMapper(IdentityMapperBase[P], IdentityMapperMixin[P]):
     pass
 
 
@@ -282,60 +288,60 @@ class UncachedIdentityMapper(UncachedIdentityMapperBase[P],
 
 
 class PartialEvaluationMapper(
-        EvaluationMapperBase, IdentityMapperMixin[[]]):
-    def map_variable(self, expr):
+        EvaluationMapperBase[Expression], IdentityMapperMixin[[]]):
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Expression:
         return expr
 
-    def map_common_subexpression_uncached(self, expr):
+    @override
+    def map_common_subexpression_uncached(
+                self, expr: p.CommonSubexpression, /) -> Expression:
         return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
 
 class WalkMapperMixin(WalkMapperBase[P]):
-    def map_literal(self, expr, *args: P.args, **kwargs: P.kwargs) -> None:
+    def map_literal(self, expr: Literal, /,
+                    *args: P.args, **kwargs: P.kwargs) -> None:
         self.visit(expr, *args, **kwargs)
 
-    def map_array_literal(self, expr, *args: P.args, **kwargs: P.kwargs) -> None:
+    def map_array_literal(self, expr: ArrayLiteral, /,
+                          *args: P.args, **kwargs: P.kwargs) -> None:
         if not self.visit(expr, *args, **kwargs):
             return
 
         for ch in expr.children:
             self.rec(ch, *args, **kwargs)
 
-    def map_group_hw_index(self,
-                expr: GroupHardwareAxisIndex,
-                *args: P.args,
-                **kwargs: P.kwargs
-            ) -> None:
+    def map_group_hw_index(self, expr: GroupHardwareAxisIndex | RuleArgument, /,
+                           *args: P.args, **kwargs: P.kwargs) -> None:
         self.visit(expr, *args, **kwargs)
 
-    def map_local_hw_index(self,
-                expr: LocalHardwareAxisIndex,
-                *args: P.args,
-                **kwargs: P.kwargs
-            ) -> None:
+    def map_local_hw_index(self, expr: LocalHardwareAxisIndex, /,
+                           *args: P.args, **kwargs: P.kwargs) -> None:
         self.visit(expr, *args, **kwargs)
 
-    def map_reduction(self, expr: Reduction, *args: P.args, **kwargs: P.kwargs) -> None:
+    def map_reduction(self, expr: Reduction, /,
+                      *args: P.args, **kwargs: P.kwargs) -> None:
         if not self.visit(expr, *args, **kwargs):
             return
 
         self.rec(expr.expr, *args, **kwargs)
 
-    def map_type_cast(self, expr: TypeCast, *args: P.args, **kwargs: P.kwargs) -> None:
+    def map_type_cast(self, expr: TypeCast, /,
+                      *args: P.args, **kwargs: P.kwargs) -> None:
         if not self.visit(expr, *args, **kwargs):
             return
         self.rec(expr.child, *args, **kwargs)
 
-    map_tagged_variable = WalkMapperBase.map_variable
+    map_tagged_variable: Callable[Concatenate[Self, TaggedVariable, P],
+                                  None] = WalkMapperBase.map_variable
 
-    def map_loopy_function_identifier(
-                self, expr, *args: P.args, **kwargs: P.kwargs
-            ) -> None:
+    def map_loopy_function_identifier(self, expr: FunctionIdentifier, /,
+                                      *args: P.args, **kwargs: P.kwargs) -> None:
         self.visit(expr, *args, **kwargs)
 
-    def map_linear_subscript(self,
-                expr: LinearSubscript,
-                *args: P.args, **kwargs: P.kwargs) -> None:
+    def map_linear_subscript(self, expr: LinearSubscript, /,
+                             *args: P.args, **kwargs: P.kwargs) -> None:
         if not self.visit(expr, *args, **kwargs):
             return
 
@@ -344,26 +350,26 @@ class WalkMapperMixin(WalkMapperBase[P]):
 
         self.post_visit(expr, *args, **kwargs)
 
-    map_rule_argument = map_group_hw_index
+    map_rule_argument: Callable[Concatenate[Self, RuleArgument, P],
+                                None] = map_group_hw_index
 
-    def map_sub_array_ref(self, expr: SubArrayRef, *args: P.args, **kwargs: P.kwargs):
+    def map_sub_array_ref(self, expr: SubArrayRef, /,
+                          *args: P.args, **kwargs: P.kwargs):
         if not self.visit(expr, *args, **kwargs):
             return
 
         self.rec(expr.swept_inames, *args, **kwargs)
         self.rec(expr.subscript, *args, **kwargs)
 
-    def map_resolved_function(self,
-                expr: ResolvedFunction,
-                *args: P.args,
-                **kwargs: P.kwargs
-            ):
+    def map_resolved_function(self, expr: ResolvedFunction, /,
+                              *args: P.args, **kwargs: P.kwargs):
         if not self.visit(expr, *args, **kwargs):
             return
 
         self.rec(expr.function, *args, **kwargs)
 
-    map_fortran_division = WalkMapperBase.map_quotient
+    map_fortran_division: Callable[Concatenate[Self, FortranDivision, P],
+                                   None] = WalkMapperBase.map_quotient
 
 
 class WalkMapper(WalkMapperMixin[P], WalkMapperBase[P]):
@@ -374,34 +380,39 @@ class UncachedWalkMapper(WalkMapperMixin[P], UncachedWalkMapperBase[P]):
     pass
 
 
-class CallbackMapper(IdentityMapperMixin, CallbackMapperBase):
-    map_reduction = CallbackMapperBase.map_constant
-    map_resolved_function = CallbackMapperBase.map_constant
+class CallbackMapper(IdentityMapperMixin[P],
+                     CallbackMapperBase[Expression, P]):
+    map_reduction: Callable[Concatenate[Self, Reduction, P],
+                            Expression] = CallbackMapperBase.map_constant
+    map_resolved_function: Callable[Concatenate[Self, ResolvedFunction, P],
+                                    Expression] = CallbackMapperBase.map_constant
 
 
 class CombineMapper(CombineMapperBase[ResultT, P]):
-    def map_reduction(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_reduction(self, expr: Reduction, /,
+                      *args: P.args, **kwargs: P.kwargs) -> ResultT:
         return self.rec(expr.expr, *args, **kwargs)
 
-    def map_type_cast(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_type_cast(self, expr: TypeCast, /,
+                      *args: P.args, **kwargs: P.kwargs) -> ResultT:
         return self.rec(expr.child, *args, **kwargs)
 
-    def map_sub_array_ref(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_sub_array_ref(self, expr: SubArrayRef, /,
+                          *args: P.args, **kwargs: P.kwargs) -> ResultT:
         return self.combine((
             self.rec(expr.subscript, *args, **kwargs),
             self.combine(tuple(
                          self.rec(idx, *args, **kwargs)
                          for idx in expr.swept_inames))))
 
-    def map_linear_subscript(self,
-                expr: LinearSubscript, *args: P.args, **kwargs: P.kwargs
-            ) -> ResultT:
+    def map_linear_subscript(self, expr: LinearSubscript, /,
+                             *args: P.args, **kwargs: P.kwargs) -> ResultT:
         return self.combine(
                 [self.rec(expr.aggregate, *args, **kwargs),
                     self.rec(expr.index, *args, **kwargs)])
 
-    def map_fortran_division(self,
-            expr: FortranDivision, *args: P.args, **kwargs: P.kwargs) -> ResultT:
+    def map_fortran_division(self, expr: FortranDivision, /,
+                             *args: P.args, **kwargs: P.kwargs) -> ResultT:
         return self.combine((
             self.rec(expr.numerator, *args, **kwargs),
             self.rec(expr.denominator, *args, **kwargs)))
@@ -409,97 +420,117 @@ class CombineMapper(CombineMapperBase[ResultT, P]):
 
 class SubstitutionMapper(
         SubstitutionMapperBase, IdentityMapperMixin[[]]):
-    def map_common_subexpression_uncached(self, expr):
+    def map_common_subexpression_uncached(
+                self, expr: p.CommonSubexpression, /) -> Expression:
         return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
 
-class ConstantFoldingMapper(ConstantFoldingMapperBase,
-        IdentityMapperMixin):
+class ConstantFoldingMapper(ConstantFoldingMapperBase, IdentityMapperMixin[[]]):
     pass
 
 
 class StringifyMapper(StringifyMapperBase[[]]):
-    def map_literal(self, expr: Literal, enclosing_prec: int) -> str:
+    def map_literal(self, expr: Literal, /, enclosing_prec: int) -> str:
         return expr.s
 
-    def map_array_literal(self, expr, enclosing_prec):
+    def map_array_literal(self, expr: ArrayLiteral, /, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        return "{%s}" % ", ".join(self.rec(ch, PREC_NONE) for ch in expr.children)
+        children = ", ".join(self.rec(ch, PREC_NONE) for ch in expr.children)
+        return f"{{{children}}}"
 
-    def map_group_hw_index(self, expr, enclosing_prec):
-        return "grp.%d" % expr.index
+    def map_group_hw_index(self, expr: GroupHardwareAxisIndex, /,
+                           enclosing_prec: int) -> str:
+        return f"grp.{expr.axis}"
 
-    def map_local_hw_index(self, expr, enclosing_prec):
-        return "loc.%d" % expr.index
+    def map_local_hw_index(self, expr: LocalHardwareAxisIndex, /,
+                           enclosing_prec: int) -> str:
+        return f"loc.{expr.axis}"
 
-    def map_reduction(self, expr, prec):
+    def map_reduction(self, expr: Reduction, /, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        return "{}reduce({}, [{}], {})".format(
-                "simul_" if expr.allow_simultaneous else "",
-                expr.operation, ", ".join(expr.inames),
-                self.rec(expr.expr, PREC_NONE))
+        simul = "simul_" if expr.allow_simultaneous else ""
+        inames = ", ".join(expr.inames)
+        child = self.rec(expr.expr, PREC_NONE)
+        return f"{simul}reduce({expr.operation}, [{inames}], {child})"
 
-    def map_tagged_variable(self, expr, prec):
+    def map_tagged_variable(self, expr: TaggedVariable, /, enclosing_prec: int) -> str:
         return f"{expr.name}${{{', '.join(str(t) for t in expr.tags)}}}"
 
-    def map_linear_subscript(self, expr, enclosing_prec):
+    def map_linear_subscript(self, expr: LinearSubscript, /,
+                             enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
+
         return self.parenthesize_if_needed(
                 self.format("%s[[%s]]",
                     self.rec(expr.aggregate, PREC_CALL),
                     self.rec(expr.index, PREC_NONE)),
                 enclosing_prec, PREC_CALL)
 
-    def map_loopy_function_identifier(self, expr, enclosing_prec):
-        return "{}<{}>".format(
-                type(expr).__name__,
-                ", ".join(str(a) for a in expr.__getinitargs__()))
+    def map_loopy_function_identifier(
+            self, expr: FunctionIdentifier, /, enclosing_prec: int) -> str:
+        from dataclasses import fields
+        initargs = ", ".join(f"{getattr(expr, fld.name)}" for fld in fields(expr))
 
-    def map_rule_argument(self, expr, enclosing_prec):
-        return "<arg%d>" % expr.index
+        return f"{type(expr).__name__}<{initargs}>"
 
-    def map_type_cast(self, expr, enclosing_prec):
+    def map_rule_argument(self, expr: RuleArgument, /, enclosing_prec: int) -> str:
+        return f"<arg{expr.index}>"
+
+    def map_type_cast(self, expr: TypeCast, /, enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
-        return "cast({}, {})".format(
-                repr(expr.type), self.rec(expr.child, PREC_NONE))
+        child = self.rec(expr.child, PREC_NONE)
+        return f"cast({expr.type!r}, {child})"
 
-    def map_resolved_function(self, expr, prec):
+    def map_resolved_function(self, expr: ResolvedFunction, /,
+                              enclosing_prec: int) -> str:
         # underlining a resolved call
         return "\u0332".join(str(expr.function))
 
-    def map_sub_array_ref(self, expr, prec):
-        return "[{inames}]: {subscr}".format(
-                inames=",".join(self.rec(iname, prec) for iname in
-                    expr.swept_inames),
-                subscr=self.rec(expr.subscript, prec))
+    def map_sub_array_ref(self, expr: SubArrayRef, /, enclosing_prec: int) -> str:
+        inames = ",".join(self.rec(iname, enclosing_prec)
+                          for iname in expr.swept_inames)
+        subscr = self.rec(expr.subscript, enclosing_prec)
 
-    def map_fortran_division(self, expr, enclosing_prec):
+        return f"[{inames}]: {subscr}"
+
+    def map_fortran_division(self, expr: FortranDivision, /,
+                             enclosing_prec: int) -> str:
         from pymbolic.mapper.stringifier import PREC_NONE
-        result = self.map_quotient(expr, PREC_NONE)
+        result = self.map_quotient(expr, PREC_NONE)  # pyright: ignore[reportArgumentType]
         return f"[FORTRANDIV]({result})"
 
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
-    def map_reduction(self, expr, other, unis):
+    def map_reduction(
+                self,
+                expr: Reduction, /,
+                other: Expression,
+                urecs: Sequence[UnificationRecord]) -> Sequence[UnificationRecord]:
         if not isinstance(other, type(expr)):
-            return self.treat_mismatch(expr, other, unis)
+            return self.treat_mismatch(expr, other, urecs)
+
         if (expr.inames != other.inames
-                or type(expr.function) != type(other.function)):  # noqa
+                or type(expr.operation) is not type(other.operation)):
             return []
 
-        return self.rec(expr.expr, other.expr, unis)
+        return self.rec(expr.expr, other.expr, urecs)
 
-    def map_tagged_variable(self, expr, other, urecs):
-        new_uni_record = self.unification_record_from_equation(
-                expr, other)
+    def map_tagged_variable(
+                self,
+                expr: TaggedVariable, /,
+                other: Expression,
+                urecs: Sequence[UnificationRecord]) -> Sequence[UnificationRecord]:
+        new_uni_record = self.unification_record_from_equation(expr, other)
         if new_uni_record is None:
             # Check if the variables match literally--that's ok, too.
             if (isinstance(other, TaggedVariable)
                     and expr.name == other.name
                     and expr.tags == other.tags
-                    and expr.name not in self.lhs_mapping_candidates):
+                    and (
+                        self.lhs_mapping_candidates is None
+                        or expr.name not in self.lhs_mapping_candidates)):
                 return urecs
             else:
                 return []
@@ -509,82 +540,88 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
 
 
 class DependencyMapper(DependencyMapperBase[P]):
-    def map_group_hw_index(
-                self,
-                expr: GroupHardwareAxisIndex, *args: P.args, **kwargs: P.kwargs
-            ) -> Dependencies:
+    def map_group_hw_index(self, expr: GroupHardwareAxisIndex, /,
+                           *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         return set()
 
-    def map_local_hw_index(
-                self,
-                expr: LocalHardwareAxisIndex, *args: P.args, **kwargs: P.kwargs
-            ) -> Dependencies:
+    def map_local_hw_index(self, expr: LocalHardwareAxisIndex, /,
+                           *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         return set()
 
-    def map_call(
-                self,
-                expr: p.Call, *args: P.args, **kwargs: P.kwargs
-            ) -> Dependencies:
+    @override
+    def map_call(self, expr: p.Call, /,
+                 *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         # Loopy does not have first-class functions. Do not descend
         # into 'function' attribute of Call.
         return self.rec(expr.parameters, *args, **kwargs)
 
-    def map_reduction(
-                self,
-                expr: Reduction, *args: P.args, **kwargs: P.kwargs
-            ) -> Dependencies:
+    def map_reduction(self, expr: Reduction, /,
+                      *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         deps = self.rec(expr.expr, *args, **kwargs)
-        return deps - {Variable(iname) for iname in expr.inames}
+        return deps - {p.Variable(iname) for iname in expr.inames}
 
-    def map_tagged_variable(
-                self,
-                expr: TaggedVariable, *args: P.args, **kwargs: P.kwargs
-            ) -> Dependencies:
+    def map_tagged_variable(self, expr: TaggedVariable, /,
+                            *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         return {expr}
 
-    def map_loopy_function_identifier(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_loopy_function_identifier(
+                self, expr: FunctionIdentifier, /,
+                *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         return set()
 
-    def map_sub_array_ref(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_sub_array_ref(self, expr: SubArrayRef, /,
+                          *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         deps = self.rec(expr.subscript, *args, **kwargs)
         return deps - set(expr.swept_inames)
 
-    map_linear_subscript = DependencyMapperBase.map_subscript
+    map_linear_subscript: Callable[Concatenate[Self, LinearSubscript, P],
+                                   Dependencies] = DependencyMapperBase.map_subscript
 
-    def map_type_cast(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_type_cast(self, expr: TypeCast, /,
+                      *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         return self.rec(expr.child, *args, **kwargs)
 
-    def map_resolved_function(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_resolved_function(self, expr: ResolvedFunction, /,
+                              *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         return self.rec(expr.function, *args, **kwargs)
 
-    def map_literal(self, expr, *args: P.args, **kwargs: P.kwargs):
+    def map_literal(self, expr: Literal, /,
+                    *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         return set()
 
-    def map_call_with_kwargs(self, expr, *args: P.args, **kwargs: P.kwargs):
+    @override
+    def map_call_with_kwargs(self, expr: p.CallWithKwargs, /,
+                             *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
 
-    map_fortran_division = DependencyMapperBase.map_quotient
+    map_fortran_division: Callable[Concatenate[Self, FortranDivision, P],
+                                   Dependencies] = DependencyMapperBase.map_quotient
 
 
 class SubstitutionRuleExpander(IdentityMapper[[]]):
-    def __init__(self, rules: Mapping[str, SubstitutionRule]) -> None:
-        self.rules = rules
-        super().__init__()
+    rules: Mapping[str, SubstitutionRule]
 
+    def __init__(self, rules: Mapping[str, SubstitutionRule]) -> None:
+        super().__init__()
+        self.rules = rules
+
+    @override
     def __call__(self, expr: Expression) -> Expression:
         if not self.rules:
             return expr
         return super().__call__(expr)
 
-    def map_variable(self, expr: Variable) -> Expression:
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Expression:
         if expr.name in self.rules:
             return self.map_subst_rule(expr.name, self.rules[expr.name], ())
         else:
             return super().map_variable(expr)
 
-    def map_call(self, expr: p.Call) -> Expression:
-        assert isinstance(expr.function, Variable | ResolvedFunction)
+    @override
+    def map_call(self, expr: p.Call, /) -> Expression:
+        assert isinstance(expr.function, p.Variable | ResolvedFunction)
         if expr.function.name in self.rules:
             assert isinstance(expr.function.name, str)
             return self.map_subst_rule(
@@ -596,13 +633,13 @@ class SubstitutionRuleExpander(IdentityMapper[[]]):
 
     def map_subst_rule(self,
                         name: str,
-                        rule: SubstitutionRule,
+                        rule: SubstitutionRule, /,
                         arguments: Sequence[Expression],
                     ) -> Expression:
         if len(rule.arguments) != len(arguments):
             from loopy.diagnostic import LoopyError
-            raise LoopyError("number of arguments to '%s' does not match "
-                    "definition" % name)
+            raise LoopyError(
+                    f"number of arguments to '{name}' does not match definition")
 
         from pymbolic.mapper.substitutor import make_subst_func
         submap = SubstitutionMapper(
@@ -634,8 +671,10 @@ class Literal(LoopyExpressionBase):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
-        similar mappers). Not for use in Loopy source representation.
+        :class:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`
+        (and similar mappers). Not for use in Loopy source representation.
+
+    .. autoattribute:: s
     """
 
     s: str
@@ -648,8 +687,10 @@ class ArrayLiteral(LoopyExpressionBase):
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.codegen.expression.ExpressionToCExpressionMapper` (and
-        similar mappers). Not for use in Loopy source representation.
+        :class:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`
+        (and similar mappers). Not for use in Loopy source representation.
+
+    .. autoattribute:: children
     """
 
     children: tuple[Expression, ...]
@@ -662,46 +703,54 @@ class HardwareAxisIndex(LoopyExpressionBase):
 
 @p.expr_dataclass()
 class GroupHardwareAxisIndex(HardwareAxisIndex):
-    """
+    """Inherits: :class:`LoopyExpressionBase`.
+
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
-        similar mappers). Not for use in Loopy source representation.
+        :class:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`
+        (and similar mappers). Not for use in Loopy source representation.
+
+    .. autoattribute:: axis
     """
-    mapper_method = "map_group_hw_index"
+
+    mapper_method: ClassVar[str] = "map_group_hw_index"
 
 
 @p.expr_dataclass()
 class LocalHardwareAxisIndex(HardwareAxisIndex):
-    """
+    """Inherits: :class:`LoopyExpressionBase`.
+
     .. note::
 
         Only used in the output of
-        :mod:`loopy.target.c.expression.ExpressionToCExpressionMapper` (and
-        similar mappers). Not for use in Loopy source representation.
+        :class:`~loopy.target.c.codegen.expression.ExpressionToCExpressionMapper`
+        (and similar mappers). Not for use in Loopy source representation.
+
+    .. autoattribute:: axis
     """
-    mapper_method = "map_local_hw_index"
+
+    mapper_method: ClassVar[str] = "map_local_hw_index"
 
 
 @p.expr_dataclass()
 class FunctionIdentifier(LoopyExpressionBase):
     """A base class for symbols representing functions."""
 
-    mapper_method = "map_loopy_function_identifier"
+    mapper_method: ClassVar[str] = "map_loopy_function_identifier"
 
 
 @p.expr_dataclass()
 class TypedCSE(LoopyExpressionBase, p.CommonSubexpression):
-    """A :class:`pymbolic.primitives.CommonSubexpression` annotated with
-    a type.
+    """A :class:`pymbolic.primitives.CommonSubexpression` annotated with a type.
 
     .. autoattribute:: dtype
     """
 
     dtype: LoopyType | None = None
 
-    def get_extra_properties(self):
+    @override
+    def get_extra_properties(self) -> dict[str, Any]:
         return {"dtype": self.dtype}
 
 
@@ -714,6 +763,7 @@ class TypeAnnotation(LoopyExpressionBase):
     .. autoattribute:: child
     """
 
+    # FIXME(pyright): this is set to lp.Optional in `LoopyParser.parse_prefix`
     type: LoopyType
     child: Expression
 
@@ -724,29 +774,29 @@ class TypeCast(LoopyExpressionBase):
     :meth:`numpy.ndarray.astype`.
 
     .. autoattribute:: child
-    .. autoattribute:: type
+    .. autoproperty:: type
     """
+
+    child: Expression
+    """The expression to be cast."""
 
     # We're storing the type as a name for now to avoid
     # numpy pickling bug madness. (see loopy.types)
     _type_name: str
 
-    child: Expression
-    """The expression to be cast."""
-
-    def __init__(self, type: ToLoopyTypeConvertible, child: Expression):
+    def __init__(self, type: ToLoopyTypeConvertible, child: Expression) -> None:
         super().__init__()
 
         from loopy.types import NumpyType, to_loopy_type
-        type = to_loopy_type(type)
+        ltype = to_loopy_type(type)
 
-        if (not isinstance(type, NumpyType)
-                or not issubclass(type.dtype.type, np.number)):
+        if (not isinstance(ltype, NumpyType)
+                or not issubclass(ltype.dtype.type, np.number)):
             from loopy.diagnostic import LoopyError
-            raise LoopyError("TypeCast only supports numerical numpy types, "
-                    "not '%s'" % type)
+            raise LoopyError(
+                f"TypeCast only supports numerical numpy types: got '{ltype}'")
 
-        object.__setattr__(self, "_type_name", type.dtype.name)
+        object.__setattr__(self, "_type_name", ltype.dtype.name)
         object.__setattr__(self, "child", child)
 
     @property
@@ -756,16 +806,13 @@ class TypeCast(LoopyExpressionBase):
 
 
 @p.expr_dataclass(init=False)
-class TaggedVariable(LoopyExpressionBase, Variable, Taggable):
+class TaggedVariable(LoopyExpressionBase, p.Variable, Taggable):
     """This is an identifier with tags, such as ``matrix$one``, where
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
     accesses tagged a certain way.
 
     .. autoattribute:: tags
-
-    Inherits from :class:`pymbolic.primitives.Variable`
-    and :class:`pytools.tag.Taggable`.
     """
 
     tags: frozenset[Tag]
@@ -777,7 +824,7 @@ class TaggedVariable(LoopyExpressionBase, Variable, Taggable):
     """
 
     def __init__(self, name: str, tags: ToTagSetConvertible) -> None:
-        Variable.__init__(self, name)
+        p.Variable.__init__(self, name)
         if isinstance(tags, str):
             from loopy.kernel.creation import _normalize_string_tag
             tags = frozenset({_normalize_string_tag(tags)})
@@ -787,7 +834,9 @@ class TaggedVariable(LoopyExpressionBase, Variable, Taggable):
 
         object.__setattr__(self, "tags", tags)
 
-    def copy(self, *, name=None, tags=None):
+    def copy(self, *,
+             name: str | None = None,
+             tags: ToTagSetConvertible = None) -> TaggedVariable:
         name = self.name if name is None else name
         tags = self.tags if tags is None else tags
         return TaggedVariable(name, tags)
@@ -807,9 +856,7 @@ class Reduction(LoopyExpressionBase):
     operation: ReductionOperation
 
     inames: Sequence[str]
-    """The inames across which reduction on :attr:`expr` is being
-    carried out.
-    """
+    """The inames across which reduction on :attr:`expr` is being carried out."""
 
     expr: Expression
     """An expression which may have tuple type. If the expression has tuple
@@ -821,27 +868,26 @@ class Reduction(LoopyExpressionBase):
     """
 
     allow_simultaneous: bool
-    """If not *True*, an iname is allowed to be used
-    in precisely one reduction, to avoid misnesting errors.
+    """If not *True*, an iname is allowed to be used in precisely one reduction,
+    to avoid misnesting errors.
     """
 
     def __init__(self,
                  operation: ReductionOperation | str,
-                 inames: (tuple[str | pymbolic.primitives.Variable, ...]
-                     | pymbolic.primitives.Variable | str),
+                 inames: tuple[str | p.Variable, ...] | p.Variable | str,
                  expr: Expression,
                  allow_simultaneous: bool = False
              ) -> None:
         if isinstance(inames, str):
             inames = tuple(iname.strip() for iname in inames.split(","))
 
-        elif isinstance(inames, Variable):
+        elif isinstance(inames, p.Variable):
             inames = (inames,)
 
         assert isinstance(inames, tuple)
 
-        def strip_var(iname: Any) -> str:
-            if isinstance(iname, Variable):
+        def strip_var(iname: str | p.Variable) -> str:
+            if isinstance(iname, p.Variable):
                 iname = iname.name
 
             assert isinstance(iname, str)
@@ -867,7 +913,7 @@ class Reduction(LoopyExpressionBase):
             if not isinstance(expr, (tuple, Reduction, Call)):
                 raise LoopyError("reduction argument must be one of "
                                  "a tuple, reduction, or call; "
-                                 "got '%s'" % type(expr).__name__)
+                                 f"got '{type(expr).__name__}'")
         else:
             # Sanity checks
             if isinstance(expr, tuple):
@@ -881,21 +927,24 @@ class Reduction(LoopyExpressionBase):
         object.__setattr__(self, "allow_simultaneous", allow_simultaneous)
 
     @property
-    def is_tuple_typed(self):
+    def is_tuple_typed(self) -> bool:
         return self.operation.arg_count > 1
 
     @cached_property
-    def inames_set(self):
-        return set(self.inames)
+    def inames_set(self) -> frozenset[str]:
+        return frozenset(self.inames)
 
 
 @p.expr_dataclass()
 class LinearSubscript(LoopyExpressionBase):
     """Represents a linear index into a multi-dimensional array, completely
     ignoring any multi-dimensional layout.
+
+    .. autoattribute:: aggregate
+    .. autoattribute:: index
     """
     aggregate: Expression
-    index: Expression
+    index: ArithmeticExpression
 
     def __post_init__(self) -> None:
         warn("LinearSubscript is deprecated "
@@ -906,8 +955,11 @@ class LinearSubscript(LoopyExpressionBase):
 @p.expr_dataclass()
 class RuleArgument(LoopyExpressionBase):
     """Represents a (numbered) argument of a :class:`loopy.SubstitutionRule`.
-    Only used internally in the rule-aware mappers to match subst rules
+
+    Only used internally in the rule-aware mappers to match substitution rules
     independently of argument names.
+
+    .. autoattribute:: index
     """
 
     index: int
@@ -915,34 +967,35 @@ class RuleArgument(LoopyExpressionBase):
 
 @p.expr_dataclass(init=False)
 class ResolvedFunction(LoopyExpressionBase):
-    """
-    A function identifier whose definition is known in a :mod:`loopy` program.
+    """A function identifier whose definition is known in a :mod:`loopy` program.
+
     A function is said to be *known* in a :class:`~loopy.TranslationUnit` if its
     name maps to  an :class:`~loopy.kernel.function_interface.InKernelCallable`
     in :attr:`loopy.TranslationUnit.callables_table`. Refer to :ref:`func-interface`.
 
     .. autoattribute:: function
-    .. autoattribute:: name
+    .. autoproperty:: name
     """
-    function: Variable | ReductionOpFunction
 
-    def __init__(self, function: Variable | ReductionOpFunction) -> None:
+    function: p.Variable | ReductionOpFunction
+
+    def __init__(self, function: p.Variable | ReductionOpFunction) -> None:
         if isinstance(function, str):
-            function = Variable(function)
+            function = p.Variable(function)
         from loopy.library.reduction import ReductionOpFunction
-        assert isinstance(function, (Variable, ReductionOpFunction))
+        assert isinstance(function, (p.Variable, ReductionOpFunction))
         object.__setattr__(self, "function", function)
 
     @property
     def name(self) -> str | ReductionOpFunction:
         from loopy.library.reduction import ReductionOpFunction
-        if isinstance(self.function, Variable):
+        if isinstance(self.function, p.Variable):
             return self.function.name
         elif isinstance(self.function, ReductionOpFunction):
             return self.function
         else:
-            raise LoopyError("Unexpected function type %s in ResolvedFunction." %
-                    type(self.function))
+            raise LoopyError(
+                f"Unexpected function type {type(self.function)} in ResolvedFunction.")
 
 # }}}
 
@@ -955,7 +1008,9 @@ class EvaluatorWithDeficientContext(PartialEvaluationMapper):
 
     Returns the expression with the values mapped from :attr:`context`.
     """
-    def map_variable(self, expr):
+
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Expression:
         if expr.name in self.context:
             return self.context[expr.name]
         else:
@@ -963,18 +1018,24 @@ class EvaluatorWithDeficientContext(PartialEvaluationMapper):
 
 
 class VariableInAnExpression(CombineMapper[bool, []]):
-    def __init__(self, variables_to_search: Collection[Variable]) -> None:
-        assert all(isinstance(variable, Variable) for variable in
-            variables_to_search)
+    variables_to_search: Collection[p.Variable]
+
+    def __init__(self, variables_to_search: Collection[p.Variable]) -> None:
+        assert all(isinstance(variable, p.Variable) for variable in variables_to_search)
+
+        super().__init__()
         self.variables_to_search = variables_to_search
 
-    def combine(self, values) -> bool:
+    @override
+    def combine(self, values: Iterable[bool]) -> bool:
         return any(values)
 
-    def map_variable(self, expr) -> bool:
+    @override
+    def map_variable(self, expr: p.Variable, /) -> bool:
         return expr in self.variables_to_search
 
-    def map_constant(self, expr) -> bool:
+    @override
+    def map_constant(self, expr: object, /) -> bool:
         return False
 
 
@@ -982,17 +1043,22 @@ class SweptInameStrideCollector(CoefficientCollectorBase):
     """
     Mapper to compute the coefficient swept inames for :class:`SubArrayRef`.
     """
-    def map_algebraic_leaf(self, expr):
+
+    @override
+    def map_algebraic_leaf(self, expr: p.AlgebraicLeaf, /) -> CoeffsT:
         # subscripts that are not involved in :attr:`target_names` are treated
         # as constants.
-        if isinstance(expr, p.Subscript) and (self.target_names is None
-                or expr.aggregate.name not in self.target_names):
+        if isinstance(expr, p.Subscript) and (
+                self.target_names is None
+                or getattr(expr.aggregate, "name", None) not in self.target_names):
             return {1: expr}
 
         return super().map_algebraic_leaf(expr)
 
 
-def get_start_subscript_from_sar(sar, kernel):
+def get_start_subscript_from_sar(
+            sar: SubArrayRef, kernel: LoopKernel,
+        ) -> p.Variable | p.Subscript:
     """
     Returns an instance of :class:`pymbolic.primitives.Subscript`, the
     beginning subscript of the array swept by the *SubArrayRef*.
@@ -1001,16 +1067,20 @@ def get_start_subscript_from_sar(sar, kernel):
     subscript would be ``a[0, j, 0, l]``
     """
 
-    def _get_lower_bound(iname):
+    def _get_lower_bound(iname: str) -> int:
         pwaff = kernel.get_iname_bounds(iname).lower_bound_pw_aff
         return int(pw_aff_to_expr(pwaff))
 
     swept_inames_to_zeros = {
-            swept_iname.name: _get_lower_bound(swept_iname.name) for
-            swept_iname in sar.swept_inames}
+            swept_iname.name: _get_lower_bound(swept_iname.name)
+            for swept_iname in sar.swept_inames}
 
-    return EvaluatorWithDeficientContext(swept_inames_to_zeros)(
-            sar.subscript)
+    result = EvaluatorWithDeficientContext(swept_inames_to_zeros)(sar.subscript)
+    # assert isinstance(result, p.Subscript)
+    # pending https://github.com/inducer/pymbolic/pull/224
+    assert isinstance(result, (p.Variable, p.Subscript))
+
+    return result
 
 
 @p.expr_dataclass()
@@ -1032,10 +1102,11 @@ class SubArrayRef(LoopyExpressionBase):
 
     .. automethod:: is_equal
     """
-    swept_inames: tuple[Variable, ...]
+
+    swept_inames: tuple[p.Variable, ...]
     subscript: p.Subscript
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # {{{ sanity checks
 
         if not isinstance(self.swept_inames, tuple):
@@ -1055,8 +1126,10 @@ class SubArrayRef(LoopyExpressionBase):
 class FortranDivision(p.QuotientBase, LoopyExpressionBase):
     """This exists for the benefit of the Fortran frontend, which specializes
     to floating point division for floating point inputs and round-to-zero
-    division for integer inputs. Despite the name, this would also be usable
-    for C semantics. (:mod:`loopy` division semantics match Python's.)
+    division for integer inputs.
+
+    Despite the name, this would also be usable for C semantics. (:mod:`loopy`
+    division semantics match Python's.)
 
     .. note::
 
@@ -1068,13 +1141,29 @@ class FortranDivision(p.QuotientBase, LoopyExpressionBase):
 
 
 class DependencyMapperWithReductionInames(DependencyMapper[P]):
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.reduction_inames: set[str] = set()
+    reduction_inames: set[str]
 
+    def __init__(
+        self,
+        include_subscripts: bool = True,
+        include_lookups: bool = True,
+        include_calls: bool | TypingLiteral["descend_args"] = True,
+        include_cses: bool = False,
+        composite_leaves: bool | None = None,
+    ) -> None:
+        super().__init__(
+            include_subscripts=include_subscripts,
+            include_lookups=include_lookups,
+            include_calls=include_calls,
+            include_cses=include_cses,
+            composite_leaves=composite_leaves,
+        )
+        self.reduction_inames = set()
+
+    @override
     def map_reduction(
                 self,
-                expr: Reduction, *args: P.args, **kwargs: P.kwargs
+                expr: Reduction, /, *args: P.args, **kwargs: P.kwargs
             ) -> Dependencies:
         self.reduction_inames.update(expr.inames)
         return super().map_reduction(expr, *args, **kwargs)
@@ -1084,9 +1173,10 @@ class DependencyMapperWithReductionInames(DependencyMapper[P]):
 def _get_dependencies_and_reduction_inames(
             expr: Expression
         ) -> tuple[frozenset[str], frozenset[str]]:
-    dep_mapper: DependencyMapperWithReductionInames[[]] = \
-        DependencyMapperWithReductionInames(composite_leaves=False)
-    deps = frozenset(cast("Variable", dep).name for dep in dep_mapper(expr))
+    dep_mapper: DependencyMapperWithReductionInames[[]] = (
+        DependencyMapperWithReductionInames(composite_leaves=False))
+
+    deps = frozenset(cast("p.Variable", dep).name for dep in dep_mapper(expr))
     reduction_inames = dep_mapper.reduction_inames
     return frozenset(deps), frozenset(reduction_inames)
 
@@ -1099,33 +1189,45 @@ def get_reduction_inames(expr: Expression) -> frozenset[str]:
     return _get_dependencies_and_reduction_inames(expr)[1]
 
 
-class SubArrayRefSweptInamesCollector(CombineMapper[Set[str], []]):
-    def combine(self, values: Iterable[Set[str]]) -> Set[str]:
-        import operator
-        return reduce(operator.or_, values, frozenset())
+class SubArrayRefSweptInamesCollector(CombineMapper[AbstractSet[str], []]):
+    @override
+    def combine(self, values: Iterable[AbstractSet[str]]) -> AbstractSet[str]:
+        result: AbstractSet[str] = set()
+        for value in values:
+            result |= value
 
-    def map_sub_array_ref(self, expr) -> Set[str]:
+        return frozenset(result)
+
+    @override
+    def map_sub_array_ref(self, expr: SubArrayRef, /) -> AbstractSet[str]:
         return frozenset({iname.name for iname in expr.swept_inames})
 
-    def map_constant(self, expr) -> Set[str]:
+    def _map_no_swept_inames(
+                self, expr: (
+                    object
+                    | p.Variable | p.FunctionSymbol | p.NaN
+                    | TaggedVariable | TypeCast | ResolvedFunction),
+            /) -> AbstractSet[str]:
         return frozenset()
 
-    map_variable = map_constant
-    map_function_symbol = map_constant
-    map_tagged_variable = map_constant
-    map_type_cast = map_constant
-    map_resolved_function = map_constant
-    map_nan = map_constant
+    map_constant: Callable[[Self, object], AbstractSet[str]] = _map_no_swept_inames
+    map_variable: Callable[[Self, p.Variable], AbstractSet[str]] = _map_no_swept_inames
+    map_function_symbol: Callable[[Self, p.FunctionSymbol], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
+    map_nan: Callable[[Self, p.NaN], AbstractSet[str]] = _map_no_swept_inames
+    map_tagged_variable: Callable[[Self, TaggedVariable], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
+    map_type_cast: Callable[[Self, TypeCast], AbstractSet[str]] = _map_no_swept_inames
+    map_resolved_function: Callable[[Self, ResolvedFunction], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
 
 
-def get_sub_array_ref_swept_inames(expr):
+def get_sub_array_ref_swept_inames(expr: SubArrayRef) -> AbstractSet[str]:
     return SubArrayRefSweptInamesCollector()(expr)
 
 
 # {{{ rule-aware mappers
 
-def parse_tagged_name(expr):
+def parse_tagged_name(expr: Expression) -> tuple[str, AbstractSet[Tag] | None]:
     from loopy.library.reduction import ArgExtOp, SegmentedOp
+
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tags
     elif isinstance(expr, ResolvedFunction):
@@ -1133,28 +1235,26 @@ def parse_tagged_name(expr):
     elif isinstance(expr, (p.Variable, ArgExtOp, SegmentedOp)):
         return expr.name, None
     else:
-        raise RuntimeError("subst rule name not understood: %s" % expr)
+        raise RuntimeError(f"subst rule name not understood: {expr!r}")
 
 
 @dataclass(frozen=True)
 class ExpansionState:
     """
-    .. attribute:: kernel
-    .. attribute:: instruction
-
-    .. attribute:: stack
-
-        a tuple representing the current expansion stack, as a tuple
-        of (name, tag) pairs.
-
-    .. attribute:: arg_context
-
-        a dict representing current argument values
+    .. autoattribute:: kernel
+    .. autoattribute:: instruction
+    .. autoattribute:: stack
+    .. autoattribute:: arg_context
     """
+
     kernel: LoopKernel
     instruction: InstructionBase
     stack: tuple[ConcreteMatchable, ...]
+    """A tuple representing the current expansion stack, as a tuple of
+    ``(name, tag)`` pairs.
+    """
     arg_context: Mapping[str, Expression]
+    """A mapping representing current argument values."""
 
     def __post_init__(self) -> None:
         hash(self.arg_context)
@@ -1162,6 +1262,7 @@ class ExpansionState:
     def copy(self, **kwargs: Any) -> Self:
         return replace(self, **kwargs)
 
+    @override
     def __hash__(self) -> int:
         # do not try to be precise about hash of loopy kernel
         # or the instruction as computing the hash of pymbolic
@@ -1180,11 +1281,14 @@ class ExpansionState:
 
 
 class SubstitutionRuleRenamer(IdentityMapper[[]]):
-    def __init__(self, renames):
+    renames: dict[str, str]
+
+    def __init__(self, renames: dict[str, str]) -> None:
         self.renames = renames
         super().__init__()
 
-    def map_call(self, expr: p.Call) -> Expression:
+    @override
+    def map_call(self, expr: p.Call, /) -> Expression:
         if not isinstance(expr.function, p.Variable):
             return super().map_call(expr)
 
@@ -1201,7 +1305,8 @@ class SubstitutionRuleRenamer(IdentityMapper[[]]):
 
         return type(expr)(sym, tuple(self.rec(child) for child in expr.parameters))
 
-    def map_variable(self, expr: Variable) -> Expression:
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Expression:
         name, tags = parse_tagged_name(expr)
 
         new_name = self.renames.get(name)
@@ -1214,7 +1319,9 @@ class SubstitutionRuleRenamer(IdentityMapper[[]]):
             return p.Variable(new_name)
 
 
-def rename_subst_rules_in_instructions(insns, renames):
+def rename_subst_rules_in_instructions(
+            insns: Sequence[InstructionBase], renames: dict[str, str]
+        ) -> Sequence[InstructionBase]:
     subst_renamer = SubstitutionRuleRenamer(renames)
 
     return [
@@ -1223,9 +1330,33 @@ def rename_subst_rules_in_instructions(insns, renames):
 
 
 class SubstitutionRuleMappingContext:
+    old_subst_rules: Mapping[str, SubstitutionRule]
     make_unique_var_name: Callable[[str], str]
 
-    def _get_subst_rule_key(self, args, body):
+    subst_rule_registry: dict[Expression, tuple[str, Sequence[str], Expression]]
+    subst_rule_old_names: dict[Expression, list[str]]
+
+    def __init__(self,
+                 old_subst_rules: Mapping[str, SubstitutionRule],
+                 make_unique_var_name: Callable[[str], str]) -> None:
+        self.old_subst_rules = old_subst_rules
+        self.make_unique_var_name = make_unique_var_name
+
+        # maps subst rule (args, bodies) to (names, original_name)
+        self.subst_rule_registry = {
+                self._get_subst_rule_key(rule.arguments, rule.expression):
+                    (name, rule.arguments, rule.expression)
+                for name, rule in old_subst_rules.items()}
+
+        # maps subst rule (args, bodies) to a list of old names,
+        # which doubles as (a) a histogram of uses and (b) a way
+        # to deterministically find the 'lexicographically earliest'
+        # name
+        self.subst_rule_old_names = {}
+
+    def _get_subst_rule_key(self,
+                            args: Sequence[str],
+                            body: Expression) -> Expression:
         subst_dict = {
                 arg: RuleArgument(i)
                 for i, arg in enumerate(args)}
@@ -1235,23 +1366,8 @@ class SubstitutionRuleMappingContext:
 
         return arg_subst_map(body)
 
-    def __init__(self, old_subst_rules, make_unique_var_name):
-        self.old_subst_rules = old_subst_rules
-        self.make_unique_var_name = make_unique_var_name
-
-        # maps subst rule (args, bodies) to (names, original_name)
-        self.subst_rule_registry = {
-                self._get_subst_rule_key(rule.arguments, rule.expression):
-                (name, rule.arguments, rule.expression)
-                for name, rule in old_subst_rules.items()}
-
-        # maps subst rule (args, bodies) to a list of old names,
-        # which doubles as (a) a histogram of uses and (b) a way
-        # to deterministically find the 'lexicographically earliest'
-        # name
-        self.subst_rule_old_names = {}
-
-    def register_subst_rule(self, original_name, args, body):
+    def register_subst_rule(self, original_name: str,
+                            args: Sequence[str], body: Expression) -> str:
         """Returns a name (as a string) for a newly created substitution
         rule.
         """
@@ -1260,7 +1376,7 @@ class SubstitutionRuleMappingContext:
 
         if reg_value is None:
             # These names are temporary and won't stick around.
-            new_name = self.make_unique_var_name("_lpy_tmp_"+original_name)
+            new_name = self.make_unique_var_name(f"_lpy_tmp_{original_name}")
             self.subst_rule_registry[key] = (new_name, args, body)
         else:
             new_name, _, _ = reg_value
@@ -1268,7 +1384,9 @@ class SubstitutionRuleMappingContext:
         self.subst_rule_old_names.setdefault(key, []).append(original_name)
         return new_name
 
-    def _get_new_substitutions_and_renames(self):
+    def _get_new_substitutions_and_renames(
+                self
+            ) -> tuple[dict[str, SubstitutionRule], dict[str, str]]:
         """This makes a new dictionary of substitutions from the ones
         encountered in mapping all the encountered expressions.
         It tries hard to keep substitution names the same--i.e.
@@ -1287,10 +1405,9 @@ class SubstitutionRuleMappingContext:
 
         from loopy.kernel.data import SubstitutionRule
 
-        result = {}
-        renames = {}
-
-        used_names = set()
+        result: dict[str, SubstitutionRule] = {}
+        renames: dict[str, str] = {}
+        used_names: set[str] = set()
 
         for key, (name, args, body) in self.subst_rule_registry.items():
             orig_names = self.subst_rule_old_names.get(key, [])
@@ -1327,7 +1444,7 @@ class SubstitutionRuleMappingContext:
 
         return renamed_result, renames
 
-    def finish_kernel(self, kernel: LoopKernel):
+    def finish_kernel(self, kernel: LoopKernel) -> LoopKernel:
         new_substs, renames = self._get_new_substitutions_and_renames()
         if not renames:
             return kernel.copy(substitutions=new_substs)
@@ -1345,14 +1462,22 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
 
     Subclasses of this must be careful to not touch identifiers that
     are in :attr:`ExpansionState.arg_context`.
+
+    .. autoattribute:: rule_mapping_context
+    """
+
+    rule_mapping_context: SubstitutionRuleMappingContext
+    """An instance of :class:`SubstitutionRuleMappingContext` to record
+    divergence of substitution rules.
     """
 
     def __init__(self, rule_mapping_context: SubstitutionRuleMappingContext) -> None:
         self.rule_mapping_context = rule_mapping_context
         super().__init__()
 
+    @override
     def map_variable(
-                self, expr: Variable, expn_state: ExpansionState,
+                self, expr: p.Variable, /, expn_state: ExpansionState,
                 *args: P.args, **kwargs: P.kwargs
             ) -> Expression:
         name, tags = parse_tagged_name(expr)
@@ -1361,8 +1486,9 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
         else:
             return self.map_subst_rule(name, tags, (), expn_state, *args, **kwargs)
 
+    @override
     def map_call(
-                self, expr: p.Call, expn_state: ExpansionState,
+                self, expr: p.Call, /, expn_state: ExpansionState,
                 *args: P.args, **kwargs: P.kwargs
             ) -> Expression:
         if not isinstance(expr.function, p.Variable):
@@ -1373,13 +1499,9 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
         if name not in self.rule_mapping_context.old_subst_rules:
             return super().map_call(expr, expn_state, *args, **kwargs)
         else:
-            return self.map_subst_rule(name, tags,
-                                         self.rec(expr.parameters,
-                                                  expn_state,
-                                                  *args,
-                                                  **kwargs),
-                                         expn_state,
-                                         *args, **kwargs)
+            params = tuple(self.rec(param, expn_state, *args, **kwargs)
+                           for param in expr.parameters)
+            return self.map_subst_rule(name, tags, params, expn_state, *args, **kwargs)
 
     @staticmethod
     def make_new_arg_context(
@@ -1389,22 +1511,32 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
             arg_context: Mapping[str, Expression]
             ) -> Mapping[str, Expression]:
         if len(arg_names) != len(arguments):
-            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
-                    % (rule_name, len(arguments), len(arg_names), ))
+            raise RuntimeError(
+                    f"Rule '{rule_name}' invoked with {len(arguments)} arguments "
+                    f" (needs {len(arg_names)})")
 
         from pymbolic.mapper.substitutor import make_subst_func
         arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
         return constantdict({
             formal_arg_name: arg_subst_map(arg_value)
-            for formal_arg_name, arg_value in zip(arg_names, arguments)})
+            for formal_arg_name, arg_value in zip(arg_names, arguments, strict=True)
+        })
 
     def map_subst_rule(
-                self, name: str, tags, arguments, expn_state: ExpansionState,
+                self,
+                name: str,
+                tags: AbstractSet[Tag] | None,
+                arguments: Sequence[Expression],
+                expn_state: ExpansionState,
                 *args: P.args, **kwargs: P.kwargs
             ) -> Expression:
+        if tags is None:
+            tags = frozenset()
+        tags = frozenset(tags)
+
         rule = self.rule_mapping_context.old_subst_rules[name]
 
-        rec_arguments = self.rec(arguments, expn_state, *args, **kwargs)
+        rec_arguments = self.rec(tuple(arguments), expn_state, *args, **kwargs)
         assert isinstance(rec_arguments, tuple)
 
         from loopy.match import ConcreteMatchable
@@ -1428,22 +1560,30 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
         else:
             return sym
 
-    def __call__(self, expr, kernel, insn):
+    @override
+    def __call__(self,  # pyright: ignore[reportIncompatibleMethodOverride]
+                 expr: Expression,
+                 kernel: LoopKernel,
+                 insn: InstructionBase,
+                 *args: P.args, **kwargs: P.kwargs) -> Expression:
         """
         :arg insn: A :class:`~loopy.kernel.InstructionBase` of which *expr* is
             a part of, or *None* if *expr*'s source is not an instruction.
         """
-        from loopy.kernel.data import InstructionBase
+        from loopy.kernel.instruction import InstructionBase
         assert insn is None or isinstance(insn, InstructionBase)
 
-        return super().__call__(expr,
-                ExpansionState(
-                    kernel=kernel,
-                    instruction=insn,
-                    stack=(),
-                    arg_context=constantdict()))
+        expn_state = ExpansionState(
+                kernel=kernel,
+                instruction=insn,
+                stack=(),
+                arg_context=constantdict())
 
-    def map_instruction(self, kernel, insn):
+        return super().__call__(expr, expn_state, *args, **kwargs)
+
+    def map_instruction(self,
+                        kernel: LoopKernel,
+                        insn: InstructionBase) -> InstructionBase:
         return insn
 
     def map_kernel(self,
@@ -1459,7 +1599,7 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
             insn if not kernel.substitutions and not within(kernel, insn, ()) else
             self.map_instruction(kernel,
                 insn.with_transformed_expressions(
-                    lambda expr: self(expr, kernel, insn)))  # noqa: B023
+                    lambda expr: self(expr, kernel, insn)))  # noqa: B023 # pyright: ignore[reportCallIssue]
             for insn in kernel.instructions]
 
         from functools import partial
@@ -1502,17 +1642,9 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
     Mapper to substitute expressions and record any divergence of substitution
     rule expressions of :class:`loopy.LoopKernel`.
 
-    .. attribute:: rule_mapping_context
-
-        An instance of :class:`SubstitutionRuleMappingContext` to record
-        divergence of substitution rules.
-
-    .. attribute:: within
-
-        An instance of :class:`loopy.match.StackMatchComponent`.
-        :class:`RuleAwareSubstitutionMapper` would perform
-        substitutions in the expression if the stack match is ``True`` or
-        if the expression does not arise from an :class:`~loopy.InstructionBase`.
+    .. autoattribute:: rule_mapping_context
+    .. autoattribute:: subst_func
+    .. automethod:: within
 
     .. note::
 
@@ -1520,19 +1652,28 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
         :meth:`SubstitutionRuleMappingContext.finish_kernel` to perform any
         renaming mandated by the rule expression divergences.
     """
+
+    subst_func: Callable[[p.AlgebraicLeaf], Expression | None]
+    _within: StackMatch
+
     def __init__(self,
-                rule_mapping_context: SubstitutionRuleMappingContext,
-                subst_func,
-                within: StackMatch):
+                 rule_mapping_context: SubstitutionRuleMappingContext,
+                 subst_func: Callable[[p.AlgebraicLeaf], Expression | None],
+                 within: StackMatch) -> None:
         super().__init__(rule_mapping_context)
 
         self.subst_func = subst_func
-        self._within: StackMatch = within
+        self._within = within
 
     def within(self,
                 kernel: LoopKernel,
                 instruction: InstructionBase | None,
-                stack: RuleStack):
+                stack: RuleStack) -> bool:
+        """:class:`RuleAwareSubstitutionMapper` will perform
+        substitutions in the expression if the stack match is *True* or
+        if the expression does not arise from an :class:`~loopy.InstructionBase`.
+        """
+
         if instruction is None:
             # always perform substitutions on expressions not coming from
             # instructions.
@@ -1541,7 +1682,8 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
             return self._within(kernel, instruction, stack)
 
     @override
-    def map_variable(self, expr: Variable, expn_state: ExpansionState) -> Expression:
+    def map_variable(self, expr: p.Variable, /,
+                     expn_state: ExpansionState) -> Expression:
         if (expr.name in expn_state.arg_context
                 or not self.within(
                     expn_state.kernel, expn_state.instruction, expn_state.stack)):
@@ -1553,15 +1695,17 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper[[]]):
         if result is not None:
             return result
         else:
-            return super().map_variable(
-                    expr, expn_state)
+            return super().map_variable(expr, expn_state)
 
 
 class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper[[]]):
+    rules: Mapping[str, SubstitutionRule]
+    within: StackMatch
+
     def __init__(self,
-                rule_mapping_context: SubstitutionRuleMappingContext,
-                rules,
-                within: StackMatch):
+                 rule_mapping_context: SubstitutionRuleMappingContext,
+                 rules: Mapping[str, SubstitutionRule],
+                 within: StackMatch) -> None:
         super().__init__(rule_mapping_context)
 
         self.rules = rules
@@ -1569,8 +1713,15 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper[[]]):
 
     @override
     def map_subst_rule(
-                self, name: str, tags, arguments, expn_state: ExpansionState
+                self, name: str,
+                tags: AbstractSet[Tag] | None,
+                arguments: Sequence[Expression],
+                expn_state: ExpansionState
             ) -> Expression:
+        if tags is None:
+            tags = frozenset()
+        tags = frozenset(tags)
+
         from loopy.match import ConcreteMatchable
         new_stack = (*expn_state.stack, ConcreteMatchable(name, tags))
 
@@ -1602,7 +1753,8 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper[[]]):
 # {{{ functions to primitives, parsing
 
 class VarToTaggedVarMapper(IdentityMapper[[]]):
-    def map_variable(self, expr: Variable) -> Variable:
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Expression:
         dollar_idx = expr.name.find("$")
         if dollar_idx == -1:
             return expr
@@ -1618,7 +1770,7 @@ class VarToTaggedVarMapper(IdentityMapper[[]]):
 
 class FunctionToPrimitiveMapper(UncachedIdentityMapper[[]]):
     """Looks for invocations of a function called 'cse' or 'reduce' and
-    turns those into the actual pymbolic primitives used for that.
+    turns those into the actual :mod:`pymbolic` primitives used for that.
     """
 
     def _parse_reduction(self,
@@ -1649,7 +1801,8 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper[[]]):
         return Reduction(operation, tuple(processed_inames), expr_or_exprs,
                 allow_simultaneous=allow_simultaneous)
 
-    def map_call(self, expr: p.Call) -> Expression:
+    @override
+    def map_call(self, expr: p.Call, /) -> Expression:
         from loopy.library.reduction import parse_reduction_op
 
         if not isinstance(expr.function, p.Variable):
@@ -1700,7 +1853,23 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper[[]]):
                 }[name](tuple(self.rec(p) for p in expr.parameters))
             else:
                 raise TypeError(f"{name} takes two arguments")
-
+        elif name == "cast":
+            if len(expr.parameters) == 2:
+                type_arg, child = expr.parameters
+                if isinstance(type_arg, p.Variable):
+                    try:
+                        dtype = np.dtype(type_arg.name)
+                    except TypeError as e:
+                        raise TypeError(
+                            f"cast(): unrecognised numpy dtype '{type_arg.name}'"
+                        ) from e
+                else:
+                    raise TypeError(
+                        "first argument to cast() must be a dtype or type name"
+                    )
+                return TypeCast(dtype, self.rec(child))
+            else:
+                raise TypeError("cast takes two arguments")
         else:
             # see if 'name' is an existing reduction op
 
@@ -1708,11 +1877,10 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper[[]]):
             if operation:
                 # arg_count counts arguments but not inames
                 if len(expr.parameters) != 1 + operation.arg_count:
-                    raise RuntimeError("invalid invocation of "
-                            "reduction operation '%s': expected %d arguments, "
-                            "got %d instead" % (expr.function.name,
-                                                1 + operation.arg_count,
-                                                len(expr.parameters)))
+                    raise RuntimeError(
+                        "invalid invocation of reduction operation "
+                        f"'{expr.function.name}': expected {operation.arg_count + 1} "
+                        f"arguments: got {len(expr.parameters)} instead")
 
                 inames = expr.parameters[0]
                 red_exprs = tuple(self.rec(param) for param in expr.parameters[1:])
@@ -1725,18 +1893,24 @@ class FunctionToPrimitiveMapper(UncachedIdentityMapper[[]]):
 # {{{ customization to pymbolic parser
 
 _open_dbl_bracket = intern("open_dbl_bracket")
+_np_dtype = intern("np_dtype")
 
 TRAILING_FLOAT_TAG_RE = re.compile(r"^(.*?)([a-zA-Z]*)$")
+_NP_DTYPE_RE = re.compile(r"^np:dtype\('([^']+)'\)$")
 
 
 class LoopyParser(ParserBase):
     lex_table: ClassVar[pytools.lex.LexTable] = [
+            (_np_dtype, pytools.lex.RE(r"np:dtype\('[^']+'\)")),
             (_open_dbl_bracket, pytools.lex.RE(r"\[\[")),
             *ParserBase.lex_table
             ]
 
-    def parse_float(self, s):
+    @override
+    def parse_float(self, s: str) -> np.inexact[Any] | float:
         match = TRAILING_FLOAT_TAG_RE.match(s)
+        if match is None:
+            raise RuntimeError(f"cannot parse string as float: '{s}'")
 
         val = match.group(1)
         tag = frozenset(match.group(2))
@@ -1751,7 +1925,8 @@ class LoopyParser(ParserBase):
         else:
             return float(val)  # generic float
 
-    def parse_prefix(self, pstate):
+    @override
+    def parse_prefix(self, pstate: pytools.lex.LexIterator) -> Expression:
         from pymbolic.parser import (
             _PREC_UNARY,
             _closebracket,
@@ -1764,7 +1939,13 @@ class LoopyParser(ParserBase):
 
         import loopy as lp
 
-        if pstate.is_next(_less):
+        if pstate.is_next(_np_dtype):
+            m = _NP_DTYPE_RE.match(pstate.next_str())
+            assert m is not None
+            result = p.Variable(m.group(1))
+            pstate.advance()
+            return result
+        elif pstate.is_next(_less):
             pstate.advance()
             if pstate.is_next(_greater):
                 typename = lp.Optional(None)
@@ -1778,7 +1959,7 @@ class LoopyParser(ParserBase):
 
             return TypeAnnotation(
                     typename,
-                    cast("Expression", self.parse_expression(pstate, _PREC_UNARY)))
+                    self.parse_expression(pstate, _PREC_UNARY))
 
         elif pstate.is_next(_openbracket):
             rollback_pstate = pstate.copy()
@@ -1800,7 +1981,7 @@ class LoopyParser(ParserBase):
                 assert isinstance(swept_inames, tuple)
                 assert isinstance(subscript, p.Subscript)
                 return SubArrayRef(
-                    cast("tuple[Variable, ...]", swept_inames),
+                    cast("tuple[p.Variable, ...]", swept_inames),
                     subscript)
             else:
                 pstate = rollback_pstate
@@ -1808,14 +1989,22 @@ class LoopyParser(ParserBase):
         else:
             return super().parse_prefix(pstate)
 
-    def parse_postfix(self, pstate, min_precedence, left_exp):
+    @override
+    def parse_postfix(self,
+                pstate: pytools.lex.LexIterator,
+                min_precedence: int,
+                left_exp: Expression) -> tuple[Expression, bool]:
         from pymbolic.parser import _PREC_CALL, _closebracket
         if pstate.next_tag() is _open_dbl_bracket and min_precedence < _PREC_CALL:
             pstate.advance()
             pstate.expect_not_end()
+            subscript = self.parse_expression(pstate)
+            if not p.is_arithmetic_expression(subscript):
+                raise LoopyError("subscript in linear subscript "
+                                 "must be of arithmetic type")
             left_exp = LinearSubscript(
-                        left_exp,
-                        cast("Expression", self.parse_expression(pstate)))
+                        left_exp, subscript,
+                        )
             pstate.expect(_closebracket)
             pstate.advance()
             pstate.expect(_closebracket)
@@ -1827,9 +2016,8 @@ class LoopyParser(ParserBase):
 # }}}
 
 
-def parse(expr_str):
-    return VarToTaggedVarMapper()(
-            FunctionToPrimitiveMapper()(LoopyParser()(expr_str)))
+def parse(expr_str: str) -> Expression:
+    return VarToTaggedVarMapper()(FunctionToPrimitiveMapper()(LoopyParser()(expr_str)))
 
 # }}}
 
@@ -1837,38 +2025,49 @@ def parse(expr_str):
 # {{{ coefficient collector
 
 class CoefficientCollector(CoefficientCollectorBase):
-    map_tagged_variable = CoefficientCollectorBase.map_variable
+    map_tagged_variable: Callable[[Self, TaggedVariable],
+                                  CoeffsT] = CoefficientCollectorBase.map_variable
 
-    def map_subscript(self, expr):
+    @override
+    def map_subscript(self, expr: p.Subscript, /) -> CoeffsT:
         from loopy.diagnostic import ExpressionNotAffineError
-        raise ExpressionNotAffineError("cannot gather coefficients--"
-                "indirect addressing in use")
+        raise ExpressionNotAffineError(
+                "cannot gather coefficients -- indirect addressing in use")
 
 # }}}
 
 
 # {{{ variable index expression collector
 
-class ArrayAccessFinder(CombineMapper[Set[p.Subscript], []]):
+class ArrayAccessFinder(CombineMapper[AbstractSet[p.Subscript], []]):
+    tgt_vector_name: str | None
+
     def __init__(self, tgt_vector_name: str | None = None) -> None:
         self.tgt_vector_name = tgt_vector_name
         super().__init__()
 
-    def combine(self, values):
+    @override
+    def combine(self,
+                values: Iterable[AbstractSet[p.Subscript]]
+            ) -> AbstractSet[p.Subscript]:
         from pytools import flatten
         return set(flatten(values))
 
-    def map_constant(self, expr: object) -> Set[p.Subscript]:
+    @override
+    def map_constant(self, expr: object, /) -> AbstractSet[p.Subscript]:
         return set()
 
-    def map_algebraic_leaf(self, expr) -> Set[p.Subscript]:
+    @override
+    def map_algebraic_leaf(self, expr: p.AlgebraicLeaf, /) -> AbstractSet[p.Subscript]:
         return set()
 
-    def map_subscript(self, expr) -> Set[p.Subscript]:
+    @override
+    def map_subscript(self, expr: p.Subscript, /) -> AbstractSet[p.Subscript]:
         assert isinstance(expr.aggregate, p.Variable)
 
-        if self.tgt_vector_name is None \
-                or expr.aggregate.name == self.tgt_vector_name:
+        if (
+                self.tgt_vector_name is None
+                or expr.aggregate.name == self.tgt_vector_name):
             return {expr} | self.rec(expr.index)
         else:
             return super().map_subscript(expr)
@@ -1884,15 +2083,15 @@ def aff_to_expr(aff: isl.Aff) -> ArithmeticExpression:
     denom = aff.get_denominator_val().to_python()
 
     result = (aff.get_constant_val()*denom).to_python()
-    for dt in [dim_type.in_, dim_type.param]:
+    for dt in [isl.dim_type.in_, isl.dim_type.param]:
         for i in range(aff.dim(dt)):
             coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
             if coeff:
                 dim_name = not_none(aff.get_dim_name(dt, i))
                 result += coeff*var(dim_name)
 
-    for i in range(aff.dim(dim_type.div)):
-        coeff = (aff.get_coefficient_val(dim_type.div, i)*denom).to_python()
+    for i in range(aff.dim(isl.dim_type.div)):
+        coeff = (aff.get_coefficient_val(isl.dim_type.div, i)*denom).to_python()
         if coeff:
             result += coeff*aff_to_expr(aff.get_div(i))
 
@@ -1900,13 +2099,21 @@ def aff_to_expr(aff: isl.Aff) -> ArithmeticExpression:
     return flatten(result // denom)
 
 
+@overload
+def pw_aff_to_expr(pw_aff: int, int_ok: bool = False) -> int: ...
+
+@overload
+def pw_aff_to_expr(pw_aff: isl.PwAff | isl.Aff,
+                   int_ok: bool = False) -> ArithmeticExpression: ...
+
+
 def pw_aff_to_expr(
-            pw_aff: isl.PwAff | isl.Aff,
+            pw_aff: int | isl.PwAff | isl.Aff,
             int_ok: bool = False
         ) -> ArithmeticExpression:
     if isinstance(pw_aff, int):
         if not int_ok:
-            warn("expected PwAff, got int", stacklevel=2)
+            warn(f"expected PwAff, got int: {pw_aff}", stacklevel=2)
 
         return pw_aff
 
@@ -1917,6 +2124,7 @@ def pw_aff_to_expr(
              for constr_set, aff in pieces[:-1]]
 
     from pymbolic.primitives import If
+
     expr = last_expr
     for condition, then_expr in reversed(pairs):
         expr = If(condition, then_expr, expr)
@@ -1946,78 +2154,85 @@ def pw_aff_to_pw_aff_implemented_by_expr(pw_aff: isl.PwAff) -> isl.PwAff:
 # {{{ (pw)aff_from_expr
 
 class PwAffEvaluationMapper(EvaluationMapperBase[isl.PwAff]):
-    def __init__(self, space, vars_to_zero):
-        self.zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
+    zero: isl.Aff
+    pw_zero: isl.PwAff
 
-        context = {}
+    def __init__(self,
+                 space: isl.Space,
+                 vars_to_zero: Collection[str] | None) -> None:
+        if vars_to_zero is None:
+            vars_to_zero = ()
+
+        self.zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
+        self.pw_zero = isl.PwAff.from_aff(self.zero)
+
+        context: dict[str, isl.PwAff] = {}
         for name, (dt, pos) in space.get_var_dict().items():
-            if dt == dim_type.set:
-                dt = dim_type.in_
+            if dt == isl.dim_type.set:
+                dt = isl.dim_type.in_
 
             context[name] = isl.PwAff.from_aff(
                     self.zero.set_coefficient_val(dt, pos, 1))
 
         for v in vars_to_zero:
-            context[v] = self.zero
-
-        self.pw_zero = isl.PwAff.from_aff(self.zero)
+            context[v] = self.pw_zero
 
         super().__init__(context)
 
     @override
-    def map_constant(self, expr: object):
+    def map_constant(self, expr: object, /) -> isl.PwAff:
         iexpr = int(cast("int", expr))
 
         return self.pw_zero + iexpr
 
     @override
-    def map_min(self, expr: p.Min):
+    def map_min(self, expr: p.Min, /) -> isl.PwAff:
         from functools import reduce
         return reduce(
                 lambda a, b: a.min(b),
                 (self.rec(ch) for ch in expr.children))
 
     @override
-    def map_max(self, expr: p.Max):
+    def map_max(self, expr: p.Max, /) -> isl.PwAff:
         from functools import reduce
         return reduce(
                 lambda a, b: a.max(b),
                 (self.rec(ch) for ch in expr.children))
 
     @override
-    def map_quotient(self, expr: p.Quotient):
-        raise TypeError("true division in '%s' not supported "
-                "for as-pwaff evaluation" % expr)
+    def map_quotient(self, expr: p.Quotient, /) -> isl.PwAff:
+        raise TypeError(
+            f"true division in '{expr}' not supported for as-pwaff evaluation")
 
     @override
-    def map_floor_div(self, expr: p.FloorDiv):
+    def map_floor_div(self, expr: p.FloorDiv, /) -> isl.PwAff:
         num = self.rec(expr.numerator)
         denom = self.rec(expr.denominator)
         return num.div(denom).floor()
 
     @override
-    def map_remainder(self, expr: p.Remainder):
+    def map_remainder(self, expr: p.Remainder, /) -> isl.PwAff:
         num = self.rec(expr.numerator)
         denom = self.rec(expr.denominator)
         if not denom.is_cst():
-            raise TypeError("modulo non-constant in '%s' not supported "
-                    "for as-pwaff evaluation" % expr)
+            raise TypeError(
+                    f"modulo non-constant in '{expr}' not supported "
+                    "for as-pwaff evaluation")
 
         (_s, denom_aff), = denom.get_pieces()
         denom = denom_aff.get_constant_val()
 
         return num.mod_val(denom)
 
-    def map_literal(self, expr):
-        raise TypeError("literal '%s' not supported "
-                        "for as-pwaff evaluation" % expr)
+    def map_literal(self, expr: Literal, /) -> isl.PwAff:
+        raise TypeError(f"literal '{expr}' not supported for as-pwaff evaluation")
 
-    def map_reduction(self, expr: Reduction):
-        raise TypeError("reduction in '%s' not supported "
-                "for as-pwaff evaluation" % expr)
+    def map_reduction(self, expr: Reduction, /) -> isl.PwAff:
+        raise TypeError(
+                f"reduction in '{expr}' not supported for as-pwaff evaluation")
 
     @override
-    def map_call(self, expr: p.Call):
+    def map_call(self, expr: p.Call, /) -> isl.PwAff:
         # FIXME: There are some things here that we could handle, e.g. "abs".
         raise TypeError(f"call in '{expr}' not supported "
                 "for as-pwaff evaluation")
@@ -2039,8 +2254,9 @@ def aff_from_expr(
         return aff
     else:
         from loopy.diagnostic import ExpressionNotAffineError
-        raise ExpressionNotAffineError("expression '%s' could not be converted to a "
-                "non-piecewise quasi-affine expression" % expr)
+        raise ExpressionNotAffineError(
+                f"expression '{expr}' could not be converted to a "
+                "non-piecewise quasi-affine expression")
 
 
 def pwaff_from_expr(
@@ -2079,8 +2295,8 @@ def with_aff_conversion_guard(
     assert err is not None
     from loopy.diagnostic import ExpressionToAffineConversionError
     raise ExpressionToAffineConversionError(
-            "could not convert expression '%s' to affine representation: "
-            "%s: %s" % (expr, type(err).__name__, str(err)))
+            f"could not convert expression '{expr}' to affine representation: "
+            f"{type(err).__name__}: {err}")
 
 
 def guarded_aff_from_expr(
@@ -2110,37 +2326,44 @@ def guarded_pwaff_from_expr(
 # {{{ (pw_)?qpoly_from_expr
 
 class PwQPolyEvaluationMapper(EvaluationMapperBase[isl.PwQPolynomial]):
-    def __init__(self, space, vars_to_zero):
-        zero_qpoly = isl.QPolynomial.zero_on_domain(space)
+    pw_zero: isl.PwQPolynomial
 
-        context = {}
+    def __init__(self,
+                 space: isl.Space,
+                 vars_to_zero: Collection[str] | None = None) -> None:
+        if vars_to_zero is None:
+            vars_to_zero = ()
+
+        context: dict[str, isl.PwQPolynomial] = {}
         for name, (dt, pos) in space.get_var_dict().items():
-            if dt == dim_type.set:
-                dt = dim_type.in_
+            if dt == isl.dim_type.set:
+                dt = isl.dim_type.in_
 
             context[name] = isl.PwQPolynomial.from_qpolynomial(
                     isl.QPolynomial.var_on_domain(space, dt, pos))
 
+        pw_zero = isl.PwQPolynomial.from_qpolynomial(
+                    isl.QPolynomial.zero_on_domain(space))
         for v in vars_to_zero:
-            context[v] = zero_qpoly
+            context[v] = pw_zero
 
-        self.pw_zero = isl.PwQPolynomial.from_qpolynomial(zero_qpoly)
-
+        self.pw_zero = pw_zero
         super().__init__(context)
 
     @override
-    def map_constant(self, expr: object):
+    def map_constant(self, expr: object, /) -> isl.PwQPolynomial:
         iexpr = int(cast("int", expr))
 
         return self.pw_zero + iexpr
 
     @override
-    def map_quotient(self, expr: p.Quotient):
-        raise TypeError("true division in '%s' not supported "
-                "for as-pwqpoly evaluation" % expr)
+    def map_quotient(self, expr: p.Quotient, /) -> isl.PwQPolynomial:
+        raise TypeError(
+                f"true division in '{expr}' not supported "
+                "for as-pwqpoly evaluation")
 
     @override
-    def map_power(self, expr: p.Power) -> isl.PwQPolynomial:
+    def map_power(self, expr: p.Power, /) -> isl.PwQPolynomial:
         from numbers import Integral
         if not isinstance(expr.exponent, Integral):
             raise TypeError("Only integral powers allowed in pwqpolynomials.")
@@ -2152,11 +2375,14 @@ class PwQPolyEvaluationMapper(EvaluationMapperBase[isl.PwQPolynomial]):
         return self.rec(expr.base) ** iexponent
 
 
-def pw_qpolynomial_from_expr(space, expr, vars_to_zero=frozenset()):
+def pw_qpolynomial_from_expr(
+            space: isl.Space,
+            expr: Expression,
+            vars_to_zero: Collection[str] | None = None) -> isl.PwQPolynomial:
     return PwQPolyEvaluationMapper(space, vars_to_zero)(expr)
 
 
-def qpolynomial_from_expr(space, expr):
+def qpolynomial_from_expr(space: isl.Space, expr: Expression) -> isl.QPolynomial:
     pw_qpoly = pw_qpolynomial_from_expr(space, expr).coalesce()
 
     pieces = pw_qpoly.get_pieces()
@@ -2164,17 +2390,17 @@ def qpolynomial_from_expr(space, expr):
         (_s, qpoly), = pieces
         return qpoly
     else:
-        raise RuntimeError("expression '%s' could not be converted to a "
-                "non-piecewise quasi-polynomial expression" % expr)
+        raise RuntimeError(
+                f"expression '{expr}' could not be converted to a "
+                "non-piecewise quasi-polynomial expression")
 
 # }}}
 
 
 # {{{ simplify using aff
 
-def simplify_via_aff(expr):
+def simplify_via_aff(expr: Expression) -> Expression:
     from loopy.diagnostic import ExpressionToAffineConversionError
-    from loopy.symbolic import aff_to_expr, get_dependencies, guarded_aff_from_expr
 
     deps = sorted(get_dependencies(expr))
     try:
@@ -2205,7 +2431,7 @@ def simplify_using_aff(
     domain = (
             kernel
             .get_inames_domain(inames)
-            .project_out_except(inames, [dim_type.set]))
+            .project_out_except(inames, [isl.dim_type.set]))
 
     non_inames = deps - set(domain.get_var_dict().keys())
     non_inames = {name for name in set(non_inames) if name.isidentifier()}
@@ -2232,27 +2458,32 @@ def simplify_using_aff(
 
 # {{{ qpolynomial_to_expr
 
-def _get_monomial_coeff_from_term(space, term):
-    from pymbolic.primitives import Variable
-
+def _get_monomial_coeff_from_term(
+            space: isl.Space, term: isl.Term
+        ) -> tuple[ArithmeticExpression, isl.Val]:
     result = 1
 
     for dt in isl._CHECK_DIM_TYPES:
         for i in range(term.dim(dt)):
             exp = term.get_exp(dt, i)
             if exp:
-                result = result*Variable(space.get_dim_name(dt, i))**exp
+                name = space.get_dim_name(dt, i)
+                assert name is not None
 
-    for i in range(term.dim(dim_type.div)):
-        exp = term.get_exp(dim_type.div, i)
+                result = result*p.Variable(name)**exp
+
+    for i in range(term.dim(isl.dim_type.div)):
+        exp = term.get_exp(isl.dim_type.div, i)
         result *= (aff_to_expr(term.get_div(i))**exp)
 
     return result, term.get_coefficient_val()
 
 
-def _take_common_denominator(coeffs):
+def _take_common_denominator(
+            coeffs: Sequence[isl.Val],
+        ) -> tuple[tuple[int, ...], int]:
     denominators = [coeff.get_den_val() for coeff in coeffs]
-    numerators = [coeff * den for coeff, den in zip(coeffs, denominators)]
+    numerators = [coeff * den for coeff, den in zip(coeffs, denominators, strict=True)]
 
     common_denominator = isl.Val.one(coeffs[0].get_ctx())
     for den in denominators:
@@ -2261,18 +2492,19 @@ def _take_common_denominator(coeffs):
                               .div(den.gcd(common_denominator)))
 
     numerators_scaled = [numerator * (common_denominator.div(denominator))
-                         for numerator, denominator in zip(numerators, denominators)]
+                         for numerator, denominator in
+                         zip(numerators, denominators, strict=True)]
 
     return (tuple(num.to_python() for num in numerators_scaled),
             common_denominator.to_python())
 
 
-def qpolynomial_to_expr(qpoly):
+def qpolynomial_to_expr(qpoly: isl.QPolynomial) -> Expression:
     from pymbolic.primitives import FloorDiv
 
     space = qpoly.space
     monomials, coeffs = zip(*[_get_monomial_coeff_from_term(space, t)
-                              for t in qpoly.get_terms()])
+                              for t in qpoly.get_terms()], strict=True)
 
     numerators, common_denominator = _take_common_denominator(coeffs)
 
@@ -2283,11 +2515,12 @@ def qpolynomial_to_expr(qpoly):
     # FIXME: Delete if in favor of the general case once we depend on pymbolic 2024.1.
     if common_denominator == 1:
         res = sum(num * monomial
-                   for num, monomial in zip(numerators, monomials))
+                  for num, monomial in zip(numerators, monomials, strict=True))
     else:
-        res = FloorDiv(sum(num * monomial
-                            for num, monomial in zip(numerators, monomials)),
-                        common_denominator)
+        res = FloorDiv(
+            sum(num * monomial
+                for num, monomial in zip(numerators, monomials, strict=True)),
+            common_denominator)
 
     return flatten(res)
 
@@ -2296,7 +2529,7 @@ def qpolynomial_to_expr(qpoly):
 
 # {{{ expression/set <-> constraint conversion
 
-def constraint_to_cond_expr(cns):
+def constraint_to_cond_expr(cns: isl.Constraint) -> ArithmeticExpression:
     # Looks like this is ok after all--get_aff() performs some magic.
     # Not entirely sure though... FIXME
     #
@@ -2327,22 +2560,45 @@ class ConditionExpressionToBooleanOpsExpression(IdentityMapper[[]]):
         - ``i>10 and j`` becomes ``i>10 and j!=0``
     """
 
-    def map_comparison(self, expr):
+    @override
+    def map_comparison(self, expr: p.Comparison, /) -> Expression:
         return expr
 
-    def _get_expr_neq_0(self, expr):
+    def _get_expr_neq_0(self, expr: (
+                p.Variable | p.Subscript | p.Power
+                | p.Sum | p.Product | p.Call)) -> Expression:
         return p.Comparison(expr, "!=", 0)
 
-    map_variable = _get_expr_neq_0
-    map_subscript = _get_expr_neq_0
-    map_sum = _get_expr_neq_0
-    map_product = _get_expr_neq_0
-    map_constant = _get_expr_neq_0
-    map_call = _get_expr_neq_0
-    map_power = _get_expr_neq_0
-    map_power = _get_expr_neq_0
+    @override
+    def map_constant(self, expr: object, /) -> Expression:
+        return p.Comparison(expr, "!=", 0)
 
-    def map_reduction(self, expr):
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Expression:
+        return self._get_expr_neq_0(expr)
+
+    @override
+    def map_subscript(self, expr: p.Subscript, /) -> Expression:
+        return self._get_expr_neq_0(expr)
+
+    @override
+    def map_sum(self, expr: p.Sum, /) -> Expression:
+        return self._get_expr_neq_0(expr)
+
+    @override
+    def map_product(self, expr: p.Product, /) -> Expression:
+        return self._get_expr_neq_0(expr)
+
+    @override
+    def map_call(self, expr: p.Call, /) -> Expression:
+        return self._get_expr_neq_0(expr)
+
+    @override
+    def map_power(self, expr: p.Power, /) -> Expression:
+        return self._get_expr_neq_0(expr)
+
+    @override
+    def map_reduction(self, expr: Reduction, /) -> Expression:
         raise ExpressionToAffineConversionError("cannot (yet) convert reduction "
                 "to affine")
 
@@ -2357,7 +2613,7 @@ class AffineConditionToISLSetMapper(Mapper[isl.Set, []]):
     space: isl.Space
 
     @override
-    def map_comparison(self, expr: p.Comparison):
+    def map_comparison(self, expr: p.Comparison, /) -> isl.Set:
         if expr.operator == "!=":
             return self.rec(p.LogicalNot(p.Comparison(expr.left, "==", expr.right)))
 
@@ -2379,22 +2635,27 @@ class AffineConditionToISLSetMapper(Mapper[isl.Set, []]):
 
         return isl.Set.universe(self.space).add_constraint(cnst)
 
-    def _map_logical_reduce(self, expr, f):
+    def _map_logical_reduce(self,
+                            expr: p.LogicalOr | p.LogicalAnd,
+                            f: Callable[[isl.Set, isl.Set], isl.Set]) -> isl.Set:
         """
         :arg f: Reduction callable.
         """
         sets = [self.rec(child) for child in expr.children]
         return reduce(f, sets)
 
-    def map_logical_or(self, expr: p.LogicalOr):
+    @override
+    def map_logical_or(self, expr: p.LogicalOr, /) -> isl.Set:
         import operator
         return self._map_logical_reduce(expr, operator.or_)
 
-    def map_logical_and(self, expr: p.LogicalAnd):
+    @override
+    def map_logical_and(self, expr: p.LogicalAnd, /) -> isl.Set:
         import operator
         return self._map_logical_reduce(expr, operator.and_)
 
-    def map_logical_not(self, expr: p.LogicalNot):
+    @override
+    def map_logical_not(self, expr: p.LogicalNot, /) -> isl.Set:
         set_ = self.rec(expr.child)
         return set_.complement()
 
@@ -2412,10 +2673,10 @@ def isl_set_from_expr(space: isl.Space, expr: Expression) -> isl.Set:
     return set_
 
 
-def condition_to_set(space, expr):
+def condition_to_set(space: isl.Space, expr: Expression) -> isl.Set | None:
     """
     Returns an instance of :class:`islpy.Set` if *expr* can be expressed as an
-    ISL-set on *space*, if not then returns *None*.
+    :class:`isl.Set` on *space*, if not then returns *None*.
     """
     from loopy.symbolic import get_dependencies
     if get_dependencies(expr) <= frozenset(
@@ -2436,9 +2697,9 @@ def condition_to_set(space, expr):
 # {{{ set_to_cond_expr
 
 def basic_set_to_cond_expr(isl_basicset: isl.BasicSet) -> Expression:
-    constrs: list[Expression] = []
-    for constr in isl_basicset.get_constraints():
-        constrs.append(constraint_to_cond_expr(constr))
+    constrs: list[Expression] = [
+        constraint_to_cond_expr(constr)
+        for constr in isl_basicset.get_constraints()]
 
     if len(constrs) == 0:
         raise ValueError("may not be called on universe")
@@ -2450,9 +2711,9 @@ def basic_set_to_cond_expr(isl_basicset: isl.BasicSet) -> Expression:
 
 
 def set_to_cond_expr(isl_set: isl.Set) -> Expression:
-    conjs: list[Expression] = []
-    for isl_basicset in isl_set.get_basic_sets():
-        conjs.append(basic_set_to_cond_expr(isl_basicset))
+    conjs: list[Expression] = [
+        basic_set_to_cond_expr(isl_basicset)
+        for isl_basicset in isl_set.get_basic_sets()]
 
     if len(conjs) == 0:
         raise ValueError("may not be called on universe")
@@ -2468,18 +2729,23 @@ def set_to_cond_expr(isl_set: isl.Set) -> Expression:
 
 # {{{ Reduction callback mapper
 
+CallbackType: TypeAlias = """Callable[
+    Concatenate[Expression,
+                Callable[Concatenate[Expression, P], Expression],
+                P], Expression | None]"""
+
+
 class ReductionCallbackMapper(UncachedIdentityMapper[P]):
-    def __init__(
-                self,
-                callback: Callable[[
-                    Reduction,
-                    Callable[Concatenate[Expression, P], Expression]
-                ], Expression]) -> None:
+    callback: CallbackType[P]
+
+    def __init__(self, callback: CallbackType[P]) -> None:
         self.callback = callback
         super().__init__()
 
-    def map_reduction(self, expr, *args: P.args, **kwargs: P.kwargs) -> Expression:
-        result = self.callback(expr, self.rec, **kwargs)
+    @override
+    def map_reduction(self, expr: Reduction, /,
+                      *args: P.args, **kwargs: P.kwargs) -> Expression:
+        result = self.callback(expr, self.rec, *args, **kwargs)
         if result is None:
             return super().map_reduction(expr, *args, **kwargs)
         return result
@@ -2489,37 +2755,51 @@ class ReductionCallbackMapper(UncachedIdentityMapper[P]):
 
 # {{{ index dependency finding
 
-class IndexVariableFinder(CombineMapper[Set[Expression], []]):
+class IndexVariableFinder(CombineMapper[AbstractSet[str], []]):
+    include_reduction_inames: bool
+
     def __init__(self, include_reduction_inames: bool) -> None:
+        super().__init__()
         self.include_reduction_inames = include_reduction_inames
 
-    def combine(self, values):
-        import operator
-        return reduce(operator.or_, values, set())
+    @override
+    def combine(self, values: Iterable[AbstractSet[str]]) -> AbstractSet[str]:
+        result = set()
+        for value in values:
+            result |= value
 
-    def map_constant(self, expr):
+        return result
+
+    @override
+    def map_constant(self, expr: object, /) -> AbstractSet[str]:
         return set()
 
-    def map_algebraic_leaf(self, expr):
+    @override
+    def map_algebraic_leaf(self, expr: p.AlgebraicLeaf, /) -> AbstractSet[str]:
         return set()
 
-    def map_subscript(self, expr):
+    @override
+    def map_subscript(self, expr: p.Subscript, /) -> AbstractSet[str]:
         idx_vars = DependencyMapper()(expr.index)
 
-        result = set()
+        result: set[str] = set()
         for idx_var in idx_vars:
             if isinstance(idx_var, p.Variable):
                 result.add(idx_var.name)
             else:
-                raise RuntimeError("index variable not understood: %s" % idx_var)
+                raise RuntimeError(f"index variable not understood: {idx_var}")
+
         return result
 
-    def map_reduction(self, expr):
+    @override
+    def map_reduction(self, expr: Reduction, /) -> AbstractSet[str]:
         result = self.rec(expr.expr)
 
         if not (expr.inames_set & result):
-            raise RuntimeError("reduction '%s' does not depend on "
-                    "reduction inames (%s)" % (expr, ",".join(expr.inames)))
+            inames = ", ".join(expr.inames)
+            raise RuntimeError(
+                f"reduction '{expr}' does not depend on reduction inames ({inames})")
+
         if self.include_reduction_inames:
             return result
         else:
@@ -2530,12 +2810,15 @@ class IndexVariableFinder(CombineMapper[Set[Expression], []]):
 
 # {{{ wildcard -> unique variable mapper
 
-class WildcardToUniqueVariableMapper(IdentityMapper):
+class WildcardToUniqueVariableMapper(IdentityMapper[[]]):
+    unique_var_name_factory: Callable[[], str]
+
     def __init__(self, unique_var_name_factory: Callable[[], str]) -> None:
         self.unique_var_name_factory = unique_var_name_factory
         super().__init__()
 
-    def map_wildcard(self, expr: p.Wildcard) -> Variable:
+    @override
+    def map_wildcard(self, expr: p.Wildcard, /) -> Expression:
         from pymbolic import var
         return var(self.unique_var_name_factory())
 
@@ -2545,19 +2828,24 @@ class WildcardToUniqueVariableMapper(IdentityMapper):
 # {{{ prime ("'") adder
 
 class PrimeAdder(IdentityMapper[[]]):
-    def __init__(self, which_vars):
-        self.which_vars = which_vars
+    which_vars: Collection[str]
 
-    def map_variable(self, expr):
+    def __init__(self, which_vars: Collection[str]) -> None:
+        self.which_vars = which_vars
+        super().__init__()
+
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Expression:
         from pymbolic import var
         if expr.name in self.which_vars:
-            return var(expr.name+"'")
+            return var(f"{expr.name}'")
         else:
             return expr
 
-    def map_tagged_variable(self, expr):
+    @override
+    def map_tagged_variable(self, expr: TaggedVariable, /) -> Expression:
         if expr.name in self.which_vars:
-            return TaggedVariable(expr.name+"'", expr.tags)
+            return TaggedVariable(f"{expr.name}'", expr.tags)
         else:
             return expr
 
@@ -2614,18 +2902,18 @@ def get_access_map(
 
     if allowed_constant_names is not None:
         allowed_constant_names = set(allowed_constant_names) - {
-                access_map.get_dim_name(dim_type.param, i)
-                for i in range(access_map.dim(dim_type.param))}
+                access_map.get_dim_name(isl.dim_type.param, i)
+                for i in range(access_map.dim(isl.dim_type.param))}
 
-        par_base = access_map.dim(dim_type.param)
-        access_map = access_map.insert_dims(dim_type.param, par_base,
+        par_base = access_map.dim(isl.dim_type.param)
+        access_map = access_map.insert_dims(isl.dim_type.param, par_base,
                 len(allowed_constant_names))
         for i, const_name in enumerate(allowed_constant_names):
             access_map = access_map.set_dim_name(
-                    dim_type.param, par_base+i, const_name)
+                    isl.dim_type.param, par_base+i, const_name)
 
-    dn = access_map.dim(dim_type.set)
-    access_map = access_map.insert_dims(dim_type.set, dn, dims)
+    dn = access_map.dim(isl.dim_type.set)
+    access_map = access_map.insert_dims(isl.dim_type.set, dn, dims)
 
     from loopy.diagnostic import ExpressionToAffineConversionError
 
@@ -2643,21 +2931,20 @@ def get_access_map(
 
             if shape_aff is None:
                 # failed to convert shape[idim] to aff
+                subs = ", ".join(str(si) for si in subscript)
                 raise UnableToDetermineAccessRangeError(
-                        "unable to determine access range of subscript: [%s] "
-                        "(encountered %s: %s)"
-                        % (", ".join(str(si) for si in subscript),
-                            # intentionally using 'outer' err
-                            type(err).__name__, str(err))) from err
+                        # intentionally using 'outer' err
+                        f"unable to determine access range of subscript: [{subs}] "
+                        f"(encountered {type(err).__name__}: {err})") from err
 
             # successfully converted shape[idim] to aff, but not subscript[idim]
 
             upper_bound_cns = isl.Constraint.inequality_from_aff(
                     shape_aff.set_coefficient_val(
-                        dim_type.in_, dn+idim, -1) - 1)
+                        isl.dim_type.in_, dn+idim, -1) - 1)
             lower_bound_cns = isl.Constraint.inequality_from_aff(
                     isl.Aff.zero_on_domain(access_map.space).set_coefficient_val(
-                        dim_type.in_, dn+idim, 1))
+                        isl.dim_type.in_, dn+idim, 1))
 
             access_map = access_map.add_constraint(upper_bound_cns)
             access_map = access_map.add_constraint(lower_bound_cns)
@@ -2666,7 +2953,7 @@ def get_access_map(
             # successfully converted subscript[idim] -> idx_aff
 
             idx_aff = idx_aff.set_coefficient_val(
-                    dim_type.in_, dn+idim, -1)
+                    isl.dim_type.in_, dn+idim, -1)
 
             access_map = access_map.add_constraint(
                     isl.Constraint.equality_from_aff(idx_aff))
@@ -2674,8 +2961,8 @@ def get_access_map(
     access_map_as_map = isl.Map.universe(access_map.get_space())
     access_map_as_map = access_map_as_map.intersect_range(access_map)
     access_map = access_map_as_map.move_dims(
-            dim_type.in_, 0,
-            dim_type.out, 0, dn)
+            isl.dim_type.in_, 0,
+            isl.dim_type.out, 0, dn)
 
     return access_map
 
@@ -2684,9 +2971,9 @@ def get_access_map(
 
 # {{{ access range mapper
 
-class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
+class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
     kernel: LoopKernel
-    access_maps: defaultdict[str, defaultdict[Set[str], isl.Map | None]]
+    access_maps: defaultdict[str, defaultdict[AbstractSet[str], isl.Map | None]]
     bad_subscripts: defaultdict[str, list[p.Subscript | LinearSubscript]]
     _overestimate: bool
     _var_names: Collection[str]
@@ -2714,7 +3001,7 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
                       (not_none(val).range() for val in loops_to_amaps.values()))
 
     @override
-    def map_subscript(self, expr: p.Subscript, inames: Set[str]) -> None:
+    def map_subscript(self, expr: p.Subscript, /, inames: AbstractSet[str]) -> None:
         domain = self.kernel.get_inames_domain(inames)
         super().map_subscript(expr, inames)
 
@@ -2747,12 +3034,11 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
             other_access_map = next(iter(self.access_maps[arg_name].values()))
             assert other_access_map is not None
 
-            if (other_access_map.dim(dim_type.set)
-                    != access_map.dim(dim_type.set)):
+            if (other_access_map.dim(isl.dim_type.set)
+                    != access_map.dim(isl.dim_type.set)):
                 raise RuntimeError(
-                        "error while determining shape of argument '%s': "
-                        "varying number of indices encountered"
-                        % arg_name)
+                        f"error while determining shape of argument '{arg_name}': "
+                        "varying number of indices encountered")
 
         # }}}
 
@@ -2765,21 +3051,21 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
     @override
     def map_linear_subscript(
                 self,
-                expr: LinearSubscript, inames: Set[str]
+                expr: LinearSubscript, /, inames: AbstractSet[str]
             ) -> None:
         self.rec(expr.index, inames)
 
-        assert isinstance(expr.aggregate, Variable)
+        assert isinstance(expr.aggregate, p.Variable)
         if expr.aggregate.name in self._var_names:
             self.bad_subscripts[expr.aggregate.name].append(expr)
 
     @override
-    def map_reduction(self, expr: Reduction, inames: Set[str]):
+    def map_reduction(self, expr: Reduction, /, inames: AbstractSet[str]) -> None:
         return WalkMapper.map_reduction(self, expr, inames | set(expr.inames))
 
     @override
-    def map_sub_array_ref(self, expr: SubArrayRef, inames: Set[str]) -> None:
-        assert isinstance(expr.subscript.aggregate, Variable)
+    def map_sub_array_ref(self, expr: SubArrayRef, /, inames: AbstractSet[str]) -> None:
+        assert isinstance(expr.subscript.aggregate, p.Variable)
         arg_name = expr.subscript.aggregate.name
         if arg_name not in self._var_names:
             return
@@ -2796,6 +3082,7 @@ class BatchedAccessMapMapper(WalkMapper[[Set[str]]]):
 
         amap = self.access_maps[arg_name].pop(total_inames)
         for iname in expr.swept_inames:
+            assert amap is not None
             dt, pos = amap.get_var_dict()[iname.name]
             amap = amap.project_out(dt, pos, 1)
 
@@ -2813,28 +3100,33 @@ class AccessRangeMapper:
     Using this class *will likely* lead to performance bottlenecks.
 
     To avoid performance issues, rewrite your code to use
-    BatchedAccessMapMapper if at all possible.
+    :class:`BatchedAccessMapMapper` if at all possible.
 
     For *n* variables and *m* expressions, calling this class to compute the
     access ranges will take *O(mn)* time for traversing the expressions.
 
-    BatchedAccessMapMapper does the same traversal in *O(m + n)* time.
+    :class:`BatchedAccessMapMapper` does the same traversal in *O(m + n)* time.
     """
 
-    def __init__(self, kernel, var_name, overestimate=None):
-        self.var_name = var_name
-        self.inner_mapper = BatchedAccessMapMapper(
-                kernel, [var_name], overestimate)
+    var_name: str
+    inner_mapper: BatchedAccessMapMapper
 
-    def __call__(self, expr, inames):
+    def __init__(self,
+                 kernel: LoopKernel,
+                 var_name: str,
+                 overestimate: bool = False) -> None:
+        self.var_name = var_name
+        self.inner_mapper = BatchedAccessMapMapper(kernel, [var_name], overestimate)
+
+    def __call__(self, expr: Expression, inames: AbstractSet[str]) -> None:
         return self.inner_mapper(expr, inames)
 
     @property
-    def access_range(self):
+    def access_range(self) -> isl.Set | None:
         return self.inner_mapper.get_access_range(self.var_name)
 
     @property
-    def bad_subscripts(self):
+    def bad_subscripts(self) -> Sequence[p.Subscript | LinearSubscript]:
         return self.inner_mapper.bad_subscripts[self.var_name]
 
 # }}}
@@ -2849,14 +3141,14 @@ class AccessRangeOverlapChecker:
     kernel: LoopKernel
 
     @cached_property
-    def vars(self):
+    def vars(self) -> AbstractSet[str]:
         return (self.kernel.get_written_variables()
                 | self.kernel.get_read_variables())
 
     @memoize_method
     def _get_access_ranges(self,
                 insn_id: InsnId,
-                access_dir: LiteralT["w"] | LiteralT["any"]
+                access_dir: TypingLiteral["w", "any"]
             ):
         insn = self.kernel.id_to_insn[insn_id]
 
@@ -2866,7 +3158,7 @@ class AccessRangeOverlapChecker:
             exprs.extend(insn.predicates)
 
         from collections import defaultdict
-        aranges: defaultdict[str, bool | isl.Set | None] = defaultdict(lambda: False)
+        ranges: defaultdict[str, bool | isl.Set | None] = defaultdict(lambda: False)
 
         arm = BatchedAccessMapMapper(self.kernel, self.vars, overestimate=True)
 
@@ -2875,15 +3167,15 @@ class AccessRangeOverlapChecker:
 
         for name in arm.access_maps:
             if arm.bad_subscripts[name]:
-                aranges[name] = True
+                ranges[name] = True
                 continue
-            aranges[name] = arm.get_access_range(name)
+            ranges[name] = arm.get_access_range(name)
 
-        return aranges
+        return ranges
 
     def _get_access_range_for_var(self,
                 insn_id: str,
-                access_dir: LiteralT["w"] | LiteralT["any"],
+                access_dir: TypingLiteral["w", "any"],
                 var_name: str
             ):
         assert access_dir in ["w", "any"]
@@ -2902,9 +3194,9 @@ class AccessRangeOverlapChecker:
 
     def do_access_ranges_overlap_conservative(self,
                 insn1: InsnId,
-                insn1_dir: LiteralT["w"] | LiteralT["any"],
+                insn1_dir: TypingLiteral["w", "any"],
                 insn2: InsnId,
-                insn2_dir: LiteralT["w"] | LiteralT["any"],
+                insn2_dir: TypingLiteral["w", "any"],
                 var_name: str,
             ):
         """Determine whether the access ranges to *var_name* in the two
@@ -2936,7 +3228,7 @@ class AccessRangeOverlapChecker:
 
 # {{{ is_expression_equal
 
-def is_expression_equal(a: Expression, b: Expression) -> bool:
+def is_expression_equal(a: Expression | None, b: Expression | None) -> bool:
     if a == b:
         return True
 
@@ -2974,7 +3266,7 @@ def is_tuple_of_expressions_equal(
 
     return all(
         is_expression_equal(ai, bi)
-        for ai, bi in zip(a, b))
+        for ai, bi in zip(a, b, strict=True))
 
 # }}}
 

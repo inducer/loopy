@@ -33,21 +33,14 @@ from typing import (
 import constantdict
 from typing_extensions import Self
 
-from loopy.typing import not_none
-
-
-logger = logging.getLogger(__name__)
-
-
-import islpy  # to help out Sphinx
 import islpy as isl
-import pytools  # to help out Sphinx
-from pytools import ProcessLogger
+from pytools import ProcessLogger, UniqueNameGenerator
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, warn
 from loopy.kernel.function_interface import CallableKernel, InKernelCallable
 from loopy.tools import LoopyKeyBuilder, caches
+from loopy.typing import not_none
 from loopy.version import DATA_MODEL_VERSION
 
 
@@ -64,6 +57,8 @@ if TYPE_CHECKING:
     from loopy.translation_unit import CallableId, CallablesTable, TranslationUnit
     from loopy.types import LoopyType
 
+logger = logging.getLogger(__name__)
+
 
 __doc__ = """
 .. autoclass:: PreambleInfo
@@ -79,12 +74,6 @@ __doc__ = """
 .. automodule:: loopy.codegen.result
 
 .. automodule:: loopy.codegen.tools
-
-References
-^^^^^^^^^^
-.. class:: ExpressionNode
-
-    See :class:`pymbolic.primitives.ExpressionNode`.
 """
 
 
@@ -157,7 +146,7 @@ class CodeGenerationState:
     # LoopKernel should not have a target, should use this instead
     target: TargetBase
 
-    implemented_domain: islpy.Set
+    implemented_domain: isl.Set
     """
     The entire implemented domain (as an :class:`islpy.Set`)
     i.e. all constraints that have been enforced so far.
@@ -174,7 +163,7 @@ class CodeGenerationState:
     allow_complex: bool
     callables_table: CallablesTable
     is_entrypoint: bool
-    var_name_generator: pytools.UniqueNameGenerator
+    var_name_generator: UniqueNameGenerator
     is_generating_device_code: bool
 
     gen_program_name: str

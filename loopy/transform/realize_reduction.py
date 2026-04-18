@@ -511,7 +511,7 @@ def _try_infer_scan_and_sweep_bounds(
 
     domain = domain.project_out_except(
             {*within_inames, *kernel.non_iname_variable_names()},
-            (isl.dim_type.param,))
+            (isl.dim_type.param,)).to_set()
 
     try:
         sweep_lower_bound = domain.dim_min(sweep_idx)
@@ -535,7 +535,8 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
     domain_with_sweep_param = _move_set_to_param_dims_except(domain, (scan_iname,))
 
     domain_with_sweep_param = domain_with_sweep_param.project_out_except(
-            (sweep_iname, scan_iname), (dim_type.set, dim_type.param))
+            (sweep_iname, scan_iname), (dim_type.set, dim_type.param)
+    ).to_set()
 
     scan_iname_idx = domain_with_sweep_param.find_dim_by_name(
             dim_type.set, scan_iname)
@@ -600,6 +601,7 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
 
 def _get_domain_with_iname_as_param(domain, iname):
     dim_type = isl.dim_type
+    domain = domain.to_set()
 
     if domain.find_dim_by_name(dim_type.param, iname) >= 0:
         return domain
@@ -743,13 +745,12 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(
 
         last_added_insn_id = insn.id
 
-        FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa
+        FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa: N806
 
         for assignee_nr, assignee_var_name, assignee in zip(
                 range(FIRST_POINTER_ASSIGNEE_IDX, len(assignees)),
                 assignee_var_names[FIRST_POINTER_ASSIGNEE_IDX:],
-                assignees[FIRST_POINTER_ASSIGNEE_IDX:]):
-
+                assignees[FIRST_POINTER_ASSIGNEE_IDX:], strict=True):
             if (
                     assignee_var_name in kernel.temporary_variables
                     and
@@ -762,14 +763,8 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(
 
             # {{{ generate a new assignment instruction
 
-            new_assignee_name = var_name_gen(
-                    "{insn_id}_retval_{assignee_nr}"
-                    .format(insn_id=insn.id, assignee_nr=assignee_nr))
-
-            new_assignment_id = insn_id_gen(
-                    "{insn_id}_assign_retval_{assignee_nr}"
-                    .format(insn_id=insn.id, assignee_nr=assignee_nr))
-
+            new_assignee_name = var_name_gen(f"{insn.id}_retval_{assignee_nr}")
+            new_assignment_id = insn_id_gen(f"{insn.id}_assign_retval_{assignee_nr}")
             newly_added_assignments_ids.add(new_assignment_id)
 
             new_temporaries[new_assignee_name] = (
@@ -1425,7 +1420,7 @@ def _make_temporaries(
 
     from loopy.kernel.data import TemporaryVariable
 
-    for name, dtype in zip(var_names, dtypes):
+    for name, dtype in zip(var_names, dtypes, strict=True):
         red_realize_ctx.additional_temporary_variables[name] = TemporaryVariable(
                 name=name,
                 shape=shape,
@@ -1442,9 +1437,7 @@ def _make_temporaries(
 def map_scan_seq(red_realize_ctx, expr, nresults, arg_dtypes,
         reduction_dtypes, scan_param):
 
-    track_iname = red_realize_ctx.var_name_gen(
-            "{sweep_iname}__seq_scan"
-            .format(sweep_iname=scan_param.sweep_iname))
+    track_iname = red_realize_ctx.var_name_gen(f"{scan_param.sweep_iname}__seq_scan")
 
     _get_or_add_sweep_tracking_iname_and_domain(
             red_realize_ctx, scan_param, track_iname)
@@ -1582,9 +1575,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
             _get_int_iname_size(orig_kernel, oiname)
             for oiname in outer_local_inames)
 
-    track_iname = red_realize_ctx.var_name_gen(
-            "{sweep_iname}__pre_scan"
-            .format(sweep_iname=scan_param.sweep_iname))
+    track_iname = red_realize_ctx.var_name_gen(f"{scan_param.sweep_iname}__pre_scan")
 
     _get_or_add_sweep_tracking_iname_and_domain(
             red_realize_ctx,
@@ -1693,7 +1684,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
         pre_scan_result = (pre_scan_result,)
 
     transfer_ids = frozenset()
-    for acc_var, pre_scan_result_i in zip(acc_vars, pre_scan_result):
+    for acc_var, pre_scan_result_i in zip(acc_vars, pre_scan_result, strict=True):
         transfer_id = red_realize_ctx.insn_id_gen(
                 f"{red_realize_ctx.id_prefix}_{scan_param.scan_iname}_transfer")
         transfer_insn = make_assignment(
@@ -1735,7 +1726,7 @@ def map_scan_local(red_realize_ctx, expr, nresults, arg_dtypes,
         red_realize_ctx.additional_iname_tags[stage_exec_iname] \
                 = orig_kernel.iname_tags(scan_param.sweep_iname)
 
-        for read_var, acc_var in zip(read_vars, acc_vars):
+        for read_var, acc_var in zip(read_vars, acc_vars, strict=True):
             read_stage_id = red_realize_ctx.insn_id_gen(
                     f"scan_{scan_param.scan_iname}_read_stage_{istage}")
 
@@ -2114,8 +2105,8 @@ def realize_reduction_for_single_kernel(
                             assignee=assignee,
                             expression=new_expr,
                             **kwargs)
-                        for i, (assignee, new_expr) in enumerate(zip(
-                            insn.assignees, new_expressions))]
+                        for i, (assignee, new_expr) in enumerate(
+                            zip(insn.assignees, new_expressions, strict=True))]
 
                 insn_id_replacements[insn.id] = [
                     rinsn.id for rinsn in replacement_insns]
@@ -2257,7 +2248,7 @@ def realize_reduction(t_unit: TranslationUnit,
             )
         in_knl_callable = callables_table[knl.name].copy(
                 subkernel=new_knl)
-        callables_table = callables_table.set(knl.name,  in_knl_callable)
+        callables_table = callables_table.set(knl.name, in_knl_callable)
 
     return t_unit.copy(callables_table=callables_table)
 

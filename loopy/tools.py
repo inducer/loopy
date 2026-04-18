@@ -22,15 +22,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-import collections.abc as abc
 import logging
+from collections import abc
 from functools import cached_property
 from sys import intern
 from typing import TYPE_CHECKING, ClassVar, Generic, Literal, TypeVar, cast, overload
 
 import numpy as np
 from constantdict import constantdict
-from typing_extensions import override
+from typing_extensions import ParamSpec, override
 
 import islpy as isl
 from pytools import Hash, ProcessLogger, memoize_method
@@ -88,17 +88,39 @@ class LoopyKeyBuilder(KeyBuilderBase):
     update_for_dict = KeyBuilderBase.update_for_constantdict
     update_for_defaultdict = KeyBuilderBase.update_for_constantdict
 
-    def update_for_BasicSet(self, key_hash, key):  # noqa
+    def _update_for_isl_obj(self,
+                key_hash: Hash,
+                key: isl.BasicSet | isl.Set | isl.BasicMap | isl.Map
+            ):
         from islpy import Printer
         prn = Printer.to_str(key.get_ctx())
-        getattr(prn, "print_"+key._base_name)(key)
+        getattr(prn, "print_"+key._base_name)(key)  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType, reportAttributeAccessIssue]
         key_hash.update(prn.get_str().encode("utf8"))
 
-    def update_for_Map(self, key_hash, key):  # noqa
+    @override
+    def update_for_Map(self, key_hash: Hash, key: isl.Map):
         if isinstance(key, isl.Map):
-            self.update_for_BasicSet(key_hash, key)
+            self._update_for_isl_obj(key_hash, key)
         else:
-            raise AssertionError()
+            super().update_for_Map(key_hash, key)
+
+    def update_for_BasicMap(self, key_hash: Hash, key: isl.BasicMap):  # noqa: N802
+        if isinstance(key, isl.BasicMap):
+            self._update_for_isl_obj(key_hash, key)
+        else:
+            raise TypeError("called on a non-isl type")
+
+    def update_for_Set(self, key_hash: Hash, key: isl.Set):  # noqa: N802
+        if isinstance(key, isl.Set):
+            self._update_for_isl_obj(key_hash, key)
+        else:
+            raise TypeError("called on a non-isl type")
+
+    def update_for_BasicSet(self, key_hash: Hash, key: isl.BasicSet):  # noqa: N802
+        if isinstance(key, isl.BasicSet):
+            self._update_for_isl_obj(key_hash, key)
+        else:
+            raise TypeError("called on a non-isl type")
 
 # }}}
 
@@ -159,15 +181,17 @@ class LoopyEqKeyBuilder:
 
 # {{{ remove common indentation
 
-def remove_common_indentation(code, require_leading_newline=True,
-        ignore_lines_starting_with=None, strip_empty_lines=True):
+def remove_common_indentation(
+            code: str,
+            require_leading_newline: bool = True,
+            ignore_lines_starting_with: str | None = None,
+            strip_empty_lines: bool = True):
     if "\n" not in code:
         return code
 
     # accommodate pyopencl-ish syntax highlighting
     cl_prefix = "//CL//"
-    if code.startswith(cl_prefix):
-        code = code[len(cl_prefix):]
+    code = code.removeprefix(cl_prefix)
 
     if require_leading_newline and not code.startswith("\n"):
         return code
@@ -197,7 +221,7 @@ def remove_common_indentation(code, require_leading_newline=True,
         while test_line[base_indent] in " \t":
             base_indent += 1
 
-    new_lines = []
+    new_lines: list[str] = []
     for line in lines:
         if (ignore_lines_starting_with
                 and line.lstrip().startswith(ignore_lines_starting_with)):
@@ -216,7 +240,7 @@ def remove_common_indentation(code, require_leading_newline=True,
 
 # {{{ remove_lines_with_only_spaces
 
-def remove_lines_with_only_spaces(code):
+def remove_lines_with_only_spaces(code: str):
     return "\n".join(line for line in code.split("\n") if set(line) != {" "})
 
 # }}}
@@ -327,11 +351,10 @@ def empty_aligned(
     # so it is correctly aligned
     array_aligned_offset = (n-address_from_numpy(base_ary)) % n
 
-    array = np.frombuffer(
+    return np.frombuffer(
             base_ary[array_aligned_offset:array_aligned_offset-n].data,
             dtype=dtype).reshape(*shape_tup, order=order)
 
-    return array
 
 # }}}
 
@@ -523,7 +546,7 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList[V]):
         if len(self) != len(other):
             return False
 
-        for a, b in zip(self._list, other):
+        for a, b in zip(self._list, other, strict=True):
             if self._get_eq_key(a) != self._get_eq_key(b):
                 return False
 
@@ -547,7 +570,7 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList[V]):
 
 # {{{ optional object
 
-class _no_value:  # noqa
+class _no_value:  # noqa: N801
     pass
 
 
@@ -647,16 +670,19 @@ def intern_frozenset_of_ids(fs: abc.Iterable[str]) -> frozenset[str]:
 
 # {{{ t_unit_to_python
 
-def _is_generated_t_unit_the_same(python_code, var_name, ref_t_unit):
+def _is_generated_t_unit_the_same(
+            python_code: str,
+            var_name: str,
+            ref_t_unit: TranslationUnit):
     """
     Helper for :func:`kernel_to_python`. Returns *True* only if the variable
     referenced by *var_name* in *python_code* is equal to *kernel*, else
     returns *False*.
     """
     reproducer_variables = {}
-    exec(python_code, reproducer_variables)
+    exec(python_code, reproducer_variables)  # noqa: S102
     t_unit = reproducer_variables[var_name]
-    return ref_t_unit == t_unit
+    return t_unit == ref_t_unit
 
 
 # {{{ CallablesUnresolver
@@ -818,10 +844,9 @@ def _kernel_to_python(
                                                          kernel=kernel,
                                                          make_kernel=make_kernel,
                                                          var_name=var_name)
-    python_code = remove_lines_with_only_spaces(
+    assert isinstance(python_code, str)
+    return remove_lines_with_only_spaces(
             remove_common_indentation(python_code))
-
-    return python_code
 
 
 @overload
@@ -880,15 +905,13 @@ def t_unit_to_python(
     knl_args = ", ".join(f"{name}_knl" for name in t_unit.callables_table)
     merge_stmt = f"{var_name} = lp.merge([{knl_args}])"
 
-    preamble_str = "\n".join([
-        "import loopy as lp",
-        "import numpy as np",
-        "from pymbolic.primitives import *",
-        "from constantdict import constantdict",
-        ])
+    preamble_str = ("import loopy as lp\n"
+        "import numpy as np\n"
+        "from pymbolic.primitives import *\n"
+        "from constantdict import constantdict")
     body_str = "\n".join([*knl_python_code_srcs, "\n", merge_stmt])
 
-    python_code = "\n".join([preamble_str, "\n", body_str])
+    python_code = f"{preamble_str}\n\n\n{body_str}"
     assert _is_generated_t_unit_the_same(python_code, var_name, t_unit)
 
     if return_preamble_and_body_separately:
@@ -913,7 +936,14 @@ def clear_in_mem_caches() -> None:
 
 # {{{ memoize_on_disk
 
-def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def memoize_on_disk(
+    func: abc.Callable[_P, _R],
+    key_builder_t: type[KeyBuilderBase] = LoopyKeyBuilder,
+) -> abc.Callable[_P, _R]:
     from functools import wraps
 
     from pytools.persistent_dict import WriteOncePersistentDict
@@ -933,7 +963,7 @@ def memoize_on_disk(func, key_builder_t=LoopyKeyBuilder):
     caches.append(transform_cache)
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
         from loopy import CACHING_ENABLED
 
         if (not CACHING_ENABLED

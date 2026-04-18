@@ -3,6 +3,7 @@
 .. autoclass:: ShapeType
 .. autodata:: InameStr
 .. autodata:: InameStrSet
+.. autodata:: ToInameStrSetConvertible
 
 .. autodata:: SymbolMangler
     :noindex:
@@ -60,20 +61,22 @@ from pymbolic.typing import ArithmeticExpression, Expression, Integer
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from loopy.codegen import PreambleInfo
     from loopy.kernel import LoopKernel
     from loopy.types import LoopyType
 
 
-# The Fortran parser may insert dimensions of 'None', but I'd like to phase
+# TODO: Fortran parser may insert dimensions of 'None', but I'd like to phase
 # that out, so we're not encoding that in the type.
+# TODO: ArrayArgDescriptor: also looks for 'None' or 'auto' in the shape
 ShapeType: TypeAlias = tuple[ArithmeticExpression, ...]
 StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str
 InameStrSet: TypeAlias = frozenset[InameStr]
+ToInameStrSetConvertible: TypeAlias = "Iterable[InameStr] | InameStr"
 
 InsnId: TypeAlias = str
 
@@ -84,8 +87,7 @@ PreambleGenerator: TypeAlias = """Callable[
 SymbolMangler: TypeAlias = "Callable[[LoopKernel, str], tuple[LoopyType, str] | None]"
 
 
-
-class auto:  # noqa
+class auto:  # noqa: N801
     """A generic placeholder object for something that should be automatically
     determined.  See, for example, the *shape* or *strides* argument of
     :class:`~loopy.ArrayArg`.

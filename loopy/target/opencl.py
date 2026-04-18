@@ -62,6 +62,7 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.expression import TypeContext
     from loopy.kernel.instruction import Assignable, VarAtomicity
     from loopy.translation_unit import CallablesInferenceContext
 
@@ -114,7 +115,7 @@ class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):
 
 # {{{ vector types
 
-class vec:  # noqa
+class vec:  # noqa: N801
     pass
 
 
@@ -162,11 +163,15 @@ def _create_vector_types():
                     "titles": titles})
             except NotImplementedError:
                 try:
-                    dtype = np.dtype([((n, title), base_type)
-                                      for (n, title) in zip(names, titles)])
+                    dtype = np.dtype([
+                        ((n, title), base_type)
+                        for (n, title) in zip(names, titles, strict=True)
+                    ])
                 except TypeError:
-                    dtype = np.dtype([(n, base_type) for (n, title)
-                                      in zip(names, titles)])
+                    dtype = np.dtype([
+                        (n, base_type)
+                        for (n, title) in zip(names, titles, strict=True)
+                    ])
 
             setattr(vec, name, dtype)
 
@@ -475,7 +480,7 @@ def get_opencl_callables():
              "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
              "pow", "exp", "log", "log10", "sqrt", "ceil", "floor",
              "max", "min", "fmax", "fmin",
-             "fabs",  "erf", "erfc"}
+             "fabs", "erf", "erfc"}
             | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
             | set(VECTOR_LITERAL_FUNCS))
 
@@ -578,10 +583,10 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 
         return super().wrap_in_typecast(actual_type, needed_dtype, s)
 
-    def map_group_hw_index(self, expr, type_context):
+    def map_group_hw_index(self, expr, type_context: TypeContext):
         return var("gid")(expr.axis)
 
-    def map_local_hw_index(self, expr, type_context):
+    def map_local_hw_index(self, expr, type_context: TypeContext):
         return var("lid")(expr.axis)
 
 # }}}
@@ -592,11 +597,11 @@ class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
 class OpenCLTarget(CFamilyTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
-    atomics_flavor: Literal["cl1"] | Literal["cl2"]
+    atomics_flavor: Literal["cl1", "cl2"]
     use_int8_for_bool: bool
 
     def __init__(self,
-                atomics_flavor: Literal["cl1"] | Literal["cl2"] | None = None,
+                atomics_flavor: Literal["cl1", "cl2"] | None = None,
                 use_int8_for_bool: bool = True
             ):
         """
@@ -841,7 +846,7 @@ class OpenCLCASTBuilder(CFamilyASTBuilder):
                 lhs_expr: Assignable,
                 rhs_expr: Expression,
                 lhs_dtype: AtomicType,
-                rhs_type_context: str | None) -> Generable:
+                rhs_type_context: TypeContext | None) -> Generable:
         # for the CL1 flavor, this is as simple as a regular update with whatever
         # the RHS value is...
 

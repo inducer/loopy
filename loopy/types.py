@@ -125,8 +125,7 @@ class NumpyType(LoopyType):
     def __eq__(self, other: object) -> bool:
         return (
                 type(self) is type(other)
-                # mypy doesn't understand 'type(self) is type(other)'
-                and self.dtype == other.dtype)  # type: ignore[attr-defined]
+                and self.dtype == other.dtype)
 
     @override
     def is_integral(self) -> bool:
@@ -237,8 +236,7 @@ class OpaqueType(LoopyType):
     def __eq__(self, other: object) -> bool:
         return (
                 type(self) is type(other)
-                # mypy doesn't understand 'type(self) is type(other)'
-                and self.name == other.name  # type: ignore[attr-defined]
+                and self.name == other.name
                 )
 
 # }}}
@@ -285,8 +283,7 @@ def to_loopy_type(dtype: ToLoopyTypeConvertible,
 
     elif dtype is auto:
         if allow_auto:
-            # mypy doesn't seem to catch that this narrows the type of dtype
-            return dtype  # type: ignore[return-value]
+            return dtype
         else:
             raise LoopyError("dtype may not be auto")
 
@@ -303,9 +300,7 @@ def to_loopy_type(dtype: ToLoopyTypeConvertible,
         return dtype
 
     with contextlib.suppress(Exception):
-        # We're playing fast and loose here, and mypy is onto us. It has a
-        # point.
-        numpy_dtype = np.dtype(dtype)  # type: ignore
+        numpy_dtype = np.dtype(dtype)
 
     if numpy_dtype is not None:
         if for_atomic:

@@ -58,6 +58,7 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.expression import TypeContext
     from loopy.kernel import LoopKernel
     from loopy.target.c import DTypeRegistry
     from loopy.target.execution import ExecutorBase
@@ -192,7 +193,7 @@ class TargetBase(ABC):
 
 
 @dataclass(frozen=True)
-class ASTBuilderBase(Generic[ASTType], ABC):
+class ASTBuilderBase(ABC, Generic[ASTType]):
     """An interface for generating (host or device) ASTs.
     """
 
@@ -297,7 +298,7 @@ class ASTBuilderBase(Generic[ASTType], ABC):
             ) -> ASTType:
         raise NotImplementedError()
 
-    def emit_unroll_hint(self, value):
+    def emit_unroll_hint(self, value: int | None):
         raise NotImplementedError()
 
     @property
@@ -331,7 +332,11 @@ class ASTBuilderBase(Generic[ASTType], ABC):
 # {{{ dummy host ast builder
 
 class _DummyExpressionToCodeMapper:
-    def rec(self, expr, prec, type_context=None, needed_dtype=None):
+    def rec(self,
+            expr,
+            prec,
+            type_context: TypeContext | None = None,
+            needed_dtype=None):
         return ""
 
     __call__ = rec

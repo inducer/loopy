@@ -217,12 +217,12 @@ from loopy.transform.subst import (
 from loopy.translation_unit import TranslationUnit, for_each_kernel, make_program
 from loopy.type_inference import infer_unknown_types
 from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible, to_loopy_type
-from loopy.typing import auto
+from loopy.typing import PreambleGenerator, auto
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
 
 __all__ = [
@@ -358,7 +358,6 @@ __all__ = [
     "make_einsum",
     "make_function",
     "make_kernel",
-    "make_kernel",
     "make_program",
     "make_reduction_inames_unique",
     "map_domain",
@@ -462,7 +461,9 @@ def set_options(kernel, *args, **kwargs):
 # {{{ library registration
 
 @for_each_kernel
-def register_preamble_generators(kernel: LoopKernel, preamble_generators):
+def register_preamble_generators(
+            kernel: LoopKernel,
+            preamble_generators: Sequence[PreambleGenerator]) -> LoopKernel:
     """
     :arg manglers: list of functions of signature ``(preamble_info)``
         generating tuples ``(sortable_str_identifier, code)``,
@@ -477,10 +478,9 @@ def register_preamble_generators(kernel: LoopKernel, preamble_generators):
     for pgen in preamble_generators:
         if pgen not in new_pgens:
             if not unpickles_equally(pgen):
-                raise LoopyError("preamble generator '%s' does not "
-                        "compare equally after being unpickled "
-                        "and would thus disrupt loopy's caches"
-                        % pgen)
+                raise LoopyError(
+                    f"preamble generator '{pgen}' does not compare equally after "
+                    "being unpickled and would thus disrupt loopy's caches")
 
             new_pgens = (pgen, *new_pgens)
 
@@ -580,12 +580,9 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
     command_indices = ", ".join(indices)
     bounds = " and ".join(
             f"0<={ind}<{shape_i}"
-            for ind, shape_i in zip(indices, shape))
+            for ind, shape_i in zip(indices, shape, strict=True))
 
-    set_str = "{{[{}]: {} }}".format(
-                command_indices,
-                bounds
-                )
+    set_str = f"{{[{command_indices}]: {bounds} }}"
     result = make_kernel(set_str,
             "output[%s] = input[%s]"
             % (command_indices, command_indices),
@@ -659,7 +656,7 @@ def make_einsum(spec, arg_names, **knl_creation_kwargs):
     lhs = var("out")[tuple(var(i) for i in out_spec)]
 
     rhs = 1
-    for arg_name, argsp in zip(arg_names, arg_specs):
+    for arg_name, argsp in zip(arg_names, arg_specs, strict=True):
         rhs = rhs * var(arg_name)[tuple(var(i) for i in argsp)]
 
     if sum_indices:
@@ -694,7 +691,7 @@ def set_default_target(target: Callable[[], TargetBase] | None):
 
 def _set_up_default_target():
     try:
-        import pyopencl  # noqa
+        import pyopencl  # noqa: F401
     except ImportError:
         from loopy.target.opencl import OpenCLTarget
         target = OpenCLTarget

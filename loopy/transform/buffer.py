@@ -402,7 +402,6 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
     if init_expression is None:
         init_expression = init_base
     else:
-        init_expression = init_expression
         init_expression = SubstitutionMapper(
                 make_subst_func({
                     "base": init_base,
@@ -526,9 +525,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
     kernel = tag_inames(kernel, new_iname_to_tag)
 
     from loopy.kernel.tools import assign_automatic_axes
-    kernel = assign_automatic_axes(kernel, callables_table)
-
-    return kernel
+    return assign_automatic_axes(kernel, callables_table)
 
 
 @memoize_on_disk

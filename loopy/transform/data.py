@@ -231,7 +231,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
     for i in range(var_descr.num_user_axes()):
         based_on = "%s_dim_%d" % (c_name, i)
         if var_descr.dim_names is not None:
-            based_on = "{}_dim_{}".format(c_name, var_descr.dim_names[i])
+            based_on = f"{c_name}_dim_{var_descr.dim_names[i]}"
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]
 
@@ -260,7 +260,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
 
     kernel, subst_use, sweep_inames, inames_to_be_removed = \
             _process_footprint_subscripts(
-                    kernel,  rule_name, sweep_inames,
+                    kernel, rule_name, sweep_inames,
                     footprint_subscripts, var_descr)
 
     # Our _not_provided is actually a different object from the one in the
@@ -550,7 +550,6 @@ set_array_dim_names = (MovedFunctionDeprecationWrapper(
 
 @for_each_kernel
 def remove_unused_arguments(kernel):
-    new_args = []
 
     import loopy as lp
     exp_kernel = lp.expand_subst(kernel)
@@ -580,9 +579,7 @@ def remove_unused_arguments(kernel):
                     refd_vars.update(
                             tolerant_get_deps(dim_tag.stride))
 
-    for arg in kernel.args:
-        if arg.name in refd_vars:
-            new_args.append(arg)
+    new_args = [arg for arg in kernel.args if arg.name in refd_vars]
 
     return kernel.copy(args=new_args)
 
@@ -663,9 +660,9 @@ def alias_temporaries(kernel, names, base_name_prefix=None,
     for tv in kernel.temporary_variables.values():
         if tv.name in names_set:
             if tv.base_storage is not None:
-                raise LoopyError("temporary variable '{tv}' already has "
-                        "a defined storage array -- cannot alias"
-                        .format(tv=tv.name))
+                raise LoopyError(
+                        f"temporary variable '{tv.name}' already has "
+                        "a defined storage array -- cannot alias")
 
             new_temporary_variables[tv.name] = \
                     tv.copy(

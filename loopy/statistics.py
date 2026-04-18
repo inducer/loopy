@@ -216,10 +216,9 @@ class ToCountMap:
 
     def __radd__(self, other):
         if other != 0:
-            raise ValueError("ToCountMap: Attempted to add ToCountMap "
-                                "to {} {}. ToCountMap may only be added to "
-                                "0 and other ToCountMap objects."
-                                .format(type(other), other))
+            raise ValueError("ToCountMap: Attempted to add ToCountMap to"
+                             f"{type(other)}: {other}. ToCountMap may only be added to "
+                             "0 and other ToCountMap objects.")
 
         return self
 
@@ -229,9 +228,8 @@ class ToCountMap:
                 index: other*value
                 for index, value in self.count_map.items()})
         else:
-            raise ValueError("ToCountMap: Attempted to multiply "
-                                "ToCountMap by {} {}."
-                                .format(type(other), other))
+            raise ValueError("ToCountMap: Attempted to multiply ToCountMap by "
+                             f"{type(other)}: {other}.")
 
     __rmul__ = __mul__
 
@@ -298,8 +296,6 @@ class ToCountMap:
 
         """
 
-        new_count_map = {}
-
         class _Sentinel:
             pass
 
@@ -311,10 +307,10 @@ class ToCountMap:
 
             new_kwargs[arg_field] = allowable_vals
 
-        for key, val in self.count_map.items():
+        new_count_map = {key: val
+            for key, val in self.count_map.items()
             if all(getattr(key, arg_field, _Sentinel) in allowable_vals
-                    for arg_field, allowable_vals in new_kwargs.items()):
-                new_count_map[key] = val
+            for arg_field, allowable_vals in new_kwargs.items())}
 
         return self.copy(count_map=new_count_map)
 
@@ -343,11 +339,9 @@ class ToCountMap:
 
         """
 
-        new_count_map = {}
-
-        for self_key, self_val in self.count_map.items():
-            if func(self_key):
-                new_count_map[self_key] = self_val
+        new_count_map = {self_key: self_val
+            for self_key, self_val in self.count_map.items()
+            if func(self_key)}
 
         return self.copy(count_map=new_count_map)
 
@@ -1149,7 +1143,7 @@ def _get_lid_and_gid_strides(knl, array, index):
         for tag in tag_to_iname_dict:
             total_iname_stride = 0
             # find total stride of this iname for each axis
-            for idx, axis_tag in zip(index, dim_tags):
+            for idx, axis_tag in zip(index, dim_tags, strict=True):
                 # collect index coefficients
                 try:
                     coeffs = _IndexStrideCoefficientCollector(
@@ -1451,19 +1445,22 @@ def count(kernel, set, space=None):
             .drop_dims(dim_type.set, 0, set.dim(dim_type.set))
             .add_dims(dim_type.set, 1))
 
+    if isinstance(set, isl.BasicSet):
+        set = set.to_set()
     set = set.make_disjoint()
 
     from loopy.isl_helpers import get_simple_strides
 
     for bset in set.get_basic_sets():
+        bset_as_set = bset.to_set()
         bset_count = None
         bset_rebuilt = bset.universe(bset.space)
 
         bset_strides = get_simple_strides(bset, key_by="index")
 
         for i in range(bset.dim(isl.dim_type.set)):
-            dmax = bset.dim_max(i)
-            dmin = bset.dim_min(i)
+            dmax = bset_as_set.dim_max(i)
+            dmin = bset_as_set.dim_min(i)
 
             stride = bset_strides.get((dim_type.set, i))
             if stride is None:
@@ -1489,8 +1486,8 @@ def count(kernel, set, space=None):
             dmax_matched = dmax.insert_dims(
                     dim_type.in_, 0, bset.dim(isl.dim_type.set))
             for idx in range(bset.dim(isl.dim_type.set)):
-                if bset.has_dim_id(isl.dim_type.set, idx):
-                    dim_id = bset.get_dim_id(isl.dim_type.set, idx)
+                if bset_as_set.has_dim_id(isl.dim_type.set, idx):
+                    dim_id = bset_as_set.get_dim_id(isl.dim_type.set, idx)
                     dmin_matched = dmin_matched.set_dim_id(
                             isl.dim_type.in_, idx, dim_id)
                     dmax_matched = dmax_matched.set_dim_id(
@@ -1507,8 +1504,8 @@ def count(kernel, set, space=None):
         if bset_count is not None:
             total_count += bset_count
 
-        is_subset = bset <= bset_rebuilt
-        is_superset = bset >= bset_rebuilt
+        is_subset = bset_as_set <= bset_rebuilt
+        is_superset = bset_as_set >= bset_rebuilt
 
         if not (is_subset and is_superset):
             if is_subset:
@@ -1809,30 +1806,13 @@ def get_op_map(program, count_redundant_work=False,
 
 # {{{ subgoup size finding
 
-def _find_subgroup_size_for_knl(knl):
-    from loopy.target.pyopencl import PyOpenCLTarget
-    if isinstance(knl.target, PyOpenCLTarget) and knl.target.device is not None:
-        from pyopencl.characterize import get_simd_group_size
-        # type_size is unused in get_simd_group_size
-        subgroup_size_guess = get_simd_group_size(knl.target.device, type_size=4)
-
-        warn_with_kernel(knl, "getting_subgroup_size_from_device",
-                         "Device: %s. Using sub-group size given by "
-                         "pyopencl.characterize.get_simd_group_size(): %s"
-                         % (knl.target.device, subgroup_size_guess))
-        return subgroup_size_guess
-    else:
-        return None
-
-
 @memoize_method
-def _process_subgroup_size(knl, subgroup_size_requested):
+def _process_subgroup_size(knl, subgroup_size_requested: int | None):
 
     if isinstance(subgroup_size_requested, int):
         return subgroup_size_requested
     else:
-        # try to find subgroup_size
-        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
+        subgroup_size_guess = None
 
         if subgroup_size_requested is None:
             if subgroup_size_guess is None:

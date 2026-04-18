@@ -75,11 +75,11 @@ from loopy.typing import InameStr, auto
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from numpy.typing import DTypeLike
 
-    from loopy.codegen import CodeGenerationState
+    from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import MultiAssignmentBase
@@ -98,13 +98,6 @@ __doc__ = """
 .. autoclass:: ScopingBlock
 
 .. automodule:: loopy.target.c.codegen.expression
-
-References
-^^^^^^^^^^
-
-.. class:: Generable
-
-    See :class:`cgen.Generable`.
 """
 
 
@@ -208,8 +201,14 @@ class InfOrNanInExpressionRecorder(IdentityMapper[[]]):
         self.saw_inf_or_nan = True
         return super().map_nan(expr)
 
+    @override
+    def map_variable(self, expr: p.Variable):
+        if expr.name in ("HUGE_VAL", "INFINITY"):
+            self.saw_inf_or_nan = True
+        return super().map_variable(expr)
 
-def c99_preamble_generator(preamble_info):
+
+def c99_preamble_generator(preamble_info: PreambleInfo) -> Iterator[tuple[str, str]]:
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
         yield ("10_stdint", """
             #include <stdint.h>
@@ -235,7 +234,12 @@ def c99_preamble_generator(preamble_info):
     # }}}
 
 
-def _preamble_generator(preamble_info, func_qualifier="inline"):
+def _preamble_generator(
+            preamble_info: PreambleInfo,
+            func_qualifier: str = "static inline"
+        ) -> Iterator[tuple[str, str]]:
+    assert isinstance(preamble_info.kernel.target, CFamilyTarget)
+
     integer_type_names = ["int8", "int16", "int32", "int64"]
 
     def_integer_types_macro = ("03_def_integer_types", r"""
@@ -251,9 +255,9 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
             """)
 
     function_defs = {
-            "loopy_floor_div": r"""
+            "loopy_floor_div": fr"""
             #define LOOPY_DEFINE_FLOOR_DIV(SUFFIX, TYPE) \
-                {} TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
+                {func_qualifier} TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
                 {{ \
                     if ((a<0) != (b<0)) \
                         a = a - (b + (b<0) - (b>=0)); \
@@ -261,11 +265,11 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
                 }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV)
             #undef LOOPY_DEFINE_FLOOR_DIV
-            """.format(func_qualifier),
+            """,
 
-            "loopy_floor_div_pos_b": r"""
+            "loopy_floor_div_pos_b": fr"""
             #define LOOPY_DEFINE_FLOOR_DIV_POS_B(SUFFIX, TYPE) \
-                {} TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                {func_qualifier} TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
                 {{ \
                     if (a<0) \
                         a = a - (b-1); \
@@ -273,11 +277,11 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
                 }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV_POS_B)
             #undef LOOPY_DEFINE_FLOOR_DIV_POS_B
-            """.format(func_qualifier),
+            """,
 
-            "loopy_mod": r"""
+            "loopy_mod": fr"""
             #define LOOPY_DEFINE_MOD(SUFFIX, TYPE) \
-                {} TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
+                {func_qualifier} TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
                 {{ \
                     TYPE result = a%b; \
                     if (result < 0 && b > 0) \
@@ -288,11 +292,11 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
                 }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD)
             #undef LOOPY_DEFINE_MOD
-            """.format(func_qualifier),
+            """,
 
-            "loopy_mod_pos_b": r"""
+            "loopy_mod_pos_b": fr"""
             #define LOOPY_DEFINE_MOD_POS_B(SUFFIX, TYPE) \
-                {} TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                {func_qualifier} TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
                 {{ \
                     TYPE result = a%b; \
                     if (result < 0) \
@@ -301,7 +305,7 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
                 }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD_POS_B)
             #undef LOOPY_DEFINE_MOD_POS_B
-            """.format(func_qualifier),
+            """,
             }
 
     c_funcs = {func.c_name for func in preamble_info.seen_functions}
@@ -333,10 +337,10 @@ def _preamble_generator(preamble_info, func_qualifier="inline"):
                         }""")
 
             yield (f"07_{func.c_name}", f"""
-            inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
+            static inline {res_ctype} {func.c_name}({base_ctype} x, {exp_ctype} n) {{
               if (n == 0)
                 return 1;
-              {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.M)}
+              {re.sub(r"^", 14*" ", signed_exponent_preamble, flags=re.MULTILINE)}
 
               {res_ctype} y = 1;
 
@@ -434,7 +438,7 @@ def generate_linearized_array(array, value):
     assert array.offset == 0
 
     for ituple in np.ndindex(value.shape):
-        i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides))
+        i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides, strict=True))
         data[i] = value[ituple]
 
     return data
@@ -563,6 +567,11 @@ def c_symbol_mangler(kernel, name):
     if name in ["INT_MAX", "INT_MIN"]:
         return NumpyType(np.dtype(np.int32)), name
 
+    if name == "INFINITY":
+        return NumpyType(np.dtype(np.float32)), name
+    if name == "HUGE_VAL":
+        return NumpyType(np.dtype(np.float64)), name
+
     return None
 
 # }}}
@@ -635,8 +644,7 @@ class CMathCallable(ScalarCallable):
                     and real_dtype == np.float128):  # pylint:disable=no-member
                 name = name + "l"  # fabsl
             else:
-                raise LoopyTypeError("{} does not support type {}".format(name,
-                    dtype))
+                raise LoopyTypeError(f"{name} does not support type {dtype}")
 
             result_dtype = real_dtype if name in ["abs", "real", "imag"] else dtype
 
@@ -755,7 +763,7 @@ class CMathCallable(ScalarCallable):
                 self.copy(arg_id_to_dtype=constantdict(arg_num_to_dtype)),
                 clbl_inf_ctx)
 
-    def generate_preambles(self, target):
+    def generate_preambles(self, target: CFamilyTarget):
         if self.name_in_target.startswith("lpy_max"):
             dtype = self.arg_id_to_dtype[-1]
             ctype = target.dtype_to_typename(dtype)
@@ -778,7 +786,7 @@ class CMathCallable(ScalarCallable):
             dtype = self.arg_id_to_dtype[0]
             ctype = target.dtype_to_typename(dtype)
             yield (f"08_c_{self.name_in_target}", f"""
-            inline static int {self.name_in_target}({ctype} x) {{
+            static inline static int {self.name_in_target}({ctype} x) {{
               return 0;
             }}""")
 
@@ -877,7 +885,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
 
     target: CFamilyTarget
 
-    preamble_function_qualifier: ClassVar[str] = "inline"
+    preamble_function_qualifier: ClassVar[str] = "static inline"
 
     # {{{ library
 
@@ -1344,7 +1352,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         assignments = []
 
         for i, (assignee, parameter) in enumerate(
-                zip(insn.assignees, insn.expression.parameters)):
+                zip(insn.assignees, insn.expression.parameters, strict=True)):
             lhs_code = ecm(assignee, prec=PREC_NONE, type_context=None)
             assignee_var_name = insn.assignee_var_names()[i]
             lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
@@ -1428,7 +1436,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         else:
             return loop
 
-    def emit_unroll_hint(self, value):
+    def emit_unroll_hint(self, value) -> Generable:
         from cgen import Pragma
         if value:
             return Pragma(f"unroll {value}")

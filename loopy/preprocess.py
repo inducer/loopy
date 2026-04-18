@@ -218,9 +218,8 @@ def make_arrays_for_sep_arrays(kernel: LoopKernel) -> LoopKernel:
     if not made_changes:
         return kernel
 
-    kernel = kernel.copy(args=new_args)
+    return kernel.copy(args=new_args)
 
-    return kernel
 
 # }}}
 
@@ -242,8 +241,6 @@ def make_args_for_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
     for arg in kernel.args:
         if isinstance(arg, ArrayArg) and not arg._separation_info:
             what = f"offset for argument '{arg.name}'"
-            if arg.offset is None:
-                pass
             if arg.offset is auto:
                 offset_name = vng(arg.name+"_offset")
                 additional_args.append(ValueArg(
@@ -301,8 +298,6 @@ def zero_offsets_and_strides(kernel: LoopKernel) -> LoopKernel:
     new_args = []
     for arg in kernel.args:
         if isinstance(arg, ArrayArg):
-            if arg.offset is None:
-                pass
             if arg.offset is auto:
                 made_changes = True
                 arg = arg.copy(offset=0)
@@ -338,7 +333,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
     return {iname
             for aname, adeps in zip(
                 insn.assignee_var_names(),
-                insn.assignee_subscript_deps())
+                insn.assignee_subscript_deps(), strict=True)
             for iname in adeps & kernel.all_inames()
             if aname in tv_names
             if kernel.iname_tags_of_type(iname, tag_base)}
@@ -454,7 +449,7 @@ def find_temporary_address_space(kernel):
 
 # {{{ realize_ilp
 
-def realize_ilp(kernel):
+def realize_ilp(kernel: LoopKernel) -> LoopKernel:
     logger.debug("%s: add axes to temporaries for ilp" % kernel.name)
 
     from loopy.kernel.data import IlpBaseTag, VectorizeTag, filter_iname_tags_by_type
@@ -883,7 +878,7 @@ def preprocess_program(t_unit: TranslationUnit) -> TranslationUnit:
 
     # Ordering restriction:
     # callees with gbarrier in them must be inlined after inferrring arg_descr.
-    t_unit = inline_kernels_with_gbarriers(t_unit)
+    return inline_kernels_with_gbarriers(t_unit)
 
     # {{{ prepare for caching
 
@@ -893,8 +888,6 @@ def preprocess_program(t_unit: TranslationUnit) -> TranslationUnit:
     # this target information.
 
     # }}}
-
-    return t_unit
 
 
 # FIXME: Do we add a deprecation warning?

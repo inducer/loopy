@@ -102,7 +102,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             if dtype.name == "bool":
                 name = "bool_"
             return f"_lpy_np.dtype(_lpy_np.{name})"
-        raise Exception(f"dtype: {dtype} not recognized")
+        raise TypeError(f"dtype: {dtype} not recognized")
 
     # {{{ handle non numpy arguments
 
@@ -164,7 +164,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 var("_lpy_expected_strides_%s" % i)
                 for i in range(num_axes))
 
-        gen("{} = {}.strides".format(strify(expected_strides), arg.name))
+        gen(f"{strify(expected_strides)} = {arg.name}.strides")
 
         # check strides
         if not skip_arg_checks:
@@ -193,7 +193,6 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         """
         Initializes possibly empty system arguments
         """
-        pass
 
     # {{{ generate invocation
 
@@ -454,7 +453,7 @@ class CompiledCKernel:
     def __call__(self, *args):
         """Execute kernel with given args mapped to ctypes equivalents."""
         args_ = []
-        for arg, arg_t in zip(args, self._fn.argtypes):
+        for arg, arg_t in zip(args, self._fn.argtypes, strict=True):
             if hasattr(arg, "ctypes"):
                 # TODO eliminate unused arguments from kernel
                 arg_ = arg_t(0.0) if arg.size == 0 else arg.ctypes.data_as(arg_t)
@@ -511,7 +510,7 @@ class CExecutor(ExecutorBase):
 
         dev_code = codegen_result.device_code()
         host_code = codegen_result.host_code()
-        all_code = "\n".join([dev_code, "", host_code])
+        all_code = f"{dev_code}\n\n{host_code}"
 
         if t_unit[self.entrypoint].options.write_code:
             output = all_code
@@ -528,16 +527,13 @@ class CExecutor(ExecutorBase):
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
             # update code from editor
-            all_code = "\n".join([dev_code, "", host_code])
-
-        c_kernels = []
+            all_code = f"{dev_code}\n\n{host_code}"
 
         from loopy.schedule.tools import get_kernel_arg_info
         kai = get_kernel_arg_info(t_unit[self.entrypoint])
-        for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(
+        c_kernels = [CompiledCKernel(
                 t_unit[self.entrypoint], dp, kai.passed_names, all_code,
-                self.compiler))
+                self.compiler) for dp in codegen_result.device_programs]
 
         return _KernelInfo(
                 t_unit=t_unit,

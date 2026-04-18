@@ -48,8 +48,7 @@ def defines_to_python_code(defines_str):
         if match is None:
             raise RuntimeError("#define not understood: '%s'" % line)
 
-        result.append(
-                "{} = {}".format(match.group(1), to_python_literal(match.group(2))))
+        result.append(f"{match.group(1)} = {to_python_literal(match.group(2))}")
 
     return "\n".join(result)
 
@@ -143,14 +142,14 @@ def main():
         if args.occa_defines:
             with open(args.occa_defines) as defines_fd:
                 occa_define_code = defines_to_python_code(defines_fd.read())
-            exec(compile(occa_define_code, args.occa_defines, "exec"), data_dic)
+            exec(compile(occa_define_code, args.occa_defines, "exec"), data_dic)  # noqa: S102
 
         with open(args.infile) as infile_fd:
-            exec(compile(infile_content, args.infile, "exec"), data_dic)
+            exec(compile(infile_content, args.infile, "exec"), data_dic)  # noqa: S102
 
         if args.transform:
             with open(args.transform) as xform_fd:
-                exec(compile(xform_fd.read(),
+                exec(compile(xform_fd.read(),  # noqa: S102
                     args.transform, "exec"), data_dic)
 
         try:

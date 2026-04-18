@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     import pymbolic.primitives as p
-    from pymbolic import Expression
+    from pymbolic import Expression, ExpressionNode
 
     from loopy.codegen import CodeGenerationState, PreambleInfo
     from loopy.codegen.result import CodeGenerationResult
@@ -74,7 +74,7 @@ class ExpressionToPythonMapper(StringifyMapper[[]]):
         self.type_inf_mapper: TypeReader = type_inf_mapper
 
     @override
-    def handle_unsupported_expression(self, expr: object, enclosing_prec: int):
+    def handle_unsupported_expression(self, expr: ExpressionNode, enclosing_prec: int):
         return Mapper.handle_unsupported_expression(self, expr, enclosing_prec)
 
     @override
@@ -163,15 +163,15 @@ class ExpressionToPythonMapper(StringifyMapper[[]]):
         # Synthesize PREC_IFTHENELSE, make sure it is in the right place in the
         # operator precedence hierarchy (right above "or").
         from pymbolic.mapper.stringifier import PREC_LOGICAL_OR
-        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1  # noqa
+        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1  # noqa: N806
 
+        then_ = self.rec(expr.then, PREC_LOGICAL_OR)
+        cond_ = self.rec(expr.condition, PREC_LOGICAL_OR)
+        else_ = self.rec(expr.else_, PREC_LOGICAL_OR)
         return self.parenthesize_if_needed(
-            "{then} if {cond} else {else_}".format(
-                # "1 if 0 if 1 else 2 else 3" is not valid Python.
-                # So force parens by using an artificially higher precedence.
-                then=self.rec(expr.then, PREC_LOGICAL_OR),
-                cond=self.rec(expr.condition, PREC_LOGICAL_OR),
-                else_=self.rec(expr.else_, PREC_LOGICAL_OR)),
+            f"{then_} if {cond_} else {else_}",
+            # "1 if 0 if 1 else 2 else 3" is not valid Python.
+            # So force parens by using an artificially higher precedence.
             enclosing_prec, PREC_IFTHENELSE)
 
 # }}}
@@ -219,21 +219,14 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
     @override
     def get_temporary_decls(self,
                 codegen_state: CodeGenerationState,
-                schedule_index: int):
+                schedule_index: int) -> Sequence[Generable]:
         kernel = codegen_state.kernel
         ecm = codegen_state.expression_to_code_mapper
-
-        result = []
 
         from genpy import Assign
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        for tv in sorted(
-                kernel.temporary_variables.values(),
-                key=lambda key_tv: key_tv.name):
-            if tv.shape:
-                result.append(
-                        Assign(
+        return [Assign(
                             tv.name,
                             "_lpy_np.empty(%s, dtype=%s)"
                             % (
@@ -242,9 +235,9 @@ class PythonASTBuilderBase(ASTBuilderBase[Generable]):
                                     tv.dtype.numpy_dtype.name
                                     if tv.dtype.numpy_dtype.name != "bool"
                                     else "bool_")
-                                )))
-
-        return result
+                                )) for tv in sorted(
+                kernel.temporary_variables.values(),
+                key=lambda key_tv: key_tv.name) if tv.shape]
 
     @override
     def get_expression_to_code_mapper(self, codegen_state: CodeGenerationState):

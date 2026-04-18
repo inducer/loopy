@@ -158,7 +158,7 @@ def make_ref_args(kernel, queue, parameters):
                 strides = evaluate(get_strides(arg), parameters)
 
                 alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
-                        for alen, astrd in zip(shape, strides)) + 1
+                        for alen, astrd in zip(shape, strides, strict=True)) + 1
 
                 if dtype is None:
                     raise LoopyError("dtype for argument '%s' is not yet "
@@ -229,7 +229,7 @@ def make_args(kernel, queue, ref_arg_data, parameters):
     from loopy.kernel.data import ArrayArg, ConstantArg, ImageArg, ValueArg
 
     args = {}
-    for arg, arg_desc in zip(kernel.args, ref_arg_data):
+    for arg, arg_desc in zip(kernel.args, ref_arg_data, strict=True):
         if isinstance(arg, ValueArg):
             arg_value = parameters[arg.name]
 
@@ -264,7 +264,7 @@ def make_args(kernel, queue, ref_arg_data, parameters):
             numpy_strides = [itemsize*s for s in strides]
 
             alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
-                    for alen, astrd in zip(shape, strides)) + 1
+                    for alen, astrd in zip(shape, strides, strict=True)) + 1
 
             # use contiguous array to transfer to host
             host_ref_contig_array = arg_desc.ref_pre_run_storage_array.get()
@@ -429,8 +429,9 @@ def auto_test_vs_ref(
         raise LoopyError("ref_prog and test_prog do not have the same number "
                 "of arguments")
 
-    for i, (ref_arg, test_arg) in enumerate(zip(ref_prog[ref_entrypoint].args,
-            test_prog[test_entrypoint].args)):
+    for i, (ref_arg, test_arg) in enumerate(
+            zip(ref_prog[ref_entrypoint].args,
+                test_prog[test_entrypoint].args, strict=True)):
         if ref_arg.name != test_arg.name:
             raise LoopyError("ref_prog and test_prog argument lists disagree at "
                     "index %d (1-based)" % (i+1))
@@ -477,8 +478,8 @@ def auto_test_vs_ref(
                 properties=cl.command_queue_properties.PROFILING_ENABLE)
         ref_codegen_result = lp.generate_code_v2(ref_prog)
 
-        logger.info("{} (ref): trying {} for the reference calculation".format(
-            ref_entrypoint, dev))
+        logger.info("%s (ref): trying %s for the reference calculation",
+                    ref_entrypoint, dev)
 
         if not quiet and print_ref_code:
             print(75*"-")
@@ -513,8 +514,8 @@ def auto_test_vs_ref(
 
         ref_queue.finish()
 
-        logger.info("{} (ref): using {} for the reference calculation".format(
-            ref_entrypoint, dev))
+        logger.info("%s (ref): using %s for the reference calculation",
+                    ref_entrypoint, dev)
         logger.info("%s (ref): run" % ref_entrypoint)
 
         ref_start = time()
@@ -665,8 +666,8 @@ def auto_test_vs_ref(
     logger.info("%s: timing run done" % (test_entrypoint))
 
     rates = ""
-    for cnt, lbl in zip(op_count, op_label):
-        rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
+    for cnt, lbl in zip(op_count, op_label, strict=True):
+        rates += f" {cnt / elapsed_wall:g} {lbl}/s"
 
     if not quiet:
         def format_float_or_none(v):
@@ -683,8 +684,8 @@ def auto_test_vs_ref(
 
     if do_check:
         ref_rates = ""
-        for cnt, lbl in zip(op_count, op_label):
-            rates += " {:g} {}/s".format(cnt/elapsed_wall, lbl)
+        for cnt, lbl in zip(op_count, op_label, strict=True):
+            rates += f" {cnt/elapsed_wall:g} {lbl}/s"
 
         if not quiet:
             print("elapsed: %s s event, %s s marker-event %s s wall "
@@ -695,11 +696,12 @@ def auto_test_vs_ref(
 
         if do_check:
             ref_rates = ""
-            for cnt, lbl in zip(op_count, op_label):
-                ref_rates += " {:g} {}/s".format(cnt/ref_elapsed_event, lbl)
+            for cnt, lbl in zip(op_count, op_label, strict=True):
+                ref_rates += f" {cnt/ref_elapsed_wall:g} {lbl}/s"
+
             if not quiet:
-                print("ref: elapsed: {:g} s event, {:g} s wall{}".format(
-                        ref_elapsed_event, ref_elapsed_wall, ref_rates))
+                print(f"ref: elapsed: {ref_elapsed_event:g}s event, "
+                      f"{ref_elapsed_wall:g} s wall{ref_rates}")
 
     # }}}
 

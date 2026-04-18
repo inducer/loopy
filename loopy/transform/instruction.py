@@ -39,13 +39,14 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from pymbolic import ArithmeticExpression
     from pymbolic.primitives import Subscript
 
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import ToMatchConvertible
+    from loopy.typing import InsnId
 
 
 # {{{ find_instructions
@@ -84,7 +85,8 @@ def find_instructions(
 
 # {{{ map_instructions
 
-def map_instructions(kernel, insn_match, f):
+def map_instructions(kernel: LoopKernel, insn_match: ToMatchConvertible,
+                     f: Callable[[InstructionBase], InstructionBase]) -> LoopKernel:
     from loopy.match import parse_match
     match = parse_match(insn_match)
 
@@ -104,14 +106,16 @@ def map_instructions(kernel, insn_match, f):
 # {{{ set_instruction_priority
 
 @for_each_kernel
-def set_instruction_priority(kernel, insn_match, priority):
+def set_instruction_priority(
+    kernel: LoopKernel, insn_match: ToMatchConvertible, priority: int
+) -> LoopKernel:
     """Set the priority of instructions matching *insn_match* to *priority*.
 
     *insn_match* may be any instruction id match understood by
     :func:`loopy.match.parse_match`.
     """
 
-    def set_prio(insn):
+    def set_prio(insn: InstructionBase):
         return insn.copy(priority=priority)
 
     return map_instructions(kernel, insn_match, set_prio)
@@ -122,7 +126,9 @@ def set_instruction_priority(kernel, insn_match, priority):
 # {{{ add_dependency
 
 @for_each_kernel
-def add_dependency(kernel, insn_match, depends_on):
+def add_dependency(
+    kernel: LoopKernel, insn_match: ToMatchConvertible, depends_on: ToMatchConvertible
+) -> LoopKernel:
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
 
@@ -148,7 +154,7 @@ def add_dependency(kernel, insn_match, depends_on):
 
     matched = [False]
 
-    def add_dep(insn):
+    def add_dep(insn: InstructionBase):
         new_deps = insn.depends_on
         matched[0] = True
         new_deps = added_deps if new_deps is None else new_deps | added_deps
@@ -360,8 +366,14 @@ def tag_instructions(kernel, new_tag, within: ToMatchConvertible = None):
 # {{{ add nosync
 
 @for_each_kernel
-def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
-        empty_ok=False):
+def add_nosync(
+            kernel: LoopKernel,
+            scope,
+            source,
+            sink,
+            bidirectional: bool = False,
+            force: bool = False,
+            empty_ok: bool = False):
     """Add a *no_sync_with* directive between *source* and *sink*.
     *no_sync_with* is only added if *sink* depends on *source* or
     if the instruction pair is in a conflicting group.
@@ -412,8 +424,10 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
         raise LoopyError("No match found for source specification '%s'." % source)
     if not sinks and not empty_ok:
         raise LoopyError("No match found for sink specification '%s'." % sink)
+    del source
+    del sink
 
-    def insns_in_conflicting_groups(insn1_id, insn2_id):
+    def insns_in_conflicting_groups(insn1_id: InsnId, insn2_id: InsnId):
         insn1 = kernel.id_to_insn[insn1_id]
         insn2 = kernel.id_to_insn[insn2_id]
         return (

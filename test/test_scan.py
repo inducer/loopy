@@ -30,7 +30,6 @@ import pytest
 
 import pyopencl as cl
 import pyopencl.clmath
-import pyopencl.clrandom
 from pyopencl.tools import (  # noqa: F401
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
@@ -367,7 +366,7 @@ def check_segmented_scan_output(arr, segment_boundaries_indices, out):
             for _, group in groupby(out, SegmentGrouper())]
 
     assert len(expected) == len(actual) == len(segment_boundaries_indices)
-    assert [(e == a).all() for e, a in zip(expected, actual)]
+    assert [(e == a).all() for e, a in zip(expected, actual, strict=True)]
 
 
 @pytest.mark.parametrize("n, segment_boundaries_indices", [

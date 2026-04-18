@@ -176,6 +176,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
                 from loopy.kernel.array import get_access_info
 
+                assert p.is_arithmetic_expression(expr.index)
                 access_info = get_access_info(self.kernel, ary, expr.index,
                     lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                     self.codegen_state.vectorization_info)
@@ -197,7 +198,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
         raise NotImplementedError("wrap_in_typecast needs uniform-ness information "
                                   "for ispc")
 
-    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):  # type: ignore[override]
+    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):
         result = super().rec(expr, type_context)
 
         if needed_type is None:

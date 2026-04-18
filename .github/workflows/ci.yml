@@ -16,10 +16,10 @@ jobs:
         name: Ruff
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
             with:
                 submodules: true
-        -   uses: astral-sh/setup-uv@v6
+        -   uses: astral-sh/setup-uv@v7
         -   name: "Main Script"
             run: |
                 uv run --only-dev ruff check
@@ -28,13 +28,13 @@ jobs:
         name: Typos
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -   uses: crate-ci/typos@master
 
     basedpyright:
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -   name: "Main Script"
             run: |
                 EXTRA_INSTALL="pytest types-colorama types-Pygments scipy-stubs"
@@ -54,7 +54,7 @@ jobs:
           matrix:
             os: [ubuntu-latest, macos-latest]
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
@@ -64,7 +64,7 @@ jobs:
         name: Conda Pytest with Intel CL
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -   name: "Main Script"
             run: |
                 curl -L -O https://raw.githubusercontent.com/illinois-scicomp/machine-shop-maintenance/main/install-intel-icd.sh
@@ -83,7 +83,7 @@ jobs:
         name: Conda Pytest without arg check
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -   name: "Main Script"
             run: |
                 curl -L -O https://gitlab.tiker.net/inducer/ci-support/raw/main/build-and-test-py-project-within-miniconda.sh
@@ -94,7 +94,7 @@ jobs:
         name: Conda Pytest Twice (for cache behavior)
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -   name: "Main Script"
             run: |
                 # This test makes sure that loopy can run with kernels loaded from disk cache.
@@ -112,7 +112,7 @@ jobs:
         name: Conda Examples
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -   name: "Main Script"
             run: |
                 curl -L -O https://tiker.net/ci-support-v0
@@ -130,9 +130,9 @@ jobs:
         name: Documentation
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -
-            uses: actions/setup-python@v5
+            uses: actions/setup-python@v6
             with:
                 python-version: '3.x'
         -   name: "Main Script"
@@ -150,7 +150,7 @@ jobs:
         name: Tests for downstream project ${{ matrix.downstream_project }}
         runs-on: ubuntu-latest
         steps:
-        -   uses: actions/checkout@v4
+        -   uses: actions/checkout@v6
         -   name: "Main Script"
             env:
                 DOWNSTREAM_PROJECT: ${{ matrix.downstream_project }}
@@ -194,15 +194,14 @@ jobs:
                 # patch so exception messages get shown
                 curl -L https://gist.githubusercontent.com/inducer/17d7134ace215f0df1f3627eac4195c7/raw/ec5470a7d8587b6e1f336f3ef1d0ece5e26f236a/firedrake-debug-patch.diff | patch -p1
 
-                sed -i 's/@mpiexec/@mpiexec --oversubscribe/' Makefile
-                make check
+                firedrake-check --mpiexec 'mpiexec --oversubscribe -n'
 
     validate_cff:
             name: Validate CITATION.cff
             runs-on: ubuntu-latest
             steps:
-            -   uses: actions/checkout@v4
-            -   uses: actions/setup-python@v5
+            -   uses: actions/checkout@v6
+            -   uses: actions/setup-python@v6
             -   run: |
                     pip install cffconvert
                     cffconvert -i CITATION.cff --validate

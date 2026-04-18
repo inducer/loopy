@@ -291,8 +291,6 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
 
     for tv in kernel.temporary_variables.values():
         what = f"offset of temporary '{tv.name}'"
-        if tv.offset is None:
-            pass
         if tv.offset is auto:
             pass
         elif isinstance(tv.offset, (int, np.integer, ExpressionNode, str)):
@@ -339,8 +337,8 @@ class SubscriptIndicesIsIntChecker(TypeReader):
                         "Type inference did not find type of '%s'"
                         % idx)
             if not type_inf_result[0].is_integral():
-                raise LoopyError("Non-integral array indices obtained in"
-                        " {}.".format(expr))
+                raise LoopyError(
+                    f"Non-integral array indices obtained in {expr}")
 
         return self.rec(expr.aggregate)
 
@@ -489,8 +487,8 @@ def check_multiple_tags_allowed(kernel: LoopKernel) -> None:
     for iname in kernel.inames.values():
         for comb in illegal_combinations:
             if len(filter_iname_tags_by_type(iname.tags, comb)) > 1:
-                raise LoopyError("iname {} has illegal combination of "
-                                 "tags: {}".format(iname.name, iname.tags))
+                raise LoopyError(f"iname {iname.name} has illegal combination of "
+                                 f"tags: {iname.tags}")
 
 
 def _check_for_double_use_of_hw_axes_inner(
@@ -612,7 +610,7 @@ def check_for_write_races(kernel: LoopKernel) -> None:
     for insn in kernel.instructions:
         for assignee_name, assignee_indices in zip(
                 insn.assignee_var_names(),
-                insn.assignee_subscript_deps()):
+                insn.assignee_subscript_deps(), strict=True):
             assignee_inames = assignee_indices & kernel.all_inames()
             if not assignee_inames <= insn.within_inames:
                 raise LoopyError(
@@ -1359,7 +1357,7 @@ def check_for_nested_base_storage(kernel: LoopKernel) -> None:
 
     for ary in kernel.temporary_variables.values():
         if ary.base_storage:
-            storage_array = name_to_array.get(ary.base_storage, None)
+            storage_array = name_to_array.get(ary.base_storage)
 
             if storage_array is None:
                 raise LoopyError("Nothing known about storage array "
@@ -1469,22 +1467,18 @@ def _check_for_unused_hw_axes_in_kernel_chunk(
             if group_axes != group_axes_used:
                 raise LoopyError(
                         f"instruction '{insn.id}' does not use all group hw axes "
-                        "(available: %s used: %s). "
+                        f"(available: {','.join(str(i) for i in group_axes)} "
+                        f"used: {','.join(str(i) for i in group_axes_used)}). "
                         "Calling loopy.add_inames_for_unused_hw_axes(...) "
-                        "might help."
-                        % (
-                            ",".join(str(i) for i in group_axes),
-                            ",".join(str(i) for i in group_axes_used)))
+                        "might help.")
 
             if local_axes != local_axes_used:
                 raise LoopyError(
                         f"instruction '{insn.id}' does not use all local hw axes "
-                        "(available: %s used: %s). "
+                        f"(available: {','.join(str(i) for i in local_axes)} "
+                        f"used: {','.join(str(i) for i in local_axes_used)}). "
                         "Calling loopy.add_inames_for_unused_hw_axes(...) "
-                        "might help."
-                        % (
-                            ",".join(str(i) for i in local_axes),
-                            ",".join(str(i) for i in local_axes_used)))
+                        "might help.")
 
         elif isinstance(sched_item, (Barrier, EnterLoop, LeaveLoop)):
             i += 1
@@ -1716,16 +1710,16 @@ def _are_sub_array_refs_equivalent(
     from pymbolic.mapper.substitutor import make_subst_func
 
     from loopy.symbolic import SubstitutionMapper, simplify_via_aff
-    subst_func = make_subst_func({iname1.name:  iname2
-                                  for iname1, iname2 in zip(sar1.swept_inames,
-                                                            sar2.swept_inames)
-                                  })
+    subst_func = make_subst_func({
+        iname1.name: iname2
+        for iname1, iname2 in zip(sar1.swept_inames, sar2.swept_inames, strict=True)
+    })
 
     # subst_mapper: maps swept inames from sar1 to sar2
     subst_mapper = SubstitutionMapper(subst_func)
 
     for idx1, idx2 in zip(sar1.subscript.index_tuple,
-                          sar2.subscript.index_tuple):
+                          sar2.subscript.index_tuple, strict=True):
         subst_idx1 = subst_mapper(idx1)
         assert is_arithmetic_expression(subst_idx1)
         assert is_arithmetic_expression(idx2)
@@ -1991,11 +1985,9 @@ def check_implemented_domains(
                         iname, pt.get_coordinate_val(tp, dim).to_python()))
 
                 lines.append(
-                        "sample point in {} but not {}: {}".format(
-                            bigger, smaller, ", ".join(point_axes)))
+                    f"sample point in {bigger} but not {smaller}: {point_axes}")
                 lines.append(
-                        "gist of constraints in {} but not {}: {}".format(
-                            bigger, smaller, gist_domain))
+                    f"gist of constraints in {bigger} but not {smaller}: {gist_domain}")
 
             if code is not None:
                 print(79*"-")

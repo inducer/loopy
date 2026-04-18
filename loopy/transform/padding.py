@@ -69,7 +69,7 @@ class SubscriptRewriter(RuleAwareIdentityMapper[[]]):
 
 # {{{ split_array_dim (deprecated since June 2016)
 
-SplitSpec: TypeAlias = tuple[str, int] | tuple[str, int, Literal["C"] | Literal["F"]]
+SplitSpec: TypeAlias = tuple[str, int] | tuple[str, int, Literal["C", "F"]]
 
 
 @for_each_kernel
@@ -111,7 +111,7 @@ def split_array_dim(
 
     # where "rest" is the non-argument-name part of the input tuples
     # in args_and_axes
-    def normalize_rest(rest: tuple[int, Literal["C"] | Literal["F"]] | tuple[int]):
+    def normalize_rest(rest: tuple[int, Literal["C", "F"]] | tuple[int]):
         if len(rest) == 1:
             return (rest[0], "C")
         elif len(rest) == 2:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pymbolic import ArithmeticExpression
-
 
 __copyright__ = "Copyright (C) 2012-15 Andreas Kloeckner"
 
@@ -24,11 +22,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 import numpy as np
 
 import pymbolic.primitives as p
+from pymbolic import ArithmeticExpression
 from pymbolic.mapper import Mapper
 
 from loopy.codegen import UnvectorizableError
@@ -41,13 +40,15 @@ if TYPE_CHECKING:
     from loopy.symbolic import LinearSubscript, Reduction
 
 
-# type_context may be:
-# - "i" for integer -
-# - "f" for single-precision floating point
-# - "d" for double-precision floating point
-# or None for 'no known context'.
+TypeContext: TypeAlias = Literal[
+    "f",  # single-precision floating point
+    "d",  # double-precision floating point
+    "i",  # integer
+    "b",  # boolean
+] | None  # "no known context"
 
-def dtype_to_type_context(target, dtype) -> str | None:
+
+def dtype_to_type_context(target, dtype) -> TypeContext:
     from loopy.types import NumpyType
 
     if dtype.is_integral():

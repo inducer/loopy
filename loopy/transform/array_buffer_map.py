@@ -109,7 +109,7 @@ def build_per_access_storage_to_domain_map(
 
     from loopy.symbolic import guarded_aff_from_expr
 
-    for saxis, sa_expr in zip(storage_axis_names, storage_axis_exprs):
+    for saxis, sa_expr in zip(storage_axis_names, storage_axis_exprs, strict=True):
         cns_expr = var(saxis+"'") - prime_sweep_inames(sa_expr)
         cns_aff = guarded_aff_from_expr(set_space, cns_expr)
         cns = isl.Constraint.equality_from_aff(cns_aff)
@@ -166,14 +166,15 @@ def build_global_storage_to_sweep_map(
         else:
             global_stor2sweep = global_stor2sweep.union(stor2sweep)
 
+    assert global_stor2sweep is not None
+
     if isinstance(global_stor2sweep, isl.BasicMap):
         global_stor2sweep = isl.Map.from_basic_map(global_stor2sweep)
-    global_stor2sweep = global_stor2sweep.intersect_range(domain_dup_sweep)
+    return global_stor2sweep.intersect_range(domain_dup_sweep)
 
     # space for global_stor2sweep:
     # [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep](rn)
 
-    return global_stor2sweep
 
 # }}}
 
@@ -188,7 +189,7 @@ def find_var_base_indices_and_shape_from_inames(
                 domain, iname, context,
                 n_allowed_params_in_length=n_allowed_params_in_shape)
             for iname in inames]
-    return list(zip(*base_indices_and_sizes))
+    return list(zip(*base_indices_and_sizes, strict=True))
 
 
 def compute_bounds(kernel, domain, stor2sweep,
@@ -256,9 +257,10 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
                 domain, sweep_inames,
                 self.primed_sweep_inames)
 
-        self.prime_sweep_inames = SubstitutionMapper(make_subst_func(
-            {sin: var(psin)
-                for sin, psin in zip(sweep_inames, self.primed_sweep_inames)}))
+        self.prime_sweep_inames = SubstitutionMapper(make_subst_func({
+            sin: var(psin)
+            for sin, psin in zip(sweep_inames, self.primed_sweep_inames, strict=True)
+        }))
 
         # # }}}
 
@@ -319,8 +321,10 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
         # [domain](dup_sweep_index)[dup_sweep](stor_idx)[stor_axes'][n1_stor_axes]
 
         from loopy.symbolic import aff_from_expr
-        for saxis, bi, s in zip(storage_axis_names, storage_base_indices,
-                storage_shape):
+        for saxis, bi, s in zip(
+                storage_axis_names,
+                storage_base_indices,
+                storage_shape, strict=True):
             if s != 1:
                 cns = isl.Constraint.equality_from_aff(
                         aff_from_expr(aug_domain.get_space(),

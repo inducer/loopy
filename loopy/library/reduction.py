@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loopy.target.c import CFamilyTarget
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -172,9 +174,7 @@ class ScalarReductionOperation(ReductionOperation, ABC):
 
     @override
     def __str__(self) -> str:
-        result = type(self).__name__.replace("ReductionOperation", "").lower()
-
-        return result
+        return type(self).__name__.replace("ReductionOperation", "").lower()
 
     def update_persistent_hash(self, key_hash: Hash, key_builder: KeyBuilder) -> None:
         # They're all stateless.
@@ -458,9 +458,9 @@ class _SegmentedScalarReductionOperation(ReductionOperation):
         return 2
 
     def prefix(self, scalar_dtype, segment_flag_dtype):
-        return "loopy_segmented_{}_{}_{}".format(self.which,
-                scalar_dtype.numpy_dtype.type.__name__,
-                segment_flag_dtype.numpy_dtype.type.__name__)
+        stype = scalar_dtype.numpy_dtype.type.__name__
+        ftype = segment_flag_dtype.numpy_dtype.type.__name__
+        return f"loopy_segmented_{self.which}_{stype}_{ftype}"
 
     @override
     def neutral_element(self,
@@ -585,9 +585,9 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         raise NotImplementedError
 
     def prefix(self, scalar_dtype, index_dtype):
-        return "loopy_arg{}_{}_{}".format(self.which,
-                scalar_dtype.numpy_dtype.type.__name__,
-                index_dtype.numpy_dtype.type.__name__)
+        stype = scalar_dtype.numpy_dtype.type.__name__
+        itype = index_dtype.numpy_dtype.type.__name__
+        return f"loopy_arg{self.which}_{stype}_{itype}"
 
     @override
     def result_dtypes(self,
@@ -786,6 +786,9 @@ class ReductionCallable(ScalarCallable):
 class ArgExtOpCallable(ReductionCallable):
 
     def generate_preambles(self, target):
+        if not isinstance(target, CFamilyTarget):
+            raise NotImplementedError("non-C code generation for SegmentOpCallable")
+
         op = self.name.reduction_op  # pylint: disable=no-member
         scalar_dtype = self.arg_id_to_dtype[-1]
         index_dtype = self.arg_id_to_dtype[-2]
@@ -816,12 +819,13 @@ class ArgExtOpCallable(ReductionCallable):
                 comp=op.update_comparison,
                 ))
 
-        return
-
 
 class SegmentOpCallable(ReductionCallable):
 
     def generate_preambles(self, target):
+        if not isinstance(target, CFamilyTarget):
+            raise NotImplementedError("non-C code generation for SegmentOpCallable")
+
         op = self.name.reduction_op  # pylint: disable=no-member
         scalar_dtype = self.arg_id_to_dtype[-1]
         segment_flag_dtype = self.arg_id_to_dtype[-2]
@@ -843,7 +847,6 @@ class SegmentOpCallable(ReductionCallable):
                 combined=op.op % ("op1", "op2"),
                 ))
 
-        return
 
 # }}}
 

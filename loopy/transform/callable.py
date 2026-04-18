@@ -68,8 +68,11 @@ __doc__ = """
 """
 
 
-def register_callable(translation_unit, function_identifier, callable_,
-        redefining_not_ok=True):
+def register_callable(
+        translation_unit: TranslationUnit,
+        function_identifier: str,
+        callable_: InKernelCallable,
+        redefining_not_ok: bool = True) -> TranslationUnit:
     """
     :param translation_unit: A :class:`loopy.TranslationUnit`.
     :param callable_: A :class:`loopy.InKernelCallable`.
@@ -78,7 +81,6 @@ def register_callable(translation_unit, function_identifier, callable_,
     if isinstance(callable_, LoopKernel):
         callable_ = CallableKernel(callable_)
 
-    from loopy.kernel.function_interface import InKernelCallable
     assert isinstance(callable_, InKernelCallable)
 
     if (function_identifier in translation_unit.callables_table) and (
@@ -155,7 +157,7 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
             index_tuple = self.rec(expr.index_tuple, expn_state)
             subs_map = {iname: idx for idx, iname in
-                    zip(index_tuple, sar.swept_inames)}
+                    zip(index_tuple, sar.swept_inames, strict=True)}
             new_indices = tuple(substitute(idx, subs_map) for idx in
                     sar.subscript.index_tuple)
 
@@ -296,8 +298,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     # {{{ iname_to_tags
 
     # new_inames: caller's inames post inlining
-    new_inames = caller_knl.inames.copy()
-
+    new_inames = dict(caller_knl.inames)
     for old_name, callee_iname in callee_knl.inames.items():
         new_name = name_map[old_name]
         new_inames[new_name] = callee_iname.copy(name=new_name)
@@ -335,7 +336,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     # {{{ process domains/assumptions
 
     # rename inames
-    new_domains = callee_knl.domains.copy()
+    new_domains = list(callee_knl.domains)
     for old_iname in callee_knl.all_inames():
         new_domains = [rename_iname(dom, old_iname, name_map[old_iname])
                        for dom in new_domains]
@@ -479,7 +480,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     return caller_knl.copy(instructions=new_insns,
                            temporary_variables=new_temps,
-                           domains=caller_knl.domains+new_domains,
+                           domains=[*caller_knl.domains, *new_domains],
                            assumptions=(old_assumptions.params()
                                         & new_assumptions.params()),
                            inames=new_inames,

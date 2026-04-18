@@ -429,6 +429,53 @@ class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
         else:
             return self.combine([n_dtype_set, d_dtype_set])
 
+    def _map_int_div_modulo(self, expr: p.FloorDiv | p.Remainder):
+        # This is pretty gross, but generally appears to lack alternatives.
+        # See https://github.com/inducer/loopy/pull/1000 for some discussion.
+        # In general, for array // array, numpy is very eager to infer
+        # float dtypes (for example for u64/i32), which doesn't work for us:
+        # integers should stay integers to stay usable as array indices.
+
+        n_dtype_set = self.rec(expr.numerator)
+        d_dtype_set = self.rec(expr.denominator)
+
+        if not (n_dtype_set and d_dtype_set):
+            return cast("list[NumpyType]", [])
+
+        n_dtype = n_dtype_set[0].numpy_dtype
+        d_dtype = d_dtype_set[0].numpy_dtype
+        num = (
+            np.empty(0, dtype=n_dtype)
+            if not is_integer(expr.numerator)
+            else expr.numerator
+        )
+        denom = (
+            np.empty(0, dtype=d_dtype)
+            if not is_integer(expr.denominator)
+            else expr.denominator
+        )
+        denom = (
+            cast("int | np.integer", denom + 1)
+            if is_integer(denom) and denom == 0
+            else denom
+        )  # avoid divide by zero.
+
+        if is_integer(num) and is_integer(denom):
+            return self.rec(num // denom)
+
+        floor_div_np = num // denom
+        assert isinstance(floor_div_np, np.ndarray)
+
+        return [NumpyType(floor_div_np.dtype)]
+
+    @override
+    def map_floor_div(self, expr: p.FloorDiv):
+        return self._map_int_div_modulo(expr)
+
+    @override
+    def map_remainder(self, expr: p.Remainder):
+        return self._map_int_div_modulo(expr)
+
     @override
     def map_constant(self, expr: object):
         if isinstance(expr, np.generic):
@@ -439,8 +486,7 @@ class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
                 if iinfo.min <= expr <= iinfo.max:
                     return [NumpyType(np.dtype(tp))]
 
-            else:
-                raise TypeInferenceFailure("integer constant '%s' too large" % expr)
+            raise TypeInferenceFailure("integer constant '%s' too large" % expr)
 
         dt = np.asarray(expr).dtype
         if hasattr(expr, "dtype"):
@@ -497,7 +543,7 @@ class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
             # function not resolved => exit
             return []
 
-        arg_id_to_dtype: dict[int | str, LoopyType]  = {
+        arg_id_to_dtype: dict[int | str, LoopyType] = {
                 # FIXME: In order to properly participate in type inference,
                 # functions must be able to deal with multiple types.
                 i: rpar[0]
@@ -815,7 +861,8 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
                 result_i = None
                 found = False
                 for assignee, comp_dtype_set in zip(
-                        writer_insn.assignee_var_names(), return_dtype_set):
+                        writer_insn.assignee_var_names(),
+                        return_dtype_set, strict=True):
                     if assignee == var_name:
                         found = True
                         result_i = comp_dtype_set
@@ -905,8 +952,7 @@ def infer_unknown_types_for_a_single_kernel(
 
     # }}}
 
-    logger.debug("finding types for {count:d} names".format(
-            count=len(names_for_type_inference)))
+    logger.debug("finding types for %d names", len(names_for_type_inference))
 
     writer_map = kernel.writer_map()
 
@@ -1088,8 +1134,7 @@ def infer_unknown_types_for_a_single_kernel(
     old_calls_to_new_calls.update(type_inf_mapper.old_calls_to_new_calls)
 
     end_time = time.time()
-    logger.debug("type inference took {dur:.2f} seconds".format(
-            dur=end_time - start_time))
+    logger.debug("type inference took %.2f seconds", end_time - start_time)
 
     if kernel._separation_info():
         sep_names: set[str] = set(kernel._separation_info()) | {

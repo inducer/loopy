@@ -40,7 +40,7 @@ from pyopencl.tools import (
 )
 
 from loopy.version import (
-    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # noqa # pyright: ignore[reportUnusedImport]
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # noqa: F401 # pyright: ignore[reportUnusedImport]
 )
 
 
