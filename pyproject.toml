@@ -218,6 +218,7 @@ exclude = [
     "loopy/frontend/fortran/*.py",
     "doc",
     ".conda-root",
+    ".venv",
 ]
 
 [[tool.basedpyright.executionEnvironments]]
