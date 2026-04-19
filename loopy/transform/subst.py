@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, overload
 
 from pymbolic import Expression, Variable, var
 
@@ -37,6 +37,8 @@ from loopy.translation_unit import TranslationUnit, for_each_kernel
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import RuleStack, ToMatchConvertible, ToStackMatchConvertible
@@ -54,7 +56,33 @@ class ExprDescriptor:
 
 # {{{ extract_subst
 
-def extract_subst(kernel, subst_name, template, parameters=(),
+@overload
+def extract_subst(
+            kernel: LoopKernel,
+            subst_name: str,
+            template: Expression | str,
+            parameters: Sequence[str] | str = (),
+            within: ToMatchConvertible = None
+        ) -> LoopKernel:
+    ...
+
+
+@overload
+def extract_subst(
+            kernel: TranslationUnit,
+            subst_name: str,
+            template: Expression | str,
+            parameters: Sequence[str] | str = (),
+            within: ToMatchConvertible = None
+        ) -> TranslationUnit:
+    ...
+
+
+def extract_subst(
+            kernel: LoopKernel | TranslationUnit,
+            subst_name: str,
+            template: Expression | str,
+            parameters: Sequence[str] | str = (),
             within: ToMatchConvertible = None
         ):
     """

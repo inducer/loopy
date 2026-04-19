@@ -26,6 +26,8 @@ THE SOFTWARE.
 import logging
 from typing import TYPE_CHECKING, TypeVar, cast
 
+from typing_extensions import override
+
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ from loopy.kernel.function_interface import (
 from loopy.kernel.instruction import (
     CallInstruction,
     CInstruction,
+    InstructionBase,
     MultiAssignmentBase,
     _DataObliviousInstruction,
 )
@@ -601,10 +604,13 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
 
-    def __call__(self, expr, kernel, insn, assignees=None):
-        from loopy.kernel.data import InstructionBase
+    @override
+    def __call__(self,
+                expr: Expression,
+                kernel: LoopKernel,
+                insn: InstructionBase,
+                assignees=None):
         from loopy.symbolic import ExpansionState, UncachedIdentityMapper
-        assert insn is None or isinstance(insn, InstructionBase)
 
         return UncachedIdentityMapper.__call__(self, expr,
                 ExpansionState(
@@ -613,7 +619,8 @@ class ArgDescrInferenceMapper(RuleAwareIdentityMapper):
                     stack=(),
                     arg_context=constantdict()), assignees=assignees)
 
-    def map_kernel(self, kernel):
+    @override
+    def map_kernel(self, kernel: LoopKernel):
 
         new_insns = []
 
