@@ -124,7 +124,6 @@ from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.tools import Optional, clear_in_mem_caches, memoize_on_disk, t_unit_to_python
 from loopy.transform.add_barrier import add_barrier
 from loopy.transform.arithmetic import (
-    collect_common_factors_on_increment,
     fold_constants,
 )
 from loopy.transform.batch import to_batched
@@ -315,7 +314,6 @@ __all__ = [
     "change_arg_to_image",
     "chunk_iname",
     "clear_in_mem_caches",
-    "collect_common_factors_on_increment",
     "concatenate_arrays",
     "duplicate_inames",
     "expand_subst",
