@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 from warnings import warn
@@ -37,13 +38,12 @@ from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
 from loopy.kernel.data import AddressSpace, ImageArg, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
-from loopy.translation_unit import TranslationUnit, for_each_kernel
+from loopy.translation_unit import CallablesTable, TranslationUnit, for_each_kernel
 from loopy.types import LoopyType
 from loopy.typing import assert_tuple, auto
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
 
     from pymbolic import ArithmeticExpression, Expression
 
@@ -55,7 +55,13 @@ if TYPE_CHECKING:
 
 # {{{ process footprint_subscripts
 
-def _add_kernel_axis(kernel, axis_name, start, stop, base_inames):
+def _add_kernel_axis(
+            kernel: LoopKernel,
+            axis_name: str,
+            start: ArithmeticExpression,
+            stop: ArithmeticExpression,
+            base_inames
+        ):
     from loopy.kernel.tools import DomainChanger
     domch = DomainChanger(kernel, base_inames)
 
@@ -85,8 +91,15 @@ def _add_kernel_axis(kernel, axis_name, start, stop, base_inames):
     return kernel.copy(domains=domch.get_domains_with(domain))
 
 
-def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
-        footprint_subscripts, arg):
+def _process_footprint_subscripts(
+            kernel: LoopKernel,
+            rule_name: str,
+            sweep_inames: Sequence[str],
+            footprint_subscripts:
+                Sequence[tuple[ArithmeticExpression, ...]]
+                | tuple[ArithmeticExpression, ...]
+                | None,
+            arg):
     """Track applied iname rewrites, deal with slice specifiers ':'."""
 
     name_gen = kernel.get_var_name_generator()
@@ -96,7 +109,7 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
     if footprint_subscripts is None:
         return kernel, rule_name, sweep_inames, []
 
-    if not isinstance(footprint_subscripts, (list, tuple)):
+    if not isinstance(footprint_subscripts, Sequence):
         footprint_subscripts = [footprint_subscripts]
 
     inames_to_be_removed = []
@@ -118,7 +131,8 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
             from pymbolic.mapper.substitutor import make_subst_func
 
             from loopy.symbolic import SubstitutionMapper
-            fsub = SubstitutionMapper(make_subst_func(subst_map))(fsub)
+            fsub = cast("tuple[ArithmeticExpression, ...]",
+                SubstitutionMapper(make_subst_func(subst_map))(fsub))
 
         from loopy.symbolic import get_dependencies
         fsub_dependencies = get_dependencies(fsub)
@@ -156,8 +170,12 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 # }}}
 
 
-def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
-        sweep_inames=None, dim_arg_names=None,
+def add_prefetch_for_single_kernel(
+        kernel: LoopKernel,
+        callables_table: CallablesTable,
+        var_name: str,
+        sweep_inames=None,
+        dim_arg_names=None,
 
         default_tag=None,
 
@@ -190,7 +208,7 @@ def add_prefetch_for_single_kernel(kernel, callables_table, var_name,
                     "may not contain a subscript")
 
         assert isinstance(parsed_var_name.aggregate, Variable)
-        footprint_subscripts = [parsed_var_name.index]
+        footprint_subscripts = [parsed_var_name.index_tuple]
         parsed_var_name = parsed_var_name.aggregate
     else:
         raise ValueError("var_name must either be a variable name or a subscript")
