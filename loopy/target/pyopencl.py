@@ -584,6 +584,26 @@ class PyOpenCLTarget(OpenCLTarget):
     def get_device_ast_builder(self):
         return PyOpenCLCASTBuilder(self)
 
+    @property
+    @override
+    def known_device_callables(self):
+        from loopy.library.random123 import get_random123_callables
+
+        # order matters: e.g. prefer our abs() over that of the
+        # superclass
+        callables = super().known_device_callables
+        callables.update(get_pyopencl_callables())
+        callables.update(get_random123_callables(self))
+        return callables
+
+    @property
+    @override
+    def known_host_callables(self):
+        from loopy.target.c import get_c_callables
+        callables = super().known_host_callables
+        callables.update(get_c_callables())
+        return callables
+
     # {{{ types
 
     @override
@@ -1223,17 +1243,6 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     # }}}
 
     # {{{ library
-
-    @property
-    def known_callables(self):
-        from loopy.library.random123 import get_random123_callables
-
-        # order matters: e.g. prefer our abs() over that of the
-        # superclass
-        callables = super().known_callables
-        callables.update(get_pyopencl_callables())
-        callables.update(get_random123_callables(self.target))
-        return callables
 
     def preamble_generators(self):
         return ([pyopencl_preamble_generator, *super().preamble_generators()])
