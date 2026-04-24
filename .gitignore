@@ -33,3 +33,5 @@ virtualenv-[0-9]*[0-9]
 # Files used by run-pylint.sh
 .pylintrc.yml
 .run-pylint.py
+
+.codex
