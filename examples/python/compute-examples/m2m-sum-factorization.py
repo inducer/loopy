@@ -227,7 +227,7 @@ def make_kernel_2d(
 
     if use_compute:
         x_axis_sum_map = nisl.make_map(f"""{{
-            [eta0_arg] -> [eta0, eta1_block, x_slot] :
+            [eta0_arg] -> [eta0, x_slot] :
                 eta0_arg = eta0 and x_slot = 0
         }}""")
         knl = compute(
@@ -235,7 +235,7 @@ def make_kernel_2d(
             "x_axis_sum_",
             compute_map=x_axis_sum_map,
             storage_indices=["x_slot"],
-            temporal_inames=["eta0", "eta1_block"],
+            extra_context_inames=["eta1_block"],
             temporary_name="x_axis_sum_vec",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,
@@ -243,7 +243,7 @@ def make_kernel_2d(
         )
 
         y_axis_sum_map = nisl.make_map(f"""{{
-            [eta1_arg] -> [eta0, eta1_block, y_slot] :
+            [eta1_arg] -> [eta1_block, y_slot] :
                 eta1_arg = eta1_block * {eta_tile_size} + y_slot
         }}""")
         knl = compute(
@@ -251,7 +251,7 @@ def make_kernel_2d(
             "y_axis_sum_",
             compute_map=y_axis_sum_map,
             storage_indices=["y_slot"],
-            temporal_inames=["eta0", "eta1_block"],
+            extra_context_inames=["eta0"],
             temporary_name="y_axis_sum_vec",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,
@@ -343,7 +343,7 @@ def make_kernel_3d(
     if use_compute:
         x_axis_sum_map = nisl.make_map("""
             {
-                [eta0_arg] -> [eta0, eta1, eta2_block, x_slot] :
+                [eta0_arg] -> [eta0, x_slot] :
                     eta0_arg = eta0 and x_slot = 0
             }
         """)
@@ -352,7 +352,7 @@ def make_kernel_3d(
             "x_axis_sum_",
             compute_map=x_axis_sum_map,
             storage_indices=["x_slot"],
-            temporal_inames=["eta0", "eta1", "eta2_block"],
+            extra_context_inames=["eta1", "eta2_block"],
             temporary_name="x_axis_sum_vec",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,
@@ -361,7 +361,7 @@ def make_kernel_3d(
 
         y_axis_sum_map = nisl.make_map("""
             {
-                [eta1_arg] -> [eta0, eta1, eta2_block, y_slot] :
+                [eta1_arg] -> [eta1, y_slot] :
                     eta1_arg = eta1 and y_slot = 0
             }
         """)
@@ -370,7 +370,7 @@ def make_kernel_3d(
             "y_axis_sum_",
             compute_map=y_axis_sum_map,
             storage_indices=["y_slot"],
-            temporal_inames=["eta0", "eta1", "eta2_block"],
+            extra_context_inames=["eta0", "eta2_block"],
             temporary_name="y_axis_sum_vec",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,
@@ -378,7 +378,7 @@ def make_kernel_3d(
         )
 
         z_axis_sum_map = nisl.make_map(f"""{{
-            [eta2_arg] -> [eta0, eta1, eta2_block, z_slot] :
+            [eta2_arg] -> [eta2_block, z_slot] :
                 eta2_arg = eta2_block * {eta_tile_size} + z_slot
         }}""")
         knl = compute(
@@ -386,7 +386,7 @@ def make_kernel_3d(
             "z_axis_sum_",
             compute_map=z_axis_sum_map,
             storage_indices=["z_slot"],
-            temporal_inames=["eta0", "eta1", "eta2_block"],
+            extra_context_inames=["eta0", "eta1"],
             temporary_name="z_axis_sum_vec",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,

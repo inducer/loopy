@@ -136,6 +136,48 @@ def _normalize_renamed_dims(
     return map_.rename_dims(rename_mapping)
 
 
+def _add_extra_context_to_compute_map(
+        compute_map: nisl.Map,
+        storage_indices: Sequence[str],
+        extra_context_inames: Sequence[str],
+    ) -> nisl.Map:
+    storage_set = frozenset(storage_indices)
+    extra_context_set = frozenset(extra_context_inames)
+
+    if storage_set - compute_map.output_names:
+        raise ValueError(
+            "storage indices must appear in compute_map range: "
+            + ", ".join(sorted(storage_set - compute_map.output_names))
+        )
+
+    if extra_context_set & storage_set:
+        raise ValueError(
+            "extra context inames must not be storage indices: "
+            + ", ".join(sorted(extra_context_set & storage_set))
+        )
+
+    parameter_context = extra_context_set & compute_map.parameter_names
+    if parameter_context:
+        raise ValueError(
+            "inames that appear in compute_map constraints must appear in "
+            "the compute_map range, not extra_context_inames: "
+            + ", ".join(sorted(parameter_context))
+        )
+
+    unsupported_context = extra_context_set & compute_map.input_names
+    if unsupported_context:
+        raise ValueError(
+            "extra context inames must not appear in compute_map domain: "
+            + ", ".join(sorted(unsupported_context))
+        )
+
+    context_to_add = [
+        name for name in extra_context_inames
+        if name not in compute_map.output_names
+    ]
+    return compute_map.add_output_names(context_to_add)
+
+
 # {{{ gathering usage expressions
 
 class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
@@ -337,8 +379,7 @@ def compute(
 
         storage_indices: Sequence[str],
 
-        # FIXME: can these two be deduced?
-        temporal_inames: Sequence[str],
+        extra_context_inames: Sequence[str] = (),
         inames_to_advance: Sequence[str] | None = None,
 
         temporary_name: str | None = None,
@@ -357,12 +398,28 @@ def compute(
     transform should be applied.
 
     :arg compute_map: An :class:`isl.Map` representing a relation between
-    substitution rule indices and tuples `(a, l)`, where `a` is a vector of
-    storage indices and `l` is a vector of "timestamps".
+    substitution rule indices and storage/context inames. Range inames that
+    are not storage indices are treated as context inames.
 
     :arg storage_indices: An ordered sequence of names of storage indices. Used
     to create inames for the loops that cover the required set of compute points.
+
+    :arg extra_context_inames: Context inames needed to place the compute
+    instruction, but not needed by the compute map constraints.
     """
+
+    compute_map = _add_extra_context_to_compute_map(
+        compute_map, storage_indices, extra_context_inames)
+
+    parameter_inames = compute_map.parameter_names & kernel.all_inames()
+    if parameter_inames:
+        raise ValueError(
+            "inames that appear in compute_map constraints must appear in "
+            "the compute_map range: " + ", ".join(sorted(parameter_inames))
+        )
+
+    storage_set = frozenset(storage_indices)
+    context_set = compute_map.output_names - storage_set
 
     name_mapping = {
         name: name + "_"
@@ -372,9 +429,6 @@ def compute(
     compute_map = compute_map.rename_dims(name_mapping)
 
     # {{{ setup and useful variables
-
-    storage_set = frozenset(storage_indices)
-    temporal_set = frozenset(temporal_inames)
 
     ctx = SubstitutionRuleMappingContext(
         kernel.substitutions, kernel.get_var_name_generator())
@@ -438,7 +492,7 @@ def compute(
             continue
 
         # clean up names
-        non_param_names = (usage_inames - temporal_set) | storage_set
+        non_param_names = (usage_inames - context_set) | storage_set
         parameter_names = frozenset(local_storage_map.names) - non_param_names
         local_storage_map = local_storage_map.move_dims(parameter_names,
                                                         isl.dim_type.param)
@@ -454,12 +508,12 @@ def compute(
 
     # {{{ compute bounds and update kernel domain
 
-    storage_map = storage_map.move_dims(temporal_set, isl.dim_type.param)
+    storage_map = storage_map.move_dims(context_set, isl.dim_type.param)
     footprint = storage_map.range()
 
     # clean up ticked duplicate names
-    footprint = footprint.project_out_except(temporal_set | storage_set)
-    footprint = footprint.move_dims(temporal_set, isl.dim_type.set)
+    footprint = footprint.project_out_except(context_set | storage_set)
+    footprint = footprint.move_dims(context_set, isl.dim_type.set)
 
     # {{{ FIXME: use Sets instead of BasicSets when loopy is ready
 
@@ -515,7 +569,7 @@ def compute(
                 else
                 f"{name}_cur = {name}_prev"
             )
-            for name in temporal_inames
+            for name in context_set
         ])
 
         current_footprint = footprint.rename_dims({
@@ -594,7 +648,7 @@ def compute(
                 id=shift_insn_id,
                 assignee=shift_assignee,
                 expression=shift_expression,
-                within_inames=frozenset(temporal_inames) | storage_set,
+                within_inames=context_set | storage_set,
                 predicates=predicates,
                 depends_on=current_update_deps,
             ))

@@ -125,7 +125,7 @@ def make_kernel(
 
     if use_compute:
         x_monom_map = nisl.make_map(f"""{{
-            [isrc_arg, q0_arg] -> [q0, q1_outer, isrc_outer, isrc_s] :
+            [isrc_arg, q0_arg] -> [q0, isrc_outer, isrc_s] :
                 isrc_arg = isrc_outer * {source_tile_size} + isrc_s and
                 q0_arg = q0
         }}""")
@@ -135,7 +135,7 @@ def make_kernel(
             "x_monom_",
             compute_map=x_monom_map,
             storage_indices=["isrc_s"],
-            temporal_inames=["q0", "q1_outer", "isrc_outer"],
+            extra_context_inames=["q1_outer"],
             temporary_name="x_monom_for_q1_tile",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,
@@ -143,7 +143,7 @@ def make_kernel(
         )
 
         y_monom_map = nisl.make_map(f"""{{
-            [isrc_arg, q1_arg] -> [q0, q1_outer, q1_inner, isrc_outer, isrc_s] :
+            [isrc_arg, q1_arg] -> [q1_outer, q1_inner, isrc_outer, isrc_s] :
                 isrc_arg = isrc_outer * {source_tile_size} + isrc_s and
                 q1_arg = q1_outer * {q1_tile_size} + q1_inner
         }}""")
@@ -153,7 +153,7 @@ def make_kernel(
             "y_monom_",
             compute_map=y_monom_map,
             storage_indices=["isrc_s"],
-            temporal_inames=["q0", "q1_outer", "q1_inner", "isrc_outer"],
+            extra_context_inames=["q0"],
             temporary_name="y_monom_for_coeff",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,

@@ -148,12 +148,6 @@ def main(
     knl = lp.split_iname(knl, "i", bx, inner_iname="xi", outer_iname="xo")
 
     if use_compute:
-        raise NotImplementedError(
-            "The recurrent diamond time-stepper cannot currently be lowered "
-            "through compute(): Loopy represents the instance-wise dependence "
-            "between compute loads from u_hist[t] and writes to u_hist[t+1] as "
-            "an instruction-level dependency cycle."
-        )
         compute_insn_ids = []
         for ell in range(-r, r + 1):
             suffix = offset_name(ell)
@@ -171,7 +165,6 @@ def main(
                 suffix,
                 compute_map=diamond_map,
                 storage_indices=[storage_axis],
-                temporal_inames=["to", "xo", "ti"],
                 temporary_name=f"{suffix}_diamond",
                 temporary_address_space=lp.AddressSpace.LOCAL,
                 temporary_dtype=dtype,
@@ -181,7 +174,10 @@ def main(
                 lp.map_instructions(
                     knl.default_entrypoint,
                     f"id:{suffix}_diamond_compute",
-                    lambda insn: insn.copy(depends_on=frozenset()),
+                    lambda insn: insn.copy(
+                        depends_on=frozenset(),
+                        depends_on_is_final=True,
+                    ),
                 )
             )
 
@@ -202,7 +198,8 @@ def main(
                 knl.default_entrypoint,
                 "id:step",
                 lambda insn: insn.copy(
-                    no_sync_with=insn.no_sync_with | no_sync_with_computes
+                    no_sync_with=insn.no_sync_with | no_sync_with_computes,
+                    depends_on_is_final=True,
                 ),
             )
         )

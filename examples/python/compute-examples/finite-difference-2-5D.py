@@ -124,7 +124,6 @@ def main(
             "u_",
             compute_map=plane_map,
             storage_indices=["ii_s", "ji_s"],
-            temporal_inames=["io", "jo", "ko", "ki"],
 
             temporary_name="u_ij_plane",
             temporary_address_space=lp.AddressSpace.LOCAL,
@@ -145,7 +144,6 @@ def main(
             "u_",
             compute_map=ring_buffer_map,
             storage_indices=["kb"],
-            temporal_inames=["io", "ii", "jo", "ji", "ko", "ki"],
 
             temporary_name="u_k_buf",
             temporary_address_space=lp.AddressSpace.PRIVATE,

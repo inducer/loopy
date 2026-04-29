@@ -28,7 +28,6 @@ def test_compute_stub_simple_substitution_codegen() -> None:
         "u_",
         compute_map=nisl.make_map("{ [is] -> [i_s] : is = i_s }"),
         storage_indices=["i_s"],
-        temporal_inames=[],
         temporary_name="u_tmp",
         temporary_dtype=np.float32,
     )
@@ -37,4 +36,3 @@ def test_compute_stub_simple_substitution_codegen() -> None:
     assert "float u_tmp[16]" in code
     assert "u_tmp[i_s] = u[i_s]" in code
     assert "out[i] = u_tmp[i]" in code
-

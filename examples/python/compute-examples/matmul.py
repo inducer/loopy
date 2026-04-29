@@ -95,13 +95,13 @@ def shared_memory_tiled_matmul(
     knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
 
     compute_map_a = nisl.make_map(f"""{{
-        [is, ks] -> [a_ii, io, a_ki, ko, jo] :
+        [is, ks] -> [a_ii, io, a_ki, ko] :
             is = io * {bm} + a_ii and
             ks = ko * {bk} + a_ki
     }}""")
 
     compute_map_b = nisl.make_map(f"""{{
-        [ks, js] -> [b_ki, ko, b_ji, jo, io] :
+        [ks, js] -> [b_ki, ko, b_ji, jo] :
             js = jo * {bn} + b_ji and
             ks = ko * {bk} + b_ki
     }}""")
@@ -111,7 +111,7 @@ def shared_memory_tiled_matmul(
         "a_",
         compute_map=compute_map_a,
         storage_indices=["a_ii", "a_ki"],
-        temporal_inames=["io", "ko"],
+        extra_context_inames=["jo"],
         temporary_name="a_tile",
         temporary_address_space=lp.AddressSpace.LOCAL,
         compute_insn_id="a_load"
@@ -122,7 +122,7 @@ def shared_memory_tiled_matmul(
         "b_",
         compute_map=compute_map_b,
         storage_indices=["b_ki", "b_ji"],
-        temporal_inames=["ko", "jo", "io"],
+        extra_context_inames=["io"],
         temporary_name="b_tile",
         temporary_address_space=lp.AddressSpace.LOCAL,
         compute_insn_id="b_load"
@@ -161,13 +161,13 @@ def register_tiled_matmul(
     knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
 
     compute_map_a = nisl.make_map(f"""{{
-        [is, ks] -> [a_ii, io, a_ki, ko, jo] :
+        [is, ks] -> [a_ii, io, a_ki, ko] :
             is = io * {bm} + a_ii and
             ks = ko * {bk} + a_ki
     }}""")
 
     compute_map_b = nisl.make_map(f"""{{
-        [ks, js] -> [b_ki, ko, b_ji, jo, io] :
+        [ks, js] -> [b_ki, ko, b_ji, jo] :
             js = jo * {bn} + b_ji and
             ks = ko * {bk} + b_ki
     }}""")
@@ -177,7 +177,7 @@ def register_tiled_matmul(
         "a_",
         compute_map=compute_map_a,
         storage_indices=["a_ii", "a_ki"],
-        temporal_inames=["io", "ko"],
+        extra_context_inames=["jo"],
         temporary_name="a_smem",
         temporary_address_space=lp.AddressSpace.LOCAL,
         compute_insn_id="a_load"
@@ -188,7 +188,7 @@ def register_tiled_matmul(
         "b_",
         compute_map=compute_map_b,
         storage_indices=["b_ki", "b_ji"],
-        temporal_inames=["ko", "jo"],
+        extra_context_inames=["io"],
         temporary_name="b_smem",
         temporary_address_space=lp.AddressSpace.LOCAL,
         compute_insn_id="b_load"
@@ -243,13 +243,13 @@ def register_tiled_matmul(
                          outer_iname="ki_outer")
 
     a_reg_tile = nisl.make_map(f"""{{
-        [is, ks] -> [a_reg_i, ii_thr, ji_thr, ki_outer, dot, io, jo, ko] :
+        [is, ks] -> [a_reg_i, ii_thr, ki_outer, dot] :
         is = ii_thr * {tm} + a_reg_i and
         ks = ki_outer * 8 + dot
     }}""")
 
     b_reg_tile = nisl.make_map(f"""{{
-        [ks, js] -> [b_reg_j, ki_outer, dot, ii_thr, ji_thr, io, jo, ko] :
+        [ks, js] -> [b_reg_j, ki_outer, dot, ji_thr] :
         ks = ki_outer * 8 + dot and
         js = ji_thr * {tn} + b_reg_j
     }}""")
@@ -259,7 +259,7 @@ def register_tiled_matmul(
         "a_smem_",
         compute_map=a_reg_tile,
         storage_indices=["a_reg_i"],
-        temporal_inames=["ii_thr", "ji_thr", "ki_outer", "dot", "io", "jo", "ko"],
+        extra_context_inames=["ji_thr", "io", "jo", "ko"],
         temporary_name="a_reg",
         temporary_address_space=lp.AddressSpace.PRIVATE,
         compute_insn_id="a_reg_load"
@@ -270,7 +270,7 @@ def register_tiled_matmul(
         "b_smem_",
         compute_map=b_reg_tile,
         storage_indices=["b_reg_j"],
-        temporal_inames=["ii_thr", "ji_thr", "ki_outer", "dot", "io", "jo", "ko"],
+        extra_context_inames=["ii_thr", "io", "jo", "ko"],
         temporary_name="b_reg",
         temporary_address_space=lp.AddressSpace.PRIVATE,
         compute_insn_id="b_reg_load"

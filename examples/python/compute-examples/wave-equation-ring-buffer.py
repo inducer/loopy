@@ -90,7 +90,6 @@ def main(
             "u_hist",
             compute_map=ring_buffer_map,
             storage_indices=["tb"],
-            temporal_inames=["to", "ti"],
 
             temporary_name="u_time_buf",
             temporary_address_space=lp.AddressSpace.PRIVATE,
