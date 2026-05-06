@@ -607,6 +607,14 @@ def check_for_write_races(kernel: LoopKernel) -> None:
     """
     from loopy.kernel.data import ConcurrentTag
 
+    def iname_has_single_iteration(iname: str) -> bool:
+        try:
+            if kernel.get_constant_iname_length(iname) == 1:
+                return True
+        except isl.Error:
+            pass
+        return False
+
     for insn in kernel.instructions:
         for assignee_name, assignee_indices in zip(
                 insn.assignee_var_names(),
@@ -624,14 +632,16 @@ def check_for_write_races(kernel: LoopKernel) -> None:
 
                 raceable_parallel_insn_inames = {
                     iname for iname in insn.within_inames
-                    if kernel.iname_tags_of_type(iname, ConcurrentTag)}
+                    if kernel.iname_tags_of_type(iname, ConcurrentTag)
+                    and not iname_has_single_iteration(iname)}
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
                 raceable_parallel_insn_inames = {
                         iname for iname in insn.within_inames
                         if any(_is_racing_iname_tag(temp_var, tag)
-                            for tag in kernel.iname_tags(iname))}
+                            for tag in kernel.iname_tags(iname))
+                        and not iname_has_single_iteration(iname)}
 
             else:
                 raise LoopyError("invalid assignee name in instruction '%s'"
