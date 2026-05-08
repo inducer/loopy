@@ -390,23 +390,31 @@ def _compute_isinfusible_via_access_map(
     import pymbolic.primitives as prim
 
     from loopy.diagnostic import UnableToDetermineAccessRangeError
-    from loopy.kernel.tools import get_insn_access_map
+    from loopy.kernel.tools import get_insn_access_maps
     from loopy.symbolic import isl_set_from_expr
 
     try:
-        amap_pred = get_insn_access_map(kernel, insn_pred, var)
-        amap_succ = get_insn_access_map(kernel, insn_succ, var)
+        amaps_pred = get_insn_access_maps(kernel, insn_pred, var)
+        amaps_succ = get_insn_access_maps(kernel, insn_succ, var)
     except UnableToDetermineAccessRangeError:
         # either predecessors or successors has a non-affine access i.e.
         # fallback to the safer option => infusible
         return True
 
-    amap_pred = amap_pred.project_out_except(
-        outer_inames | {candidate_pred}, [isl.dim_type.param, isl.dim_type.in_]
-    )
-    amap_succ = amap_succ.project_out_except(
-        outer_inames | {candidate_succ}, [isl.dim_type.param, isl.dim_type.in_]
-    )
+    amaps_pred = [
+        amap.project_out_except(
+            outer_inames | {candidate_pred}, [isl.dim_type.param, isl.dim_type.in_])
+        for amap in amaps_pred]
+    amaps_succ = [
+        amap.project_out_except(
+            outer_inames | {candidate_succ}, [isl.dim_type.param, isl.dim_type.in_])
+        for amap in amaps_succ]
+
+    # amaps should have the same space after projecting out the inner loops, so they
+    # can safely be unioned
+    from loopy.kernel.tools import union_amaps
+    amap_pred = union_amaps(amaps_pred)
+    amap_succ = union_amaps(amaps_succ)
 
     # move outer inames to param
     for outer_iname in sorted(outer_inames):
