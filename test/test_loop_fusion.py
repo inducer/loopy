@@ -497,6 +497,39 @@ def test_reduction_loop_fusion_with_multiple_redn_in_same_insn(
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit.with_kernel(knl))
 
 
+def test_loop_fusion_with_inner_reduction(ctx_factory: cl.CtxFactory):
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+        ["{[i0, j0]: 0 <= i0, j0 < 10}",
+         "{[i1]: 0 <= i1 < 10}",
+         # Intentionally keeping j1 separate from i1 to test for regression. See
+         # https://github.com/inducer/loopy/pull/1009 for details.
+         "{[j1]: 0 <= j1 < 10}"],
+        """
+        a[i0, j0] = j0 * 1.0                  {id=insn1}
+        out[i1] = sum(j1, a[i1, j1])           {id=insn2}
+        """,
+    )
+    ref_t_unit = t_unit
+
+    knl = t_unit.default_entrypoint
+
+    fused_chunks = lp.get_kennedy_unweighted_fusion_candidates(
+        knl, frozenset(["i0", "i1"])
+    )
+    knl = lp.rename_inames_in_batch(knl, fused_chunks)
+
+    assert (
+        len(
+            knl.id_to_insn["insn1"].within_inames
+            & knl.id_to_insn["insn2"].within_inames
+        ) == 1
+    )
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit.with_kernel(knl))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
