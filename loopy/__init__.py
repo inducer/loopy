@@ -199,6 +199,10 @@ from loopy.transform.padding import (
     split_array_axis,
     split_array_dim,
 )
+from loopy.transform.parallelize import (
+    add_gbarrier_between_disjoint_loop_sets,
+    split_iteration_domain_across_work_items,
+)
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.precompute import precompute
 from loopy.transform.privatize import (
@@ -298,6 +302,7 @@ __all__ = [
     "add_barrier",
     "add_dependency",
     "add_dtypes",
+    "add_gbarrier_between_disjoint_loop_sets",
     "add_inames_for_unused_hw_axes",
     "add_inames_to_insn",
     "add_nosync",
@@ -402,6 +407,7 @@ __all__ = [
     "split_array_axis",
     "split_array_dim",
     "split_iname",
+    "split_iteration_domain_across_work_items",
     "split_reduction_inward",
     "split_reduction_outward",
     "t_unit_to_python",

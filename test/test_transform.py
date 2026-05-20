@@ -1745,6 +1745,289 @@ def test_duplicate_iname_not_read_only_nested(ctx_factory: cl.CtxFactory):
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
 
 
+def test_split_iteration_domain_across_work_items_scalar(
+        ctx_factory: cl.CtxFactory):
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
+
+    # Scalars only, nothing to parallelize
+    t_unit = lp.make_kernel(
+            "{:}",
+            "out = a + 1",
+            [
+                lp.GlobalArg("a,out", np.float32, shape=()),
+                ...,
+            ])
+
+    t_unit = lp.split_iteration_domain_across_work_items(
+        t_unit, max_device_compute_units=4)
+
+    knl = t_unit.default_entrypoint
+    all_tags = {tag for iname in knl.all_inames()
+                for tag in knl.iname_tags(iname)}
+    assert not any(isinstance(t, (GroupInameTag, LocalInameTag)) for t in all_tags)
+
+
+def test_split_iteration_domain_across_work_items_no_outer_inames(
+        ctx_factory: cl.CtxFactory):
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
+
+    # No outer inames, nothing to parallelize
+    t_unit = lp.make_kernel(
+            "{[i, j]: 0<=i,j<n}",
+            """
+            a[i] = 1
+            b[i, j] = 2
+            c[j] = 3
+            """,
+            [
+                lp.GlobalArg("a,b,c", np.float32, shape=lp.auto),
+                ...,
+            ],
+            assumptions="n>0")
+
+    t_unit = lp.split_iteration_domain_across_work_items(
+        t_unit, max_device_compute_units=4)
+
+    knl = t_unit.default_entrypoint
+    all_tags = {tag for iname in knl.all_inames()
+                for tag in knl.iname_tags(iname)}
+    assert not any(isinstance(t, (GroupInameTag, LocalInameTag)) for t in all_tags)
+
+
+def test_split_iteration_domain_across_work_items_single_non_redn_iname(
+        ctx_factory: cl.CtxFactory):
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
+
+    ctx = ctx_factory()
+
+    n_par = 345
+    n_inner = 5
+
+    # Single non-reduction outer iname (i)
+    t_unit = lp.make_kernel(
+            "{[i, k]: 0<=i<%d and 0<=k<%d}" % (n_par, n_inner),
+            """
+            out1[i] = 2*a[i]
+            out2[i, k] = b[i, k] + a[i]
+            """,
+            [
+                lp.GlobalArg("a,out1", np.float32, shape=(n_par,)),
+                lp.GlobalArg("b,out2", np.float32, shape=(n_par, n_inner)),
+            ])
+
+    ref_t_unit = t_unit
+    t_unit = lp.split_iteration_domain_across_work_items(
+        t_unit, max_device_compute_units=4)
+
+    knl = t_unit.default_entrypoint
+    assert knl.iname_tags_of_type("i_inner_inner", LocalInameTag) \
+        == {LocalInameTag(0)}
+    assert knl.iname_tags_of_type("i_inner_outer_outer", GroupInameTag) \
+        == {GroupInameTag(0)}
+    assert knl.iname_tags_of_type("i_inner_outer_inner", LocalInameTag) \
+        == {LocalInameTag(1)}
+    assert knl.iname_tags_of_type("k", (GroupInameTag, LocalInameTag)) == set()
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+def test_split_iteration_domain_across_work_items_multiple_non_redn_inames(
+        ctx_factory: cl.CtxFactory):
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
+
+    ctx = ctx_factory()
+
+    n_par = 345
+    n_inner = 5
+
+    # Multiple non-reduction outer inames ({i, j})
+    t_unit = lp.make_kernel(
+            "{[i, j, k]: 0<=i,j<%d and 0<=k<%d}" % (n_par, n_inner),
+            """
+            out1[i, j] = 2*a[i, j]
+            out2[i, j, k] = b[i, j, k] + c[k]
+            """,
+            [
+                lp.GlobalArg("a,out1", np.float32, shape=(n_par, n_par)),
+                lp.GlobalArg("b,out2", np.float32, shape=(n_par, n_par, n_inner)),
+                lp.GlobalArg("c", np.float32, shape=(n_inner,)),
+            ])
+
+    ref_t_unit = t_unit
+    t_unit = lp.split_iteration_domain_across_work_items(
+        t_unit, max_device_compute_units=4)
+
+    knl = t_unit.default_entrypoint
+    assert knl.iname_tags_of_type("i_inner_outer", GroupInameTag) \
+        == {GroupInameTag(0)}
+    assert knl.iname_tags_of_type("i_inner_inner", LocalInameTag) \
+        == {LocalInameTag(1)}
+    assert knl.iname_tags_of_type("j_inner", LocalInameTag) \
+        == {LocalInameTag(0)}
+    assert knl.iname_tags_of_type("k", (GroupInameTag, LocalInameTag)) == set()
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+def test_split_iteration_domain_across_work_items_only_redn_iname(
+        ctx_factory: cl.CtxFactory):
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
+
+    ctx = ctx_factory()
+
+    n_par = 345
+    n_inner = 5
+
+    # Reduction outer iname(s) only (doesn't matter if there's one or multiple, only
+    # one gets parallelized)
+    t_unit = lp.make_kernel(
+            "{[i, k]: 0<=i<%d and 0<=k<%d}" % (n_par, n_inner),
+            """
+            out1 = sum(i, a[i])
+            out2 = sum(i, sum(k, b[i, k]))
+            """,
+            [
+                lp.GlobalArg("a", np.float32, shape=(n_par,)),
+                lp.GlobalArg("b", np.float32, shape=(n_par, n_inner)),
+                lp.GlobalArg("out1,out2", np.float32, shape=()),
+            ])
+
+    ref_t_unit = t_unit
+    t_unit = lp.split_iteration_domain_across_work_items(
+        t_unit, max_device_compute_units=4)
+
+    knl = t_unit.default_entrypoint
+    assert knl.iname_tags_of_type("i_thread", LocalInameTag) \
+        == {LocalInameTag(0)}
+    assert knl.iname_tags_of_type("iprcmpt_i_group", GroupInameTag) \
+        == {GroupInameTag(0)}
+    assert knl.iname_tags_of_type("k", (GroupInameTag, LocalInameTag)) == set()
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+def test_split_iteration_domain_across_work_items_mixed(
+        ctx_factory: cl.CtxFactory):
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
+
+    ctx = ctx_factory()
+
+    n_par = 345
+    n_inner = 5
+
+    # Two outer inames: one non-reduction (i), one reduction (j)
+    t_unit = lp.make_kernel(
+            "{[i, j, k]: 0<=i,j<%d and 0<=k<%d}" % (n_par, n_inner),
+            """
+            out1[i] = sum(j, a[i, j])
+            out2[i] = sum(j, sum(k, b[i, j, k]))
+            """,
+            [
+                lp.GlobalArg("a", np.float32, shape=(n_par, n_par)),
+                lp.GlobalArg("b", np.float32, shape=(n_par, n_par, n_inner)),
+                lp.GlobalArg("out1,out2", np.float32, shape=(n_par,)),
+            ])
+
+    ref_t_unit = t_unit
+    t_unit = lp.split_iteration_domain_across_work_items(
+        t_unit, max_device_compute_units=4)
+
+    knl = t_unit.default_entrypoint
+    assert knl.iname_tags_of_type("i_inner_outer", GroupInameTag) \
+        == {GroupInameTag(0)}
+    assert knl.iname_tags_of_type("i_inner_inner", LocalInameTag) \
+        == {LocalInameTag(1)}
+    assert knl.iname_tags_of_type("j_inner", LocalInameTag) \
+        == {LocalInameTag(0)}
+    assert knl.iname_tags_of_type("k", (GroupInameTag, LocalInameTag)) == set()
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+def test_split_iteration_domain_across_work_items_multiple_loop_nests(
+        ctx_factory: cl.CtxFactory):
+    from loopy.kernel.data import GroupInameTag, LocalInameTag
+
+    ctx = ctx_factory()
+
+    n_par = 345
+    n_inner = 5
+
+    # Two parallelizable disjoint loop sets ({i, j} and {k, l})
+    t_unit = lp.make_kernel(
+            "{[i, j, k, l, m, p]:"
+            " 0<=i,j,k,l<%d and 0<=m,p<%d}" % (n_par, n_inner),
+            """
+            out1[i, j] = 2*a[i, j]
+            out2[i, j, m] = b[i, j, m] + c[m]
+            out3[k] = sum(l, d[k, l])
+            out4[k] = sum(l, sum(p, e[k, l, p]))
+            """,
+            [
+                lp.GlobalArg("a,out1", np.float32, shape=(n_par, n_par)),
+                lp.GlobalArg(
+                    "b,out2", np.float32, shape=(n_par, n_par, n_inner)),
+                lp.GlobalArg("c", np.float32, shape=(n_inner,)),
+                lp.GlobalArg("d", np.float32, shape=(n_par, n_par)),
+                lp.GlobalArg("e", np.float32, shape=(n_par, n_par, n_inner)),
+                lp.GlobalArg("out3,out4", np.float32, shape=(n_par,)),
+            ])
+
+    ref_t_unit = t_unit
+    t_unit = lp.split_iteration_domain_across_work_items(
+        t_unit, max_device_compute_units=4)
+
+    knl = t_unit.default_entrypoint
+    assert knl.iname_tags_of_type("i_inner_outer", GroupInameTag) \
+        == {GroupInameTag(0)}
+    assert knl.iname_tags_of_type("i_inner_inner", LocalInameTag) \
+        == {LocalInameTag(1)}
+    assert knl.iname_tags_of_type("j_inner", LocalInameTag) \
+        == {LocalInameTag(0)}
+    assert knl.iname_tags_of_type("m", (GroupInameTag, LocalInameTag)) == set()
+    assert knl.iname_tags_of_type("k_inner_outer", GroupInameTag) \
+        == {GroupInameTag(0)}
+    assert knl.iname_tags_of_type("k_inner_inner", LocalInameTag) \
+        == {LocalInameTag(1)}
+    assert knl.iname_tags_of_type("l_inner", LocalInameTag) \
+        == {LocalInameTag(0)}
+    assert knl.iname_tags_of_type("p", (GroupInameTag, LocalInameTag)) == set()
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit)
+
+
+def test_add_gbarrier_between_disjoint_loop_sets(ctx_factory: cl.CtxFactory):
+    from loopy.kernel.instruction import BarrierInstruction
+
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+            "{[i, j]: 0<=i,j<n}",
+            """
+            out1[i] = 2*a[i] {id=write1}
+            out2[j] = 3*b[j] {id=write2}
+            """,
+            [
+                lp.GlobalArg("a,b,out1,out2", np.float32, shape=lp.auto),
+                ...,
+            ],
+            assumptions="n>0")
+
+    ref_t_unit = t_unit
+    t_unit = lp.add_gbarrier_between_disjoint_loop_sets(t_unit)
+
+    knl = t_unit.default_entrypoint
+    gbarriers = [insn for insn in knl.instructions
+                 if isinstance(insn, BarrierInstruction)
+                 and insn.synchronization_kind == "global"]
+    assert len(gbarriers) == 1
+    gbarrier, = gbarriers
+    assert "write1" in gbarrier.depends_on
+    assert gbarrier.id in knl.id_to_insn["write2"].depends_on
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit, parameters={"n": 123})
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
