@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from constantdict import constantdict
+from typing_extensions import final, override
 
 import islpy as isl
 from pymbolic import ArithmeticExpression, var
@@ -45,6 +46,7 @@ from loopy.kernel.tools import (
 )
 from loopy.symbolic import (
     CombineMapper,
+    ExpansionState,
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
@@ -60,7 +62,7 @@ from loopy.transform.array_buffer_map import (
 from loopy.translation_unit import CallablesTable, TranslationUnit
 from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
 from loopy.typing import (
-    Expression,
+    InsnId,
     auto,
     integer_expr_or_err,
     integer_or_err,
@@ -69,12 +71,13 @@ from loopy.typing import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Collection, Sequence, Set as AbstractSet
 
+    from pymbolic.typing import Expression
     from pytools.tag import Tag
 
     from loopy.kernel import LoopKernel
-    from loopy.match import ToStackMatchConvertible
+    from loopy.match import StackMatch, ToStackMatchConvertible
 
 
 # {{{ contains_subst_rule_invocation
@@ -234,13 +237,21 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
 
 # {{{ replace rule invocation
 
-class RuleInvocationReplacer(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, subst_name, subst_tag, within,
-            access_descriptors, array_base_map,
-            storage_axis_names, storage_axis_sources,
-            non1_storage_axis_names,
-            temporary_name, compute_insn_id, compute_dep_id,
-            compute_read_variables):
+@final
+class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                subst_name: str,
+                subst_tag: Tag | None,
+                within: StackMatch,
+                access_descriptors,
+                array_base_map,
+                storage_axis_names: Collection[str],
+                storage_axis_sources,
+                non1_storage_axis_names,
+                temporary_name: str,
+                compute_dep_ids: AbstractSet[InsnId],
+                compute_read_variables):
         super().__init__(rule_mapping_context)
 
         self.subst_name = subst_name
@@ -255,22 +266,26 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         self.non1_storage_axis_names = non1_storage_axis_names
 
         self.temporary_name = temporary_name
-        self.compute_insn_id = compute_insn_id
-        self.compute_dep_id = compute_dep_id
+        self.compute_dep_ids = compute_dep_ids
 
         self.compute_read_variables = compute_read_variables
         self.compute_insn_depends_on = set()
 
-    def map_subst_rule(self, name, tag, arguments, expn_state):
+    @override
+    def map_subst_rule(self,
+                name: str,
+                tags: AbstractSet[Tag] | None,
+                arguments: Sequence[Expression],
+                expn_state: ExpansionState):
         if not (
                 name == self.subst_name
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction,
                     expn_state.stack)
-                and (self.subst_tag is None or self.subst_tag == tag)):
+                and (self.subst_tag is None or self.subst_tag == tags)):
             return super().map_subst_rule(
-                    name, tag, arguments, expn_state)
+                    name, tags, arguments, expn_state)
 
         # {{{ check if in footprint
 
@@ -285,7 +300,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
         if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
             return super().map_subst_rule(
-                    name, tag, arguments, expn_state)
+                    name, tags, arguments, expn_state)
 
         # }}}
 
@@ -336,10 +351,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
         return new_outer_expr
 
-    def map_kernel(self, kernel):
+    def map_kernel(self, kernel: LoopKernel):
         new_insns = []
 
-        excluded_insn_ids = {self.compute_insn_id, self.compute_dep_id}
         # precomputed_in_insns: set of insn ids in which the subst rule was
         # precomputed.
         precomputed_in_insns = set()
@@ -359,20 +373,19 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
             if self.replaced_something:
                 insn = insn.copy(
                         depends_on=(
-                            insn.depends_on
-                            | frozenset([self.compute_dep_id])))
+                            insn.depends_on | self.compute_dep_ids))
 
                 precomputed_in_insns.add(insn.id)
 
                 for dep in insn.depends_on:
-                    if dep in excluded_insn_ids:
+                    if dep in self.compute_dep_ids:
                         continue
 
                     dep_insn = kernel.id_to_insn[dep]
                     if (frozenset(dep_insn.assignee_var_names())
                             & self.compute_read_variables):
                         self.compute_insn_depends_on.update(
-                                insn.depends_on - excluded_insn_ids)
+                                insn.depends_on - self.compute_dep_ids)
 
             new_insns.append(insn)
 
@@ -967,7 +980,7 @@ def precompute_for_single_kernel(
             expression=compute_expression,
             # within_inames determined below
             )
-    compute_dep_id = compute_insn_id
+    compute_dep_ids = {compute_insn_id}
     added_compute_insns: list[InstructionBase] = [compute_insn]
 
     if temporary_address_space == AddressSpace.GLOBAL:
@@ -979,7 +992,7 @@ def precompute_for_single_kernel(
                 depends_on=frozenset([compute_insn_id]),
                 synchronization_kind="global",
                 mem_kind="global")
-        compute_dep_id = barrier_insn_id
+        compute_dep_ids.add(barrier_insn_id)
 
         added_compute_insns.append(barrier_insn)
 
@@ -995,7 +1008,7 @@ def precompute_for_single_kernel(
             access_descriptors, abm,
             storage_axis_names, storage_axis_sources,
             non1_storage_axis_names,
-            temporary_name, compute_insn_id, compute_dep_id,
+            temporary_name, frozenset(compute_dep_ids),
             compute_read_variables=get_dependencies(expander(compute_expression)))
 
     kernel = invr.map_kernel(kernel)

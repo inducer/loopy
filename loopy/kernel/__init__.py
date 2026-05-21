@@ -850,7 +850,7 @@ class LoopKernel(Taggable):
                 size=size)
 
     @memoize_method
-    def get_constant_iname_length(self, iname):
+    def get_constant_iname_length(self, iname: str) -> int:
         from loopy.isl_helpers import static_max_of_pw_aff
         from loopy.symbolic import aff_to_expr
         return int(aff_to_expr(static_max_of_pw_aff(
