@@ -867,7 +867,7 @@ def reduction_arg_to_subst_rule(
 
     inames_set = frozenset(inames)
 
-    substs = kernel.substitutions.copy()
+    substs = dict(kernel.substitutions)
 
     var_name_gen = kernel.get_var_name_generator()
 
