@@ -11,7 +11,11 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools.tag import Tag
 
 import loopy as lp
-from loopy.kernel.tools import DomainChanger
+from loopy.kernel.tools import (
+    DomainChanger,
+    find_most_recent_global_barrier,
+    kernel_has_global_barriers,
+)
 from loopy.match import StackMatch, parse_stack_match
 from loopy.symbolic import (
     DependencyMapper,
@@ -57,9 +61,9 @@ def _prev_name(name: str) -> str:
 
 
 def _basic_set_to_predicates(bset: nisl.BasicSet) -> frozenset[Expression]:
-    isl_bset = bset._reconstruct_isl_object()
+    isl_bset = bset.get_isl_object()
 
-    predicates = []
+    predicates: Sequence[Expression] = []
     for constraint in isl_bset.get_constraints():
         expr = pw_aff_to_expr(constraint.get_aff())
         if constraint.is_equality():
@@ -71,16 +75,16 @@ def _basic_set_to_predicates(bset: nisl.BasicSet) -> frozenset[Expression]:
 
 
 def _set_to_predicate_options(
-        set_: nisl.Set | nisl.BasicSet
-    ) -> Sequence[frozenset[Expression]]:
+    set_: nisl.Set | nisl.BasicSet,
+) -> Sequence[frozenset[Expression]]:
     if isinstance(set_, nisl.BasicSet):
-        if set_._reconstruct_isl_object().is_empty():
+        if set_.get_isl_object().is_empty():
             return []
         return [_basic_set_to_predicates(set_)]
 
-    predicate_options = []
+    predicate_options: Sequence[frozenset[Expression]] = []
     for bset in set_.get_basic_sets():
-        if not bset._reconstruct_isl_object().is_empty():
+        if not bset.get_isl_object().is_empty():
             predicate_options.append(_basic_set_to_predicates(bset))
 
     return predicate_options
@@ -89,22 +93,19 @@ def _set_to_predicate_options(
 # helper for gathering names of variables in pymbolic expressions
 def _gather_vars(expr: Expression) -> set[str]:
     deps = DependencyMapper()(expr)
-    var_names = set()
+    var_names: Sequence[str] = []
     for dep in deps:
         if isinstance(dep, p.Variable):
-            var_names.add(dep.name)
-        elif (
-                isinstance(dep, p.Subscript)
-                and isinstance(dep.aggregate, p.Variable)):
-            var_names.add(dep.aggregate.name)
+            var_names.append(dep.name)
+        elif isinstance(dep, p.Subscript) and isinstance(dep.aggregate, p.Variable):
+            var_names.append(dep.aggregate.name)
 
-    return var_names
+    return set(var_names)
 
 
 def _existing_name_mapping(
-        map_: nisl.Map | nisl.BasicMap,
-        name_mapping: Mapping[str, str]
-    ) -> Mapping[str, str]:
+    map_: nisl.Map | nisl.BasicMap, name_mapping: Mapping[str, str]
+) -> Mapping[str, str]:
     names = map_.names
     return {
         source: target
@@ -114,9 +115,9 @@ def _existing_name_mapping(
 
 
 def _normalize_renamed_dims(
-        map_: nisl.Map | nisl.BasicMap,
-        name_mapping: Mapping[str, str],
-    ) -> nisl.Map | nisl.BasicMap:
+    map_: nisl.Map | nisl.BasicMap,
+    name_mapping: Mapping[str, str],
+) -> nisl.Map | nisl.BasicMap:
     map_ = map_.equate_dims(_existing_name_mapping(map_, name_mapping))
 
     names = map_.names
@@ -136,13 +137,13 @@ def _normalize_renamed_dims(
     return map_.rename_dims(rename_mapping)
 
 
-def _add_extra_context_to_compute_map(
-        compute_map: nisl.Map,
-        storage_indices: Sequence[str],
-        extra_context_inames: Sequence[str],
-    ) -> nisl.Map:
+def _add_placement_inames_to_compute_map(
+    compute_map: nisl.Map,
+    storage_indices: Sequence[str],
+    placement_inames: Sequence[str],
+) -> nisl.Map:
     storage_set = frozenset(storage_indices)
-    extra_context_set = frozenset(extra_context_inames)
+    placement_set = frozenset(placement_inames)
 
     if storage_set - compute_map.output_names:
         raise ValueError(
@@ -150,49 +151,50 @@ def _add_extra_context_to_compute_map(
             + ", ".join(sorted(storage_set - compute_map.output_names))
         )
 
-    if extra_context_set & storage_set:
+    if placement_set & storage_set:
         raise ValueError(
-            "extra context inames must not be storage indices: "
-            + ", ".join(sorted(extra_context_set & storage_set))
+            "placement inames must not be storage indices: "
+            + ", ".join(sorted(placement_set & storage_set))
         )
 
-    parameter_context = extra_context_set & compute_map.parameter_names
+    parameter_context = placement_set & compute_map.parameter_names
     if parameter_context:
         raise ValueError(
-            "inames that appear in compute_map constraints must appear in "
-            "the compute_map range, not extra_context_inames: "
-            + ", ".join(sorted(parameter_context))
+            "inames that appear in compute_map constraints must appear in ",
+            "the compute_map range, not placement_inames: "
+            + ", ".join(sorted(parameter_context)),
         )
 
-    unsupported_context = extra_context_set & compute_map.input_names
+    unsupported_context = placement_set & compute_map.input_names
     if unsupported_context:
         raise ValueError(
-            "extra context inames must not appear in compute_map domain: "
+            "placement inames must not appear in compute_map domain: "
             + ", ".join(sorted(unsupported_context))
         )
 
     context_to_add = [
-        name for name in extra_context_inames
-        if name not in compute_map.output_names
+        name for name in placement_inames if name not in compute_map.output_names
     ]
     return compute_map.add_output_names(context_to_add)
 
 
 # {{{ gathering usage expressions
 
+
 class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
     """
     Gathers all expressions used as inputs to a particular substitution rule,
     identified by name.
     """
+
     def __init__(
-            self,
-            rule_mapping_ctx: SubstitutionRuleMappingContext,
-            subst_expander: SubstitutionRuleExpander,
-            kernel: LoopKernel,
-            subst_name: str,
-            subst_tag: Set[Tag] | Tag | None = None
-        ) -> None:
+        self,
+        rule_mapping_ctx: SubstitutionRuleMappingContext,
+        subst_expander: SubstitutionRuleExpander,
+        kernel: LoopKernel,
+        subst_name: str,
+        subst_tag: Set[Tag] | Tag | None = None,
+    ) -> None:
 
         super().__init__(rule_mapping_ctx)
 
@@ -207,22 +209,18 @@ class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
 
     @override
     def map_subst_rule(
-            self,
-            name: str,
-            tags: Set[Tag] | None,
-            arguments: Sequence[Expression],
-            expn_state: ExpansionState,
-        ) -> Expression:
+        self,
+        name: str,
+        tags: Set[Tag] | None,
+        arguments: Sequence[Expression],
+        expn_state: ExpansionState,
+    ) -> Expression:
 
         if name != self.subst_name:
-            return super().map_subst_rule(
-                name, tags, arguments, expn_state
-            )
+            return super().map_subst_rule(name, tags, arguments, expn_state)
 
         if self.subst_tag is not None and self.subst_tag != tags:
-            return super().map_subst_rule(
-                name, tags, arguments, expn_state
-            )
+            return super().map_subst_rule(name, tags, arguments, expn_state)
 
         rule = self.rule_mapping_context.old_subst_rules[name]
         arg_ctx = self.make_new_arg_context(
@@ -235,35 +233,43 @@ class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
 
         return 0
 
+
 # }}}
 
 
 # {{{ substitution rule use replacement
 
+
 class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
     def __init__(
-            self,
-            ctx: SubstitutionRuleMappingContext,
-            subst_name: str,
-            subst_tag: Sequence[Tag] | None,
-            usage_descriptors: Mapping[AccessTuple, nisl.Map | nisl.BasicMap],
-            storage_indices: Sequence[str],
-            temporary_name: str,
-            compute_insn_ids: str | Sequence[str],
-            footprint: nisl.Set
-        ) -> None:
+        self,
+        ctx: SubstitutionRuleMappingContext,
+        subst_name: str,
+        subst_tag: Sequence[Tag] | None,
+        usage_descriptors: Mapping[AccessTuple, nisl.Map | nisl.BasicMap],
+        storage_indices: Sequence[str],
+        temporary_name: str,
+        compute_insn_ids: str | Sequence[str],
+        temporary_address_space: AddressSpace,
+        footprint: nisl.Set,
+        compute_read_variables: Set[str],
+    ) -> None:
 
         super().__init__(ctx)
 
         self.subst_name: str = subst_name
         self.subst_tag: Sequence[Tag] | None = subst_tag
 
-        self.usage_descriptors: Mapping[AccessTuple, nisl.Map | nisl.BasicMap] = \
+        self.usage_descriptors: Mapping[AccessTuple, nisl.Map | nisl.BasicMap] = (
             usage_descriptors
+        )
         self.storage_indices: Sequence[str] = storage_indices
         self.footprint: nisl.Set = footprint
+        self.compute_read_variables: frozenset[str] = frozenset(compute_read_variables)
+        self.compute_insn_depends_on: set[str] = set()
 
         self.temporary_name: str = temporary_name
+        self.temporary_address_space: AddressSpace = temporary_address_space
         self.compute_insn_ids: frozenset[str] = (
             frozenset([compute_insn_ids])
             if isinstance(compute_insn_ids, str)
@@ -272,18 +278,16 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
 
         self.replaced_something: bool = False
 
-        # FIXME: may not always be the case (i.e. global barrier between
-        # compute insn and uses)
-        self.compute_dep_ids: frozenset[str] = self.compute_insn_ids
+        self.barrier_insn_depends_on: dict[str, set[str]] = {}
 
     @override
     def map_subst_rule(
-            self,
-            name: str,
-            tags: Set[Tag] | None,
-            arguments: Sequence[Expression],
-            expn_state: ExpansionState
-        ) -> Expression:
+        self,
+        name: str,
+        tags: Set[Tag] | None,
+        arguments: Sequence[Expression],
+        expn_state: ExpansionState,
+    ) -> Expression:
 
         rule = self.rule_mapping_context.old_subst_rules[name]
         arg_ctx = self.make_new_arg_context(
@@ -302,14 +306,14 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
 
         if len(arguments) != len(rule.arguments):
             raise ValueError(
-                f"Number of arguments passed to rule {name} "
-                f"does not match the signature of {name}."
+                f"Number of arguments passed to rule {name} ",
+                f"does not match the signature of {name}.",
             )
 
         local_map = self.usage_descriptors[access_key]
         temp_footprint = self.footprint.move_dims(
             frozenset(self.footprint.names) - frozenset(self.storage_indices),
-            isl.dim_type.param
+            isl.dim_type.param,
         )
 
         if not local_map.range() <= temp_footprint:
@@ -335,19 +339,24 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
 
     @override
     def map_kernel(
-            self,
-            kernel: LoopKernel,
-            within: StackMatch = lambda knl, insn, stack: True,
-            map_args: bool = True,
-            map_tvs: bool = True
-        ) -> LoopKernel:
+        self,
+        kernel: LoopKernel,
+        within: StackMatch = lambda knl, insn, stack: True,
+        map_args: bool = True,
+        map_tvs: bool = True,
+    ) -> LoopKernel:
 
         new_insns: Sequence[lp.InstructionBase] = []
+        replaced_insn_ids: set[str] = set()
+        excluded_insn_ids = set(self.compute_insn_ids)
+        recursive_dep_map = kernel.recursive_insn_dep_map()
         for insn in kernel.instructions:
             self.replaced_something = False
+            original_depends_on = insn.depends_on
 
-            if (isinstance(insn, lp.MultiAssignmentBase) and not
-                contains_a_subst_rule_invocation(kernel, insn)):
+            if isinstance(
+                insn, lp.MultiAssignmentBase
+            ) and not contains_a_subst_rule_invocation(kernel, insn):
                 new_insns.append(insn)
                 continue
 
@@ -356,39 +365,202 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             )
 
             if self.replaced_something:
-                insn = insn.copy(
-                    depends_on=(
-                        insn.depends_on | self.compute_dep_ids
-                    )
-                )
+                compute_read_depends_on: set[str] = set()
+                for dep in original_depends_on:
+                    if dep in excluded_insn_ids:
+                        continue
 
-                # FIXME: determine compute insn dependencies
+                    dep_insn = kernel.id_to_insn[dep]
+                    if (
+                        frozenset(dep_insn.assignee_var_names())
+                        & self.compute_read_variables
+                    ):
+                        compute_read_depends_on.update(
+                            original_depends_on - excluded_insn_ids
+                        )
+
+                use_dep_ids: frozenset[str] = self.compute_insn_ids
+                barrier_id = None
+                if kernel_has_global_barriers(kernel):
+                    barrier_id = find_most_recent_global_barrier(kernel, insn.id)
+
+                if barrier_id is not None:
+                    compute_depends_on_barrier = any(
+                        dep == barrier_id or barrier_id in recursive_dep_map[dep]
+                        for dep in compute_read_depends_on
+                    ) or any(
+                        barrier_id in recursive_dep_map[compute_insn_id]
+                        for compute_insn_id in self.compute_insn_ids
+                    )
+
+                    if (
+                        self.temporary_address_space == lp.AddressSpace.GLOBAL
+                        and not compute_depends_on_barrier
+                    ):
+                        self.barrier_insn_depends_on.setdefault(
+                            barrier_id, set()
+                        ).update(self.compute_insn_ids)
+                        use_dep_ids = frozenset([barrier_id])
+                    else:
+                        self.compute_insn_depends_on.add(barrier_id)
+
+                insn = insn.copy(depends_on=(insn.depends_on | use_dep_ids))
+                replaced_insn_ids.add(insn.id)
+
+                self.compute_insn_depends_on.update(compute_read_depends_on)
 
             new_insns.append(insn)
 
+        self.compute_insn_depends_on -= replaced_insn_ids
+
         return kernel.copy(instructions=new_insns)
+
 
 # }}}
 
 
+def _build_reuse_updates(
+    compute_map: nisl.Map,
+    footprint: nisl.Set | nisl.BasicSet,
+    named_domain: nisl.Set | nisl.BasicSet,
+    storage_indices: Sequence[str],
+    context_set: frozenset[str],
+    inames_to_advance: Sequence[str] | None,
+    temporary_name: str,
+    compute_insn_id: str,
+) -> tuple[
+    list[lp.InstructionBase],
+    list[str],
+    Sequence[frozenset[Expression] | None],
+    frozenset[str],
+]:
+    update_insns: list[lp.InstructionBase] = []
+    update_insn_ids: list[str] = []
+    refill_predicate_options: Sequence[frozenset[Expression] | None] = [None]
+    current_update_deps: frozenset[str] = frozenset()
+
+    if inames_to_advance is None:
+        return (
+            update_insns,
+            update_insn_ids,
+            refill_predicate_options,
+            current_update_deps,
+        )
+
+    advancing_set = frozenset(inames_to_advance)
+
+    compute_map_cur = compute_map.rename_dims({
+        name: _cur_name(name) for name in compute_map.output_names
+    })
+    compute_map_prev = compute_map.rename_dims({
+        name: _prev_name(name) for name in compute_map.output_names
+    })
+
+    reuse_map = compute_map_prev.reverse().apply_range(compute_map_cur)
+    reuse_map = reuse_map.add_constraint([
+        (
+            f"{name}_cur = {name}_prev + 1"
+            if name in advancing_set
+            else f"{name}_cur = {name}_prev"
+        )
+        for name in context_set
+    ])
+
+    current_footprint = footprint.rename_dims({
+        name: _cur_name(name) for name in footprint.names
+    })
+    previous_footprint = footprint.rename_dims({
+        name: _prev_name(name) for name in footprint.names
+    })
+
+    reuse_map = reuse_map.intersect_domain(previous_footprint)
+    reuse_map = reuse_map.intersect_range(current_footprint)
+    reuse_map = reuse_map - nisl.make_map(
+        "{ ["
+        + ", ".join(_prev_name(name) for name in footprint.names)
+        + "] -> ["
+        + ", ".join(_cur_name(name) for name in footprint.names)
+        + "] : "
+        + " and ".join(
+            f"{_cur_name(name)} = {_prev_name(name)}" for name in storage_indices
+        )
+        + " }"
+    )
+
+    reused_current = reuse_map.range()
+    refill = current_footprint - reused_current
+
+    cur_to_normal = {_cur_name(name): name for name in footprint.names}
+    reused_current = reused_current.rename_dims(cur_to_normal)
+    refill = refill.rename_dims(cur_to_normal)
+
+    reused_context = named_domain.project_out_except(reused_current.names)
+    refill_context = named_domain.project_out_except(refill.names)
+
+    reused_current = reused_current.gist(reused_context)
+    refill = refill.gist(refill_context)
+
+    refill_predicate_options = _set_to_predicate_options(refill)
+
+    storage_reuse_map = reuse_map.project_out_except(
+        frozenset(_prev_name(name) for name in storage_indices)
+        | frozenset(_cur_name(name) for name in storage_indices)
+    )
+    storage_reuse_map = storage_reuse_map.rename_dims({
+        _cur_name(name): name for name in storage_indices
+    })
+    cur_to_prev = storage_reuse_map.reverse()
+    cur_to_prev_pwma = cur_to_prev.as_pw_multi_aff()
+    prev_expr_by_name = {
+        cur_to_prev_pwma.get_dim_name(isl.dim_type.out, dim): pw_aff_to_expr(
+            cur_to_prev_pwma.get_at(dim)
+        )
+        for dim in range(cur_to_prev_pwma.dim(isl.dim_type.out))
+    }
+    prev_storage_exprs = [
+        prev_expr_by_name[_prev_name(name)] for name in storage_indices
+    ]
+
+    shift_assignee = var(temporary_name)[tuple(var(idx) for idx in storage_indices)]
+    shift_expression = var(temporary_name)[tuple(prev_storage_exprs)]
+
+    storage_set = frozenset(storage_indices)
+    shift_predicate_options = _set_to_predicate_options(reused_current)
+    for i, predicates in enumerate(shift_predicate_options):
+        shift_insn_id = (
+            f"{compute_insn_id}_shift"
+            if len(shift_predicate_options) == 1
+            else f"{compute_insn_id}_shift_{i}"
+        )
+        update_insns.append(
+            lp.Assignment(
+                id=shift_insn_id,
+                assignee=shift_assignee,
+                expression=shift_expression,
+                within_inames=context_set | storage_set,
+                predicates=predicates,
+                depends_on=current_update_deps,
+            )
+        )
+        update_insn_ids.append(shift_insn_id)
+        current_update_deps = frozenset([shift_insn_id])
+
+    return update_insns, update_insn_ids, refill_predicate_options, current_update_deps
+
+
 @for_each_kernel
 def compute(
-        kernel: LoopKernel,
-        substitution: str,
-        compute_map: nisl.Map,
-
-        storage_indices: Sequence[str],
-
-        extra_context_inames: Sequence[str] = (),
-        inames_to_advance: Sequence[str] | None = None,
-
-        temporary_name: str | None = None,
-        temporary_address_space: AddressSpace | None = None,
-
-        temporary_dtype: ToLoopyTypeConvertible = None,
-
-        compute_insn_id: str | None = None
-    ) -> LoopKernel:
+    kernel: LoopKernel,
+    substitution: str,
+    compute_map: nisl.Map,
+    storage_indices: Sequence[str],
+    placement_inames: Sequence[str] = (),
+    inames_to_advance: Sequence[str] | None = None,
+    temporary_name: str | None = None,
+    temporary_address_space: AddressSpace | None = None,
+    temporary_dtype: ToLoopyTypeConvertible = None,
+    compute_insn_id: str | None = None,
+) -> LoopKernel:
     """
     Inserts an instruction to compute an expression given by :arg:`substitution`
     and replaces all invocations of :arg:`substitution` with the result of the
@@ -404,23 +576,52 @@ def compute(
     :arg storage_indices: An ordered sequence of names of storage indices. Used
     to create inames for the loops that cover the required set of compute points.
 
-    :arg extra_context_inames: Context inames needed to place the compute
+    :arg placement_inames: Context inames needed to place the compute
     instruction, but not needed by the compute map constraints.
+
+    :arg inames_to_advance: Inames that, when used to observe other contexts,
+    reveal a reuse relation between buffer states.
+
+    :arg temporary_name: The name of the temporary variable.
+
+    :arg temporary_address_space: The address space where the temporary variable
+    should live.
+
+    :arg temporary_dtype: The data type of the temporary.
+
+    :arg compute_insn_id: The ID of the inserted instruction. If appropriate,
+    this will also be used to determine the shift and refill instruction IDs.
     """
 
-    compute_map = _add_extra_context_to_compute_map(
-        compute_map, storage_indices, extra_context_inames)
+    if not temporary_name:
+        temporary_name = substitution + "_temp"
+
+    # NOTE: we *could* allow compute to update existing temporaries, but for now
+    # just error if a temp with the same name already exists
+    if temporary_name in kernel.temporary_variables:
+        raise ValueError(f"A temporary named {temporary_name} already exists")
+
+    if not compute_insn_id:
+        compute_insn_id = substitution + "_compute_insn"
+
+    if temporary_address_space is None:
+        temporary_address_space = lp.AddressSpace.GLOBAL
+
+    compute_map = _add_placement_inames_to_compute_map(
+        compute_map, storage_indices, placement_inames
+    )
 
     parameter_inames = compute_map.parameter_names & kernel.all_inames()
     if parameter_inames:
         raise ValueError(
-            "inames that appear in compute_map constraints must appear in "
-            "the compute_map range: " + ", ".join(sorted(parameter_inames))
+            "inames that appear in compute_map constraints must appear in ",
+            "the compute_map range: " + ", ".join(sorted(parameter_inames)),
         )
 
     storage_set = frozenset(storage_indices)
     context_set = compute_map.output_names - storage_set
 
+    # interface names for composition must not match as required by namedisl
     name_mapping = {
         name: name + "_"
         for name in compute_map.output_names
@@ -431,7 +632,9 @@ def compute(
     # {{{ setup and useful variables
 
     ctx = SubstitutionRuleMappingContext(
-        kernel.substitutions, kernel.get_var_name_generator())
+        kernel.substitutions, kernel.get_var_name_generator()
+    )
+
     expander = SubstitutionRuleExpander(kernel.substitutions)
     expr_gatherer = UsageSiteExpressionGatherer(
         ctx, expander, kernel, substitution, None
@@ -440,241 +643,103 @@ def compute(
     _ = expr_gatherer.map_kernel(kernel)
     usage_exprs = expr_gatherer.usage_expressions
 
+    if len(usage_exprs) == 0:
+        raise ValueError(f"No usages of substitution rule {substitution} found")
+
     all_exprs = [expr for usage in usage_exprs for expr in usage]
-    usage_inames: frozenset[str] = frozenset(
+    used_inames: frozenset[str] = frozenset(
         set.union(*(_gather_vars(expr) for expr in all_exprs))
     )
 
     # }}}
 
-    # {{{ construct necessary pieces; footprint, global usage map
+    # {{{ construct necessary pieces; footprint
 
     # add compute inames to domain / kernel
     domain_changer = DomainChanger(kernel, kernel.all_inames())
     named_domain = nisl.make_basic_set(domain_changer.domain)
 
     # restrict domain to used inames
-    local_domain = named_domain.project_out_except(usage_inames)
+    local_domain = named_domain.project_out_except(used_inames)
 
-    # FIXME: gross. find a cleaner way to generate a space for an empty map
-    global_usage_map = nisl.make_map_from_domain_and_range(
-        nisl.make_set(isl.Set.empty(local_domain.get_space())),
-        compute_map.domain()
+    usage_map_space = nisl.make_map_from_domain_and_range(
+        local_domain, compute_map.domain()
+    ).get_space()
+
+    footprint = nisl.make_set(
+        isl.Set.empty(
+            compute_map
+            .rename_dims({value: key for key, value in name_mapping.items()})
+            .range()
+            .project_out_except(context_set | storage_set)
+            .get_space()
+        )
     )
-    global_usage_map = nisl.make_map(isl.Map.empty(global_usage_map.get_space()))
 
     usage_substs: Mapping[AccessTuple, nisl.Map | nisl.BasicMap] = {}
     for usage in usage_exprs:
-
-        # {{{ compute local usage map, update global usage map
-
-        local_usage_mpwaff = multi_pw_aff_from_exprs(
-            usage,
-            global_usage_map.get_space()
-        )
+        local_usage_mpwaff = multi_pw_aff_from_exprs(usage, usage_map_space)
 
         local_usage_map = nisl.make_map(local_usage_mpwaff.as_map())
-
         local_usage_map = local_usage_map.intersect_domain(local_domain)
-        global_usage_map = global_usage_map | local_usage_map
 
-        # }}}
-
-        # {{{ compute storage map
-
-        local_storage_map = local_usage_map.apply_range(compute_map)
         local_storage_map = _normalize_renamed_dims(
-            local_storage_map, name_mapping)
+            local_usage_map.apply_range(compute_map), name_mapping
+        )
 
-        # check that no restrictions happened during composition (i.e. tile
-        # valid for a single point in the domain)
+        # all usages must be accounted for in the derived storage domain
         if not local_usage_map.domain() <= local_storage_map.domain():
             continue
 
-        # clean up names
-        non_param_names = (usage_inames - context_set) | storage_set
-        parameter_names = frozenset(local_storage_map.names) - non_param_names
-        local_storage_map = local_storage_map.move_dims(parameter_names,
-                                                        isl.dim_type.param)
+        local_footprint = (
+            local_storage_map
+            .move_dims(context_set, isl.dim_type.param)
+            .range()
+            .project_out_except(context_set | storage_set)
+            .move_dims(context_set, isl.dim_type.set)
+        )
 
-        # }}}
+        footprint = footprint | local_footprint
+
+        # clean up names
+        local_storage_map = local_storage_map.move_dims(
+            local_storage_map.names - ((used_inames - context_set) | storage_set),
+            isl.dim_type.param,
+        )
 
         usage_substs[_access_key(usage)] = local_storage_map
-
-    storage_map = global_usage_map.apply_range(compute_map)
-    storage_map = _normalize_renamed_dims(storage_map, name_mapping)
 
     # }}}
 
     # {{{ compute bounds and update kernel domain
 
-    storage_map = storage_map.move_dims(context_set, isl.dim_type.param)
-    footprint = storage_map.range()
+    # FIXME: convex hull is required because of loopy's current limitations
+    footprint = footprint.convex_hull()
 
-    # clean up ticked duplicate names
-    footprint = footprint.project_out_except(context_set | storage_set)
-    footprint = footprint.move_dims(context_set, isl.dim_type.set)
-
-    # {{{ FIXME: use Sets instead of BasicSets when loopy is ready
-
-    # FIXME: convex hull is not permanent
-    footprint_isl = footprint._reconstruct_isl_object()
-    footprint = nisl.make_set(isl.Set.from_basic_set(footprint_isl.convex_hull()))
     named_domain = named_domain & footprint
-
-    if len(named_domain.get_basic_sets()) != 1:
-        raise ValueError("New domain should be composed of a single basic set")
-
-    # FIXME: use named object once loopy is name-ified
-    domain = named_domain.get_basic_sets()[0]._reconstruct_isl_object()
-    new_domains = domain_changer.get_domains_with(domain)
-
-    # }}}
+    new_domains = domain_changer.get_domains_with(named_domain.get_isl_object())
 
     kernel = kernel.copy(domains=new_domains)
 
     # }}}
 
-    if not temporary_name:
-        temporary_name = substitution + "_temp"
-
-    if not compute_insn_id:
-        compute_insn_id = substitution + "_compute"
-
-    # {{{ reuse analysis
-
-    update_insns: list[lp.InstructionBase] = []
-    update_insn_ids: list[str] = []
-    refill_predicate_options: Sequence[frozenset[Expression] | None] = [None]
-    current_update_deps: frozenset[str] = frozenset()
-
-    if inames_to_advance is not None:
-        advancing_set = frozenset(inames_to_advance)
-
-        compute_map_cur = compute_map.rename_dims({
-            name: _cur_name(name) for name in compute_map.output_names
-        })
-        compute_map_prev = compute_map.rename_dims({
-            name: _prev_name(name) for name in compute_map.output_names
-        })
-
-        cur_storage = global_usage_map.apply_range(compute_map_cur)
-        prev_storage = global_usage_map.apply_range(compute_map_prev)
-
-        reuse_map = prev_storage.reverse().apply_range(cur_storage)
-        reuse_map = reuse_map.add_constraint([
-            (
-                f"{name}_cur = {name}_prev + 1"
-                if name in advancing_set
-                else
-                f"{name}_cur = {name}_prev"
-            )
-            for name in context_set
-        ])
-
-        current_footprint = footprint.rename_dims({
-            name: _cur_name(name) for name in footprint.names
-        })
-        previous_footprint = footprint.rename_dims({
-            name: _prev_name(name) for name in footprint.names
-        })
-
-        reuse_map = reuse_map.intersect_domain(previous_footprint)
-        reuse_map = reuse_map.intersect_range(current_footprint)
-        reuse_map = reuse_map - nisl.make_map(
-            "{ ["
-            + ", ".join(_prev_name(name) for name in footprint.names)
-            + "] -> ["
-            + ", ".join(_cur_name(name) for name in footprint.names)
-            + "] : "
-            + " and ".join(
-                f"{_cur_name(name)} = {_prev_name(name)}"
-                for name in storage_indices
-            )
-            + " }"
-        )
-
-        reused_current = reuse_map.range()
-        refill = current_footprint - reused_current
-
-        cur_to_normal = {
-            _cur_name(name): name
-            for name in footprint.names
-        }
-        reused_current = reused_current.rename_dims(cur_to_normal)
-        refill = refill.rename_dims(cur_to_normal)
-
-        reused_context = named_domain.project_out_except(reused_current.names)
-        refill_context = named_domain.project_out_except(refill.names)
-
-        reused_current = reused_current.gist(reused_context)
-        refill = refill.gist(refill_context)
-
-        refill_predicate_options = _set_to_predicate_options(refill)
-
-        storage_reuse_map = reuse_map.project_out_except(
-            frozenset(_prev_name(name) for name in storage_indices)
-            | frozenset(_cur_name(name) for name in storage_indices)
-        )
-        storage_reuse_map = storage_reuse_map.rename_dims({
-            _cur_name(name): name
-            for name in storage_indices
-        })
-        cur_to_prev = storage_reuse_map.reverse()
-        cur_to_prev_pwma = cur_to_prev.as_pw_multi_aff()
-        prev_expr_by_name = {
-            cur_to_prev_pwma.get_dim_name(isl.dim_type.out, dim):
-            pw_aff_to_expr(cur_to_prev_pwma.get_at(dim))
-            for dim in range(cur_to_prev_pwma.dim(isl.dim_type.out))
-        }
-        prev_storage_exprs = [
-            prev_expr_by_name[_prev_name(name)]
-            for name in storage_indices
-        ]
-
-        shift_assignee = var(temporary_name)[
-            tuple(var(idx) for idx in storage_indices)
-        ]
-        shift_expression = var(temporary_name)[tuple(prev_storage_exprs)]
-
-        shift_predicate_options = _set_to_predicate_options(reused_current)
-        for i, predicates in enumerate(shift_predicate_options):
-            shift_insn_id = (
-                f"{compute_insn_id}_shift"
-                if len(shift_predicate_options) == 1
-                else f"{compute_insn_id}_shift_{i}"
-            )
-            update_insns.append(lp.Assignment(
-                id=shift_insn_id,
-                assignee=shift_assignee,
-                expression=shift_expression,
-                within_inames=context_set | storage_set,
-                predicates=predicates,
-                depends_on=current_update_deps,
-            ))
-            update_insn_ids.append(shift_insn_id)
-            current_update_deps = frozenset([shift_insn_id])
-
-    # }}}
-
     # {{{ create compute instruction in kernel
 
-    # FIXME: maybe just keep original around?
+    # restore original names to compute map
     compute_map = compute_map.rename_dims({
         value: key for key, value in name_mapping.items()
     })
 
     compute_pw_aff = compute_map.reverse().as_pw_multi_aff()
     storage_ax_to_global_expr = {
-        compute_pw_aff.get_dim_name(isl.dim_type.out, dim):
-        pw_aff_to_expr(compute_pw_aff.get_at(dim))
+        compute_pw_aff.get_dim_name(isl.dim_type.out, dim): pw_aff_to_expr(
+            compute_pw_aff.get_at(dim)
+        )
         for dim in range(compute_pw_aff.dim(isl.dim_type.out))
     }
 
     expr_subst_map = RuleAwareSubstitutionMapper(
-        ctx,
-        make_subst_func(storage_ax_to_global_expr),
-        within=parse_stack_match(None)
+        ctx, make_subst_func(storage_ax_to_global_expr), within=parse_stack_match(None)
     )
 
     subst_expr = kernel.substitutions[substitution].expression
@@ -683,18 +748,32 @@ def compute(
         kernel,
         None,
     )
-    compute_dep_ids = frozenset().union(*(
-        kernel.writer_map().get(var_name, frozenset())
-        for var_name in _gather_vars(compute_expression)
-    ))
+
+    compute_dep_ids = frozenset().union(
+        *(
+            kernel.writer_map().get(var_name, frozenset())
+            for var_name in _gather_vars(compute_expression)
+        )
+    )
 
     assignee = var(temporary_name)[tuple(var(idx) for idx in storage_indices)]
 
-    within_inames = compute_map.output_names
+    update_insns, update_insn_ids, refill_predicate_options, current_update_deps = (
+        _build_reuse_updates(
+            compute_map,
+            footprint,
+            named_domain,
+            storage_indices,
+            context_set,
+            inames_to_advance,
+            temporary_name,
+            compute_insn_id,
+        )
+    )
 
     new_insns = list(kernel.instructions)
     new_insns.extend(update_insns)
-
+    within_inames = compute_map.output_names
     for i, predicates in enumerate(refill_predicate_options):
         refill_insn_id = (
             compute_insn_id
@@ -731,10 +810,40 @@ def compute(
         storage_indices,
         temporary_name,
         update_insn_ids,
-        footprint
+        temporary_address_space,
+        footprint,
+        _gather_vars(compute_expression),
     )
 
     kernel = replacer.map_kernel(kernel)
+
+    if replacer.compute_insn_depends_on or replacer.barrier_insn_depends_on:
+        compute_insn_depends_on = frozenset(replacer.compute_insn_depends_on)
+        barrier_insn_depends_on = {
+            insn_id: frozenset(dep_ids)
+            for insn_id, dep_ids in replacer.barrier_insn_depends_on.items()
+        }
+        kernel = kernel.copy(
+            instructions=[
+                insn.copy(
+                    depends_on=(
+                        insn.depends_on
+                        | (
+                            compute_insn_depends_on
+                            if insn.id in update_insn_ids
+                            else frozenset()
+                        )
+                        | barrier_insn_depends_on.get(insn.id, frozenset())
+                    )
+                )
+                if (
+                    (insn.id in update_insn_ids and compute_insn_depends_on)
+                    or insn.id in barrier_insn_depends_on
+                )
+                else insn
+                for insn in kernel.instructions
+            ]
+        )
 
     # }}}
 
@@ -742,28 +851,25 @@ def compute(
 
     loopy_type = to_loopy_type(temporary_dtype, allow_none=True)
 
-    temp_shape = tuple(
-        pw_aff_to_expr(footprint.dim_max(dim)) + 1
+    # bounds can be non-zero based
+    temp_bounds = tuple(
+        (pw_aff_to_expr(footprint.dim_max(dim)), pw_aff_to_expr(footprint.dim_min(dim)))
         for dim in storage_indices
     )
 
-    new_temp_vars = dict(kernel.temporary_variables)
-
-    # FIXME: temp_var might already exist, handle the case where it does
     temp_var = lp.TemporaryVariable(
         name=temporary_name,
         dtype=loopy_type,
-        base_indices=(0,)*len(temp_shape),
-        shape=temp_shape,
+        base_indices=tuple(min for _, min in temp_bounds),
+        shape=tuple((max - min) + 1 for (max, min) in temp_bounds),
         address_space=temporary_address_space,
-        dim_names=tuple(storage_indices)
+        dim_names=tuple(storage_indices),
     )
 
+    new_temp_vars = dict(kernel.temporary_variables)
     new_temp_vars[temporary_name] = temp_var
 
-    kernel = kernel.copy(
-        temporary_variables=new_temp_vars
-    )
+    kernel = kernel.copy(temporary_variables=new_temp_vars)
 
     # }}}
 
