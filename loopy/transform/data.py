@@ -908,10 +908,13 @@ def reduction_arg_to_subst_rule(
     cb_mapper = ReductionCallbackMapper(map_reduction)
 
     from loopy.kernel.data import MultiAssignmentBase
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
 
     new_insns = []
     for insn in kernel.instructions:
-        if not isinstance(insn, MultiAssignmentBase):
+        if (not isinstance(insn, MultiAssignmentBase)
+                or not match(kernel, insn)):
             new_insns.append(insn)
         else:
             new_insns.append(insn.copy(expression=cb_mapper(insn.expression)))
