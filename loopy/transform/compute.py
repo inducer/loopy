@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeAlias, override
+from typing import TYPE_CHECKING, TypeAlias
 
 import namedisl as nisl
+from typing_extensions import override
 
 import islpy as isl
 import pymbolic.primitives as p

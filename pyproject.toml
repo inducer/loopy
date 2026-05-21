@@ -176,6 +176,8 @@ ue = "ue"
 ba = "ba"
 # Fortran Loopy
 floopy = "floopy"
+# thread
+thr = "thr"
 
 [tool.typos.files]
 extend-exclude = [

@@ -1248,7 +1248,7 @@ class ExpansionState:
     """
 
     kernel: LoopKernel
-    instruction: InstructionBase
+    instruction: InstructionBase | None
     stack: tuple[ConcreteMatchable, ...]
     """A tuple representing the current expansion stack, as a tuple of
     ``(name, tag)`` pairs.
@@ -1564,7 +1564,7 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
     def __call__(self,  # pyright: ignore[reportIncompatibleMethodOverride]
                  expr: Expression,
                  kernel: LoopKernel,
-                 insn: InstructionBase,
+                 insn: InstructionBase | None,
                  *args: P.args, **kwargs: P.kwargs) -> Expression:
         """
         :arg insn: A :class:`~loopy.kernel.InstructionBase` of which *expr* is
