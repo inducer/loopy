@@ -111,7 +111,7 @@ def shared_memory_tiled_matmul(
         "a_",
         compute_map=compute_map_a,
         storage_indices=["a_ii", "a_ki"],
-        extra_context_inames=["jo"],
+        placement_inames=["jo"],
         temporary_name="a_tile",
         temporary_address_space=lp.AddressSpace.LOCAL,
         compute_insn_id="a_load"
@@ -122,7 +122,7 @@ def shared_memory_tiled_matmul(
         "b_",
         compute_map=compute_map_b,
         storage_indices=["b_ki", "b_ji"],
-        extra_context_inames=["io"],
+        placement_inames=["io"],
         temporary_name="b_tile",
         temporary_address_space=lp.AddressSpace.LOCAL,
         compute_insn_id="b_load"
@@ -177,7 +177,7 @@ def register_tiled_matmul(
         "a_",
         compute_map=compute_map_a,
         storage_indices=["a_ii", "a_ki"],
-        extra_context_inames=["jo"],
+        placement_inames=["jo"],
         temporary_name="a_smem",
         temporary_address_space=lp.AddressSpace.LOCAL,
         compute_insn_id="a_load"
@@ -188,7 +188,7 @@ def register_tiled_matmul(
         "b_",
         compute_map=compute_map_b,
         storage_indices=["b_ki", "b_ji"],
-        extra_context_inames=["io"],
+        placement_inames=["io"],
         temporary_name="b_smem",
         temporary_address_space=lp.AddressSpace.LOCAL,
         compute_insn_id="b_load"
@@ -259,7 +259,7 @@ def register_tiled_matmul(
         "a_smem_",
         compute_map=a_reg_tile,
         storage_indices=["a_reg_i"],
-        extra_context_inames=["ji_thr", "io", "jo", "ko"],
+        placement_inames=["ji_thr", "io", "jo", "ko"],
         temporary_name="a_reg",
         temporary_address_space=lp.AddressSpace.PRIVATE,
         compute_insn_id="a_reg_load"
@@ -270,7 +270,7 @@ def register_tiled_matmul(
         "b_smem_",
         compute_map=b_reg_tile,
         storage_indices=["b_reg_j"],
-        extra_context_inames=["ii_thr", "io", "jo", "ko"],
+        placement_inames=["ii_thr", "io", "jo", "ko"],
         temporary_name="b_reg",
         temporary_address_space=lp.AddressSpace.PRIVATE,
         compute_insn_id="b_reg_load"

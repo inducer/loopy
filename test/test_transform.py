@@ -1804,7 +1804,7 @@ def test_compute_simple_tiled_matmul(
         "a_",
         compute_map=compute_map_a,
         storage_indices=["ii_s", "ki_s"],
-        extra_context_inames=["jo"],
+        placement_inames=["jo"],
         temporary_address_space=lp.AddressSpace.LOCAL,
         temporary_dtype=np.float64
     )
@@ -1814,7 +1814,7 @@ def test_compute_simple_tiled_matmul(
         "b_",
         compute_map=compute_map_b,
         storage_indices=["ki_s", "ji_s"],
-        extra_context_inames=["io"],
+        placement_inames=["io"],
         temporary_address_space=lp.AddressSpace.LOCAL,
         temporary_dtype=np.float64
     )

@@ -148,6 +148,28 @@ class HappensAfter:
     variable_name: str | None
     instances_rel: isl.Map | None
 
+    def __setstate__(self, state: Mapping[str, Any] | tuple[Any, ...]) -> None:
+        if isinstance(state, abc_Mapping):
+            variable_name = state.get("variable_name")
+            instances_rel = state.get("instances_rel")
+        else:
+            variable_name = state[0] if len(state) == 2 else None
+            instances_rel = state[-1] if state else None
+
+        object.__setattr__(self, "variable_name", variable_name)
+        object.__setattr__(self, "instances_rel", instances_rel)
+
+
+def _normalize_happens_after(ha: HappensAfter | isl.Map | None) -> HappensAfter:
+    if isinstance(ha, HappensAfter):
+        if not hasattr(ha, "variable_name"):
+            object.__setattr__(ha, "variable_name", None)
+        if not hasattr(ha, "instances_rel"):
+            object.__setattr__(ha, "instances_rel", None)
+        return ha
+
+    return HappensAfter(variable_name=None, instances_rel=ha)
+
 # }}}
 
 
@@ -363,7 +385,10 @@ class InstructionBase(ImmutableRecord, Taggable):
                         instances_rel=None)
                     for after_id in happens_after})
         elif isinstance(happens_after, dict):
-            happens_after = constantdict(happens_after)
+            happens_after = constantdict({
+                after_id: _normalize_happens_after(ha)
+                for after_id, ha in happens_after.items()
+            })
         else:
             raise TypeError("'happens_after' has unexpected type: "
                             f"{type(happens_after)}")
@@ -596,7 +621,7 @@ class InstructionBase(ImmutableRecord, Taggable):
         if self.id is not None:  # pylint:disable=access-member-before-definition
             self.id = intern(self.id)
         self.happens_after = constantdict({
-                intern(after_id): ha
+                intern(after_id): _normalize_happens_after(ha)
                 for after_id, ha in self.happens_after.items()})
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (

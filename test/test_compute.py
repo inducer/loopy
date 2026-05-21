@@ -29,6 +29,7 @@ def test_compute_stub_simple_substitution_codegen() -> None:
         compute_map=nisl.make_map("{ [is] -> [i_s] : is = i_s }"),
         storage_indices=["i_s"],
         temporary_name="u_tmp",
+        temporary_address_space=lp.AddressSpace.PRIVATE,
         temporary_dtype=np.float32,
     )
 
