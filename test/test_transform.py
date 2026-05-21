@@ -20,8 +20,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from collections.abc import Mapping
 import logging
+from collections.abc import Mapping
 
 import numpy as np
 import pytest
@@ -1757,9 +1757,9 @@ def test_compute_simple_tiled_matmul(
 
     import namedisl as nisl
 
-    M = case["M"]
-    N = case["N"]
-    K = case["K"]
+    m = case["M"]
+    n = case["N"]
+    k = case["K"]
     bm = case["BM"]
     bn = case["BN"]
     bk = case["BK"]
@@ -1772,14 +1772,14 @@ def test_compute_simple_tiled_matmul(
         c[i, j] = sum([k], a_(i, k) * b_(k, j))
         """,
         [
-            lp.GlobalArg("a", shape=(M, K), dtype=np.float64),
-            lp.GlobalArg("b", shape=(K, N), dtype=np.float64),
-            lp.GlobalArg("c", shape=(M, N), dtype=np.float64,
+            lp.GlobalArg("a", shape=(m, k), dtype=np.float64),
+            lp.GlobalArg("b", shape=(k, n), dtype=np.float64),
+            lp.GlobalArg("c", shape=(m, n), dtype=np.float64,
                          is_output=True)
         ]
     )
 
-    knl = lp.fix_parameters(knl, M=M, N=N, K=K)
+    knl = lp.fix_parameters(knl, M=m, N=n, K=k)
 
     # shared memory tile-level splitting
     knl = lp.split_iname(knl, "i", bm, inner_iname="ii", outer_iname="io")
@@ -1821,15 +1821,15 @@ def test_compute_simple_tiled_matmul(
 
     knl = lp.tag_inames(
         knl, {
-            "io"   : "g.0", # outer block loop over block rows
-            "jo"   : "g.1", # outer block loop over block cols
+            "io": "g.0",  # outer block loop over block rows
+            "jo": "g.1",  # outer block loop over block cols
 
-            "ii"   : "l.0", # inner block loop over rows
-            "ji"   : "l.1", # inner block loop over cols
+            "ii": "l.0",  # inner block loop over rows
+            "ji": "l.1",  # inner block loop over cols
 
-            "ii_s" : "l.0", # inner storage loop over a rows
-            "ji_s" : "l.0", # inner storage loop over b cols
-            "ki_s" : "l.1"  # inner storage loop over a cols / b rows
+            "ii_s": "l.0",  # inner storage loop over a rows
+            "ji_s": "l.0",  # inner storage loop over b cols
+            "ki_s": "l.1"  # inner storage loop over a cols / b rows
         }
     )
 
@@ -1838,8 +1838,9 @@ def test_compute_simple_tiled_matmul(
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    a = np.random.randn(M, K)
-    b = np.random.randn(K, N)
+    rng = np.random.default_rng()
+    a = rng.standard_normal((m, k))
+    b = rng.standard_normal((k, n))
 
     ex = knl.executor(ctx)
     _, out = ex(queue, a=a, b=b)

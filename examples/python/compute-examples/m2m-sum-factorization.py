@@ -36,11 +36,13 @@ relative error.
 import os
 import time
 
+
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 
 import namedisl as nisl
 import numpy as np
 import numpy.linalg as la
+
 import pymbolic.primitives as p
 
 import loopy as lp
@@ -226,10 +228,10 @@ def make_kernel_2d(
     )
 
     if use_compute:
-        x_axis_sum_map = nisl.make_map(f"""{{
+        x_axis_sum_map = nisl.make_map("""{
             [eta0_arg] -> [eta0, x_slot] :
                 eta0_arg = eta0 and x_slot = 0
-        }}""")
+        }""")
         knl = compute(
             knl,
             "x_axis_sum_",
@@ -560,7 +562,10 @@ def main(
             use_compute=variant_uses_compute)
 
         print(20 * "=", "Compressed M2M report", 20 * "=")
-        print(f"Variant: {'compute sum-factorized' if variant_uses_compute else 'inline'}")
+        variant_name = (
+            "compute sum-factorized" if variant_uses_compute else "inline"
+        )
+        print(f"Variant: {variant_name}")
         print(f"Dimension: {dimension}D")
         print(f"Order  : {order}")
         print(f"Eta tile: {eta_tile_size}")

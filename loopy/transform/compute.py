@@ -33,7 +33,7 @@ from loopy.types import ToLoopyTypeConvertible, to_loopy_type
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence, Set
+    from collections.abc import Mapping, Sequence, Set as AbstractSet
 
     from pymbolic.typing import Expression
 
@@ -193,7 +193,7 @@ class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
         subst_expander: SubstitutionRuleExpander,
         kernel: LoopKernel,
         subst_name: str,
-        subst_tag: Set[Tag] | Tag | None = None,
+        subst_tag: AbstractSet[Tag] | Tag | None = None,
     ) -> None:
 
         super().__init__(rule_mapping_ctx)
@@ -201,7 +201,7 @@ class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
         self.subst_expander: SubstitutionRuleExpander = subst_expander
         self.kernel: LoopKernel = kernel
         self.subst_name: str = subst_name
-        self.subst_tag: Set[Tag] | None = (
+        self.subst_tag: AbstractSet[Tag] | None = (
             {subst_tag} if isinstance(subst_tag, Tag) else subst_tag
         )
 
@@ -211,7 +211,7 @@ class UsageSiteExpressionGatherer(RuleAwareIdentityMapper[[]]):
     def map_subst_rule(
         self,
         name: str,
-        tags: Set[Tag] | None,
+        tags: AbstractSet[Tag] | None,
         arguments: Sequence[Expression],
         expn_state: ExpansionState,
     ) -> Expression:
@@ -252,7 +252,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
         compute_insn_ids: str | Sequence[str],
         temporary_address_space: AddressSpace,
         footprint: nisl.Set,
-        compute_read_variables: Set[str],
+        compute_read_variables: AbstractSet[str],
     ) -> None:
 
         super().__init__(ctx)
@@ -284,7 +284,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
     def map_subst_rule(
         self,
         name: str,
-        tags: Set[Tag] | None,
+        tags: AbstractSet[Tag] | None,
         arguments: Sequence[Expression],
         expn_state: ExpansionState,
     ) -> Expression:

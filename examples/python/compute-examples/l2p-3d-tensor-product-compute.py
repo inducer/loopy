@@ -30,6 +30,7 @@ GFLOP/s, speedup, and relative error.
 import os
 import time
 
+
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp")
 
 import namedisl as nisl

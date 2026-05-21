@@ -1,4 +1,3 @@
-import time
 
 import namedisl as nisl
 import numpy as np
@@ -9,7 +8,6 @@ import pyopencl.array as cl_array
 
 import loopy as lp
 from loopy.transform.compute import compute
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
 
 def benchmark_kernel(
@@ -54,13 +52,13 @@ def benchmark_kernel(
 
     m, k = a.shape
     _, n = b.shape
-    print(f"================= Results =================")
+    print("================= Results =================")
     print(f"M = {m}, N = {n}, K = {k}")
     print(f"           Error = {error:.4}")
     print(f"   Total time (s): {total_elapsed_s:.4}")
     print(f"Time per iter (s): {s_per_iter:.4}")
     print(f"          GFLOP/s: {gflops}")
-    print(f"===========================================")
+    print("===========================================")
 
 
 def naive_matmul(
@@ -280,16 +278,16 @@ def register_tiled_matmul(
 
     iname_tags = {
         # global tiles
-        "io" : "g.1",
-        "jo" : "g.0",
+        "io": "g.1",
+        "jo": "g.0",
 
         # a local storage axes
         "a_local": "l.1",
-        "a_ki"   : "l.0",
+        "a_ki": "l.0",
 
         # b local storage axes
         "b_local": "l.0",
-        "b_ki"   : "l.1",
+        "b_ki": "l.1",
 
         # register tiles
         "ii_thr": "l.1",
@@ -353,8 +351,9 @@ def main(
         properties=cl.command_queue_properties.PROFILING_ENABLE
     )
 
-    a = np.random.randn(m, k).astype(dtype)
-    b = np.random.randn(k, n).astype(dtype)
+    rng = np.random.default_rng()
+    a = rng.standard_normal((m, k)).astype(dtype)
+    b = rng.standard_normal((k, n)).astype(dtype)
 
     benchmark_kernel(knl, queue, a, b)
 
