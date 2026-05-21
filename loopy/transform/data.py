@@ -861,7 +861,9 @@ def set_temporary_scope(kernel, temp_var_names, address_space):
 
 @for_each_kernel
 def reduction_arg_to_subst_rule(
-        kernel, inames, insn_match=None, subst_rule_name=None):
+        kernel: LoopKernel, inames: str | Sequence[str],
+        insn_match: ToMatchConvertible = None,
+        subst_rule_name: str | None = None):
     if isinstance(inames, str):
         inames = [s.strip() for s in inames.split(",")]
 
