@@ -415,6 +415,7 @@ def precompute_for_single_kernel(
         dtype: ToLoopyTypeConvertible | None = None,
         fetch_bounding_box: bool = False,
         temporary_address_space: AddressSpace | type[auto] | None = None,
+        add_barrier_for_global_temporary: bool = True,
         compute_insn_id: str | None = None,
         _enable_mirgecom_workaround: bool = False,
         ) -> LoopKernel:
@@ -983,7 +984,9 @@ def precompute_for_single_kernel(
     compute_dep_ids = {compute_insn_id}
     added_compute_insns: list[InstructionBase] = [compute_insn]
 
-    if temporary_address_space == AddressSpace.GLOBAL:
+    if (
+            temporary_address_space == AddressSpace.GLOBAL
+            and add_barrier_for_global_temporary):
         barrier_insn_id = kernel.make_unique_instruction_id(
                 based_on=c_subst_name+"_barrier")
         from loopy.kernel.instruction import BarrierInstruction
