@@ -2730,7 +2730,7 @@ def set_to_cond_expr(isl_set: isl.Set) -> Expression:
 # {{{ Reduction callback mapper
 
 CallbackType: TypeAlias = """Callable[
-    Concatenate[Expression,
+    Concatenate[Reduction,
                 Callable[Concatenate[Expression, P], Expression],
                 P], Expression | None]"""
 
