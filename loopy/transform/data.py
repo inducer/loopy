@@ -30,21 +30,33 @@ from warnings import warn
 
 import numpy as np
 from constantdict import constantdict
+from typing_extensions import final, override
 
 from islpy import dim_type
 from pytools import MovedFunctionDeprecationWrapper
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import AddressSpace, ImageArg, TemporaryVariable
+from loopy.kernel.data import (
+    AddressSpace,
+    ImageArg,
+    SubstitutionRule,
+    TemporaryVariable,
+)
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
+from loopy.match import ToStackMatchConvertible, parse_stack_match
+from loopy.symbolic import (
+    ExpansionState,
+    Reduction,
+    RuleAwareIdentityMapper,
+    SubstitutionRuleMappingContext,
+)
 from loopy.translation_unit import CallablesTable, TranslationUnit, for_each_kernel
 from loopy.types import LoopyType
 from loopy.typing import assert_tuple, auto
 
 
 if TYPE_CHECKING:
-
     from pymbolic import ArithmeticExpression, Expression
 
     from loopy.kernel.array import ToDimTagsParseable
@@ -567,8 +579,7 @@ set_array_dim_names = (MovedFunctionDeprecationWrapper(
 # {{{ remove_unused_arguments
 
 @for_each_kernel
-def remove_unused_arguments(kernel):
-
+def remove_unused_arguments(kernel: LoopKernel):
     import loopy as lp
     exp_kernel = lp.expand_subst(kernel)
 
@@ -581,9 +592,10 @@ def remove_unused_arguments(kernel):
     from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
     from loopy.symbolic import get_dependencies
 
-    def tolerant_get_deps(expr):
+    def tolerant_get_deps(expr: Expression | type[lp.auto] | None):
         if expr is None or expr is lp.auto:
             return set()
+        assert not isinstance(expr, type)
         return get_dependencies(expr)
 
     for ary in chain(kernel.args, kernel.temporary_variables.values()):
@@ -734,7 +746,12 @@ def set_argument_order(kernel, arg_names):
 # {{{ rename argument
 
 @for_each_kernel
-def rename_argument(kernel, old_name, new_name, existing_ok=False):
+def rename_argument(
+            kernel: LoopKernel,
+            old_name: str,
+            new_name: str,
+            existing_ok: bool = False
+        ):
     """
     .. versionadded:: 2016.2
     """
@@ -859,66 +876,72 @@ def set_temporary_scope(kernel, temp_var_names, address_space):
 
 # {{{ reduction_arg_to_subst_rule
 
-@for_each_kernel
-def reduction_arg_to_subst_rule(
-        kernel, inames, insn_match=None, subst_rule_name=None):
-    if isinstance(inames, str):
-        inames = [s.strip() for s in inames.split(",")]
+@final
+class _ReductionArgToSubstMapper(RuleAwareIdentityMapper[[]]):
+    def __init__(self,
+                rule_mapping_context: SubstitutionRuleMappingContext,
+                inames: Sequence[str],
+                subst_rule_name: str | None,
+                substs: dict[str, SubstitutionRule]
+            ):
+        super().__init__(rule_mapping_context)
+        self.subst_rule_name = subst_rule_name
+        self.inames = inames
+        self.inames_set = frozenset(inames)
 
-    inames_set = frozenset(inames)
-
-    substs = kernel.substitutions.copy()
-
-    var_name_gen = kernel.get_var_name_generator()
-
-    def map_reduction(expr, rec, nresults=1):
-        if frozenset(expr.inames) != inames_set:
+    @override
+    def map_reduction(self, expr: Reduction, /,
+                        expn_state: ExpansionState) -> Expression:
+        if frozenset(expr.inames) != self.inames_set:
             return type(expr)(
                     operation=expr.operation,
-                    inames=expr.inames,
-                    expr=rec(expr.expr),
+                    inames=tuple(expr.inames),
+                    expr=self.rec(expr.expr, expn_state),
                     allow_simultaneous=expr.allow_simultaneous)
 
-        if subst_rule_name is None:
-            subst_rule_prefix = "red_%s_arg" % "_".join(inames)
-            my_subst_rule_name = var_name_gen(subst_rule_prefix)
+        if self.subst_rule_name is None:
+            subst_rule_prefix = "red_%s_arg" % "_".join(self.inames)
+            proposed_name = \
+                self.rule_mapping_context.make_unique_var_name(subst_rule_prefix)
         else:
-            my_subst_rule_name = subst_rule_name
+            proposed_name = self.subst_rule_name
 
-        if my_subst_rule_name in substs:
+        actual_name = self.rule_mapping_context.register_subst_rule(
+                proposed_name, tuple(self.inames), expr.expr)
+        if proposed_name != actual_name and self.subst_rule_name:
             raise LoopyError("substitution rule '%s' already exists"
-                    % my_subst_rule_name)
-
-        from loopy.kernel.data import SubstitutionRule
-        substs[my_subst_rule_name] = SubstitutionRule(
-                name=my_subst_rule_name,
-                arguments=tuple(inames),
-                expression=expr.expr)
+                    % proposed_name)
 
         from pymbolic import var
-        iname_vars = [var(iname) for iname in inames]
+        iname_vars = [var(iname) for iname in self.inames]
 
         return type(expr)(
                 operation=expr.operation,
-                inames=expr.inames,
-                expr=var(my_subst_rule_name)(*iname_vars),
+                inames=tuple(expr.inames),
+                expr=var(proposed_name)(*iname_vars),
                 allow_simultaneous=expr.allow_simultaneous)
 
-    from loopy.symbolic import ReductionCallbackMapper
-    cb_mapper = ReductionCallbackMapper(map_reduction)
 
-    from loopy.kernel.data import MultiAssignmentBase
+@for_each_kernel
+def reduction_arg_to_subst_rule(
+            kernel: LoopKernel,
+            inames: Sequence[str] | str,
+            subst_rule_name: str | None = None,
+            within: ToStackMatchConvertible = None,
+        ):
+    if isinstance(inames, str):
+        inames = [s.strip() for s in inames.split(",")]
 
-    new_insns = []
-    for insn in kernel.instructions:
-        if not isinstance(insn, MultiAssignmentBase):
-            new_insns.append(insn)
-        else:
-            new_insns.append(insn.copy(expression=cb_mapper(insn.expression)))
+    within = parse_stack_match(within)
 
-    return kernel.copy(
-            instructions=new_insns,
-            substitutions=substs)
+    vng = kernel.get_var_name_generator()
+    rule_mapping_context = SubstitutionRuleMappingContext(
+        kernel.substitutions, vng)
+    mapper = _ReductionArgToSubstMapper(
+        rule_mapping_context, inames, subst_rule_name, dict(kernel.substitutions))
+    kernel = mapper.map_kernel(kernel, within=within)
+
+    return rule_mapping_context.finish_kernel(kernel)
 
 # }}}
 
