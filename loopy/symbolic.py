@@ -1248,7 +1248,7 @@ class ExpansionState:
     """
 
     kernel: LoopKernel
-    instruction: InstructionBase | None
+    instruction: InstructionBase
     stack: tuple[ConcreteMatchable, ...]
     """A tuple representing the current expansion stack, as a tuple of
     ``(name, tag)`` pairs.
