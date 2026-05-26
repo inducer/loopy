@@ -252,7 +252,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
         temporary_name: str,
         compute_insn_ids: str | Sequence[str],
         temporary_address_space: AddressSpace,
-        footprint: nisl.Set,
+        footprint: nisl.Set | nisl.BasicSet,
         compute_read_variables: AbstractSet[str],
     ) -> None:
 
@@ -265,7 +265,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
             usage_descriptors
         )
         self.storage_indices: Sequence[str] = storage_indices
-        self.footprint: nisl.Set = footprint
+        self.footprint: nisl.Set | nisl.BasicSet = footprint
         self.compute_read_variables: frozenset[str] = frozenset(compute_read_variables)
         self.compute_insn_depends_on: set[str] = set()
 
@@ -718,9 +718,18 @@ def compute(
     footprint = footprint.convex_hull()
 
     named_domain = named_domain & footprint
-    new_domains = domain_changer.get_domains_with(named_domain.get_isl_object())
+
+    # {{{ FIXME: remove / change once loopy is "Set-aware"
+
+    from islpy import BasicSet
+
+    isl_domain = named_domain.get_isl_object()
+    assert isinstance(isl_domain, BasicSet)
+    new_domains = domain_changer.get_domains_with(isl_domain)
 
     kernel = kernel.copy(domains=new_domains)
+
+    # }}}
 
     # }}}
 
