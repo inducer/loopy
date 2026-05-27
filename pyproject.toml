@@ -231,3 +231,34 @@ reportUnknownArgumentType = "none"
 reportUnknownMemberType = "hint"
 reportUnknownParameterType = "none"
 reportUnknownVariableType = "none"
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+]
+project-excludes = [
+    "proto-tests/*.py",
+    "contrib/mem-pattern-explorer/*.py",
+    "loopy/ipython_ext.py",
+    "loopy/frontend/fortran/*.py",
+    "doc",
+    ".conda-root",
+    ".venv",
+]
+preset = "strict"
+infer-with-first-use = false
+
+[tool.pyrefly.errors]
+implicit-any-parameter = "ignore"
+implicit-any-empty-container = "ignore"
+missing-override-decorator = "warn"
+bad-override = "warn"
+
+[[tool.pyrefly.sub-config]]
+matches = "test/*.py"
+[tool.pyrefly.sub-config.errors]
+missing-override-decorator = "ignore"
+bad-override-param-name = "ignore"
+
+bad-argument-type = "warn"
+missing-attribute = "warn"
