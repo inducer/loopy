@@ -180,10 +180,12 @@ class AtomicNumpyType(NumpyType, AtomicType):
     def __hash__(self):
         return 0xa7031c ^ hash(self.dtype)
 
+    @override
     def update_persistent_hash(self, key_hash: Hash, key_builder: KeyBuilder) -> None:
         key_builder.rec(key_hash, 0xa7031c)
         key_builder.rec(key_hash, self.dtype)
 
+    @override
     def __repr__(self):
         return "np_atomic:%s" % repr(self.dtype)
 
