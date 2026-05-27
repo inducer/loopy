@@ -65,7 +65,7 @@ def test_chunk_iname(ctx_factory: cl.CtxFactory, fix_parameters):
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
             [
-                lp.GlobalArg("out,a", np.float32, shape=lp.auto),
+                lp.GlobalArg("out,a", np.float32, shape=lp.AUTO),
                 "..."
                 ],
             assumptions="n>0")
@@ -187,7 +187,7 @@ def test_add_barrier(ctx_factory: cl.CtxFactory):
             out[ii, jj] = 2*out[ii, jj]{id=double}
             """,
             [
-                lp.GlobalArg("out", is_input=False, shape=lp.auto),
+                lp.GlobalArg("out", is_input=False, shape=lp.AUTO),
                 ...
             ]
     )
@@ -1009,7 +1009,7 @@ def test_extract_subst_with_iname_deps_in_templ(ctx_factory: cl.CtxFactory):
             """
             y[i, j, k] = x[i, j, k]
             """,
-            [lp.GlobalArg("x,y", shape=lp.auto, dtype=float)],
+            [lp.GlobalArg("x,y", shape=lp.AUTO, dtype=float)],
             lang_version=(2018, 2))
 
     knl = lp.extract_subst(knl, "rule1", "x[i, arg1, arg2]",
@@ -1137,8 +1137,8 @@ def test_rename_argument_with_auto_stride(ctx_factory: cl.CtxFactory):
             """
             y[i] = x[i]
             """, [lp.GlobalArg("x", dtype=float,
-                               shape=lp.auto,
-                               dim_tags=[FixedStrideArrayDimTag(lp.auto)]), ...])
+                               shape=lp.AUTO,
+                               dim_tags=[FixedStrideArrayDimTag(lp.AUTO)]), ...])
 
     knl = lp.rename_argument(knl, "x", "x_new")
 
@@ -1249,7 +1249,7 @@ def test_prefetch_with_within(ctx_factory: cl.CtxFactory):
             f[j] = 2 * f[j] {id=update_f, nosync=set_f}
             ... gbarrier {id=insn_gbar}
             y[i, k] = f[k] * x[i, k] {id=set_y}
-            """, [lp.GlobalArg("x", shape=lp.auto, dtype=float), ...],
+            """, [lp.GlobalArg("x", shape=lp.AUTO, dtype=float), ...],
             seq_dependencies=True,
             name="myknl")
 
@@ -1729,7 +1729,7 @@ def test_duplicate_iname_not_read_only_nested(ctx_factory: cl.CtxFactory):
             y[i] = acc {id=assign, tags=foo}
         end
         """,
-        [lp.GlobalArg("A,x,y", shape=lp.auto, dtype=np.float32),
+        [lp.GlobalArg("A,x,y", shape=lp.AUTO, dtype=np.float32),
          ...],
          seq_dependencies=True,
     )

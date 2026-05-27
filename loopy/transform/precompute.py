@@ -61,7 +61,7 @@ from loopy.translation_unit import CallablesTable, TranslationUnit
 from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
 from loopy.typing import (
     Expression,
-    auto,
+    AUTO,
     integer_expr_or_err,
     integer_or_err,
     not_none,
@@ -401,7 +401,7 @@ def precompute_for_single_kernel(
 
         dtype: ToLoopyTypeConvertible | None = None,
         fetch_bounding_box: bool = False,
-        temporary_address_space: AddressSpace | type[auto] | None = None,
+        temporary_address_space: AddressSpace | AUTO | None = None,
         compute_insn_id: str | None = None,
         _enable_mirgecom_workaround: bool = False,
         ) -> LoopKernel:
@@ -1082,7 +1082,7 @@ def precompute_for_single_kernel(
     loopy_type = to_loopy_type(dtype, allow_none=True)
 
     if temporary_address_space is None:
-        temporary_address_space = lp.auto
+        temporary_address_space = lp.AUTO
 
     new_temp_shape = tuple(abm.non1_storage_shape)
 
@@ -1136,9 +1136,9 @@ def precompute_for_single_kernel(
 
         if temporary_address_space == temp_var.address_space:
             pass
-        elif temporary_address_space is lp.auto:
+        elif temporary_address_space is lp.AUTO:
             temporary_address_space = temp_var.address_space
-        elif temp_var.address_space is lp.auto:
+        elif temp_var.address_space is lp.AUTO:
             pass
         else:
             raise LoopyError("Existing and new temporary '%s' do not "

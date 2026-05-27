@@ -138,9 +138,9 @@ class ArrayArgDescriptor(ArgDescriptor):
             # {{{ sanity checks
 
             from loopy.kernel.array import ArrayDimImplementationTag
-            from loopy.typing import auto
+            from loopy.typing import AUTO
 
-            assert isinstance(self.shape, tuple) or self.shape in [None, auto]
+            assert isinstance(self.shape, tuple) or self.shape in [None, AUTO]
             assert isinstance(self.dim_tags, tuple) or self.dim_tags is None
 
             if self.dim_tags:
@@ -180,13 +180,13 @@ class ArrayArgDescriptor(ArgDescriptor):
         Returns :class:`frozenset` of all the variable names the
         :class:`ArrayArgDescriptor` depends on.
         """
-        from loopy.typing import auto
+        from loopy.typing import AUTO
 
         result: set[p.Variable] = set()
         if self.shape:
             dep_mapper = DependencyMapper(composite_leaves=False)
             for axis_len in self.shape:
-                if axis_len not in [None, auto]:
+                if axis_len not in [None, AUTO]:
                     result |= cast("set[p.Variable]", dep_mapper(axis_len))
 
         if self.dim_tags:
@@ -220,7 +220,7 @@ class ExpressionIsScalarChecker(WalkMapper[[]]):
     @override
     def map_variable(self, expr: p.Variable) -> None:
         from loopy.kernel.data import ArrayArg, TemporaryVariable
-        from loopy.typing import auto
+        from loopy.typing import AUTO
 
         if expr.name in self.kernel.all_inames():
             # inames are scalar
@@ -231,7 +231,7 @@ class ExpressionIsScalarChecker(WalkMapper[[]]):
 
         if var is not None:
             if isinstance(var, (ArrayArg, TemporaryVariable)) and (
-                    var.shape != () and var.shape is not auto):
+                    var.shape != () and var.shape is not AUTO):
                 raise LoopyError("Array regions can only passed as sub-array refs.")
 
     @override
@@ -1165,11 +1165,11 @@ class CallableKernel(InKernelCallable):
 
     @override
     def is_type_specialized(self) -> bool:
-        from loopy.typing import auto
+        from loopy.typing import AUTO
         return (self.arg_id_to_dtype is not None
-                and all(arg.dtype not in [None, auto]
+                and all(arg.dtype not in [None, AUTO]
                         for arg in self.subkernel.args)
-                and all(tv.dtype not in [None, auto]
+                and all(tv.dtype not in [None, AUTO]
                         for tv in self.subkernel.temporary_variables.values()))
 
 # }}}

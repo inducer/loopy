@@ -612,7 +612,7 @@ class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
         import loopy as lp
         from loopy.kernel.data import KernelArgument, TemporaryVariable
         if isinstance(obj, (KernelArgument, TemporaryVariable)):
-            assert obj.dtype is not lp.auto
+            assert obj.dtype is not lp.AUTO
             result = [obj.dtype]
             if result[0] is None:
                 self.symbols_with_unknown_types.add(expr.name)
@@ -806,7 +806,7 @@ class TypeReader(TypeInferenceMapper):
         import loopy as lp
         from loopy.kernel.data import KernelArgument, TemporaryVariable
         if isinstance(obj, (KernelArgument, TemporaryVariable)):
-            assert obj.dtype is not lp.auto
+            assert obj.dtype is not lp.AUTO
             result = [obj.dtype]
             if result[0] is None:
                 raise DependencyTypeInferenceFailure(
@@ -941,12 +941,12 @@ def infer_unknown_types_for_a_single_kernel(
 
     import loopy as lp
     for tv in kernel.temporary_variables.values():
-        assert tv.dtype is not lp.auto
+        assert tv.dtype is not lp.AUTO
         if tv.dtype is None:
             names_for_type_inference.append(tv.name)
 
     for arg in kernel.args:
-        assert arg.dtype is not lp.auto
+        assert arg.dtype is not lp.AUTO
         if arg.dtype is None:
             names_for_type_inference.append(arg.name)
 
@@ -1167,7 +1167,7 @@ def infer_unknown_types(
         ) -> TranslationUnit:
     """Infer types on temporaries and arguments."""
     from loopy.translation_unit import resolve_callables
-    from loopy.typing import auto
+    from loopy.typing import AUTO
 
     t_unit = resolve_callables(t_unit)
 
@@ -1187,7 +1187,7 @@ def infer_unknown_types(
     for e in t_unit.entrypoints:
         logger.debug(f"Entering entrypoint: {e}")
         arg_id_to_dtype: dict[int | str, LoopyType] = {arg.name: arg.dtype for arg in
-                t_unit[e].args if arg.dtype not in (None, auto)}
+                t_unit[e].args if arg.dtype not in (None, AUTO)}
         new_callable, clbl_inf_ctx = cast(
                 "CallableKernel", t_unit.callables_table[e]
             ).with_types(arg_id_to_dtype, clbl_inf_ctx)

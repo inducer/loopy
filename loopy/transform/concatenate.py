@@ -37,7 +37,7 @@ import pymbolic.primitives as prim
 from pytools import all_equal
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, auto
+from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, AUTO
 from loopy.symbolic import SubstitutionRuleMappingContext
 from loopy.translation_unit import for_each_kernel
 
@@ -71,7 +71,7 @@ def concatenate_arrays(
     arrays = []
     for array_name in array_names:
         ary = kernel.get_var_descriptor(array_name)
-        if ary.shape is None or ary.shape is auto:
+        if ary.shape is None or ary.shape is AUTO:
             raise ValueError(f"Shape of temporary variable '{array_name}' is "
                     "unknown. Cannot merge with unknown shapes")
 

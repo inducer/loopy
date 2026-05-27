@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 import os
 from typing import TYPE_CHECKING
+from warnings import warn
 
 from pytools import strtobool
 
@@ -217,7 +218,7 @@ from loopy.transform.subst import (
 from loopy.translation_unit import TranslationUnit, for_each_kernel, make_program
 from loopy.type_inference import infer_unknown_types
 from loopy.types import LoopyType, NumpyType, ToLoopyTypeConvertible, to_loopy_type
-from loopy.typing import PreambleGenerator, auto
+from loopy.typing import AUTO, PreambleGenerator
 from loopy.version import MOST_RECENT_LANGUAGE_VERSION, VERSION
 
 
@@ -226,6 +227,7 @@ if TYPE_CHECKING:
 
 
 __all__ = [
+    "AUTO",
     "MOST_RECENT_LANGUAGE_VERSION",
     "VERSION",
     "ASTBuilderBase",
@@ -308,7 +310,6 @@ __all__ = [
     "allocate_temporaries_for_base_storage",
     "assignment_to_subst",
     "assume",
-    "auto",
     "auto_test_vs_ref",
     "buffer_array",
     "c_preprocess",
@@ -587,7 +588,7 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             "output[%s] = input[%s]"
             % (command_indices, command_indices),
             lang_version=MOST_RECENT_LANGUAGE_VERSION,
-            default_offset=auto)
+            default_offset=AUTO)
 
     result = tag_array_axes(result, "input", old_dim_tags)
     result = tag_array_axes(result, "output", new_dim_tags)
@@ -705,6 +706,13 @@ def _set_up_default_target():
 _set_up_default_target()
 
 # }}}
+
+
+def __getattr__(name: str):
+    if name == "auto":
+        warn("auto is deprecated and will be removed in 2027.x. Use AUTO.",
+            DeprecationWarning, stacklevel=2)
+        return AUTO
 
 
 # vim: foldmethod=marker

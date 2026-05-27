@@ -340,7 +340,7 @@ def test_loop_fusion_on_reduction_inames(ctx_factory: cl.CtxFactory):
         y0[i] = sum(j0, sum([j1], 2*A[i, j0, j1]))
         y1[i] = sum(j0, sum([j2], 3*A[i, j0, j2]))
         """,
-        [lp.GlobalArg("A", dtype=np.float64, shape=lp.auto), ...],
+        [lp.GlobalArg("A", dtype=np.float64, shape=lp.AUTO), ...],
     )
     ref_t_unit = t_unit
     knl = t_unit.default_entrypoint
@@ -367,7 +367,7 @@ def test_loop_fusion_on_reduction_inames_with_depth_mismatch(
         y0[i] = sum(j0, sum([j1], 2*A[i, j0, j1]))
         y1[i] = sum(j2, sum([j3], 3*A[i, j3, j2]))
         """,
-        [lp.GlobalArg("A", dtype=np.float64, shape=lp.auto), ...],
+        [lp.GlobalArg("A", dtype=np.float64, shape=lp.AUTO), ...],
     )
     ref_t_unit = t_unit
     knl = t_unit.default_entrypoint
@@ -396,7 +396,7 @@ def test_loop_fusion_on_outer_reduction_inames(ctx_factory: cl.CtxFactory):
         y0[i] = sum(j0, sum([j1], 2*A[i, j0, j1]))
         y1[i] = sum(j2, sum([j3], 3*A[i, j3, j2]))
         """,
-        [lp.GlobalArg("A", dtype=np.float64, shape=lp.auto), ...],
+        [lp.GlobalArg("A", dtype=np.float64, shape=lp.AUTO), ...],
     )
     ref_t_unit = t_unit
     knl = t_unit.default_entrypoint
@@ -426,7 +426,7 @@ def test_loop_fusion_reduction_inames_simple(ctx_factory: cl.CtxFactory):
         y0[i] = sum(j0, 2*A[i, j0])
         y1[i] = sum(j1, 3*A[i, j1])
         """,
-        [lp.GlobalArg("A", dtype=np.float64, shape=lp.auto), ...],
+        [lp.GlobalArg("A", dtype=np.float64, shape=lp.AUTO), ...],
     )
     ref_t_unit = t_unit
     knl = t_unit.default_entrypoint

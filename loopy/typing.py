@@ -21,7 +21,7 @@
 
 .. currentmodule:: loopy
 
-.. autoclass:: auto
+.. autodata:: AUTO
 """
 
 
@@ -52,9 +52,10 @@ THE SOFTWARE.
 
 
 from typing import TYPE_CHECKING, TypeAlias, TypeVar
+from warnings import warn
 
 import numpy as np
-from typing_extensions import TypeIs
+from typing_extensions import Sentinel, TypeIs
 
 from pymbolic.primitives import ExpressionNode
 from pymbolic.typing import ArithmeticExpression, Expression, Integer
@@ -87,11 +88,13 @@ PreambleGenerator: TypeAlias = """Callable[
 SymbolMangler: TypeAlias = "Callable[[LoopKernel, str], tuple[LoopyType, str] | None]"
 
 
-class auto:  # noqa: N801
-    """A generic placeholder object for something that should be automatically
-    determined.  See, for example, the *shape* or *strides* argument of
-    :class:`~loopy.ArrayArg`.
-    """
+# This needs to be upper case in order to function correctly.
+# https://github.com/microsoft/pyright/issues/10744
+AUTO = Sentinel("AUTO")
+"""A generic placeholder object for something that should be automatically
+determined.  See, for example, the *shape* or *strides* argument of
+:class:`~loopy.ArrayArg`.
+"""
 
 
 T = TypeVar("T")
@@ -126,3 +129,10 @@ ElT = TypeVar("ElT")
 def assert_tuple(obj: tuple[ElT, ...] | object) -> tuple[ElT, ...]:
     assert isinstance(obj, tuple)
     return obj
+
+
+def __getattr__(name: str):
+    if name == "auto":
+        warn("auto is deprecated and will be removed in 2027.x. Use AUTO.",
+            DeprecationWarning, stacklevel=2)
+        return AUTO

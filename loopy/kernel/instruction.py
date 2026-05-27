@@ -1756,7 +1756,7 @@ def _check_and_fix_temp_var_type(
              DeprecationWarning, stacklevel=1 + stacklevel)
         return lp.Optional()
 
-    elif temp_var_type is lp.auto:
+    elif temp_var_type is lp.AUTO:
         warn("temp_var_type should be Optional(None) if "
              "unspecified, not auto. This usage will be disallowed soon.",
              DeprecationWarning, stacklevel=1 + stacklevel)

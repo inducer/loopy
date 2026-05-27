@@ -31,7 +31,7 @@ import numpy as np
 from typing_extensions import override
 
 from loopy.diagnostic import LoopyError
-from loopy.typing import auto
+from loopy.typing import AUTO
 
 
 if TYPE_CHECKING:
@@ -243,7 +243,7 @@ class OpaqueType(LoopyType):
 
 
 ToLoopyTypeConvertible: TypeAlias = """(
-    type[auto]
+    AUTO
     | DTypeLike
     | LoopyType
     | str
@@ -268,20 +268,20 @@ def to_loopy_type(dtype: ToLoopyTypeConvertible,
 def to_loopy_type(dtype: ToLoopyTypeConvertible,
           *, allow_auto: Literal[True], allow_none: bool = False,
           for_atomic: bool = False
-      ) -> type[auto] | LoopyType | None: ...
+      ) -> AUTO | LoopyType | None: ...
 
 
 def to_loopy_type(dtype: ToLoopyTypeConvertible,
             allow_auto: bool = False, allow_none: bool = False,
             for_atomic: bool = False
-        ) -> type[auto] | LoopyType | None:
+        ) -> AUTO | LoopyType | None:
     if dtype is None:
         if allow_none:
             return None
         else:
             raise LoopyError("dtype may not be none")
 
-    elif dtype is auto:
+    elif dtype is AUTO:
         if allow_auto:
             return dtype
         else:

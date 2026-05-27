@@ -57,7 +57,7 @@ from loopy.kernel.instruction import (  # noqa: F401
     VarAtomicity,
     make_assignment,
 )
-from loopy.typing import ShapeType, auto
+from loopy.typing import ShapeType, AUTO
 
 
 if TYPE_CHECKING:
@@ -365,14 +365,14 @@ class AddressSpace(IntEnum):
     GLOBAL = 2
 
     @classmethod
-    def stringify(cls, val: AddressSpace | type[auto]) -> str:
+    def stringify(cls, val: AddressSpace | AUTO) -> str:
         if val == cls.PRIVATE:
             return "private"
         elif val == cls.LOCAL:
             return "local"
         elif val == cls.GLOBAL:
             return "global"
-        elif val is auto:
+        elif val is AUTO:
             return "<auto>"
         else:
             raise ValueError("unexpected value of AddressSpace")
@@ -409,7 +409,7 @@ class KernelArgument(ImmutableRecord, Taggable):
                 dtype, allow_auto=True, allow_none=True, for_atomic=for_atomic)
 
         import loopy as lp
-        if dtype is lp.auto:
+        if dtype is lp.AUTO:
             raise TypeError("dtype may not be lp.auto")
 
         kwargs["dtype"] = dtype
@@ -486,7 +486,7 @@ class ArrayArg(ArrayBase, KernelArgument):
     def __str__(self):
         # Don't mention the type of array arg if shape is known
         # FIXME: Why?
-        include_typename = self.shape in (None, auto)
+        include_typename = self.shape in (None, AUTO)
 
         aspace_str = AddressSpace.stringify(self.address_space)
 
@@ -610,7 +610,7 @@ class ValueArg(KernelArgument, Taggable):
 
     def __str__(self):
         import loopy as lp
-        assert self.dtype is not lp.auto
+        assert self.dtype is not lp.AUTO
 
         type_str = "<auto/runtime>" if self.dtype is None else str(self.dtype)
 
@@ -649,7 +649,7 @@ class TemporaryVariable(ArrayBase):
 
     storage_shape: ShapeType | None
     base_indices: tuple[Expression, ...] | None
-    address_space: AddressSpace | type[auto]
+    address_space: AddressSpace | AUTO
     base_storage: str | None
     """The name of a storage array that is to be used to actually
     hold the data in this temporary, or *None*. If not *None* or the name
@@ -692,8 +692,8 @@ class TemporaryVariable(ArrayBase):
                 self,
                 name: str,
                 dtype: ToLoopyTypeConvertible = None,
-                shape: ShapeType | type[auto] | None = auto,
-                address_space: AddressSpace | type[auto] | None = None,
+                shape: ShapeType | AUTO | None = AUTO,
+                address_space: AddressSpace | AUTO | None = None,
                 dim_tags: Sequence[ArrayDimImplementationTag] | None = None,
                 offset: Expression | str | None = 0,
                 dim_names: tuple[str, ...] | None = None,
@@ -717,7 +717,7 @@ class TemporaryVariable(ArrayBase):
         """
 
         if address_space is None:
-            address_space = auto
+            address_space = AUTO
 
         if initializer is None:
             pass
@@ -729,7 +729,7 @@ class TemporaryVariable(ArrayBase):
                         % name)
 
             from loopy.types import NumpyType, to_loopy_type
-            if dtype is auto or dtype is None:
+            if dtype is AUTO or dtype is None:
                 dtype = NumpyType(initializer.dtype)
             elif to_loopy_type(dtype) != to_loopy_type(initializer.dtype):
                 raise LoopyError(
@@ -738,7 +738,7 @@ class TemporaryVariable(ArrayBase):
                         "dtype of array."
                         % name)
 
-            if shape is auto:
+            if shape is AUTO:
                 shape = initializer.shape
             else:
                 if shape != initializer.shape:
@@ -758,7 +758,7 @@ class TemporaryVariable(ArrayBase):
             from loopy.kernel.array import _parse_shape_or_strides
             shape = _parse_shape_or_strides(shape)
 
-        if base_indices is None and shape is not auto and shape is not None:
+        if base_indices is None and shape is not AUTO and shape is not None:
             assert isinstance(shape, tuple)
             base_indices = (0,) * len(shape)
 
@@ -813,7 +813,7 @@ class TemporaryVariable(ArrayBase):
         else:
             if self.shape is None:
                 raise ValueError("shape is None")
-            if self.shape is auto:
+            if self.shape is AUTO:
                 raise ValueError("shape is auto")
             shape = cast("tuple[ArithmeticExpression]", self.shape)
 
@@ -824,7 +824,7 @@ class TemporaryVariable(ArrayBase):
         return product(si for si in shape)*self.dtype.itemsize
 
     def __str__(self) -> str:
-        if self.address_space is auto:
+        if self.address_space is AUTO:
             aspace_str = "auto"
         else:
             aspace_str = AddressSpace.stringify(self.address_space)

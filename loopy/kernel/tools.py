@@ -164,7 +164,7 @@ def _add_dtypes(kernel, dtype_dict):
         if new_dtype is not None:
             new_dtype = np.dtype(new_dtype)
             tv = new_temp_vars[tv_name]
-            if (tv.dtype is not None and tv.dtype is not lp.auto) \
+            if (tv.dtype is not None and tv.dtype is not lp.AUTO) \
                     and tv.dtype != new_dtype:
                 raise RuntimeError(
                         "temporary variable '%s' already has a different dtype "

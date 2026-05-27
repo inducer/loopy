@@ -237,7 +237,7 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
     if temporary_scope is None:
         import loopy as lp
-        temporary_scope = lp.auto
+        temporary_scope = lp.AUTO
 
     # }}}
 

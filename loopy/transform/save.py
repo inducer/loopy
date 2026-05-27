@@ -49,7 +49,7 @@ from loopy.schedule import (
     RunInstruction,
 )
 from loopy.schedule.tools import get_block_boundaries
-from loopy.typing import InameStr, auto, not_none
+from loopy.typing import InameStr, AUTO, not_none
 
 
 if TYPE_CHECKING:
@@ -526,10 +526,10 @@ class TemporarySaver:
         return backing_temporary
 
     def save_or_reload_impl(self, temporary, subkernel, mode,
-                             promoted_temporary=auto):
+                             promoted_temporary=AUTO):
         assert mode in ("save", "reload")
 
-        if promoted_temporary is auto:
+        if promoted_temporary is AUTO:
             promoted_temporary = self.auto_promote_temporary(temporary)
 
         if promoted_temporary is None:

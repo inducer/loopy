@@ -57,7 +57,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory: cl.CtxFactory):
                 lp.TemporaryVariable(
                     "cnst", initializer=cnst, address_space=lp.AddressSpace.GLOBAL,
                     read_only=True),
-                lp.GlobalArg("out", is_input=False, shape=lp.auto),
+                lp.GlobalArg("out", is_input=False, shape=lp.AUTO),
                 "..."])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
@@ -331,9 +331,9 @@ def test_arg_shape_guessing():
                 c[i+j, j] = b[j,i]
                 """,
             [
-                lp.GlobalArg("a", shape=lp.auto),
-                lp.GlobalArg("b", shape=lp.auto),
-                lp.GlobalArg("c", shape=lp.auto),
+                lp.GlobalArg("a", shape=lp.AUTO),
+                lp.GlobalArg("b", shape=lp.AUTO),
+                lp.GlobalArg("c", shape=lp.AUTO),
                 lp.ValueArg("n"),
                 ],
             assumptions="n>=1",
@@ -428,7 +428,7 @@ def test_offsets_and_slicing(ctx_factory: cl.CtxFactory):
                 b[i,j] = 2*a[i,j]
                 """,
             assumptions="n>=1 and m>=1",
-            default_offset=lp.auto)
+            default_offset=lp.AUTO)
 
     knl = lp.tag_array_axes(knl, "a,b", "stride:auto,stride:1")
 
@@ -463,7 +463,7 @@ def test_vector_ilp_with_prefetch(ctx_factory: cl.CtxFactory):
             [
                 # Tests that comma'd arguments interoperate with
                 # argument guessing.
-                lp.GlobalArg("out,a", np.float32, shape=lp.auto),
+                lp.GlobalArg("out,a", np.float32, shape=lp.AUTO),
                 "..."
                 ],
             target=lp.PyOpenCLTarget())
@@ -487,7 +487,7 @@ def test_c_instruction():
                 "a[i,j] = x",
                 ],
             [
-                lp.GlobalArg("a", shape=lp.auto, dtype=np.float32),
+                lp.GlobalArg("a", shape=lp.AUTO, dtype=np.float32),
                 lp.TemporaryVariable("x", np.float32),
                 "...",
                 ],
@@ -575,8 +575,8 @@ def test_vector_types(ctx_factory: cl.CtxFactory, vec_len):
             "{ [i,j]: 0<=i<n and 0<=j<vec_len }",
             "out[i,j] = 2*a[i,j]",
             [
-                lp.GlobalArg("a", np.float32, shape=lp.auto),
-                lp.GlobalArg("out", np.float32, shape=lp.auto),
+                lp.GlobalArg("a", np.float32, shape=lp.AUTO),
+                lp.GlobalArg("out", np.float32, shape=lp.AUTO),
                 "..."
                 ])
 
@@ -608,8 +608,8 @@ def test_conditional(ctx_factory: cl.CtxFactory):
                 out[i,j] = 2*my_a {dep=aplus}
                 """,
             [
-                lp.GlobalArg("a", np.float32, shape=lp.auto),
-                lp.GlobalArg("out", np.float32, shape=lp.auto),
+                lp.GlobalArg("a", np.float32, shape=lp.AUTO),
+                lp.GlobalArg("out", np.float32, shape=lp.AUTO),
                 "..."
                 ])
 
@@ -635,8 +635,8 @@ def test_conditional_two_ways(ctx_factory: cl.CtxFactory):
         end
         """,
         [
-            lp.GlobalArg("a", np.float32, shape=lp.auto),
-            lp.GlobalArg("out", np.float32, shape=lp.auto),
+            lp.GlobalArg("a", np.float32, shape=lp.AUTO),
+            lp.GlobalArg("out", np.float32, shape=lp.AUTO),
             "..."
         ]
     )
@@ -652,8 +652,8 @@ def test_conditional_two_ways(ctx_factory: cl.CtxFactory):
         end
         """,
         [
-            lp.GlobalArg("a", np.float32, shape=lp.auto),
-            lp.GlobalArg("out", np.float32, shape=lp.auto),
+            lp.GlobalArg("a", np.float32, shape=lp.AUTO),
+            lp.GlobalArg("out", np.float32, shape=lp.AUTO),
             "..."
         ]
     )
@@ -678,7 +678,7 @@ def test_ilp_loop_bound(ctx_factory: cl.CtxFactory):
             out[i,k] = sum(j, a[i,j]*b[j,k])
             """,
             [
-                lp.GlobalArg("a,b", np.float32, shape=lp.auto),
+                lp.GlobalArg("a,b", np.float32, shape=lp.AUTO),
                 "...",
                 ],
             assumptions="n>=1")
@@ -870,8 +870,8 @@ def test_atomic(ctx_factory: cl.CtxFactory, dtype):
             "{ [i]: 0<=i<n }",
             "out[i%20] = out[i%20] + 2*a[i] {atomic}",
             [
-                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
-                lp.GlobalArg("a", dtype, shape=lp.auto),
+                lp.GlobalArg("out", dtype, shape=lp.AUTO, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.AUTO),
                 "..."
                 ],
             assumptions="n>0")
@@ -904,7 +904,7 @@ def test_atomic_load(ctx_factory: cl.CtxFactory, dtype):
             end
             """,
             [
-                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("out", dtype, shape=lp.AUTO, for_atomic=True),
                 lp.TemporaryVariable("temp", dtype, for_atomic=True,
                                      address_space=lp.AddressSpace.LOCAL),
                 "..."
@@ -926,7 +926,7 @@ def test_atomic_init(dtype):
             out[i%4] = 0 {id=init, atomic=init}
             """,
             [
-                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("out", dtype, shape=lp.AUTO, for_atomic=True),
                 "..."
                 ],
             silenced_warnings=["write_race(init)"])
@@ -1481,7 +1481,7 @@ def test_finite_difference_expr_subst(ctx_factory: cl.CtxFactory):
         "out[i] = -(f[i+1] - f[i-1])/h",
         [
             lp.GlobalArg("out", shape="n+2"),
-            lp.GlobalArg("f", is_input=False, is_output=True, shape=lp.auto),
+            lp.GlobalArg("f", is_input=False, is_output=True, shape=lp.AUTO),
             "..."
         ])
 
@@ -1825,7 +1825,7 @@ def test_temp_initializer(ctx_factory: cl.CtxFactory, src_order, tmp_order):
             [
                 lp.TemporaryVariable("tmp",
                     initializer=a,
-                    shape=lp.auto,
+                    shape=lp.AUTO,
                     address_space=lp.AddressSpace.PRIVATE,
                     read_only=True,
                     order=tmp_order),
@@ -1850,7 +1850,7 @@ def test_const_temp_with_initializer_not_saved():
         [
             lp.TemporaryVariable("tmp",
                 initializer=np.arange(10),
-                shape=lp.auto,
+                shape=lp.AUTO,
                 address_space=lp.AddressSpace.PRIVATE,
                 read_only=True),
             "..."
@@ -2095,7 +2095,7 @@ def test_integer_reduction(ctx_factory: cl.CtxFactory):
                                    read_only=True,
                                    address_space=lp.AddressSpace.PRIVATE,
                                    dtype=to_loopy_type(vtype),
-                                   shape=lp.auto)
+                                   shape=lp.AUTO)
 
         from collections import namedtuple
         ReductionTest = namedtuple("ReductionTest", "kind, check, args")
@@ -2723,7 +2723,7 @@ def test_temp_var_type_deprecated_usage():
     warnings.simplefilter("always")
 
     with pytest.warns(DeprecationWarning):
-        lp.Assignment("x", 1, temp_var_type=lp.auto)
+        lp.Assignment("x", 1, temp_var_type=lp.AUTO)
 
     with pytest.warns(DeprecationWarning):
         lp.Assignment("x", 1, temp_var_type=None)
@@ -2734,7 +2734,7 @@ def test_temp_var_type_deprecated_usage():
     from loopy.symbolic import parse
 
     with pytest.warns(DeprecationWarning):
-        lp.CallInstruction("(x,)", parse("f(1)"), temp_var_types=(lp.auto,))
+        lp.CallInstruction("(x,)", parse("f(1)"), temp_var_types=(lp.AUTO,))
 
     with pytest.warns(DeprecationWarning):
         lp.CallInstruction("(x,)", parse("f(1)"), temp_var_types=(None,))
@@ -3063,7 +3063,7 @@ def test_scalar_temporary(ctx_factory: cl.CtxFactory):
         """,
         [lp.ValueArg("x", dtype=float),
         lp.TemporaryVariable("tmp", address_space=lp.AddressSpace.GLOBAL,
-                             shape=lp.auto),
+                             shape=lp.AUTO),
         ...])
     _evt, (out, ) = knl(queue, x=x_in)
     np.testing.assert_allclose(4*x_in, out.get())
@@ -3474,11 +3474,11 @@ def test_global_temps_with_multiple_base_storages(ctx_factory: cl.CtxFactory):
         out = tmp0 + tmp1
         """,
         [lp.TemporaryVariable("tmp0",
-                              shape=lp.auto,
+                              shape=lp.AUTO,
                               address_space=lp.AddressSpace.GLOBAL,
                               base_storage="base1"),
          lp.TemporaryVariable("tmp1",
-                              shape=lp.auto,
+                              shape=lp.AUTO,
                               address_space=lp.AddressSpace.GLOBAL,
                               base_storage="base2"),
          ...],
@@ -3554,11 +3554,11 @@ def test_no_barrier_err_for_global_temps_with_base_storage(ctx_factory: cl.CtxFa
         [lp.TemporaryVariable("tmp1",
                               address_space=lp.AddressSpace.GLOBAL,
                               base_storage="base1",
-                              shape=lp.auto),
+                              shape=lp.AUTO),
          lp.TemporaryVariable("tmp2",
                               address_space=lp.AddressSpace.GLOBAL,
                               base_storage="base2",
-                              shape=lp.auto),
+                              shape=lp.AUTO),
          ...],
         seq_dependencies=True
     )
@@ -3580,7 +3580,7 @@ def test_dgemm_with_rectangular_tile_prefetch():
         """
         C[i,j] = sum(k, A[i,k] * B[k,j])
         """,
-        [lp.GlobalArg("A,B", dtype=np.float64, shape=lp.auto),
+        [lp.GlobalArg("A,B", dtype=np.float64, shape=lp.AUTO),
          ...],
     )
     ref_t_unit = t_unit
@@ -3739,7 +3739,7 @@ def test_floor_div_modulo_with_uint_index():
         "{[i]: 0<=i<10}",
         "a[map[i] // 2, map[i] % 35] = i",
         [
-            lp.GlobalArg("map", dtype=np.uint64, shape=lp.auto),
+            lp.GlobalArg("map", dtype=np.uint64, shape=lp.AUTO),
             lp.GlobalArg("a", dtype=np.float64, shape=(10, 4)),
         ],
     )

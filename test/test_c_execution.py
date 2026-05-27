@@ -40,8 +40,8 @@ def test_c_target():
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
             [
-                lp.GlobalArg("out", np.float32, shape=lp.auto),
-                lp.GlobalArg("a", np.float32, shape=lp.auto),
+                lp.GlobalArg("out", np.float32, shape=lp.AUTO),
+                lp.GlobalArg("a", np.float32, shape=lp.AUTO),
                 "..."
                 ],
             target=ExecutableCTarget())

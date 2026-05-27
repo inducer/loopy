@@ -404,7 +404,7 @@ def test_indexof(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
          """ { [i,j]: 0<=i,j<5 } """,
          """ out[i,j] = indexof(out[i,j])""",
-         [lp.GlobalArg("out", is_input=False, shape=lp.auto)]
+         [lp.GlobalArg("out", is_input=False, shape=lp.AUTO)]
     )
 
     knl = lp.set_options(knl, write_code=True)
@@ -427,7 +427,7 @@ def test_indexof_vec(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
          """ { [i,j,k]: 0<=i,j,k<4 } """,
          """ out[i,j,k] = indexof_vec(out[i,j,k])""",
-         [lp.GlobalArg("out", shape=lp.auto, is_input=False)])
+         [lp.GlobalArg("out", shape=lp.AUTO, is_input=False)])
 
     knl = lp.tag_inames(knl, {"i": "vec"})
     knl = lp.tag_data_axes(knl, "out", "vec,c,c")
@@ -499,7 +499,7 @@ def test_divide_precedence(ctx_factory: cl.CtxFactory):
             y[0] = c*(a%b)
             """,
             [lp.ValueArg("a, b, c", np.int32),
-                lp.GlobalArg("x, y", np.int32, shape=lp.auto)])
+                lp.GlobalArg("x, y", np.int32, shape=lp.AUTO)])
     print(lp.generate_code_v2(knl).device_code())
 
     evt, (x_out, y_out) = knl(queue, c=2, b=2, a=5)
@@ -528,7 +528,7 @@ def test_complex_support(ctx_factory: cl.CtxFactory, target):
             """,
             [
                 lp.GlobalArg("out_sum, euler1, real_plus_complex",
-                            is_input=False, shape=lp.auto),
+                            is_input=False, shape=lp.AUTO),
                 ...
             ],
             target=target(),
@@ -600,7 +600,7 @@ def test_bool_type_context(ctx_factory: cl.CtxFactory):
         k = 8.0 and 7.0
         """,
         [
-            lp.GlobalArg("k", dtype=np.bool_, shape=lp.auto),
+            lp.GlobalArg("k", dtype=np.bool_, shape=lp.AUTO),
         ])
 
     _evt, (out,) = knl(queue)
@@ -617,7 +617,7 @@ def test_np_bool_handling(ctx_factory: cl.CtxFactory):
     knl = lp.make_kernel(
         "{:}",
         [lp.Assignment(parse("y"), p.LogicalNot(np.bool_(False)))],
-        [lp.GlobalArg("y", dtype=np.bool_, shape=lp.auto)])
+        [lp.GlobalArg("y", dtype=np.bool_, shape=lp.AUTO)])
     _evt, (out,) = knl(queue)
     assert out.get().item() is True
 

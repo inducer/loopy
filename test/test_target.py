@@ -53,7 +53,7 @@ def test_ispc_target():
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
             [
-                lp.GlobalArg("out,a", np.float32, shape=lp.auto),
+                lp.GlobalArg("out,a", np.float32, shape=lp.AUTO),
                 "..."
                 ],
             target=ISPCTarget())
@@ -76,7 +76,7 @@ def test_cuda_target():
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
             [
-                lp.GlobalArg("out,a", np.float32, shape=lp.auto),
+                lp.GlobalArg("out,a", np.float32, shape=lp.AUTO),
                 "..."
                 ],
             target=CudaTarget())
@@ -361,7 +361,7 @@ def test_opencl_support_for_bool(ctx_factory: cl.CtxFactory):
         """
         y[i] = i%2
         """,
-        [lp.GlobalArg("y", dtype=np.bool_, shape=lp.auto)])
+        [lp.GlobalArg("y", dtype=np.bool_, shape=lp.AUTO)])
 
     cl_ctx = ctx_factory()
     _evt, (out, ) = knl(cl.CommandQueue(cl_ctx))
@@ -457,7 +457,7 @@ def test_scalar_array_take_offset(ctx_factory: cl.CtxFactory):
         """
         y = 133*x
         """,
-        [lp.GlobalArg("x", shape=(), offset=lp.auto),
+        [lp.GlobalArg("x", shape=(), offset=lp.AUTO),
          ...])
 
     x_in_base = cla.arange(cq, 42, dtype=np.int32)
@@ -483,9 +483,9 @@ def test_inf_support(ctx_factory: cl.CtxFactory, target, dtype):
                        math.inf),
          lp.Assignment(parse("out_neginf"),
                        -math.inf)],
-        [lp.GlobalArg("out_inf", shape=lp.auto,
+        [lp.GlobalArg("out_inf", shape=lp.AUTO,
                       dtype=dtype),
-         lp.GlobalArg("out_neginf", shape=lp.auto,
+         lp.GlobalArg("out_neginf", shape=lp.AUTO,
                       dtype=dtype)
          ], target=target())
 
@@ -512,7 +512,7 @@ def test_input_args_are_required(ctx_factory: cl.CtxFactory):
         """
         g[i] = f[i] + 1.5
         """,
-        [lp.GlobalArg("f, g", shape=lp.auto, dtype="float64"), ...]
+        [lp.GlobalArg("f, g", shape=lp.AUTO, dtype="float64"), ...]
     )
 
     knl2 = lp.make_kernel(
@@ -537,7 +537,7 @@ def test_input_args_are_required(ctx_factory: cl.CtxFactory):
         f[i] = 3.
         g[i] = f[i] + 1.5
         """,
-        [lp.GlobalArg("f, g", shape=lp.auto, dtype="float64"), ...]
+        [lp.GlobalArg("f, g", shape=lp.AUTO, dtype="float64"), ...]
     )
 
     # FIXME: this should not raise!
@@ -739,7 +739,7 @@ def test_passing_bajillions_of_svm_args(ctx_factory: cl.CtxFactory, with_gbarrie
                 f"c{iargset}[i] = a{iargset}[i]+b{iargset}[i] {dep}"
                 for iargset in range(nargsets)
             ], [
-                lp.GlobalArg(f"{name}{iargset}", shape=lp.auto, dtype=np.float32)
+                lp.GlobalArg(f"{name}{iargset}", shape=lp.AUTO, dtype=np.float32)
                 for name in "abc"
                 for iargset in range(nargsets)
                 ] + [...],
@@ -784,9 +784,9 @@ def test_ispc_private_var():
             <float32> b = 6.0 * float_pos[k]
             output[k] = 2.0 * b
             """, [lp.ValueArg("K", is_input=True),
-                  lp.GlobalArg("float_pos", np.float32, shape=lp.auto,
+                  lp.GlobalArg("float_pos", np.float32, shape=lp.AUTO,
                                is_input=True, is_output=False),
-                  lp.GlobalArg("output", np.uint8, shape=lp.auto, is_input=False,
+                  lp.GlobalArg("output", np.uint8, shape=lp.AUTO, is_input=False,
                                is_output=True)],
             target=lp.ISPCTarget(), assumptions="1<K")
 

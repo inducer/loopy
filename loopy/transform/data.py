@@ -40,7 +40,7 @@ from loopy.kernel.data import AddressSpace, ImageArg, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel, ScalarCallable
 from loopy.translation_unit import CallablesTable, TranslationUnit, for_each_kernel
 from loopy.types import LoopyType
-from loopy.typing import assert_tuple, auto
+from loopy.typing import AUTO, assert_tuple
 
 
 if TYPE_CHECKING:
@@ -1071,7 +1071,7 @@ def allocate_temporaries_for_base_storage(kernel: LoopKernel,
             made_changes = True
             assert isinstance(tv.dtype, LoopyType)
 
-            if tv.address_space is auto:
+            if tv.address_space is AUTO:
                 raise LoopyError("When allocating base storage for temporary "
                         f"'{tv.name}', the address space of the temporary "
                         "was not yet determined (set to 'auto').")

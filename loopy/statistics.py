@@ -1165,7 +1165,7 @@ def _get_lid_and_gid_strides(knl, array, index):
                 if isinstance(axis_tag, FixedStrideArrayDimTag):
                     axis_tag_stride = axis_tag.stride
 
-                    if axis_tag_stride is lp.auto:
+                    if axis_tag_stride is lp.AUTO:
                         total_iname_stride = None
                         break
 

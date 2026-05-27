@@ -83,7 +83,7 @@ from loopy.typing import (
     InameStrSet,
     PreambleGenerator,
     SymbolMangler,
-    auto,
+    AUTO,
     is_integer,
     not_none,
 )
@@ -1147,7 +1147,7 @@ class ArgumentGuesser:
     instructions: Sequence[InstructionBase]
     subst_rules: dict[str, SubstitutionRule]
     temporary_variables: dict[str, TemporaryVariable]
-    default_offset: int | type[auto]
+    default_offset: int | AUTO
 
     submap: SubstitutionRuleExpander
 
@@ -1161,7 +1161,7 @@ class ArgumentGuesser:
                  instructions: Sequence[InstructionBase],
                  temporary_variables: dict[str, TemporaryVariable],
                  subst_rules: dict[str, SubstitutionRule],
-                 default_offset: int | type[auto]) -> None:
+                 default_offset: int | AUTO) -> None:
         self.domains = domains
         self.instructions = instructions
         self.temporary_variables = temporary_variables
@@ -1225,7 +1225,7 @@ class ArgumentGuesser:
             # other writable type of variable is an argument.
 
             return ArrayArg(arg_name,
-                    shape=lp.auto,
+                    shape=lp.AUTO,
                     offset=self.default_offset,
                     address_space=AddressSpace.GLOBAL)
 
@@ -1235,7 +1235,7 @@ class ArgumentGuesser:
             return ValueArg(arg_name)
         else:
             return ArrayArg(
-                    arg_name, shape=lp.auto, offset=self.default_offset,
+                    arg_name, shape=lp.AUTO, offset=self.default_offset,
                     address_space=AddressSpace.GLOBAL)
 
     def convert_names_to_full_args(
@@ -1439,7 +1439,7 @@ def expand_cses(
         new_temp_vars.append(TemporaryVariable(
                 name=new_var_name,
                 dtype=dtype,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 shape=()))
 
         from pymbolic.primitives import Variable
@@ -1517,7 +1517,7 @@ def add_sequential_dependencies(knl: LoopKernel) -> LoopKernel:
 # {{{ temporary variable creation
 
 def create_temporaries(knl: LoopKernel,
-                       default_order: str | type[auto] | None) -> LoopKernel:
+                       default_order: str | AUTO | None) -> LoopKernel:
     new_insns: list[InstructionBase] = []
     new_temp_vars = dict(knl.temporary_variables)
 
@@ -1544,9 +1544,9 @@ def create_temporaries(knl: LoopKernel,
                 new_temp_vars[assignee_name] = lp.TemporaryVariable(
                         name=assignee_name,
                         dtype=temp_var_type.value,
-                        address_space=lp.auto,
-                        base_indices=lp.auto,
-                        shape=lp.auto,
+                        address_space=lp.AUTO,
+                        base_indices=lp.AUTO,
+                        shape=lp.AUTO,
                         order=default_order)
 
             if isinstance(insn, Assignment):
@@ -1632,7 +1632,7 @@ def determine_shapes_of_temporaries(knl: LoopKernel) -> LoopKernel:
     scalar_vars: set[str] = set()
 
     for tv in knl.temporary_variables.values():
-        if tv.shape is lp.auto or tv.base_indices is lp.auto:
+        if tv.shape is lp.AUTO or tv.base_indices is lp.AUTO:
             vars_needing_shape_inference.add(tv.name)
 
     from pymbolic.primitives import Variable
@@ -1699,17 +1699,17 @@ def determine_shapes_of_temporaries(knl: LoopKernel) -> LoopKernel:
 
     for tv in knl.temporary_variables.values():
         if tv.name in scalar_vars:
-            if tv.base_indices is lp.auto:
+            if tv.base_indices is lp.AUTO:
                 tv = tv.copy(base_indices=())
                 changed = True
-            if tv.shape is lp.auto:
+            if tv.shape is lp.AUTO:
                 tv = tv.copy(shape=())
                 changed = True
         else:
-            if tv.base_indices is lp.auto:
+            if tv.base_indices is lp.AUTO:
                 tv = tv.copy(base_indices=var_to_base_indices[tv.name])
                 changed = True
-            if tv.shape is lp.auto:
+            if tv.shape is lp.AUTO:
                 tv = tv.copy(shape=var_to_shape[tv.name])
                 changed = True
         new_temp_vars[tv.name] = tv
@@ -1725,7 +1725,7 @@ def determine_shapes_of_temporaries(knl: LoopKernel) -> LoopKernel:
 # {{{ guess argument shapes
 
 def guess_arg_shape_if_requested(kernel: LoopKernel,
-                                 default_order: str | type[auto] | None) -> LoopKernel:
+                                 default_order: str | AUTO | None) -> LoopKernel:
     new_args: list[KernelArgument] = []
 
     import loopy as lp
@@ -1734,13 +1734,13 @@ def guess_arg_shape_if_requested(kernel: LoopKernel,
 
     var_names = [
         arg.name for arg in kernel.args
-        if isinstance(arg, ArrayBase) and arg.shape is lp.auto]
+        if isinstance(arg, ArrayBase) and arg.shape is lp.AUTO]
 
     shapes = guess_var_shape(kernel, var_names) if var_names else []
 
     count = 0
     for arg in kernel.args:
-        if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
+        if isinstance(arg, ArrayBase) and arg.shape is lp.AUTO:
             shape = shapes[count]
             count = count + 1
             arg = arg.copy(shape=shape)
@@ -1755,7 +1755,7 @@ def guess_arg_shape_if_requested(kernel: LoopKernel,
 # {{{ apply default_order to args
 
 def apply_default_order_to_args(kernel: LoopKernel,
-                                default_order: str | type[auto] | None) -> LoopKernel:
+                                default_order: str | AUTO | None) -> LoopKernel:
     from loopy.kernel.array import ArrayBase
 
     processed_args: list[KernelArgument] = []
@@ -1767,16 +1767,16 @@ def apply_default_order_to_args(kernel: LoopKernel,
                 else:
                     # leave them the way they are
                     pass
-            elif default_order is auto:
+            elif default_order is AUTO:
                 if arg.dim_tags is None and arg.shape is not None:
-                    assert arg.shape is not auto
+                    assert arg.shape is not AUTO
                     arg = arg.copy(
                             dim_tags=tuple(
-                                FixedStrideArrayDimTag(auto)
+                                FixedStrideArrayDimTag(AUTO)
                                 for i in range(len(arg.shape))))
                     arg = arg.copy(
                             dim_tags=tuple(
-                                FixedStrideArrayDimTag(auto)
+                                FixedStrideArrayDimTag(AUTO)
                                 if isinstance(dim_tag, FixedStrideArrayDimTag)
                                 else dim_tag
                                 for dim_tag in arg.dim_tags))
@@ -2118,7 +2118,7 @@ class SliceToInameReplacer(IdentityMapper[[]]):
             # second row if 'A' is 3 x 3 array.
             if isinstance(arg, Variable):
                 if (arg.name in self.knl.temporary_variables):
-                    if self.knl.temporary_variables[arg.name].shape in (auto, None):
+                    if self.knl.temporary_variables[arg.name].shape in (AUTO, None):
                         # do not convert arrays with unknown shapes to slices.
                         # (If an array of unknown shape was passed in error, will be
                         # caught and raised during preprocessing).
@@ -2131,7 +2131,7 @@ class SliceToInameReplacer(IdentityMapper[[]]):
                         array_arg_shape = ()
                     else:
 
-                        if self.knl.arg_dict[arg.name].shape in (auto, None):
+                        if self.knl.arg_dict[arg.name].shape in (AUTO, None):
                             # do not convert arrays with unknown shapes to slices.
                             # (If an array of unknown shape was passed in error, will
                             # be caught and raised during preprocessing).
@@ -2223,8 +2223,8 @@ def make_function(
             substitutions: Mapping[str, SubstitutionRule] | None = None,
             preambles: Sequence[tuple[str, str]] | None = (),
             preamble_generators: Sequence[PreambleGenerator] = (),
-            default_order: Literal["C", "F"] | type[auto] = "C",
-            default_offset: Literal[0] | type[auto] | None = None,
+            default_order: Literal["C", "F"] | AUTO = "C",
+            default_offset: Literal[0] | AUTO | None = None,
             symbol_manglers: Sequence[SymbolMangler] = (),
             assumptions: isl.BasicSet | str | None = "",
             silenced_warnings: str | Sequence[str] = (),
@@ -2657,8 +2657,8 @@ def make_kernel(
             substitutions: Mapping[str, SubstitutionRule] | None = None,
             preambles: Sequence[tuple[str, str]] | None = (),
             preamble_generators: Sequence[PreambleGenerator] = (),
-            default_order: Literal["C", "F"] | type[auto] = "C",
-            default_offset: Literal[0] | type[auto] | None = None,
+            default_order: Literal["C", "F"] | AUTO = "C",
+            default_offset: Literal[0] | AUTO | None = None,
             symbol_manglers: Sequence[SymbolMangler] = (),
             assumptions: isl.BasicSet | str | None = "",
             silenced_warnings: str | Sequence[str] = (),

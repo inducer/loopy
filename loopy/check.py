@@ -72,7 +72,7 @@ from loopy.translation_unit import (
     check_each_kernel,
 )
 from loopy.type_inference import TypeReader
-from loopy.typing import auto, not_none
+from loopy.typing import AUTO, not_none
 
 
 if TYPE_CHECKING:
@@ -253,7 +253,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
             what = f"offset of argument '{arg.name}'"
             if arg.offset is None:
                 continue
-            if arg.offset is auto:
+            if arg.offset is AUTO:
                 pass
             elif isinstance(arg.offset, (int, np.integer, ExpressionNode, str)):
                 ensure_depends_only_on_arguments(what, arg.offset)
@@ -270,7 +270,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                     if isinstance(dim_tag, FixedStrideArrayDimTag):
                         what = (f"stride for axis {iaxis+1} (1-based) of "
                                         f"of argument '{arg.name}'")
-                        if dim_tag.stride is auto:
+                        if dim_tag.stride is AUTO:
                             pass
                         elif isinstance(
                                 dim_tag.stride, (int, np.integer, ExpressionNode)):
@@ -291,7 +291,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
 
     for tv in kernel.temporary_variables.values():
         what = f"offset of temporary '{tv.name}'"
-        if tv.offset is auto:
+        if tv.offset is AUTO:
             pass
         elif isinstance(tv.offset, (int, np.integer, ExpressionNode, str)):
             ensure_depends_only_on_arguments(what, tv.offset)
@@ -303,7 +303,7 @@ def check_offsets_and_dim_tags(kernel: LoopKernel) -> None:
                 if isinstance(dim_tag, FixedStrideArrayDimTag):
                     what = ("axis stride for axis "
                             f"{iaxis+1} (1-based) of temporary '{tv.name}'")
-                    if dim_tag.stride is auto:
+                    if dim_tag.stride is AUTO:
                         raise LoopyError(f"The {what}" f" is 'auto', "
                                 "which is not allowed.")
                     elif isinstance(dim_tag.stride, (int, np.integer, ExpressionNode)):
@@ -345,9 +345,9 @@ class SubscriptIndicesIsIntChecker(TypeReader):
 
 def _check_for_integer_subscript_indices_inner(kernel, callables_table):
 
-    from loopy.kernel.data import auto
-    if any(arg.dtype in [None, auto] for arg in kernel.args) or (
-            any(tv.dtype in [None, auto]
+    from loopy.kernel.data import AUTO
+    if any(arg.dtype in [None, AUTO] for arg in kernel.args) or (
+            any(tv.dtype in [None, AUTO]
                 for tv in kernel.temporary_variables.values())):
         # some types are not resolved => do not check.
         return
@@ -571,11 +571,11 @@ def check_for_unused_inames(kernel: LoopKernel) -> None:
 
 def _is_racing_iname_tag(tv: TemporaryVariable, tag: InameImplementationTag) -> bool:
     from loopy.kernel.data import (
+        AUTO,
         AddressSpace,
         ConcurrentTag,
         GroupInameTag,
         LocalInameTagBase,
-        auto,
     )
 
     if tv.address_space == AddressSpace.PRIVATE:
@@ -591,7 +591,7 @@ def _is_racing_iname_tag(tv: TemporaryVariable, tag: InameImplementationTag) -> 
     elif tv.address_space == AddressSpace.GLOBAL:
         return isinstance(tag, ConcurrentTag)
 
-    elif tv.address_space == auto:
+    elif tv.address_space == AUTO:
         raise LoopyError("scope of temp var '%s' has not yet been"
                 "determined" % tv.name)
 
@@ -1045,7 +1045,7 @@ def declares_nosync_with(kernel, var_address_space, dep_a, dep_b):
     return ab_nosync and ba_nosync
 
 
-def _get_address_space(kernel: LoopKernel, var: str) -> AddressSpace | type[auto]:
+def _get_address_space(kernel: LoopKernel, var: str) -> AddressSpace | AUTO:
     from loopy.kernel.data import ArrayArg, ValueArg
     if var in kernel.temporary_variables:
         address_space = kernel.temporary_variables[var].address_space
@@ -1659,7 +1659,7 @@ def check_that_shapes_and_strides_are_arguments(kernel: LoopKernel) -> None:
 
             for dim_tag in arg.dim_tags:
                 if isinstance(dim_tag, FixedStrideArrayDimTag):
-                    if dim_tag.stride is lp.auto:
+                    if dim_tag.stride is lp.AUTO:
                         continue
 
                     deps = get_dependencies(dim_tag.stride)

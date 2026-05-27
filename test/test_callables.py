@@ -277,7 +277,7 @@ def test_multi_arg_array_call(ctx_factory: cl.CtxFactory):
             [
                 lp.GlobalArg("a"),
                 lp.GlobalArg("acc_i, index", is_input=False, is_output=True,
-                             shape=lp.auto),
+                             shape=lp.AUTO),
                 ...],
             name="custom_argmin")
 
@@ -435,8 +435,8 @@ def test_stride_depending_on_args(ctx_factory: cl.CtxFactory):
             "{[i, j]: 0<=i, j < n}",
             """
             b[i, j] = 3*a[i, j]
-            """, [lp.ValueArg("n"), lp.GlobalArg("a", shape=lp.auto),
-                lp.GlobalArg("b", shape=lp.auto)],
+            """, [lp.ValueArg("n"), lp.GlobalArg("a", shape=lp.AUTO),
+                lp.GlobalArg("b", shape=lp.AUTO)],
             name="thrice")
 
     prog = lp.make_kernel(
@@ -446,7 +446,7 @@ def test_stride_depending_on_args(ctx_factory: cl.CtxFactory):
             [i4, i5]: z[i4, i5] = thrice(N, [i6, i7]: x[2*i6+1, i7])
             """, [
                 lp.ValueArg("N", dtype=np.int32), lp.GlobalArg("x",
-                    shape=lp.auto, dtype=np.float64), ...])
+                    shape=lp.AUTO, dtype=np.float64), ...])
 
     prog = lp.merge([prog, twice])
     prog = lp.merge([prog, thrice])
@@ -470,7 +470,7 @@ def test_unknown_stride_to_callee(ctx_factory: cl.CtxFactory):
             [i0, i1]: y[i0, i1, i] = twice(N, [i2, i3]: x[2*i2, i3, i])
             """, [
                 lp.ValueArg("N", dtype=np.int32), lp.ValueArg("Nvar",
-                    dtype=np.int32), lp.GlobalArg("x", shape=lp.auto,
+                    dtype=np.int32), lp.GlobalArg("x", shape=lp.AUTO,
                         dtype=np.float64), ...])
 
     prog = lp.merge([prog, twice])
@@ -683,7 +683,7 @@ def test_double_resolving():
             y[i] = sin(x[i])
             """,
             [
-                lp.GlobalArg("x", dtype=float, shape=lp.auto),
+                lp.GlobalArg("x", dtype=float, shape=lp.AUTO),
                 ...],
             name="foo"
             )
@@ -763,7 +763,7 @@ def test_symbol_mangler_in_call():
         """
         y = sin(X)
         """,
-        [lp.GlobalArg("y", shape=lp.auto)])
+        [lp.GlobalArg("y", shape=lp.AUTO)])
 
     knl = lp.register_symbol_manglers(knl, [symbol_x])
 
@@ -811,7 +811,7 @@ def test_valueargs_being_mapped_in_inling(ctx_factory: cl.CtxFactory):
             [i]: bar[i] = doublify(10, [j]: foo[j])
             """,
             [
-                lp.GlobalArg("foo", dtype=float, shape=lp.auto),
+                lp.GlobalArg("foo", dtype=float, shape=lp.AUTO),
                 ...],
             )
     knl = lp.merge([knl, doublify])
@@ -991,7 +991,7 @@ def test_callee_with_auto_offset(ctx_factory: cl.CtxFactory):
         """
         y[i] = 2*y[i]
         """,
-        [lp.GlobalArg("y", offset=lp.auto)],
+        [lp.GlobalArg("y", offset=lp.AUTO)],
         name="dosify")
 
     knl = lp.make_kernel(
@@ -1108,84 +1108,84 @@ def test_inlining_does_not_require_barrier(inline: bool):
                 name="exp_table",
                 dtype=np.complex128,
                 shape=(1323,), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="temp",
                 dtype=np.complex128,
                 shape=(1323,), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="table_idx_0",
                 dtype=np.uint32,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="exp_0",
                 dtype=np.complex128,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="table_idx_1",
                 dtype=np.uint32,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="exp_1",
                 dtype=np.complex128,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="table_idx_2",
                 dtype=np.uint32,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="exp_2",
                 dtype=np.complex128,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="table_idx_3",
                 dtype=np.uint32,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="exp_3",
                 dtype=np.complex128,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="table_idx_4",
                 dtype=np.uint32,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             lp.TemporaryVariable(
                 name="exp_4",
                 dtype=np.complex128,
                 shape=(), for_atomic=False,
-                address_space=lp.auto,
+                address_space=lp.AUTO,
                 read_only=False,
                 ),
             ], name="fft")
@@ -1204,7 +1204,7 @@ def test_inlining_does_not_require_barrier(inline: bool):
                 dtype=None),
             lp.GlobalArg(
                 name="y", dtype=None,
-                shape=lp.auto),
+                shape=lp.AUTO),
             ],
         )
     loopy_kernel_knl = loopy_kernel_knl.with_kernel(

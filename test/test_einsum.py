@@ -158,7 +158,7 @@ def test_einsum_with_variable_strides(ctx_factory: cl.CtxFactory):
 
     spec = "ijk,jl->il"
     knl = lp.make_einsum(spec, ("a", "b"),
-                         default_order=lp.auto, default_offset=lp.auto)
+                         default_order=lp.AUTO, default_offset=lp.AUTO)
 
     a_untransposed = rng.normal(size=(3, 5, 4))
     b = rng.normal(size=(4, 5))

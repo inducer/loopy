@@ -49,7 +49,7 @@ from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.kernel import KernelState, LoopKernel
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import auto, integer_expr_or_err
+from loopy.typing import AUTO, integer_expr_or_err
 from loopy.version import DATA_MODEL_VERSION
 
 
@@ -183,7 +183,7 @@ class ExecutionWrapperGeneratorBase(ABC):
             arg = kernel.arg_dict[arg_name]
             assert arg.dtype is not None
             if isinstance(arg, ArrayArg):
-                assert arg.shape is not auto
+                assert arg.shape is not AUTO
                 if isinstance(arg.shape, tuple):
                     for axis_nr, shape_i in enumerate(arg.shape):
                         if shape_i is not None:

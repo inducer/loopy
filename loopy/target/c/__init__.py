@@ -71,7 +71,7 @@ from loopy.symbolic import IdentityMapper
 from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
 from loopy.tools import remove_common_indentation
 from loopy.types import AtomicType, LoopyType, NumpyType, to_loopy_type
-from loopy.typing import InameStr, auto
+from loopy.typing import InameStr, AUTO
 
 
 if TYPE_CHECKING:
@@ -1203,7 +1203,7 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             self, temp_var: TemporaryVariable, is_written: bool) -> Declarator:
         if temp_var.address_space == AddressSpace.GLOBAL:
             from cgen import RestrictPointer
-            assert temp_var.address_space is not auto
+            assert temp_var.address_space is not AUTO
 
             arg_decl: Declarator = RestrictPointer(
                     self.wrap_decl_for_address_space(

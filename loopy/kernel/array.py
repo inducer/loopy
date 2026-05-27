@@ -46,7 +46,7 @@ from pytools.tag import Tag, Taggable
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import flatten
 from loopy.types import LoopyType
-from loopy.typing import ShapeType, auto, is_integer
+from loopy.typing import AUTO, ShapeType, is_integer
 
 
 if TYPE_CHECKING:
@@ -160,7 +160,7 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
             result += "N%d:" % self.layout_nesting_level
 
         import loopy as lp
-        if self.stride is lp.auto:
+        if self.stride is lp.AUTO:
             result += "stride:auto"
         else:
             result += "stride:"+str(self.stride)
@@ -173,21 +173,21 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
         return self.stringify(True)
 
     def map_expr(self, mapper):
-        from loopy.kernel.data import auto
+        from loopy.kernel.data import AUTO
 
-        if self.stride is auto:
+        if self.stride is AUTO:
             # lp.auto not an expr => do not map
             return self
 
         return self.copy(stride=mapper(self.stride))
 
     def depends_on(self):
-        from loopy.kernel.data import auto
+        from loopy.kernel.data import AUTO
         from loopy.symbolic import DependencyMapper
-        if self.stride is auto:
+        if self.stride is AUTO:
             return frozenset()
 
-        return DependencyMapper(composite_leaves=auto)(self.stride)
+        return DependencyMapper(composite_leaves=AUTO)(self.stride)
 
 
 class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
@@ -310,7 +310,7 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
             return (
                     has_explicit_nesting_level, is_optional,
                     FixedStrideArrayDimTag(
-                        lp.auto, target_axis,
+                        lp.AUTO, target_axis,
                         layout_nesting_level=nesting_level))
         else:
             from loopy.symbolic import parse
@@ -489,7 +489,7 @@ def convert_computed_to_fixed_dim_tags(
             name: str,
             num_user_axes: int | None,
             num_target_axes: int,
-            shape: ShapeType | type[auto] | None,
+            shape: ShapeType | AUTO | None,
             dim_tags: Sequence[ArrayDimImplementationTag],
         ) -> Sequence[ArrayDimImplementationTag] | None:
 
@@ -544,7 +544,7 @@ def convert_computed_to_fixed_dim_tags(
         if vector_dim is None:
             stride_so_far = 1
         else:
-            if shape is None or shape is lp.auto:
+            if shape is None or shape is lp.AUTO:
                 # unable to normalize without known shape
                 return None
 
@@ -581,7 +581,7 @@ def convert_computed_to_fixed_dim_tags(
                         target_axis=dim_tag.target_axis,
                         layout_nesting_level=dim_tag.layout_nesting_level)
 
-                if shape is None or shape is lp.auto:
+                if shape is None or shape is lp.AUTO:
                     # unable to normalize without known shape
                     return None
                 assert isinstance(shape, tuple)
@@ -601,7 +601,7 @@ def convert_computed_to_fixed_dim_tags(
             elif isinstance(dim_tag, FixedStrideArrayDimTag):
                 stride_so_far = dim_tag.stride
 
-                if stride_so_far is lp.auto:
+                if stride_so_far is lp.AUTO:
                     stride_so_far = None
 
             else:
@@ -617,20 +617,20 @@ def convert_computed_to_fixed_dim_tags(
 # {{{ array base class (for arguments and temporary arrays)
 
 ToShapeLikeConvertible: TypeAlias = (tuple[Expression | str, ...]
-                | Expression | type[auto] | str | tuple[str, ...])
+                | Expression | AUTO | str | tuple[str, ...])
 
 
 def _parse_shape_or_strides(
             x: ToShapeLikeConvertible,
-        ) -> ShapeType | type[auto]:
+        ) -> ShapeType | AUTO:
     from pymbolic import parse
 
     if x == "auto":
         raise ValueError("use of 'auto' as a shape or stride won't work "
                 "any more--use loopy.auto instead")
 
-    if x is auto:
-        return auto
+    if x is AUTO:
+        return AUTO
 
     x_parsed = x if not isinstance(x, str) else parse(x)
 
@@ -640,7 +640,7 @@ def _parse_shape_or_strides(
     if isinstance(x_parsed, tuple):
         x_tup: tuple[Expression | str, ...] = x_parsed
     else:
-        assert x_parsed is not auto
+        assert x_parsed is not AUTO
         x_tup = (cast("Expression", x_parsed),)
 
     def parse_arith(x: Expression | str) -> ArithmeticExpression:
@@ -690,7 +690,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     cannot be performed without knowledge of the exact *dtype*.
     """
 
-    shape: ShapeType | type[auto] | None
+    shape: ShapeType | AUTO | None
     """
     May be one of the following:
 
@@ -818,11 +818,11 @@ class ArrayBase(ImmutableRecord, Taggable):
         dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
                 for_atomic=for_atomic)
 
-        if dtype is lp.auto:
+        if dtype is lp.AUTO:
             raise ValueError("dtype may not be lp.auto")
 
-        strides_known = strides is not None and strides is not lp.auto
-        shape_known = shape is not None and shape is not lp.auto
+        strides_known = strides is not None and strides is not lp.AUTO
+        shape_known = shape is not None and shape is not lp.AUTO
 
         if strides_known:
             strides = _parse_shape_or_strides(strides)
@@ -1001,7 +1001,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         if include_typename:
             info_entries.append(type(self).__name__)
 
-        assert self.dtype is not lp.auto
+        assert self.dtype is not lp.AUTO
 
         type_str = "<auto/runtime>" if self.dtype is None else str(self.dtype)
 
@@ -1009,7 +1009,7 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         if self.shape is None:
             info_entries.append("shape: unknown")
-        elif self.shape is lp.auto:
+        elif self.shape is lp.AUTO:
             info_entries.append("shape: auto")
         else:
             # shape is iterable
@@ -1067,8 +1067,8 @@ class ArrayBase(ImmutableRecord, Taggable):
         return len(target_axes)
 
     def num_user_axes(self, require_answer=True):
-        from loopy import auto
-        if self.shape not in (None, auto):
+        from loopy import AUTO
+        if self.shape is not None and self.shape is not AUTO:
             return len(self.shape)
         if self.dim_tags is not None:
             return len(self.dim_tags)
@@ -1086,7 +1086,7 @@ class ArrayBase(ImmutableRecord, Taggable):
         kwargs: dict[str, Any] = {}
         import loopy as lp
 
-        if self.shape is not None and self.shape is not lp.auto:
+        if self.shape is not None and self.shape is not lp.AUTO:
             assert isinstance(self.shape, tuple)
 
             def none_pass_mapper(s: Expression | None) -> Expression | None:
@@ -1234,7 +1234,7 @@ def _apply_offset(sub: ArithmeticExpression, ary: ArrayBase) -> ArithmeticExpres
             # is declared.
             return sub
 
-        if ary.offset is lp.auto:
+        if ary.offset is lp.AUTO:
             raise AssertionError(
                     f"Offset for '{ary.name}' should have been replaced "
                     "with an actual argument by "
@@ -1346,7 +1346,7 @@ def get_access_info(kernel: LoopKernel,
                             "vector (%d)"
                             % (ary.name, i, dim_tag.stride, vector_size))
 
-            elif stride is lp.auto:
+            elif stride is lp.AUTO:
                 raise AssertionError(
                         f"Stride for axis {i+1} (1-based) of "
                         "'{array_name}' should have been replaced "

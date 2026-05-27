@@ -81,14 +81,14 @@ def test_write_block_matrix_fusion(ctx_factory: cl.CtxFactory):
             [
                 lp.GlobalArg("result", None,
                     shape="n, m",
-                    offset=lp.auto),
+                    offset=lp.AUTO),
                 lp.ValueArg("n, m", np.int32),
                 "...",
             ],
             options=lp.Options(
                 return_dict=True
             ),
-            default_offset=lp.auto,
+            default_offset=lp.AUTO,
             name="init_a_global_matrix",
         )
 
@@ -104,11 +104,11 @@ def test_write_block_matrix_fusion(ctx_factory: cl.CtxFactory):
             [
                 lp.GlobalArg("result", None,
                     shape="n, m",
-                    offset=lp.auto),
+                    offset=lp.AUTO),
                 lp.ValueArg("n, m", np.int32),
                 lp.GlobalArg("mat", None,
                     shape="ndofs, mdofs",
-                    offset=lp.auto),
+                    offset=lp.AUTO),
                 lp.ValueArg("offset_i", np.int32),
                 lp.ValueArg("offset_j", np.int32),
                 "...",
@@ -116,7 +116,7 @@ def test_write_block_matrix_fusion(ctx_factory: cl.CtxFactory):
             options=lp.Options(
                 return_dict=True
             ),
-            default_offset=lp.auto,
+            default_offset=lp.AUTO,
             name="write_into_global_matrix",
         )
 

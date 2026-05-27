@@ -57,9 +57,9 @@ def test_convolution(ctx_factory: cl.CtxFactory):
             * f[ifeat, f_w+f_x, f_w+f_y, icolor])
         """,
         [
-            lp.GlobalArg("f", dtype, shape=lp.auto),
-            lp.GlobalArg("img", dtype, shape=lp.auto),
-            lp.GlobalArg("out", dtype, shape=lp.auto),
+            lp.GlobalArg("f", dtype, shape=lp.AUTO),
+            lp.GlobalArg("img", dtype, shape=lp.AUTO),
+            lp.GlobalArg("out", dtype, shape=lp.AUTO),
             "..."
             ],
         assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1 and nimgs>=0",
@@ -125,9 +125,9 @@ def test_convolution_with_nonzero_base(ctx_factory: cl.CtxFactory):
             * f[ifeat, f_w+f_x, f_w+f_y, icolor])
         """,
         [
-            lp.GlobalArg("f", dtype, shape=lp.auto),
-            lp.GlobalArg("img", dtype, shape=lp.auto),
-            lp.GlobalArg("out", dtype, shape=lp.auto),
+            lp.GlobalArg("f", dtype, shape=lp.AUTO),
+            lp.GlobalArg("img", dtype, shape=lp.AUTO),
+            lp.GlobalArg("out", dtype, shape=lp.AUTO),
             "..."
             ],
         assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1 and nimgs>=0",
