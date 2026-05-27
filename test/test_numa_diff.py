@@ -63,7 +63,7 @@ def test_gnuma_horiz_kernel(ctx_factory: cl.CtxFactory, ilp_multiple, Nq, opt_le
     # hsv = hsv_s
     hsv = lp.add_nosync(hsv, "any", "writes:rhsQ", "writes:rhsQ", force=True)
 
-    from gnuma_loopy_transforms import (
+    from .gnuma_loopy_transforms import (
         fix_euler_parameters,
         set_D_storage_format,
         set_q_storage_format,
