@@ -1538,7 +1538,7 @@ def test_call_with_no_returned_value(ctx_factory: cl.CtxFactory):
         [lp.CallInstruction((), p.Call(p.Variable("f"), ()))]
         )
 
-    from library_for_test import NoRetFunction
+    from .library_for_test import NoRetFunction
     knl = lp.register_callable(knl, "f", NoRetFunction("f"))
 
     _evt, _ = knl(queue)
@@ -1554,7 +1554,7 @@ def test_call_with_options():
         "f() {id=init}"
         )
 
-    from library_for_test import NoRetFunction
+    from .library_for_test import NoRetFunction
     knl = lp.register_callable(knl, "f", NoRetFunction("f"))
 
     print(lp.generate_code_v2(knl).device_code())
@@ -2298,7 +2298,7 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     vecsize = 16
     prog = lp.split_iname(prog, "i", vecsize, inner_tag="l.0")
 
-    from testlib import GridOverride
+    from .testlib import GridOverride
 
     # artificially expand via overridden_get_grid_sizes_for_insn_ids
     knl = prog["loopy_kernel"]

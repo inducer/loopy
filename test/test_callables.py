@@ -44,7 +44,7 @@ def test_register_function_lookup(ctx_factory: cl.CtxFactory):
     queue = cl.CommandQueue(ctx)
     rng = np.random.default_rng(seed=42)
 
-    from testlib import Log2Callable
+    from .testlib import Log2Callable
 
     x = rng.random(size=10)
     queue = cl.CommandQueue(ctx)
@@ -754,7 +754,7 @@ def test_passing_scalar_as_indexed_subscript_in_clbl_knl(inline: bool):
 
 
 def test_symbol_mangler_in_call():
-    from library_for_test import preamble_for_x, symbol_x
+    from .library_for_test import preamble_for_x, symbol_x
     ctx = cl.create_some_context()
     cq = cl.CommandQueue(ctx)
 
