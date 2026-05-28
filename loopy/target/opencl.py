@@ -404,6 +404,31 @@ class OpenCLCallable(ScalarCallable):
                                   })),
                     clbl_inf_ctx)
 
+        elif name == "fma":
+            if not all(-1 <= id <= 2 for id in arg_num_to_dtype):
+                raise LoopyError("fma takes exactly three arguments.")
+
+            if not all(i in arg_num_to_dtype for i in range(3)):
+                return (
+                        self.copy(arg_id_to_dtype=constantdict(arg_num_to_dtype)),
+                        clbl_inf_ctx)
+
+            dtype = np.result_type(*[
+                    arg_num_to_dtype[i].numpy_dtype for i in range(3)])
+
+            if dtype.kind == "c":
+                raise LoopyTypeError("fma does not support complex numbers.")
+            if dtype.kind not in "f":
+                raise LoopyTypeError("fma requires floating-point arguments, "
+                                     f"got '{dtype}'.")
+
+            dtype = NumpyType(dtype)
+            return (
+                    self.copy(name_in_target="fma",
+                        arg_id_to_dtype=constantdict(
+                            {-1: dtype, 0: dtype, 1: dtype, 2: dtype})),
+                    clbl_inf_ctx)
+
         elif name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
             num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
             for id in arg_num_to_dtype:
@@ -480,7 +505,7 @@ def get_opencl_callables():
              "acos", "acosh", "asin", "asinh", "atan", "atanh", "atan2",
              "pow", "exp", "log", "log10", "sqrt", "ceil", "floor",
              "max", "min", "fmax", "fmin",
-             "fabs", "erf", "erfc"}
+             "fabs", "erf", "erfc", "fma"}
             | set(_CL_SIMPLE_MULTI_ARG_FUNCTIONS)
             | set(VECTOR_LITERAL_FUNCS))
 
