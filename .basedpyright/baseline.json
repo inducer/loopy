@@ -51924,6 +51924,30 @@
                 }
             },
             {
+                "code": "reportUnknownMemberType",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 54,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownMemberType",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 60,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportAttributeAccessIssue",
+                "range": {
+                    "startColumn": 50,
+                    "endColumn": 54,
+                    "lineCount": 1
+                }
+            },
+            {
                 "code": "reportIncompatibleMethodOverride",
                 "range": {
                     "startColumn": 8,
@@ -92316,22 +92340,6 @@
                 "range": {
                     "startColumn": 33,
                     "endColumn": 52,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportImplicitOverride",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 16,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportImplicitOverride",
-                "range": {
-                    "startColumn": 8,
-                    "endColumn": 30,
                     "lineCount": 1
                 }
             },
