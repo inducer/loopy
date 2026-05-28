@@ -891,6 +891,60 @@ def test_argmax_ctarget_floating_point():
         assert out_dict["max_ind"][0] == 2
 
 
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+@pytest.mark.parametrize("target_t", [lp.PyOpenCLTarget, lp.ExecutableCTarget])
+def test_fma_correctness(ctx_factory: cl.CtxFactory, dtype, target_t):
+    ctx = ctx_factory()
+    cq = cl.CommandQueue(ctx)
+    target = target_t()
+
+    n = 1729
+    rng = np.random.default_rng(seed=42)
+
+    a = rng.random(n, dtype=dtype)
+    b = rng.random(n, dtype=dtype)
+    c = rng.random(n, dtype=dtype)
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        "out[i] = fma(a[i], b[i], c[i])",
+        [lp.GlobalArg("a,b,c,out", dtype, shape="n"),
+         lp.ValueArg("n", np.int32)],
+        target=target,
+    )
+
+    if isinstance(target, lp.PyOpenCLTarget):
+        _, (out,) = knl(cq, a=a, b=b, c=c, n=n)
+    else:
+        assert isinstance(target, lp.ExecutableCTarget)
+        _, (out,) = knl(a=a, b=b, c=c, n=n)
+
+    np.testing.assert_allclose(out, a*b + c,
+                               rtol=1e-5 if dtype == np.float32 else 1e-12)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_fma_codegen(dtype):
+    targets_and_expected = [
+        (lp.CTarget(), "fmaf(" if dtype == np.float32 else "fma("),
+        (lp.OpenCLTarget(), "fma("),
+        (lp.CudaTarget(), "fmaf(" if dtype == np.float32 else "fma("),
+    ]
+
+    for target, expected_substr in targets_and_expected:
+        knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            "out[i] = fma(a[i], b[i], c[i])",
+            [lp.GlobalArg("a,b,c,out", dtype, shape="n"),
+             lp.ValueArg("n", np.int32)],
+            target=target,
+        )
+        code = lp.generate_code_v2(knl).device_code()
+        assert expected_substr in code, (
+            f"{target}, {dtype}: expected '{expected_substr}' in code"
+        )
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
