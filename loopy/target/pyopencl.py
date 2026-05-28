@@ -32,7 +32,6 @@ import numpy as np
 from constantdict import constantdict
 from typing_extensions import override
 
-import genpy
 import pymbolic.primitives as p
 from cgen import (
     Block,
