@@ -66,7 +66,6 @@ from loopy.kernel.instruction import (
     InstructionBase,
     MultiAssignmentBase,
 )
-from loopy.options import Options
 from loopy.symbolic import (
     IdentityMapper,
     Reduction,
@@ -74,7 +73,6 @@ from loopy.symbolic import (
     SubstitutionRuleExpander,
     WalkMapper,
 )
-from loopy.target import TargetBase
 from loopy.tools import Optional, intern_frozenset_of_ids
 from loopy.translation_unit import TranslationUnit, for_each_kernel
 from loopy.types import NumpyType
