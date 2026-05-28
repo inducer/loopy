@@ -1,5 +1,5 @@
 import ctypes
-from os import system
+import subprocess
 
 
 C_SRC = """
@@ -79,7 +79,8 @@ def main():
     with open("int-experiments.c", "w") as outf:
         outf.write(C_SRC)
 
-    system("gcc -Wall -shared int-experiments.c -o int-experiments.so")
+    subprocess.run(["gcc", "-Wall", "-shared", "int-experiments.c",
+        "-o", "int-experiments.so"], check=True)
 
     int_exp = ctypes.CDLL("int-experiments.so")
     for func in [
