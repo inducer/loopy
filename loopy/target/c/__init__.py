@@ -756,6 +756,38 @@ class CMathCallable(ScalarCallable):
                             0: NumpyType(dtype),
                             -1: NumpyType(np.int32)})),
                     clbl_inf_ctx)
+        elif name == "fma":
+
+            if not all(-1 <= id <= 2 for id in arg_num_to_dtype):
+                raise LoopyError("fma takes exactly three arguments.")
+
+            if not all(i in arg_num_to_dtype for i in range(3)):
+                return (
+                        self.copy(arg_id_to_dtype=constantdict(arg_num_to_dtype)),
+                        clbl_inf_ctx)
+
+            dtype = np.result_type(*[
+                    arg_num_to_dtype[i].numpy_dtype for i in range(3)])
+            real_dtype = np.empty(0, dtype=dtype).real.dtype
+
+            if dtype.kind == "c":
+                raise LoopyTypeError("fma does not support complex numbers.")
+
+            if real_dtype == np.float64:
+                pass  # fma
+            elif real_dtype == np.float32:
+                name = name + "f"  # fmaf
+            elif (hasattr(np, "float128") and real_dtype == np.float128):
+                name = name + "l"  # fmal
+            else:
+                raise LoopyTypeError(f"fma does not support type {dtype}.")
+
+            dtype = NumpyType(dtype)
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype=constantdict(
+                            {-1: dtype, 0: dtype, 1: dtype, 2: dtype})),
+                    clbl_inf_ctx)
 
         # does not satisfy any of the conditions needed for specialization.
         # hence just returning a copy of the callable.
@@ -866,7 +898,7 @@ def get_c_callables():
                  "sinh", "pow", "atan2", "tanh", "exp", "log", "log10",
                  "sqrt", "ceil", "floor", "max", "min", "fmax", "fmin",
                  "fabs", "tan", "erf", "erfc", "isnan", "real", "imag",
-                 "conj"]
+                 "conj", "fma"]
 
     return {id_: CMathCallable(id_) for id_ in cmath_ids}
 
