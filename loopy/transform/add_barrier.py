@@ -27,7 +27,7 @@ THE SOFTWARE.
 from typing import TYPE_CHECKING
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.instruction import BarrierInstruction
+from loopy.kernel.instruction import BarrierInstruction, BarrierKind
 from loopy.match import ToMatchConvertible, parse_match
 from loopy.transform.instruction import add_dependency
 from loopy.translation_unit import for_each_kernel
@@ -53,8 +53,8 @@ def add_barrier(
     insn_after: ToMatchConvertible,
     id_based_on: str | None = None,
     tags: frozenset[Tag] | None = None,
-    synchronization_kind: str = "global",
-    mem_kind: str | None = None,
+    synchronization_kind: BarrierKind = "global",
+    mem_kind: BarrierKind | None = None,
     within_inames: frozenset[str] | None = None,
 ) -> LoopKernel:
     """

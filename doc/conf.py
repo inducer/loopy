@@ -78,6 +78,9 @@ sphinxconfig_missing_reference_aliases = {
     "LoopyOptional": "obj:loopy.tools.Optional",
     "ShapeType": "obj:loopy.typing.ShapeType",
     "ToLoopyTypeConvertible": "obj:loopy.types.ToLoopyTypeConvertible",
+    "NoSyncScope": "obj:loopy.kernel.instruction.NoSyncScope",
+    "BarrierKind": "obj:loopy.kernel.instruction.BarrierKind",
+    "InsnId": "obj:loopy.typing.InsnId",
 }
 
 

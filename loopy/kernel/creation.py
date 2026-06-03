@@ -65,6 +65,7 @@ from loopy.kernel.instruction import (
     CallInstruction,
     InstructionBase,
     MultiAssignmentBase,
+    to_barrier_kind,
 )
 from loopy.symbolic import (
     IdentityMapper,
@@ -651,10 +652,10 @@ def parse_special_insn(
 
     if special_insn_kind == "gbarrier":
         cls: type[InstructionBase] = BarrierInstruction
-        kwargs["synchronization_kind"] = "global"
+        kwargs["synchronization_kind"] = to_barrier_kind("global")
     elif special_insn_kind == "lbarrier":
         cls = BarrierInstruction
-        kwargs["synchronization_kind"] = "local"
+        kwargs["synchronization_kind"] = to_barrier_kind("local")
     elif special_insn_kind == "nop":
         cls = NoOpInstruction
     else:

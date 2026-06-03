@@ -4,6 +4,7 @@
 .. autodata:: InameStr
 .. autodata:: InameStrSet
 .. autodata:: ToInameStrSetConvertible
+.. autodata:: InsnId
 
 .. autodata:: SymbolMangler
     :noindex:
