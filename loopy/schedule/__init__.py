@@ -46,7 +46,9 @@ from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
+    from collections import defaultdict
     from collections.abc import (
+        Collection,
         Hashable,
         Iterator,
         Mapping,
@@ -56,9 +58,10 @@ if TYPE_CHECKING:
 
     from loopy.kernel import LoopKernel
     from loopy.kernel.function_interface import InKernelCallable
-    from loopy.kernel.instruction import InstructionBase
+    from loopy.kernel.instruction import BarrierKind, InstructionBase
     from loopy.schedule.tools import (
         LoopTree,
+        WriteRaceChecker,
     )
     from loopy.translation_unit import CallableId, CallablesTable, TranslationUnit
     from loopy.typing import InameStr, InameStrSet, InsnId
@@ -139,9 +142,9 @@ class Barrier(ScheduleItem):
     .. attribute:: originating_insn_id
     """
     comment: str
-    synchronization_kind: str
-    mem_kind: str
-    originating_insn_id: str
+    synchronization_kind: BarrierKind
+    mem_kind: BarrierKind
+    originating_insn_id: str | None
 
 # }}}
 
@@ -485,7 +488,7 @@ def format_insn(kernel: LoopKernel, insn_id: InsnId):
 
 def dump_schedule(kernel: LoopKernel, schedule: Sequence[ScheduleItem]):
     lines: list[str] = []
-    indent = ""
+    indent: str = ""
 
     from loopy.kernel.data import MultiAssignmentBase
     for sched_item in schedule:
@@ -1653,10 +1656,13 @@ def _generate_loop_schedules_internal(
 
 # {{{ convert barrier instructions to proper barriers
 
-def convert_barrier_instructions_to_barriers(kernel, schedule):
+def convert_barrier_instructions_to_barriers(
+            kernel: LoopKernel,
+            schedule: Sequence[ScheduleItem]
+        ):
     from loopy.kernel.instruction import BarrierInstruction
 
-    result = []
+    result: list[ScheduleItem] = []
     for sched_item in schedule:
         if isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
@@ -1718,11 +1724,28 @@ class DependencyTracker:
     .. automethod:: add_source
     .. automethod:: gen_dependencies_with_target_at
     """
+    kernel: LoopKernel
 
-    def __init__(self, kernel, callables_table, var_kind, reverse):
+    var_kind: Literal["global", "local"]
+    """The kind of variable based on which barrier-needing dependencies should be
+    found."""
+
+    reverse: bool
+
+    write_race_checker: WriteRaceChecker
+
+    relevant_vars: AbstractSet[str]
+    base_writer_map: defaultdict[str, set[str]]
+    base_access_map: defaultdict[str, set[str]]
+    temp_to_base_storage: Mapping[str, str]
+
+    def __init__(self,
+                kernel: LoopKernel,
+                callables_table: CallablesTable,
+                var_kind: Literal["global", "local"],
+                reverse: bool
+            ):
         """
-        :arg var_kind: "global" or "local", the kind of variable based on which
-            barrier-needing dependencies should be found.
         :arg reverse:
             In straight-line code, this  only tracks 'b depends on
             a'-type 'forward' dependencies. But a loop of the type::
@@ -1766,7 +1789,7 @@ class DependencyTracker:
         self.base_access_map = defaultdict(set)
         self.temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
 
-    def map_to_base_storage(self, var_names):
+    def map_to_base_storage(self, var_names: Collection[str]):
         result = set(var_names)
 
         for name in var_names:
@@ -1783,13 +1806,14 @@ class DependencyTracker:
     # Anything with 'base' in the name in this class contains names normalized
     # to their 'base_storage'.
 
-    def add_source(self, source):
+    def add_source(self, source: InsnId | InstructionBase):
         """
         Specify that an instruction used as the source (depended-upon
         part) of a dependency edge is of interest to this tracker.
         """
         # If source is an insn ID, look up the actual instruction.
-        source = self.kernel.id_to_insn.get(source, source)
+        if isinstance(source, str):
+            source = self.kernel.id_to_insn[source]
 
         for written in self.map_to_base_storage(
                 set(source.assignee_var_names()) & self.relevant_vars):
@@ -1799,7 +1823,7 @@ class DependencyTracker:
                 source.dependency_names() & self.relevant_vars):
             self.base_access_map[read].add(source.id)
 
-    def gen_dependencies_with_target_at(self, target):
+    def gen_dependencies_with_target_at(self, target: InsnId | InstructionBase):
         """
         Generate :class:`DependencyRecord` instances for dependencies edges
         whose target is the given instruction.
@@ -1808,30 +1832,42 @@ class DependencyTracker:
             with conflicting var access should be found.
         """
         # If target is an insn ID, look up the actual instruction.
-        target = self.kernel.id_to_insn.get(target, target)
+        if isinstance(target, str):
+            target = self.kernel.id_to_insn[target]
 
-        for (
-                tgt_dir, src_dir, src_base_var_to_accessor_map
-                ) in [
+        driver_table: list[tuple[
+                    Literal["w", "any"],
+                    Literal["w", "any"],
+                    defaultdict[str, set[str]]]] = [
                 ("any", "w", self.base_writer_map),
                 ("w", "any", self.base_access_map),
-                ]:
+                ]
+        for (
+                tgt_dir, src_dir, src_base_var_to_accessor_map
+                ) in driver_table:
 
             yield from self.get_conflicting_accesses(
                     target, tgt_dir, src_dir, src_base_var_to_accessor_map)
 
-    def get_conflicting_accesses(self, target, tgt_dir, src_dir,
-            src_base_var_to_accessor_map):
+    def get_conflicting_accesses(self,
+                target: InstructionBase,
+                tgt_dir: Literal["w", "any"],
+                src_dir: Literal["w", "any"],
+                src_base_var_to_accessor_map: dict[str, set[str]],
+            ) -> Iterator[DependencyRecord]:
 
-        def get_written_names(insn):
+        def get_written_names(insn: InstructionBase):
             return set(insn.assignee_var_names()) & self.relevant_vars
 
-        def get_accessed_names(insn):
+        def get_accessed_names(insn: InstructionBase):
             return insn.dependency_names() & self.relevant_vars
 
         dir_to_getter = {"w": get_written_names, "any": get_accessed_names}
 
-        def filter_var_set_for_base_storage(var_name_set, base_storage_name):
+        def filter_var_set_for_base_storage(
+                    var_name_set: AbstractSet[str],
+                    base_storage_name: str
+                ):
             return {
                     name
                     for name in var_name_set
@@ -1889,7 +1925,7 @@ class DependencyTracker:
                         variable=race_var,
                         var_kind=self.var_kind)
 
-    def describe_dependency(self, source_id, target):
+    def describe_dependency(self, source_id: InsnId, target: InstructionBase):
         dep_descr = None
 
         source = self.kernel.id_to_insn[source_id]
@@ -1914,28 +1950,38 @@ class DependencyTracker:
         return dep_descr
 
 
-def barrier_kind_more_or_equally_global(kind1, kind2):
+def barrier_kind_more_or_equally_global(kind1: BarrierKind, kind2: BarrierKind):
     return (kind1 == kind2) or (kind1 == "global" and kind2 == "local")
 
 
-def insn_ids_reaching_end_without_intervening_barrier(schedule, kind):
+def insn_ids_reaching_end_without_intervening_barrier(
+            schedule: Sequence[ScheduleItem],
+            kind: BarrierKind
+        ):
     return _insn_ids_reaching_end(schedule, kind, reverse=False)
 
 
-def insn_ids_reachable_from_start_without_intervening_barrier(schedule, kind):
+def insn_ids_reachable_from_start_without_intervening_barrier(
+            schedule: Sequence[ScheduleItem],
+            kind: BarrierKind,
+        ):
     return _insn_ids_reaching_end(schedule, kind, reverse=True)
 
 
-def _insn_ids_reaching_end(schedule, kind, reverse):
+def _insn_ids_reaching_end(
+            schedule: Sequence[ScheduleItem],
+            kind: BarrierKind,
+            reverse: bool,
+        ):
     if reverse:
-        schedule = reversed(schedule)
+        schedule = list(reversed(schedule))
         enter_scope_item_kind = LeaveLoop
         leave_scope_item_kind = EnterLoop
     else:
         enter_scope_item_kind = EnterLoop
         leave_scope_item_kind = LeaveLoop
 
-    insn_ids_alive_at_scope = [set()]
+    insn_ids_alive_at_scope: list[set[InsnId]] = [set()]
 
     for sched_item in schedule:
         if isinstance(sched_item, enter_scope_item_kind):
@@ -1976,7 +2022,12 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
     return insn_ids_alive_at_scope[-1]
 
 
-def append_barrier_or_raise_error(kernel_name, schedule, dep, verify_only):
+def append_barrier_or_raise_error(
+            kernel_name: str,
+            schedule: list[ScheduleItem],
+            dep: DependencyRecord,
+            verify_only: bool,
+        ):
     if verify_only:
         from loopy.diagnostic import MissingBarrierError
         raise MissingBarrierError(
@@ -2002,8 +2053,14 @@ def append_barrier_or_raise_error(kernel_name, schedule, dep, verify_only):
             originating_insn_id=None))
 
 
-def insert_barriers(kernel, callables_table, schedule, synchronization_kind,
-                    verify_only, level=0):
+def insert_barriers(
+            kernel: LoopKernel,
+            callables_table: CallablesTable,
+            schedule: Sequence[ScheduleItem],
+            synchronization_kind: BarrierKind,
+            verify_only: bool,
+            level: int = 0,
+        ):
     """
     :arg synchronization_kind: "local" or "global".
         The :attr:`Barrier.synchronization_kind` to be inserted. Generally, this
@@ -2016,7 +2073,10 @@ def insert_barriers(kernel, callables_table, schedule, synchronization_kind,
 
     # {{{ insert barriers at outermost scheduling level
 
-    def insert_barriers_at_outer_level(schedule, reverse=False):
+    def insert_barriers_at_outer_level(
+                schedule: Sequence[ScheduleItem],
+                reverse: bool = False
+            ):
         dep_tracker = DependencyTracker(kernel, callables_table,
                                         var_kind=synchronization_kind,
                                         reverse=reverse)
@@ -2029,7 +2089,7 @@ def insert_barriers(kernel, callables_table, schedule, synchronization_kind,
                         schedule, synchronization_kind)):
                 dep_tracker.add_source(insn_id)
 
-        result = []
+        result: list[ScheduleItem] = []
 
         i = 0
         while i < len(schedule):
@@ -2114,7 +2174,7 @@ def insert_barriers(kernel, callables_table, schedule, synchronization_kind,
 
     # {{{ recursively insert barriers in loops
 
-    result = []
+    result: list[ScheduleItem] = []
     i = 0
     while i < len(schedule):
         sched_item = schedule[i]
@@ -2152,7 +2212,7 @@ def insert_barriers(kernel, callables_table, schedule, synchronization_kind,
 
 
 class MinRecursionLimitForScheduling(MinRecursionLimit):
-    def __init__(self, kernel):
+    def __init__(self, kernel: LoopKernel):
         MinRecursionLimit.__init__(self,
                 len(kernel.instructions) * 2 + len(kernel.all_inames()) * 4)
 
@@ -2181,7 +2241,11 @@ def generate_loop_schedules(
                 callables_table, debug_args=debug_args)
 
 
-def _postprocess_schedule(kernel, callables_table, gen_sched):
+def _postprocess_schedule(
+            kernel: LoopKernel,
+            callables_table: CallablesTable,
+            gen_sched: Sequence[ScheduleItem]
+        ):
     from loopy.kernel import KernelState
 
     gen_sched = convert_barrier_instructions_to_barriers(
