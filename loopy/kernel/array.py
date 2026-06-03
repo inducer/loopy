@@ -39,7 +39,7 @@ from warnings import warn
 from typing_extensions import Self
 
 from pymbolic import Expression
-from pymbolic.primitives import is_arithmetic_expression
+from pymbolic.primitives import Variable, is_arithmetic_expression
 from pytools import ImmutableRecord
 from pytools.tag import Tag, Taggable
 
@@ -715,7 +715,7 @@ class ArrayBase(ImmutableRecord, Taggable):
     """See :ref:`data-dim-tags`.
     """
 
-    offset: Expression | str | None
+    offset: Expression | None
     """Offset from the beginning of the buffer to the point from
     which the strides are counted, in units of the :attr:`dtype`.
     May be one of
@@ -950,6 +950,9 @@ class ArrayBase(ImmutableRecord, Taggable):
 
         if tags is None:
             tags = frozenset()
+
+        if isinstance(offset, str):
+            offset = Variable(offset)
 
         ImmutableRecord.__init__(self,
                 name=name,
