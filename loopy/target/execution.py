@@ -234,7 +234,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                                     var("getattr")(
                                         var(arg.name), var('"offset"'), var("None")),
                                     arg.dtype.itemsize),
-                                rhs=_str_to_expr(arg.offset),
+                                rhs=arg.offset,
                                 order=0,
                                 based_on_names=frozenset([arg.name]),
                                 ))
@@ -243,7 +243,7 @@ class ExecutionWrapperGeneratorBase(ABC):
                     equations.append(
                             _ArgFindingEquation(
                                 lhs=0,
-                                rhs=_str_to_expr(arg.offset),
+                                rhs=arg.offset,
                                 order=1,
                                 based_on_names=frozenset(),
                                 ))
