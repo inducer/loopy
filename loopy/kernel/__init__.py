@@ -89,7 +89,7 @@ if TYPE_CHECKING:
     from pymbolic import ArithmeticExpression, Expression
 
     from loopy.kernel.function_interface import InKernelCallable
-    from loopy.kernel.instruction import InstructionBase
+    from loopy.kernel.instruction import BarrierKind, InstructionBase
     from loopy.kernel.tools import SetOperationCacheManager
     from loopy.options import Options
     from loopy.schedule import ScheduleItem
@@ -747,7 +747,7 @@ class LoopKernel(Taggable):
 
     @memoize_method
     def get_temporary_to_base_storage_map(self):
-        result = {}
+        result: dict[str, str] = {}
         for tv in self.temporary_variables.values():
             if tv.base_storage:
                 result[tv.name] = tv.base_storage
@@ -1172,7 +1172,7 @@ class LoopKernel(Taggable):
     # {{{ nosync sets
 
     @memoize_method
-    def get_nosync_set(self, insn_id, scope):
+    def get_nosync_set(self, insn_id: InsnId, scope: BarrierKind):
         assert scope in ("local", "global")
 
         return frozenset(

@@ -263,6 +263,9 @@ Instructions
 .. {{{
 
 .. autoclass:: HappensAfter
+.. currentmodule:: loopy.kernel.instruction
+.. autoclass:: NoSyncScope
+.. currentmodule:: loopy
 .. autoclass:: InstructionBase
 
 .. _assignments:
@@ -499,6 +502,10 @@ No-Op Instruction
 
 Barrier Instructions
 ^^^^^^^^^^^^^^^^^^^^
+
+.. currentmodule:: loopy.kernel.instruction
+.. autoclass:: BarrierKind
+.. currentmodule:: loopy
 
 .. autoclass:: BarrierInstruction
 

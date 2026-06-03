@@ -38,6 +38,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
+    Literal,
     TypeAlias,
     cast,
 )
@@ -60,7 +61,7 @@ if TYPE_CHECKING:
     from pymbolic import Expression
 
     from loopy.kernel import LoopKernel
-    from loopy.typing import InameStr
+    from loopy.typing import InameStr, InsnId
 
 
 Assignable: TypeAlias = (
@@ -152,6 +153,9 @@ class HappensAfter:
 
 
 # {{{ instructions: base class
+
+NoSyncScope: TypeAlias = Literal["global", "local", "any"]
+
 
 class InstructionBase(ImmutableRecord, Taggable):
     """A base class for all types of instruction that can occur in
@@ -281,7 +285,7 @@ class InstructionBase(ImmutableRecord, Taggable):
     depends_on_is_final: bool
     groups: frozenset[str]
     conflicts_with_groups: frozenset[str]
-    no_sync_with: frozenset[tuple[str, str]]
+    no_sync_with: frozenset[tuple[InsnId, NoSyncScope]]
     predicates: frozenset[Expression]
     within_inames: frozenset[InameStr]
     within_inames_is_final: bool
@@ -300,7 +304,7 @@ class InstructionBase(ImmutableRecord, Taggable):
                  depends_on_is_final: bool | None,
                  groups: frozenset[str] | None,
                  conflicts_with_groups: frozenset[str] | None,
-                 no_sync_with: frozenset[tuple[str, str]] | None,
+                 no_sync_with: frozenset[tuple[InsnId, NoSyncScope]] | None,
                  within_inames_is_final: bool | None,
                  within_inames: frozenset[str] | None,
                  priority: int | None,
@@ -942,7 +946,7 @@ class Assignment(MultiAssignmentBase):
                  depends_on_is_final: bool | None = None,
                  groups: frozenset[str] | None = None,
                  conflicts_with_groups: frozenset[str] | None = None,
-                 no_sync_with: frozenset[tuple[str, str]] | None = None,
+                 no_sync_with: frozenset[tuple[InsnId, NoSyncScope]] | None = None,
                  within_inames_is_final: bool | None = None,
                  within_inames: frozenset[str] | None = None,
                  priority: int | None = None,
@@ -1651,6 +1655,16 @@ class NoOpInstruction(_DataObliviousInstruction):
 
 # {{{ barrier instruction
 
+BarrierKind: TypeAlias = Literal["local", "global"]
+
+
+def to_barrier_kind(s: str) -> BarrierKind:
+    if s == "local" or s == "global":
+        return s
+    else:
+        raise ValueError(f"Invalid barrier kind: {s!r}")
+
+
 class BarrierInstruction(_DataObliviousInstruction):
     """An instruction that requires synchronization with all
     concurrent work items of :attr:`synchronization_kind`.
@@ -1674,6 +1688,9 @@ class BarrierInstruction(_DataObliviousInstruction):
         ... lbarrier {mem_kind=global}
     """
 
+    synchronization_kind: BarrierKind
+    mem_kind: BarrierKind
+
     fields = _DataObliviousInstruction.fields | {"synchronization_kind",
                                                      "mem_kind"}
 
@@ -1682,8 +1699,9 @@ class BarrierInstruction(_DataObliviousInstruction):
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
-            predicates=None, tags=None, synchronization_kind="global",
-            mem_kind="local",
+            predicates=None, tags=None,
+            synchronization_kind: BarrierKind = "global",
+            mem_kind: BarrierKind = "local",
             depends_on=None):
 
         if predicates:
