@@ -314,6 +314,84 @@ def test_extract_subst(ctx_factory: cl.CtxFactory):
     assert insn.expression == parse("bsquare(23) + bsquare(25)")
 
 
+def test_reduction_arg_to_subst_rule_single():
+    from loopy.transform.data import reduction_arg_to_subst_rule
+
+    t_unit = lp.make_kernel(
+            "{[i,j]: 0<=i,j<n}",
+            "out[i] = sum(j, a[i,j])  {id=red}",
+            name="red_subst")
+
+    from loopy.symbolic import parse
+
+    # {{{ auto-generated substitution rule name
+
+    auto_t_unit = reduction_arg_to_subst_rule(t_unit, "j")
+    knl = auto_t_unit["red_subst"]
+    assert knl.id_to_insn["red"].expression == \
+        parse("reduce(sum, [j], red_j_arg(j))")
+
+    subst = knl.substitutions["red_j_arg"]
+    assert subst.arguments == ("j",)
+    assert subst.expression == parse("a[i, j]")
+
+    # }}}
+
+    # {{{ explicit substitution rule name
+
+    named_t_unit = reduction_arg_to_subst_rule(t_unit, "j", subst_rule_name="mysubst")
+    knl = named_t_unit["red_subst"]
+    assert knl.id_to_insn["red"].expression == \
+        parse("reduce(sum, [j], mysubst(j))")
+
+    subst = knl.substitutions["mysubst"]
+    assert subst.arguments == ("j",)
+    assert subst.expression == parse("a[i, j]")
+
+    # }}}
+
+
+def test_reduction_arg_to_subst_rule_multiple():
+    from loopy.transform.data import reduction_arg_to_subst_rule
+
+    t_unit = lp.make_kernel(
+            "{[i,j]: 0<=i,j<n}",
+            """
+            out1[i] = sum(j, a[i,j])  {id=red1}
+            out2[i] = sum(j, b[i,j])  {id=red2}
+            """,
+            name="red_subst")
+
+    from loopy.symbolic import parse
+
+    # {{{ auto-generated names handle multiple matching reductions
+
+    # Each matching reduction gets its own (distinct) rule.
+    auto_t_unit = reduction_arg_to_subst_rule(t_unit, "j")
+    knl = auto_t_unit["red_subst"]
+    assert set(knl.substitutions) == {"red_j_arg", "red_j_arg_0"}
+    assert knl.id_to_insn["red1"].expression == \
+        parse("reduce(sum, [j], red_j_arg(j))")
+    assert knl.id_to_insn["red2"].expression == \
+        parse("reduce(sum, [j], red_j_arg_0(j))")
+
+    assert knl.substitutions["red_j_arg"].arguments == ("j",)
+    assert knl.substitutions["red_j_arg"].expression == parse("a[i, j]")
+    assert knl.substitutions["red_j_arg_0"].arguments == ("j",)
+    assert knl.substitutions["red_j_arg_0"].expression == parse("b[i, j]")
+
+    # }}}
+
+    # {{{ explicit name with multiple matching reductions raises
+
+    # An explicit name can only apply to a single reduction, so a second
+    # matching reduction must raise.
+    with pytest.raises(lp.LoopyError):
+        reduction_arg_to_subst_rule(t_unit, "j", subst_rule_name="mysubst")
+
+    # }}}
+
+
 def test_join_inames(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
