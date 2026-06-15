@@ -47,6 +47,12 @@ import pymbolic.primitives as p
 
 import loopy as lp
 import loopy.transform.compute as compute_mod
+from benchmark_output import (
+    add_json_report_argument,
+    benchmark_report,
+    variant_result,
+    write_json_report,
+)
 from loopy.symbolic import DependencyMapper
 from loopy.transform.compute import compute
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
@@ -475,6 +481,15 @@ def m2m_flop_count(
     return sum_flops + correction_flops
 
 
+def m2m_byte_count(order: int, dimension: int, dtype) -> int:
+    ncoeff = order + 1
+    itemsize = np.dtype(dtype).itemsize
+    beta_entries = ncoeff**dimension
+    weight_entries = dimension * ncoeff
+    sigma_entries = ncoeff**dimension
+    return itemsize * (beta_entries + weight_entries + sigma_entries)
+
+
 def benchmark_executor(ex, queue, args, warmup: int, iterations: int) -> float:
     if iterations <= 0:
         raise ValueError("iterations must be positive")
@@ -536,7 +551,7 @@ def main(
         run: bool = False,
         warmup: int = 3,
         iterations: int = 10
-    ) -> None:
+    ) -> list[dict]:
     if order < 0:
         raise ValueError("order must be nonnegative")
     if dimension not in (2, 3):
@@ -553,6 +568,7 @@ def main(
 
     variants = [False, True] if compare else [use_compute]
     timings: dict[bool, float] = {}
+    variant_records = []
     for variant_uses_compute in variants:
         knl = make_kernel(
             order, eta_tile_size, dimension, dtype,
@@ -560,6 +576,7 @@ def main(
         modeled_flops = m2m_flop_count(
             order, eta_tile_size, dimension,
             use_compute=variant_uses_compute)
+        modeled_bytes = m2m_byte_count(order, dimension, dtype)
 
         print(20 * "=", "Compressed M2M report", 20 * "=")
         variant_name = (
@@ -589,6 +606,20 @@ def main(
                     knl, beta, weights, warmup=warmup, iterations=iterations)
             except Exception as exc:
                 print(f"Runtime execution unavailable: {exc}")
+                variant_records.append(variant_result(
+                    variant_name,
+                    "optimized" if variant_uses_compute else "baseline",
+                    flop_count=modeled_flops,
+                    bytes_moved=modeled_bytes,
+                    dtype=np.dtype(dtype).name,
+                    metadata={
+                        "order": order,
+                        "eta_tile_size": eta_tile_size,
+                        "dimension": dimension,
+                        "byte_model": "beta, weights, and sigma arrays",
+                    },
+                    error=str(exc),
+                ))
             else:
                 rel_err = la.norm(result - reference) / la.norm(reference)
                 gflops = modeled_flops / elapsed * 1e-9
@@ -596,6 +627,35 @@ def main(
                 print(f"Average time per iteration: {elapsed:.6e} s")
                 print(f"Modeled throughput: {gflops:.3f} GFLOP/s")
                 print(f"Relative error: {rel_err:.3e}")
+                variant_records.append(variant_result(
+                    variant_name,
+                    "optimized" if variant_uses_compute else "baseline",
+                    time_s=elapsed,
+                    flop_count=modeled_flops,
+                    bytes_moved=modeled_bytes,
+                    dtype=np.dtype(dtype).name,
+                    relative_error=rel_err,
+                    metadata={
+                        "order": order,
+                        "eta_tile_size": eta_tile_size,
+                        "dimension": dimension,
+                        "byte_model": "beta, weights, and sigma arrays",
+                    },
+                ))
+        else:
+            variant_records.append(variant_result(
+                variant_name,
+                "optimized" if variant_uses_compute else "baseline",
+                flop_count=modeled_flops,
+                bytes_moved=modeled_bytes,
+                dtype=np.dtype(dtype).name,
+                metadata={
+                    "order": order,
+                    "eta_tile_size": eta_tile_size,
+                    "dimension": dimension,
+                    "byte_model": "beta, weights, and sigma arrays",
+                },
+            ))
 
         print((40 + len(" Compressed M2M report ")) * "=")
 
@@ -604,6 +664,8 @@ def main(
         time_reduction = (1 - timings[True] / timings[False]) * 100
         print(f"Speedup: {speedup:.3f}x")
         print(f"Relative time reduction: {time_reduction:.2f}%")
+
+    return variant_records
 
 
 if __name__ == "__main__":
@@ -624,10 +686,11 @@ if __name__ == "__main__":
     _ = parser.add_argument("--print-device-code", action="store_true")
     _ = parser.add_argument("--warmup", action="store", type=int, default=3)
     _ = parser.add_argument("--iterations", action="store", type=int, default=10)
+    add_json_report_argument(parser, "m2m-sum-factorization.json")
 
     args = parser.parse_args()
 
-    main(
+    variants = main(
         order=args.order,
         eta_tile_size=args.eta_tile_size,
         dimension=args.dimension,
@@ -638,4 +701,21 @@ if __name__ == "__main__":
         run=args.run_kernel,
         warmup=args.warmup,
         iterations=args.iterations,
+    )
+
+    write_json_report(
+        args.json_report,
+        benchmark_report(
+            example="m2m-sum-factorization",
+            description="Compressed Cartesian Taylor M2M sum factorization",
+            parameters={
+                "order": args.order,
+                "eta_tile_size": args.eta_tile_size,
+                "dimension": args.dimension,
+                "warmup": args.warmup,
+                "iterations": args.iterations,
+            },
+            baseline_name="inline",
+            variants=variants,
+        ),
     )

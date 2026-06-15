@@ -38,6 +38,12 @@ import numpy as np
 import numpy.linalg as la
 
 import loopy as lp
+from benchmark_output import (
+    add_json_report_argument,
+    benchmark_report,
+    variant_result,
+    write_json_report,
+)
 from loopy.transform.compute import compute
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
@@ -285,6 +291,12 @@ def l2p_3d_flop_count(ntargets: int, order: int, use_compute: bool) -> int:
     return contraction_flops + basis_scale_flops
 
 
+def l2p_3d_byte_count(ntargets: int, order: int, dtype) -> int:
+    ncoeff = order + 1
+    itemsize = np.dtype(dtype).itemsize
+    return itemsize * (4 * ntargets + ncoeff + ncoeff**3)
+
+
 def benchmark_executor(ex, queue, args, warmup: int, iterations: int) -> float:
     evt = None
     for _ in range(warmup):
@@ -359,7 +371,7 @@ def main(
         run: bool = False,
         warmup: int = 3,
         iterations: int = 10
-    ) -> None:
+    ) -> list[dict]:
     if ntargets % target_block_size:
         raise ValueError("ntargets must be divisible by target_block_size")
 
@@ -385,6 +397,7 @@ def main(
         variants = ["inline"]
 
     timings: dict[str, float] = {}
+    variant_records = []
     for variant in variants:
         knl = make_kernel(ntargets, order, dtype)
 
@@ -406,6 +419,7 @@ def main(
         variant_uses_compute = variant != "inline"
         modeled_flops = l2p_3d_flop_count(
             ntargets, order, use_compute=variant_uses_compute)
+        modeled_bytes = l2p_3d_byte_count(ntargets, order, dtype)
 
         print(20 * "=", "3D L2P basis report", 20 * "=")
         print(f"Variant     : {variant}")
@@ -429,6 +443,22 @@ def main(
                     warmup=warmup, iterations=iterations)
             except Exception as exc:
                 print(f"Runtime execution unavailable: {exc}")
+                variant_records.append(variant_result(
+                    variant,
+                    "optimized" if variant_uses_compute else "baseline",
+                    flop_count=modeled_flops,
+                    bytes_moved=modeled_bytes,
+                    dtype=np.dtype(dtype).name,
+                    metadata={
+                        "ntargets": ntargets,
+                        "order": order,
+                        "target_block_size": target_block_size,
+                        "byte_model": (
+                            "x, y, z, phi, inv_fact, and gamma arrays"
+                        ),
+                    },
+                    error=str(exc),
+                ))
             else:
                 rel_err = la.norm(result - reference) / la.norm(reference)
                 gflops = modeled_flops / elapsed * 1e-9
@@ -436,6 +466,37 @@ def main(
                 print(f"Average time per iteration: {elapsed:.6e} s")
                 print(f"Modeled throughput: {gflops:.3f} GFLOP/s")
                 print(f"Relative error: {rel_err:.3e}")
+                variant_records.append(variant_result(
+                    variant,
+                    "optimized" if variant_uses_compute else "baseline",
+                    time_s=elapsed,
+                    flop_count=modeled_flops,
+                    bytes_moved=modeled_bytes,
+                    dtype=np.dtype(dtype).name,
+                    relative_error=rel_err,
+                    metadata={
+                        "ntargets": ntargets,
+                        "order": order,
+                        "target_block_size": target_block_size,
+                        "byte_model": (
+                            "x, y, z, phi, inv_fact, and gamma arrays"
+                        ),
+                    },
+                ))
+        else:
+            variant_records.append(variant_result(
+                variant,
+                "optimized" if variant_uses_compute else "baseline",
+                flop_count=modeled_flops,
+                bytes_moved=modeled_bytes,
+                dtype=np.dtype(dtype).name,
+                metadata={
+                    "ntargets": ntargets,
+                    "order": order,
+                    "target_block_size": target_block_size,
+                    "byte_model": "x, y, z, phi, inv_fact, and gamma arrays",
+                },
+            ))
 
         print((40 + len(" 3D L2P basis report ")) * "=")
 
@@ -448,6 +509,8 @@ def main(
             1 - timings["register-tiled compute"] / timings["inline"]) * 100
         print(f"Speedup: {speedup:.3f}x")
         print(f"Relative time reduction: {time_reduction:.2f}%")
+
+    return variant_records
 
 
 if __name__ == "__main__":
@@ -466,10 +529,11 @@ if __name__ == "__main__":
     _ = parser.add_argument("--print-device-code", action="store_true")
     _ = parser.add_argument("--warmup", action="store", type=int, default=3)
     _ = parser.add_argument("--iterations", action="store", type=int, default=10)
+    add_json_report_argument(parser, "l2p-3d-tensor-product-compute.json")
 
     args = parser.parse_args()
 
-    main(
+    variants = main(
         ntargets=args.ntargets,
         order=args.order,
         target_block_size=args.target_block_size,
@@ -481,4 +545,21 @@ if __name__ == "__main__":
         run=args.run_kernel,
         warmup=args.warmup,
         iterations=args.iterations,
+    )
+
+    write_json_report(
+        args.json_report,
+        benchmark_report(
+            example="l2p-3d-tensor-product-compute",
+            description="3D Taylor L2P tensor-product basis materialization",
+            parameters={
+                "ntargets": args.ntargets,
+                "order": args.order,
+                "target_block_size": args.target_block_size,
+                "warmup": args.warmup,
+                "iterations": args.iterations,
+            },
+            baseline_name="inline",
+            variants=variants,
+        ),
     )

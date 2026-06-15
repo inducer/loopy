@@ -7,6 +7,12 @@ import numpy.linalg as la
 import pyopencl as cl
 
 import loopy as lp
+from benchmark_output import (
+    add_json_report_argument,
+    benchmark_report,
+    variant_result,
+    write_json_report,
+)
 from loopy.transform.compute import compute
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
@@ -56,6 +62,13 @@ def laplacian_flop_count(npts: int, stencil_width: int) -> int:
     return 4 * stencil_width * output_points
 
 
+def laplacian_byte_count(npts: int, stencil_width: int, dtype) -> int:
+    radius = stencil_width // 2
+    output_points = (npts - 2 * radius) ** 3
+    itemsize = np.dtype(dtype).itemsize
+    return itemsize * (output_points * (3 * stencil_width + 1) + stencil_width)
+
+
 def main(
         npts: int = 64,
         stencil_width: int = 5,
@@ -65,7 +78,7 @@ def main(
         run_kernel: bool = False,
         warmup: int = 3,
         iterations: int = 10
-    ) -> float | None:
+    ) -> dict | None:
     if stencil_width <= 0 or stencil_width % 2 == 0:
         raise ValueError("stencil_width must be a positive odd integer")
 
@@ -191,7 +204,7 @@ def main(
     if not run_kernel:
         return None
 
-    ctx = cl.create_some_context()
+    ctx = cl.create_some_context(interactive=False)
     queue = cl.CommandQueue(ctx)
 
     ex = knl.executor(queue)
@@ -205,7 +218,8 @@ def main(
     avg_time_per_iter = benchmark_executor(
         ex, queue, {"u": f_vals_cl, "c": c_cl, "lap_u": lap_u_cl},
         warmup=warmup, iterations=iterations)
-    avg_gflops = laplacian_flop_count(npts, stencil_width) / avg_time_per_iter / 1e9
+    modeled_flops = laplacian_flop_count(npts, stencil_width)
+    avg_gflops = modeled_flops / avg_time_per_iter / 1e9
 
     _, lap_fd = ex(queue, u=f_vals_cl, c=c_cl, lap_u=lap_u_cl)
     lap_true = laplacian_f(x, y, z)
@@ -223,7 +237,20 @@ def main(
     print(f"Relative error: {rel_err:.3e}")
     print((40 + len(" Finite difference report ")) * "=")
 
-    return avg_time_per_iter
+    return variant_result(
+        "compute" if use_compute else "baseline",
+        "optimized" if use_compute else "baseline",
+        time_s=avg_time_per_iter,
+        flop_count=modeled_flops,
+        bytes_moved=laplacian_byte_count(npts, stencil_width, dtype),
+        dtype=np.dtype(dtype).name,
+        relative_error=rel_err,
+        metadata={
+            "npoints": npts,
+            "stencil_width": stencil_width,
+            "byte_model": "3 stencil input streams plus one output store",
+        },
+    )
 
 
 if __name__ == "__main__":
@@ -243,9 +270,11 @@ if __name__ == "__main__":
     _ = parser.add_argument("--print-kernel", action="store_true")
     _ = parser.add_argument("--warmup", action="store", type=int, default=3)
     _ = parser.add_argument("--iterations", action="store", type=int, default=10)
+    add_json_report_argument(parser, "finite-difference-2-5d.json")
 
     args = parser.parse_args()
 
+    variants = []
     if args.compare:
         print("Running example without compute...")
         no_compute_time = main(
@@ -275,12 +304,14 @@ if __name__ == "__main__":
 
         assert no_compute_time is not None
         assert compute_time is not None
-        speedup = no_compute_time / compute_time
+        variants = [no_compute_time, compute_time]
+        speedup = no_compute_time["time_s"] / compute_time["time_s"]
         print(f"Speedup: {speedup:.3f}x")
-        time_reduction = (1 - compute_time / no_compute_time) * 100
+        time_reduction = (
+            1 - compute_time["time_s"] / no_compute_time["time_s"]) * 100
         print(f"Relative time reduction: {time_reduction:.2f}%")
     else:
-        _ = main(
+        result = main(
             npts=args.npoints,
             stencil_width=args.stencil_width,
             use_compute=args.compute,
@@ -290,3 +321,21 @@ if __name__ == "__main__":
             warmup=args.warmup,
             iterations=args.iterations,
         )
+        if result is not None:
+            variants = [result]
+
+    write_json_report(
+        args.json_report,
+        benchmark_report(
+            example="finite-difference-2-5D",
+            description="3D finite-difference Laplacian with compute staging",
+            parameters={
+                "npoints": args.npoints,
+                "stencil_width": args.stencil_width,
+                "warmup": args.warmup,
+                "iterations": args.iterations,
+            },
+            baseline_name="baseline",
+            variants=variants,
+        ),
+    )

@@ -7,6 +7,12 @@ import numpy.linalg as la
 import pyopencl as cl
 
 import loopy as lp
+from benchmark_output import (
+    add_json_report_argument,
+    benchmark_report,
+    variant_result,
+    write_json_report,
+)
 from loopy.transform.compute import compute
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
@@ -35,6 +41,11 @@ def wave_flop_count(ntime: int) -> int:
     return 5 * (ntime - 2)
 
 
+def wave_byte_count(ntime: int, dtype) -> int:
+    itemsize = np.dtype(dtype).itemsize
+    return itemsize * (3 * (ntime - 2))
+
+
 def main(
         ntime: int = 128,
         use_compute: bool = False,
@@ -43,7 +54,7 @@ def main(
         run_kernel: bool = False,
         warmup: int = 3,
         iterations: int = 10
-    ) -> float | None:
+    ) -> dict | None:
     dtype = np.float64
 
     dt = dtype(1 / 512)
@@ -112,7 +123,7 @@ def main(
     if not run_kernel:
         return None
 
-    ctx = cl.create_some_context()
+    ctx = cl.create_some_context(interactive=False)
     queue = cl.CommandQueue(ctx)
 
     ex = knl.executor(queue)
@@ -121,7 +132,8 @@ def main(
     avg_time_per_iter = benchmark_executor(
         ex, queue, {"u": u, "dt2": dt2, "omega2": omega2},
         warmup=warmup, iterations=iterations)
-    avg_gflops = wave_flop_count(ntime) / avg_time_per_iter / 1e9
+    modeled_flops = wave_flop_count(ntime)
+    avg_gflops = modeled_flops / avg_time_per_iter / 1e9
 
     _, out = ex(queue, u=u, dt2=dt2, omega2=omega2)
 
@@ -145,7 +157,19 @@ def main(
     print(f"Relative error: {rel_err:.3e}")
     print((40 + len(" Wave recurrence report ")) * "=")
 
-    return avg_time_per_iter
+    return variant_result(
+        "compute" if use_compute else "baseline",
+        "optimized" if use_compute else "baseline",
+        time_s=avg_time_per_iter,
+        flop_count=modeled_flops,
+        bytes_moved=wave_byte_count(ntime, dtype),
+        dtype=np.dtype(dtype).name,
+        relative_error=rel_err,
+        metadata={
+            "ntime": ntime,
+            "byte_model": "two input reads plus one output store per timestep",
+        },
+    )
 
 
 if __name__ == "__main__":
@@ -164,9 +188,11 @@ if __name__ == "__main__":
     _ = parser.add_argument("--print-kernel", action="store_true")
     _ = parser.add_argument("--warmup", action="store", type=int, default=3)
     _ = parser.add_argument("--iterations", action="store", type=int, default=10)
+    add_json_report_argument(parser, "wave-equation-ring-buffer.json")
 
     args = parser.parse_args()
 
+    variants = []
     if args.compare:
         print("Running example without compute...")
         no_compute_time = main(
@@ -194,12 +220,14 @@ if __name__ == "__main__":
 
         assert no_compute_time is not None
         assert compute_time is not None
-        speedup = no_compute_time / compute_time
+        variants = [no_compute_time, compute_time]
+        speedup = no_compute_time["time_s"] / compute_time["time_s"]
         print(f"Speedup: {speedup:.3f}x")
-        time_reduction = (1 - compute_time / no_compute_time) * 100
+        time_reduction = (
+            1 - compute_time["time_s"] / no_compute_time["time_s"]) * 100
         print(f"Relative time reduction: {time_reduction:.2f}%")
     else:
-        _ = main(
+        result = main(
             ntime=args.ntime,
             use_compute=args.compute,
             print_device_code=args.print_device_code,
@@ -208,3 +236,20 @@ if __name__ == "__main__":
             warmup=args.warmup,
             iterations=args.iterations,
         )
+        if result is not None:
+            variants = [result]
+
+    write_json_report(
+        args.json_report,
+        benchmark_report(
+            example="wave-equation-ring-buffer",
+            description="1D wave recurrence with compute ring-buffer staging",
+            parameters={
+                "ntime": args.ntime,
+                "warmup": args.warmup,
+                "iterations": args.iterations,
+            },
+            baseline_name="baseline",
+            variants=variants,
+        ),
+    )

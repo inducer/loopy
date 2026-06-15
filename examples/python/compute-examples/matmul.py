@@ -7,7 +7,23 @@ import pyopencl as cl
 import pyopencl.array as cl_array
 
 import loopy as lp
+from benchmark_output import (
+    add_json_report_argument,
+    benchmark_report,
+    variant_result,
+    write_json_report,
+)
 from loopy.transform.compute import compute
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
+
+
+def matmul_flop_count(m: int, n: int, k: int) -> int:
+    return 2 * m * n * k
+
+
+def matmul_byte_count(m: int, n: int, k: int, dtype) -> int:
+    itemsize = np.dtype(dtype).itemsize
+    return itemsize * (m * k + k * n + m * n)
 
 
 def benchmark_kernel(
@@ -15,9 +31,12 @@ def benchmark_kernel(
     queue: cl.CommandQueue,
     a: np.ndarray,
     b: np.ndarray,
+    variant_name: str,
+    role: str,
+    tile_metadata: dict,
     nwarmup: int = 5,
     niterations: int = 20
-):
+) -> dict:
     ex = knl.executor(queue)
 
     a_cl = cl_array.to_device(queue, a)
@@ -42,7 +61,7 @@ def benchmark_kernel(
     total_elapsed_s = total_ns * 1e-9
     s_per_iter = total_elapsed_s / niterations
 
-    total_flops = 2 * a.shape[0] * a.shape[1] * b.shape[1]
+    total_flops = matmul_flop_count(a.shape[0], b.shape[1], a.shape[1])
     gflops = (total_flops / s_per_iter) * 1e-9
 
     c_ref = a @ b
@@ -59,6 +78,20 @@ def benchmark_kernel(
     print(f"Time per iter (s): {s_per_iter:.4}")
     print(f"          GFLOP/s: {gflops}")
     print("===========================================")
+
+    return variant_result(
+        variant_name,
+        role,
+        time_s=s_per_iter,
+        flop_count=total_flops,
+        bytes_moved=matmul_byte_count(m, n, k, a.dtype),
+        dtype=np.dtype(a.dtype).name,
+        relative_error=error,
+        metadata={
+            **tile_metadata,
+            "byte_model": "a, b, and c matrix arrays",
+        },
+    )
 
 
 def naive_matmul(
@@ -305,22 +338,12 @@ def register_tiled_matmul(
     return lp.tag_inames(knl, iname_tags)
 
 
-def main(
-        m: int = 1024,
-        n: int = 1024,
-        k: int = 1024,
-        bm: int = 64,
-        bn: int = 64,
-        bk: int = 32,
-        tm: int = 4,
-        tn: int = 4,
-        shared_memory_tiled: bool = False,
-        register_tiled: bool = False,
-        dtype: lp.ToLoopyTypeConvertible = np.float32,
-        print_kernel: bool = False,
-        print_device_code: bool = False
-    ) -> None:
-
+def make_base_kernel(
+        m: int,
+        n: int,
+        k: int,
+        dtype: lp.ToLoopyTypeConvertible
+    ) -> lp.TranslationUnit:
     knl = lp.make_kernel(
         "{ [i, j, k] : 0 <= i < M and 0 <= j < N and 0 <= k < K }",
         """
@@ -333,35 +356,175 @@ def main(
             lp.GlobalArg("a", shape=(m, k), dtype=dtype),
             lp.GlobalArg("b", shape=(k, n), dtype=dtype),
             lp.GlobalArg("c", shape=(m, n), is_output=True)
+        ],
+        lang_version=LOOPY_USE_LANGUAGE_VERSION_2018_2,
+    )
+
+    return lp.fix_parameters(knl, M=m, N=n, K=k)
+
+
+def main(
+        m: int = 1024,
+        n: int = 1024,
+        k: int = 1024,
+        bm: int = 64,
+        bn: int = 64,
+        bk: int = 32,
+        tm: int = 4,
+        tn: int = 4,
+        shared_memory_tiled: bool = False,
+        register_tiled: bool = False,
+        compare: bool = False,
+        dtype: lp.ToLoopyTypeConvertible = np.float32,
+        print_kernel: bool = False,
+        print_device_code: bool = False,
+        run_kernel: bool = True,
+        warmup: int = 5,
+        iterations: int = 20
+    ) -> list[dict]:
+
+    queue = None
+    a = None
+    b = None
+    if run_kernel:
+        ctx = cl.create_some_context(interactive=False)
+        queue = cl.CommandQueue(
+            ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE
+        )
+
+        rng = np.random.default_rng()
+        a = rng.standard_normal((m, k)).astype(dtype)
+        b = rng.standard_normal((k, n)).astype(dtype)
+
+    if compare:
+        base_bm = min(bm, 32)
+        base_bn = min(bn, 32)
+        variant_specs = [
+            ("naive", "baseline", {"bm": base_bm, "bn": base_bn, "bk": bk}),
+            (
+                "shared-memory tiled",
+                "optimized",
+                {"bm": base_bm, "bn": base_bn, "bk": bk},
+            ),
+            (
+                "register tiled",
+                "optimized",
+                {"bm": bm, "bn": bn, "bk": bk, "tm": tm, "tn": tn},
+            ),
         ]
-    )
-
-    knl = lp.fix_parameters(knl, M=m, N=n, K=k)
-
-    if shared_memory_tiled:
-        knl = shared_memory_tiled_matmul(knl, bm, bn, bk)
+    elif shared_memory_tiled:
+        variant_specs = [
+            ("shared-memory tiled", "optimized", {"bm": bm, "bn": bn, "bk": bk})
+        ]
     elif register_tiled:
-        knl = register_tiled_matmul(knl, bm, bn, bk, tm, tn)
+        variant_specs = [
+            (
+                "register tiled",
+                "optimized",
+                {"bm": bm, "bn": bn, "bk": bk, "tm": tm, "tn": tn},
+            )
+        ]
     else:
-        knl = naive_matmul(knl, bm, bn, bk)
+        variant_specs = [
+            ("naive", "baseline", {"bm": bm, "bn": bn, "bk": bk})
+        ]
 
-    ctx = cl.create_some_context()
-    queue = cl.CommandQueue(
-        ctx,
-        properties=cl.command_queue_properties.PROFILING_ENABLE
-    )
+    variant_records = []
+    for variant_name, role, tile_metadata in variant_specs:
+        try:
+            knl = make_base_kernel(m, n, k, dtype)
+            if variant_name == "shared-memory tiled":
+                knl = shared_memory_tiled_matmul(
+                    knl,
+                    tile_metadata["bm"],
+                    tile_metadata["bn"],
+                    tile_metadata["bk"],
+                )
+            elif variant_name == "register tiled":
+                knl = register_tiled_matmul(
+                    knl,
+                    tile_metadata["bm"],
+                    tile_metadata["bn"],
+                    tile_metadata["bk"],
+                    tile_metadata["tm"],
+                    tile_metadata["tn"],
+                )
+            else:
+                knl = naive_matmul(
+                    knl,
+                    tile_metadata["bm"],
+                    tile_metadata["bn"],
+                    tile_metadata["bk"],
+                )
 
-    rng = np.random.default_rng()
-    a = rng.standard_normal((m, k)).astype(dtype)
-    b = rng.standard_normal((k, n)).astype(dtype)
+            if print_kernel:
+                print(knl)
 
-    benchmark_kernel(knl, queue, a, b)
+            if print_device_code:
+                print(lp.generate_code_v2(knl).device_code())
 
-    if print_kernel:
-        print(knl)
+            if run_kernel:
+                assert queue is not None
+                assert a is not None
+                assert b is not None
+                record = benchmark_kernel(
+                    knl,
+                    queue,
+                    a,
+                    b,
+                    variant_name,
+                    role,
+                    tile_metadata,
+                    nwarmup=warmup,
+                    niterations=iterations,
+                )
+            else:
+                record = variant_result(
+                    variant_name,
+                    role,
+                    flop_count=matmul_flop_count(m, n, k),
+                    bytes_moved=matmul_byte_count(m, n, k, dtype),
+                    dtype=np.dtype(dtype).name,
+                    metadata={
+                        **tile_metadata,
+                        "byte_model": "a, b, and c matrix arrays",
+                    },
+                )
+        except Exception as exc:
+            print(f"Runtime execution unavailable for {variant_name}: {exc}")
+            record = variant_result(
+                variant_name,
+                role,
+                flop_count=matmul_flop_count(m, n, k),
+                bytes_moved=matmul_byte_count(m, n, k, dtype),
+                dtype=np.dtype(dtype).name,
+                metadata={
+                    **tile_metadata,
+                    "byte_model": "a, b, and c matrix arrays",
+                },
+                error=str(exc),
+            )
+        variant_records.append(record)
 
-    if print_device_code:
-        print(lp.generate_code_v2(knl).device_code())
+    if compare:
+        timings = {
+            record["name"]: record["time_s"]
+            for record in variant_records
+            if "time_s" in record and "error" not in record
+        }
+        if "naive" in timings:
+            for variant_name in ("shared-memory tiled", "register tiled"):
+                if variant_name in timings:
+                    speedup = timings["naive"] / timings[variant_name]
+                    time_reduction = (
+                        1 - timings[variant_name] / timings["naive"]) * 100
+                    print(
+                        f"{variant_name} speedup: {speedup:.3f}x; "
+                        f"relative time reduction: {time_reduction:.2f}%"
+                    )
+
+    return variant_records
 
 
 if __name__ == "__main__":
@@ -382,18 +545,51 @@ if __name__ == "__main__":
 
     _ = parser.add_argument("--shared-memory-tiled", action="store_true")
     _ = parser.add_argument("--register-tiled", action="store_true")
+    _ = parser.add_argument("--compare", action="store_true")
 
     _ = parser.add_argument("--print-kernel", action="store_true")
     _ = parser.add_argument("--print-device-code", action="store_true")
+    _ = parser.add_argument("--run-kernel", action="store_true", default=True)
+    _ = parser.add_argument("--no-run-kernel", action="store_false",
+                            dest="run_kernel")
+    _ = parser.add_argument("--warmup", action="store", type=int, default=5)
+    _ = parser.add_argument("--iterations", action="store", type=int, default=20)
+    add_json_report_argument(parser, "matmul.json")
 
     args = parser.parse_args()
 
-    main(
+    variants = main(
         m=args.m, n=args.n, k=args.k,
         bm=args.bm, bn=args.bn, bk=args.bk,
         tm=args.tm, tn=args.tn,
         shared_memory_tiled=args.shared_memory_tiled,
         register_tiled=args.register_tiled,
+        compare=args.compare,
         print_kernel=args.print_kernel,
-        print_device_code=args.print_device_code
+        print_device_code=args.print_device_code,
+        run_kernel=args.run_kernel,
+        warmup=args.warmup,
+        iterations=args.iterations,
+    )
+
+    write_json_report(
+        args.json_report,
+        benchmark_report(
+            example="matmul",
+            description="Dense matrix multiplication schedule comparison",
+            parameters={
+                "m": args.m,
+                "n": args.n,
+                "k": args.k,
+                "bm": args.bm,
+                "bn": args.bn,
+                "bk": args.bk,
+                "tm": args.tm,
+                "tn": args.tn,
+                "warmup": args.warmup,
+                "iterations": args.iterations,
+            },
+            baseline_name="naive",
+            variants=variants,
+        ),
     )

@@ -35,6 +35,12 @@ import numpy as np
 import numpy.linalg as la
 
 import loopy as lp
+from benchmark_output import (
+    add_json_report_argument,
+    benchmark_report,
+    variant_result,
+    write_json_report,
+)
 from loopy.transform.compute import compute
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
@@ -202,6 +208,12 @@ def p2m_flop_count(
     return contraction_flops + monomial_scale_flops
 
 
+def p2m_byte_count(nsources: int, order: int, dtype) -> int:
+    ncoeff = order + 1
+    itemsize = np.dtype(dtype).itemsize
+    return itemsize * (3 * nsources + ncoeff + ncoeff**2)
+
+
 def benchmark_executor(ex, queue, args, warmup: int, iterations: int) -> float:
     evt = None
     for _ in range(warmup):
@@ -274,7 +286,7 @@ def main(
         run: bool = False,
         warmup: int = 3,
         iterations: int = 10
-    ) -> None:
+    ) -> list[dict]:
     dtype = np.float64
     rng = np.random.default_rng(18)
     x = rng.uniform(-0.25, 0.25, size=nsources).astype(dtype)
@@ -288,6 +300,7 @@ def main(
 
     variants = [False, True] if compare else [use_compute]
     timings: dict[bool, float] = {}
+    variant_records = []
     for variant_uses_compute in variants:
         knl = make_kernel(
             nsources, order, q1_tile_size, source_tile_size, dtype,
@@ -295,9 +308,11 @@ def main(
         modeled_flops = p2m_flop_count(
             nsources, order, q1_tile_size,
             use_compute=variant_uses_compute)
+        modeled_bytes = p2m_byte_count(nsources, order, dtype)
+        variant_name = "compute" if variant_uses_compute else "inline"
 
         print(20 * "=", "P2M basis report", 20 * "=")
-        print(f"Variant: {'compute' if variant_uses_compute else 'inline'}")
+        print(f"Variant: {variant_name}")
         print(f"Sources: {nsources}")
         print(f"Order  : {order}")
         print(f"q1 tile: {q1_tile_size}")
@@ -319,6 +334,23 @@ def main(
                     warmup=warmup, iterations=iterations)
             except Exception as exc:
                 print(f"Runtime execution unavailable: {exc}")
+                variant_records.append(variant_result(
+                    variant_name,
+                    "optimized" if variant_uses_compute else "baseline",
+                    flop_count=modeled_flops,
+                    bytes_moved=modeled_bytes,
+                    dtype=np.dtype(dtype).name,
+                    metadata={
+                        "nsources": nsources,
+                        "order": order,
+                        "q1_tile_size": q1_tile_size,
+                        "source_tile_size": source_tile_size,
+                        "byte_model": (
+                            "x, y, strength, inv_fact, and beta arrays"
+                        ),
+                    },
+                    error=str(exc),
+                ))
             else:
                 rel_err = la.norm(result - reference) / la.norm(reference)
                 gflops = modeled_flops / elapsed * 1e-9
@@ -326,6 +358,39 @@ def main(
                 print(f"Average time per iteration: {elapsed:.6e} s")
                 print(f"Modeled throughput: {gflops:.3f} GFLOP/s")
                 print(f"Relative error: {rel_err:.3e}")
+                variant_records.append(variant_result(
+                    variant_name,
+                    "optimized" if variant_uses_compute else "baseline",
+                    time_s=elapsed,
+                    flop_count=modeled_flops,
+                    bytes_moved=modeled_bytes,
+                    dtype=np.dtype(dtype).name,
+                    relative_error=rel_err,
+                    metadata={
+                        "nsources": nsources,
+                        "order": order,
+                        "q1_tile_size": q1_tile_size,
+                        "source_tile_size": source_tile_size,
+                        "byte_model": (
+                            "x, y, strength, inv_fact, and beta arrays"
+                        ),
+                    },
+                ))
+        else:
+            variant_records.append(variant_result(
+                variant_name,
+                "optimized" if variant_uses_compute else "baseline",
+                flop_count=modeled_flops,
+                bytes_moved=modeled_bytes,
+                dtype=np.dtype(dtype).name,
+                metadata={
+                    "nsources": nsources,
+                    "order": order,
+                    "q1_tile_size": q1_tile_size,
+                    "source_tile_size": source_tile_size,
+                    "byte_model": "x, y, strength, inv_fact, and beta arrays",
+                },
+            ))
 
         print((40 + len(" P2M basis report ")) * "=")
 
@@ -334,6 +399,8 @@ def main(
         time_reduction = (1 - timings[True] / timings[False]) * 100
         print(f"Speedup: {speedup:.3f}x")
         print(f"Relative time reduction: {time_reduction:.2f}%")
+
+    return variant_records
 
 
 if __name__ == "__main__":
@@ -352,10 +419,11 @@ if __name__ == "__main__":
     _ = parser.add_argument("--print-device-code", action="store_true")
     _ = parser.add_argument("--warmup", action="store", type=int, default=3)
     _ = parser.add_argument("--iterations", action="store", type=int, default=10)
+    add_json_report_argument(parser, "p2m-basis-compute.json")
 
     args = parser.parse_args()
 
-    main(
+    variants = main(
         nsources=args.nsources,
         order=args.order,
         q1_tile_size=args.q1_tile_size,
@@ -367,4 +435,22 @@ if __name__ == "__main__":
         run=args.run_kernel,
         warmup=args.warmup,
         iterations=args.iterations,
+    )
+
+    write_json_report(
+        args.json_report,
+        benchmark_report(
+            example="p2m-basis-compute",
+            description="2D Taylor P2M monomial materialization with compute",
+            parameters={
+                "nsources": args.nsources,
+                "order": args.order,
+                "q1_tile_size": args.q1_tile_size,
+                "source_tile_size": args.source_tile_size,
+                "warmup": args.warmup,
+                "iterations": args.iterations,
+            },
+            baseline_name="inline",
+            variants=variants,
+        ),
     )
