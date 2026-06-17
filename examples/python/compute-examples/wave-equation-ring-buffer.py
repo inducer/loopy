@@ -47,14 +47,14 @@ def wave_byte_count(ntime: int, dtype) -> int:
 
 
 def main(
-        ntime: int = 128,
-        use_compute: bool = False,
-        print_device_code: bool = False,
-        print_kernel: bool = False,
-        run_kernel: bool = False,
-        warmup: int = 3,
-        iterations: int = 10
-    ) -> dict | None:
+    ntime: int = 128,
+    use_compute: bool = False,
+    print_device_code: bool = False,
+    print_kernel: bool = False,
+    run_kernel: bool = False,
+    warmup: int = 3,
+    iterations: int = 10,
+) -> dict | None:
     dtype = np.float64
 
     dt = dtype(1 / 512)
@@ -79,8 +79,7 @@ def main(
         """,
         [
             lp.GlobalArg("u", dtype=dtype, shape=(ntime,)),
-            lp.GlobalArg("u_next", dtype=dtype, shape=(ntime,),
-                         is_output=True),
+            lp.GlobalArg("u_next", dtype=dtype, shape=(ntime,), is_output=True),
             lp.ValueArg("dt2", dtype=dtype),
             lp.ValueArg("omega2", dtype=dtype),
         ],
@@ -101,11 +100,10 @@ def main(
             "u_hist",
             compute_map=ring_buffer_map,
             storage_indices=["tb"],
-
             temporary_name="u_time_buf",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,
-
+            boxify_temporary_bounds=True,
             compute_insn_id="u_time_buf_compute",
             inames_to_advance=["ti"],
         )
@@ -130,8 +128,12 @@ def main(
 
     dt2 = dtype(dt**2)
     avg_time_per_iter = benchmark_executor(
-        ex, queue, {"u": u, "dt2": dt2, "omega2": omega2},
-        warmup=warmup, iterations=iterations)
+        ex,
+        queue,
+        {"u": u, "dt2": dt2, "omega2": omega2},
+        warmup=warmup,
+        iterations=iterations,
+    )
     modeled_flops = wave_flop_count(ntime)
     avg_gflops = modeled_flops / avg_time_per_iter / 1e9
 
@@ -140,9 +142,7 @@ def main(
     ref = np.zeros_like(u)
     for time_idx in range(1, ntime - 1):
         ref[time_idx + 1] = (
-            2 * u[time_idx]
-            - u[time_idx - 1]
-            - dt2 * omega2 * u[time_idx]
+            2 * u[time_idx] - u[time_idx - 1] - dt2 * omega2 * u[time_idx]
         )
 
     sl = slice(2, ntime)
@@ -182,8 +182,7 @@ if __name__ == "__main__":
     _ = parser.add_argument("--compare", action="store_true")
     _ = parser.add_argument("--compute", action="store_true")
     _ = parser.add_argument("--run-kernel", action="store_true")
-    _ = parser.add_argument("--no-run-kernel", action="store_false",
-                            dest="run_kernel")
+    _ = parser.add_argument("--no-run-kernel", action="store_false", dest="run_kernel")
     _ = parser.add_argument("--print-device-code", action="store_true")
     _ = parser.add_argument("--print-kernel", action="store_true")
     _ = parser.add_argument("--warmup", action="store", type=int, default=3)
@@ -223,8 +222,7 @@ if __name__ == "__main__":
         variants = [no_compute_time, compute_time]
         speedup = no_compute_time["time_s"] / compute_time["time_s"]
         print(f"Speedup: {speedup:.3f}x")
-        time_reduction = (
-            1 - compute_time["time_s"] / no_compute_time["time_s"]) * 100
+        time_reduction = (1 - compute_time["time_s"] / no_compute_time["time_s"]) * 100
         print(f"Relative time reduction: {time_reduction:.2f}%")
     else:
         result = main(

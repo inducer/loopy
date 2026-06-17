@@ -70,27 +70,27 @@ def laplacian_byte_count(npts: int, stencil_width: int, dtype) -> int:
 
 
 def main(
-        npts: int = 64,
-        stencil_width: int = 5,
-        use_compute: bool = False,
-        print_device_code: bool = False,
-        print_kernel: bool = False,
-        run_kernel: bool = False,
-        warmup: int = 3,
-        iterations: int = 10
-    ) -> dict | None:
+    npts: int = 64,
+    stencil_width: int = 5,
+    use_compute: bool = False,
+    print_device_code: bool = False,
+    print_kernel: bool = False,
+    run_kernel: bool = False,
+    warmup: int = 3,
+    iterations: int = 10,
+) -> dict | None:
     if stencil_width <= 0 or stencil_width % 2 == 0:
         raise ValueError("stencil_width must be a positive odd integer")
 
     pts = np.linspace(-1, 1, num=npts, endpoint=True)
     h = pts[1] - pts[0]
 
-    x, y, z = np.meshgrid(*(pts,)*3)
+    x, y, z = np.meshgrid(*(pts,) * 3)
 
     dtype = np.float64
-    x = x.reshape(*(npts,)*3).astype(dtype)
-    y = y.reshape(*(npts,)*3).astype(dtype)
-    z = z.reshape(*(npts,)*3).astype(dtype)
+    x = x.reshape(*(npts,) * 3).astype(dtype)
+    y = y.reshape(*(npts,) * 3).astype(dtype)
+    z = z.reshape(*(npts,) * 3).astype(dtype)
 
     m = stencil_width
     r = m // 2
@@ -111,11 +111,12 @@ def main(
         """,
         [
             lp.GlobalArg("u", dtype=dtype, shape=(npts, npts, npts)),
-            lp.GlobalArg("lap_u", dtype=dtype, shape=(npts, npts, npts),
-                         is_output=True),
-            lp.GlobalArg("c", dtype=dtype, shape=(m,))
+            lp.GlobalArg(
+                "lap_u", dtype=dtype, shape=(npts, npts, npts), is_output=True
+            ),
+            lp.GlobalArg("c", dtype=dtype, shape=(m,)),
         ],
-        lang_version=LOOPY_USE_LANGUAGE_VERSION_2018_2
+        lang_version=LOOPY_USE_LANGUAGE_VERSION_2018_2,
     )
 
     knl = lp.fix_parameters(knl, npts=npts, r=r)
@@ -137,12 +138,11 @@ def main(
             "u_",
             compute_map=plane_map,
             storage_indices=["ii_s", "ji_s"],
-
             temporary_name="u_ij_plane",
             temporary_address_space=lp.AddressSpace.LOCAL,
             temporary_dtype=dtype,
-
-            compute_insn_id="u_plane_compute"
+            boxify_temporary_bounds=True,
+            compute_insn_id="u_plane_compute",
         )
 
         ring_buffer_map = nisl.make_map(f"""{{
@@ -157,13 +157,11 @@ def main(
             "u_",
             compute_map=ring_buffer_map,
             storage_indices=["kb"],
-
             temporary_name="u_k_buf",
             temporary_address_space=lp.AddressSpace.PRIVATE,
             temporary_dtype=dtype,
-
             compute_insn_id="u_ring_buf_compute",
-            inames_to_advance=["ki"]
+            inames_to_advance=["ki"],
         )
 
         nt = 16
@@ -175,25 +173,29 @@ def main(
             knl, "ji_s", nt, outer_iname="ji_s_tile", inner_iname="ji_s_local"
         )
 
-        knl = lp.tag_inames(knl, {
-            # 2D plane compute storage loops
-            "ii_s_local": "l.1",
-            "ji_s_local": "l.0",
+        knl = lp.tag_inames(
+            knl,
+            {
+                # 2D plane compute storage loops
+                "ii_s_local": "l.1",
+                "ji_s_local": "l.0",
+                # force the use of registers by unrolling
+                "kb": "unr",
+            },
+        )
 
-            # force the use of registers by unrolling
-            "kb": "unr"
-        })
-
-    knl = lp.tag_inames(knl, {
-        # outer block loops
-        "io": "g.2",
-        "jo": "g.1",
-        "ko": "g.0",
-
-        # inner tile loops
-        "ii": "l.1",
-        "ji": "l.0",
-    })
+    knl = lp.tag_inames(
+        knl,
+        {
+            # outer block loops
+            "io": "g.2",
+            "jo": "g.1",
+            "ko": "g.0",
+            # inner tile loops
+            "ii": "l.1",
+            "ji": "l.0",
+        },
+    )
 
     if print_device_code:
         print(lp.generate_code_v2(knl).device_code())
@@ -212,18 +214,23 @@ def main(
     f_vals = f(x, y, z)
 
     import pyopencl.array as cl_array
+
     f_vals_cl = cl_array.to_device(queue, f_vals)
     c_cl = cl_array.to_device(queue, c)
-    lap_u_cl = cl_array.zeros(queue, (npts,)*3, dtype=f_vals_cl.dtype)
+    lap_u_cl = cl_array.zeros(queue, (npts,) * 3, dtype=f_vals_cl.dtype)
     avg_time_per_iter = benchmark_executor(
-        ex, queue, {"u": f_vals_cl, "c": c_cl, "lap_u": lap_u_cl},
-        warmup=warmup, iterations=iterations)
+        ex,
+        queue,
+        {"u": f_vals_cl, "c": c_cl, "lap_u": lap_u_cl},
+        warmup=warmup,
+        iterations=iterations,
+    )
     modeled_flops = laplacian_flop_count(npts, stencil_width)
     avg_gflops = modeled_flops / avg_time_per_iter / 1e9
 
     _, lap_fd = ex(queue, u=f_vals_cl, c=c_cl, lap_u=lap_u_cl)
     lap_true = laplacian_f(x, y, z)
-    sl = (slice(r, npts - r),)*3
+    sl = (slice(r, npts - r),) * 3
 
     rel_err = la.norm(lap_true[sl] - lap_fd[0].get()[sl]) / la.norm(lap_true[sl])
 
@@ -264,8 +271,7 @@ if __name__ == "__main__":
     _ = parser.add_argument("--compare", action="store_true")
     _ = parser.add_argument("--compute", action="store_true")
     _ = parser.add_argument("--run-kernel", action="store_true")
-    _ = parser.add_argument("--no-run-kernel", action="store_false",
-                            dest="run_kernel")
+    _ = parser.add_argument("--no-run-kernel", action="store_false", dest="run_kernel")
     _ = parser.add_argument("--print-device-code", action="store_true")
     _ = parser.add_argument("--print-kernel", action="store_true")
     _ = parser.add_argument("--warmup", action="store", type=int, default=3)
@@ -307,8 +313,7 @@ if __name__ == "__main__":
         variants = [no_compute_time, compute_time]
         speedup = no_compute_time["time_s"] / compute_time["time_s"]
         print(f"Speedup: {speedup:.3f}x")
-        time_reduction = (
-            1 - compute_time["time_s"] / no_compute_time["time_s"]) * 100
+        time_reduction = (1 - compute_time["time_s"] / no_compute_time["time_s"]) * 100
         print(f"Relative time reduction: {time_reduction:.2f}%")
     else:
         result = main(
