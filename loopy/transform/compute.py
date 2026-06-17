@@ -549,6 +549,50 @@ def _build_reuse_updates(
     return update_insns, update_insn_ids, refill_predicate_options, current_update_deps
 
 
+def _boxify_footprint(
+    kernel: LoopKernel,
+    footprint: nisl.Set,
+    storage_indices: Sequence[str],
+) -> nisl.BasicSet:
+    storage_set = frozenset(storage_indices)
+    footprint = footprint.move_dims(storage_set, isl.dim_type.param).move_dims(
+        storage_set, isl.dim_type.set
+    )
+    box_inames = tuple(
+        name
+        for name in footprint.ordered_dim_names(isl.dim_type.set)
+        if name in storage_set
+    )
+
+    footprint_isl = footprint.get_isl_object()
+    var_dict = footprint_isl.get_var_dict(isl.dim_type.set)
+    result = isl.Set.from_basic_set(isl.BasicSet.universe(footprint_isl.get_space()))
+    zero = isl.Aff.zero_on_domain(footprint_isl.get_space())
+    n_set_dims = footprint_isl.dim(isl.dim_type.set)
+
+    for name in box_inames:
+        _, dim_idx = var_dict[name]
+        iname_aff = zero.add_coefficient_val(isl.dim_type.in_, dim_idx, 1)
+        lower_bound = (
+            kernel.cache_manager
+            .dim_min(footprint_isl, dim_idx)
+            .add_dims(isl.dim_type.in_, n_set_dims)
+            .coalesce()
+        )
+        upper_bound = (
+            kernel.cache_manager
+            .dim_max(footprint_isl, dim_idx)
+            .add_dims(isl.dim_type.in_, n_set_dims)
+            .coalesce()
+        )
+
+        result = result & lower_bound.le_set(iname_aff) & upper_bound.ge_set(iname_aff)
+
+    from loopy.isl_helpers import convexify
+
+    return nisl.make_basic_set(convexify(result))
+
+
 @for_each_kernel
 def compute(
     kernel: LoopKernel,
@@ -561,6 +605,8 @@ def compute(
     temporary_address_space: AddressSpace | None = None,
     temporary_dtype: ToLoopyTypeConvertible = None,
     compute_insn_id: str | None = None,
+    # FIXME: remove this as an option entirely once Loopy understands Sets
+    boxify_temporary_bounds: bool = False,
 ) -> LoopKernel:
     """
     Inserts an instruction to compute an expression given by :arg:`substitution`
@@ -712,14 +758,32 @@ def compute(
 
     # }}}
 
-    # {{{ compute bounds and update kernel domain
+    # {{{ compute bounds and update kernel domain; needs major updating
 
-    # FIXME: convex hull is required because of loopy's current limitations
-    footprint = footprint.convex_hull()
+    # FIXME: this will be unnecessary when loopy understands Sets
+    exact_footprint_predicate = None
+    if boxify_temporary_bounds:
+        exact_footprint = footprint
+
+        footprint = _boxify_footprint(kernel, footprint, storage_indices)
+
+        if not footprint <= exact_footprint:
+            from loopy.symbolic import set_to_cond_expr
+
+            exact_footprint_predicate = set_to_cond_expr(
+                exact_footprint.get_isl_object()
+            )
+
+    elif len(footprint.get_basic_sets()) == 1:
+        footprint = footprint.get_basic_sets()[0]
+
+    else:
+        raise ValueError(
+            "Unable to generate a usable footprint."
+            "Try setting `boxify_temporary_bounds`=True"
+        )
 
     named_domain = named_domain & footprint
-
-    # {{{ FIXME: remove / change once loopy is "Set-aware"
 
     from islpy import BasicSet
 
@@ -728,8 +792,6 @@ def compute(
     new_domains = domain_changer.get_domains_with(isl_domain)
 
     kernel = kernel.copy(domains=new_domains)
-
-    # }}}
 
     # }}}
 
@@ -780,6 +842,14 @@ def compute(
             compute_insn_id,
         )
     )
+
+    if exact_footprint_predicate is not None:
+        refill_predicate_options = tuple(
+            frozenset([exact_footprint_predicate])
+            if predicates is None
+            else predicates | frozenset([exact_footprint_predicate])
+            for predicates in refill_predicate_options
+        )
 
     new_insns = list(kernel.instructions)
     new_insns.extend(update_insns)
