@@ -1,530 +1,574 @@
+import loopy as lp
+from loopy.transform.compute import compute
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
 
 import namedisl as nisl
+
 import numpy as np
 import numpy.linalg as la
 
 import pyopencl as cl
 import pyopencl.array as cl_array
-
-import loopy as lp
-from benchmark_output import (
-    add_json_report_argument,
-    benchmark_report,
-    variant_result,
-    write_json_report,
-)
-from loopy.transform.compute import compute
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2
+import pyopencl.clrandom as cl_random
 
 
-def matmul_flop_count(m: int, n: int, k: int) -> int:
-    return 2 * m * n * k
+def _cuda_launch_dims(
+    m: int,
+    n: int,
+    bm: int,
+    bn: int,
+    tm: int,
+    tn: int,
+):
+    # j -> blockIdx.x, i -> blockIdx.y
+    #
+    # Each CUDA block computes a bm x bn output tile.
+    # Each thread computes a tm x tn register tile.
+    grid_dim = (
+        (n + bn - 1) // bn,  # N / j dimension
+        (m + bm - 1) // bm,  # M / i dimension
+    )
+
+    block_dim = (
+        (bn + tn - 1) // tn,  # j threads
+        (bm + tm - 1) // tm,  # i threads
+        1,
+    )
+
+    return grid_dim, block_dim
 
 
-def matmul_byte_count(m: int, n: int, k: int, dtype) -> int:
-    itemsize = np.dtype(dtype).itemsize
-    return itemsize * (m * k + k * n + m * n)
+def _build_cuda_kernel(knl: lp.TranslationUnit):
+    import cupy as cu
+
+    cuda_src = lp.generate_code_v2(knl).device_code()
+
+    module = cu.RawModule(
+        code=cuda_src,
+        options=("--std=c++17",),
+        backend="nvrtc",
+    )
+
+    return module.get_function("loopy_kernel")
+
+
+def _compute_relative_error_cl(
+    knl: lp.TranslationUnit,
+    m: int,
+    n: int,
+    k: int,
+    dtype: lp.ToLoopyTypeConvertible = np.float32,
+) -> float:
+    ctx = cl.create_some_context()
+    queue = cl.CommandQueue(ctx)
+
+    a_cl = cl_random.rand(queue, (m, k), dtype=dtype)
+    b_cl = cl_random.rand(queue, (k, n), dtype=dtype)
+    c_cl = cl_array.zeros(queue, (m, n), dtype=dtype)
+
+    _, out = knl(queue, A=a_cl, B=b_cl, C=c_cl)
+    c = out[0].get()
+
+    a = a_cl.get()
+    b = b_cl.get()
+    c_ref = a @ b
+
+    return float(la.norm(c - c_ref) / la.norm(c_ref))
+
+
+def _compute_relative_error_cuda(
+    knl: lp.TranslationUnit,
+    m: int,
+    n: int,
+    k: int,
+    bm: int,
+    bn: int,
+    tm: int,
+    tn: int,
+    dtype=np.float32,
+) -> float:
+    import cupy as cu
+
+    cuda_knl = _build_cuda_kernel(knl)
+
+    grid_dim, block_dim = _cuda_launch_dims(m, n, bm, bn, tm, tn)
+
+    a = cu.random.randn(m, k, dtype=dtype)
+    b = cu.random.randn(k, n, dtype=dtype)
+    c = cu.zeros((m, n), dtype=dtype)
+
+    cuda_knl(grid_dim, block_dim, (a, b, c))
+    cu.cuda.Stream.null.synchronize()
+
+    c_ref = a @ b
+
+    err = cu.linalg.norm(c - c_ref)
+    ref = cu.linalg.norm(c_ref)
+
+    return float((err / ref).get())
+
+
+def verify_correctness(
+    knl: lp.TranslationUnit,
+    m: int,
+    n: int,
+    k: int,
+    bm: int,
+    bn: int,
+    bk: int,
+    tm: int,
+    tn: int,
+    dtype: lp.ToLoopyTypeConvertible = np.float32,
+    use_cuda: bool = False,
+):
+    if use_cuda:
+        rel_err = _compute_relative_error_cuda(knl, m, n, k, bm, bn, tm, tn, dtype)
+    else:
+        rel_err = _compute_relative_error_cl(knl, m, n, k, dtype)
+
+    tol = 10 * np.finfo(np.dtype(dtype)).eps
+
+    if rel_err > tol:
+        raise RuntimeError(f"Correctness check failed: {rel_err:.4e} > {tol:.4e}")
+
+    backend = "CUDA" if use_cuda else "OpenCL"
+    print(f"{backend} success! (rel_err < tol) {rel_err:.4e} < {tol:.4e}")
+
+
+def _benchmark_kernel_with_cl(
+    knl: lp.TranslationUnit,
+    m: int,
+    n: int,
+    k: int,
+    niterations: int = 10,
+    nwarmup: int = 3,
+    dtype: lp.ToLoopyTypeConvertible = np.float32,
+):
+    ctx = cl.create_some_context()
+    queue = cl.CommandQueue(
+        ctx, properties=cl.command_queue_properties.PROFILING_ENABLE
+    )
+
+    a_cl = cl_random.rand(queue, (m, k), dtype=dtype)
+    b_cl = cl_random.rand(queue, (k, n), dtype=dtype)
+    c_cl = cl_array.zeros(queue, (m, n), dtype=dtype)
+
+    knl_exec = knl.executor(queue)
+
+    start = cl.enqueue_marker(queue)
+    for _ in range(nwarmup):
+        knl_exec(queue, A=a_cl, B=b_cl, C=c_cl)
+    stop = cl.enqueue_marker(queue)
+    stop.wait()
+
+    start = cl.enqueue_marker(queue)
+    for _ in range(niterations):
+        knl_exec(queue, A=a_cl, B=b_cl, C=c_cl)
+    stop = cl.enqueue_marker(queue)
+    stop.wait()
+
+    total_s = (stop.profile.end - start.profile.start) * 1e-9
+    s_per_iter = total_s / niterations
+
+    flop_count = 2 * m * n * k
+    gflops = (flop_count / s_per_iter) * 1e-9
+
+    print(f"M = {m}, N = {n}, K = {k}")
+    print(f"Total time (s)  : {total_s}")
+    print(f"Average time (s): {s_per_iter}")
+    print(f"GFLOP/s         : {gflops}")
+
+
+def _benchmark_kernel_with_cuda(
+    knl: lp.TranslationUnit,
+    m: int,
+    n: int,
+    k: int,
+    bm: int,
+    bn: int,
+    tm: int,
+    tn: int,
+    niterations: int = 10,
+    nwarmup: int = 3,
+    dtype: lp.ToLoopyTypeConvertible = np.float32,
+):
+    import cupy as cu
+
+    cuda_knl = _build_cuda_kernel(knl)
+
+    grid_dim, block_dim = _cuda_launch_dims(m, n, bm, bn, tm, tn)
+
+    print(grid_dim)
+    print(block_dim)
+
+    a_cu = cu.random.randn(m, k, dtype=dtype)
+    b_cu = cu.random.randn(k, n, dtype=dtype)
+    c_cu = cu.zeros((m, n), dtype=dtype)
+
+    args = (a_cu, b_cu, c_cu)
+
+    stream = cu.cuda.Stream.null
+
+    for _ in range(nwarmup):
+        cuda_knl(grid_dim, block_dim, args)
+    stream.synchronize()
+
+    start = cu.cuda.Event()
+    stop = cu.cuda.Event()
+
+    start.record(stream)
+    for _ in range(niterations):
+        cuda_knl(grid_dim, block_dim, args)
+    stop.record(stream)
+    stop.synchronize()
+
+    elapsed_ms = cu.cuda.get_elapsed_time(start, stop)
+
+    total_s = elapsed_ms * 1e-3
+    s_per_iter = total_s / niterations
+
+    flop_count = 2 * m * n * k
+    gflops = (flop_count / s_per_iter) * 1e-9
+
+    print(f"M = {m}, N = {n}, K = {k}")
+    print(f"Total time (s)  : {total_s}")
+    print(f"Average time (s): {s_per_iter}")
+    print(f"GFLOP/s         : {gflops}")
 
 
 def benchmark_kernel(
     knl: lp.TranslationUnit,
-    queue: cl.CommandQueue,
-    a: np.ndarray,
-    b: np.ndarray,
-    variant_name: str,
-    role: str,
-    tile_metadata: dict,
-    nwarmup: int = 5,
-    niterations: int = 20
-) -> dict:
-    ex = knl.executor(queue)
+    m: int,
+    n: int,
+    k: int,
+    bm: int,
+    bn: int,
+    tm: int,
+    tn: int,
+    niterations: int = 10,
+    nwarmup: int = 3,
+    dtype: lp.ToLoopyTypeConvertible = np.float32,
+    backend: str = "cl",
+):
+    if backend == "cl":
+        _benchmark_kernel_with_cl(knl, m, n, k, niterations, nwarmup, dtype)
+    elif backend == "cuda":
+        _benchmark_kernel_with_cuda(
+            knl, m, n, k, bm, bn, tm, tn, niterations, nwarmup, dtype
+        )
+    else:
+        raise ValueError(f"Unknown backend: {backend}")
 
-    a_cl = cl_array.to_device(queue, a)
-    b_cl = cl_array.to_device(queue, b)
-    c_cl = cl_array.zeros(queue, (a.shape[0], b.shape[1]), dtype=a_cl.dtype)
 
-    start = cl.enqueue_marker(queue)
-    for _ in range(nwarmup):
-        ex(queue, a=a_cl, b=b_cl, c=c_cl)
-    end = cl.enqueue_marker(queue)
-    end.wait()
-    start.wait()
+def schedule_kernel(
+    knl: lp.TranslationUnit,
+    bm: int,
+    bn: int,
+    bk: int,
+    tm: int,
+    tn: int,
+) -> lp.TranslationUnit:
+    # {{{ cta / workgroup output block level split
 
-    start = cl.enqueue_marker(queue)
-    for _ in range(niterations):
-        ex(queue, a=a_cl, b=b_cl, c=c_cl)
-    end = cl.enqueue_marker(queue)
-    end.wait()
-    start.wait()
+    knl = lp.split_iname(
+        knl,
+        "i",
+        outer_iname="i_o",
+        inner_iname="i_i",
+        inner_length=bm,
+    )
 
-    total_ns = end.profile.end - start.profile.end
-    total_elapsed_s = total_ns * 1e-9
-    s_per_iter = total_elapsed_s / niterations
+    knl = lp.split_iname(
+        knl,
+        "j",
+        outer_iname="j_o",
+        inner_iname="j_i",
+        inner_length=bn,
+    )
 
-    total_flops = matmul_flop_count(a.shape[0], b.shape[1], a.shape[1])
-    gflops = (total_flops / s_per_iter) * 1e-9
+    # }}}
 
-    c_ref = a @ b
-    _, c_res = ex(queue, a=a_cl, b=b_cl, c=c_cl)
+    # {{{ thread / workitem output block level split
 
-    error = la.norm(c_res[0].get() - c_ref) / la.norm(c_ref)
+    knl = lp.split_iname(
+        knl,
+        "i_i",
+        outer_iname="i_i_o",
+        inner_iname="i_i_i",
+        inner_length=tm,
+    )
 
-    m, k = a.shape
-    _, n = b.shape
-    print("================= Results =================")
-    print(f"M = {m}, N = {n}, K = {k}")
-    print(f"           Error = {error:.4}")
-    print(f"   Total time (s): {total_elapsed_s:.4}")
-    print(f"Time per iter (s): {s_per_iter:.4}")
-    print(f"          GFLOP/s: {gflops}")
-    print("===========================================")
+    knl = lp.split_iname(
+        knl,
+        "j_i",
+        outer_iname="j_i_o",
+        inner_iname="j_i_i",
+        inner_length=tn,
+    )
 
-    return variant_result(
-        variant_name,
-        role,
-        time_s=s_per_iter,
-        flop_count=total_flops,
-        bytes_moved=matmul_byte_count(m, n, k, a.dtype),
-        dtype=np.dtype(a.dtype).name,
-        relative_error=error,
-        metadata={
-            **tile_metadata,
-            "byte_model": "a, b, and c matrix arrays",
+    # }}}
+
+    # {{{ k-dimension split
+
+    knl = lp.split_iname(
+        knl,
+        "k",
+        outer_iname="k_o",
+        inner_iname="k_i",
+        inner_length=bk,
+    )
+
+    # }}}
+
+    return knl
+
+
+def add_materialization_points(
+    knl: lp.TranslationUnit,
+    bm: int,
+    bn: int,
+    bk: int,
+    tm: int,
+    tn: int,
+) -> lp.TranslationUnit:
+    a_shared_reln = nisl.make_map(f"""{{
+        [is, ks] -> [i_o, a_i, k_o, a_k] :
+        is = i_o * {bm} + a_i and
+        ks = k_o * {bk} + a_k
+    }}""")
+
+    knl = compute(
+        knl,
+        substitution="a",
+        storage_indices=["a_i", "a_k"],
+        compute_map=a_shared_reln,
+        placement_inames=["j_o"],
+        temporary_name="a_smem",
+        temporary_address_space=lp.AddressSpace.LOCAL,
+        compute_insn_id="a_shared_fetch",
+    )
+
+    b_shared_reln = nisl.make_map(f"""{{
+        [ks, js] -> [k_o, b_k, j_o, b_j] :
+        ks = k_o * {bk} + b_k and
+        js = j_o * {bn} + b_j
+    }}""")
+
+    knl = compute(
+        knl,
+        substitution="b",
+        storage_indices=["b_k", "b_j"],
+        compute_map=b_shared_reln,
+        placement_inames=["i_o"],
+        temporary_name="b_smem",
+        temporary_address_space=lp.AddressSpace.LOCAL,
+        compute_insn_id="b_shared_fetch",
+    )
+
+    # FIXME: probably not the best way of doing this
+    knl = lp.extract_subst(
+        knl, "a_smem_subst", "a_smem[is, ks]", parameters=["is", "ks"]
+    )
+    knl = lp.extract_subst(
+        knl, "b_smem_subst", "b_smem[ks, js]", parameters=["ks", "js"]
+    )
+
+    knl = lp.split_iname(
+        knl,
+        "a_i",
+        outer_iname="a_i_o",
+        inner_iname="a_i_i",
+        inner_length=tm,
+    )
+
+    knl = lp.split_iname(
+        knl,
+        "b_j",
+        outer_iname="b_j_o",
+        inner_iname="b_j_i",
+        inner_length=tn,
+    )
+
+    wg_i = bm // tm
+    wg_j = bn // tn
+    knl = lp.split_iname(
+        knl, "a_k", outer_iname="a_k_o", inner_iname="a_k_i", inner_length=wg_j
+    )
+
+    knl = lp.split_iname(
+        knl, "b_k", outer_iname="b_k_o", inner_iname="b_k_i", inner_length=wg_i
+    )
+
+    a_reg_reln = nisl.make_map(f"""{{
+        [is, ks] -> [i_i_o, a_reg_i, k_i] :
+            is = i_i_o * {tm} + a_reg_i and
+            ks = k_i
+    }}""")
+
+    knl = compute(
+        knl,
+        substitution="a_smem_subst",
+        compute_map=a_reg_reln,
+        storage_indices=["a_reg_i"],
+        placement_inames=["i_o", "j_o", "k_o", "j_i_o"],
+        temporary_name="a_reg_tile",
+        temporary_address_space=lp.AddressSpace.PRIVATE,
+        compute_insn_id="a_reg_tile_fetch",
+    )
+
+    b_reg_reln = nisl.make_map(f"""{{
+        [ks, js] -> [k_i, j_i_o, b_reg_j] :
+            ks = k_i and
+            js = j_i_o * {tn} + b_reg_j
+    }}""")
+
+    knl = compute(
+        knl,
+        substitution="b_smem_subst",
+        compute_map=b_reg_reln,
+        storage_indices=["b_reg_j"],
+        placement_inames=["i_o", "j_o", "k_o", "i_i_o"],
+        temporary_name="b_reg_tile",
+        temporary_address_space=lp.AddressSpace.PRIVATE,
+        compute_insn_id="b_reg_tile_fetch",
+    )
+
+    return knl
+
+
+def parallelize_kernel(
+    knl: lp.TranslationUnit,
+    use_compute: bool = False,
+) -> lp.TranslationUnit:
+    knl = lp.tag_inames(
+        knl,
+        {
+            "i_o": "g.1",
+            "j_o": "g.0",
+            "i_i_o": "l.1",
+            "j_i_o": "l.0",
+            "i_i_i": "ilp.unr",
+            "j_i_i": "ilp.unr",
         },
     )
 
+    if use_compute:
+        knl = lp.tag_inames(
+            knl,
+            {
+                "a_i_i": "l.1",
+                "a_k_i": "l.0",
+                "a_reg_i": "ilp.unr",
+                "b_k_i": "l.1",
+                "b_j_i": "l.0",
+                "b_reg_j": "ilp.unr",
+            },
+        )
 
-def naive_matmul(
-        knl: lp.TranslationUnit,
-        bm: int,
-        bn: int,
-        bk: int
-    ) -> lp.TranslationUnit:
-    knl = lp.split_iname(knl, "i", bm, inner_iname="ii", outer_iname="io")
-    knl = lp.split_iname(knl, "j", bn, inner_iname="ji", outer_iname="jo")
-    knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
-
-    iname_tags = {
-        "io": "g.1",
-        "jo": "g.0",
-
-        "ii": "l.1",
-        "ji": "l.0"
-    }
-
-    return lp.tag_inames(knl, iname_tags)
+    return knl
 
 
-def shared_memory_tiled_matmul(
-        knl: lp.TranslationUnit,
-        bm: int,
-        bn: int,
-        bk: int
-    ) -> lp.TranslationUnit:
-    knl = lp.split_iname(knl, "i", bm, inner_iname="ii", outer_iname="io")
-    knl = lp.split_iname(knl, "j", bn, inner_iname="ji", outer_iname="jo")
-    knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
-
-    compute_map_a = nisl.make_map(f"""{{
-        [is, ks] -> [a_ii, io, a_ki, ko] :
-            is = io * {bm} + a_ii and
-            ks = ko * {bk} + a_ki
-    }}""")
-
-    compute_map_b = nisl.make_map(f"""{{
-        [ks, js] -> [b_ki, ko, b_ji, jo] :
-            js = jo * {bn} + b_ji and
-            ks = ko * {bk} + b_ki
-    }}""")
-
-    knl = compute(
-        knl,
-        "a_",
-        compute_map=compute_map_a,
-        storage_indices=["a_ii", "a_ki"],
-        placement_inames=["jo"],
-        temporary_name="a_tile",
-        temporary_address_space=lp.AddressSpace.LOCAL,
-        compute_insn_id="a_load"
-    )
-
-    knl = compute(
-        knl,
-        "b_",
-        compute_map=compute_map_b,
-        storage_indices=["b_ki", "b_ji"],
-        placement_inames=["io"],
-        temporary_name="b_tile",
-        temporary_address_space=lp.AddressSpace.LOCAL,
-        compute_insn_id="b_load"
-    )
-
-    iname_tags = {
-        "io": "g.1",
-        "ii": "l.1",
-
-        "jo": "g.0",
-        "ji": "l.0",
-
-        "a_ii": "l.1",
-        "a_ki": "l.0",
-
-        "b_ki": "l.1",
-        "b_ji": "l.0"
-    }
-
-    return lp.tag_inames(knl, iname_tags)
-
-
-def register_tiled_matmul(
-        knl: lp.TranslationUnit,
-        bm: int,
-        bn: int,
-        bk: int,
-        tm: int,
-        tn: int
-    ) -> lp.TranslationUnit:
-
-    # {{{ shared-memory-level split / compute
-
-    knl = lp.split_iname(knl, "i", bm, inner_iname="ii", outer_iname="io")
-    knl = lp.split_iname(knl, "j", bn, inner_iname="ji", outer_iname="jo")
-    knl = lp.split_iname(knl, "k", bk, inner_iname="ki", outer_iname="ko")
-
-    compute_map_a = nisl.make_map(f"""{{
-        [is, ks] -> [a_ii, io, a_ki, ko] :
-            is = io * {bm} + a_ii and
-            ks = ko * {bk} + a_ki
-    }}""")
-
-    compute_map_b = nisl.make_map(f"""{{
-        [ks, js] -> [b_ki, ko, b_ji, jo] :
-            js = jo * {bn} + b_ji and
-            ks = ko * {bk} + b_ki
-    }}""")
-
-    knl = compute(
-        knl,
-        "a_",
-        compute_map=compute_map_a,
-        storage_indices=["a_ii", "a_ki"],
-        placement_inames=["jo"],
-        temporary_name="a_smem",
-        temporary_address_space=lp.AddressSpace.LOCAL,
-        compute_insn_id="a_load"
-    )
-
-    knl = compute(
-        knl,
-        "b_",
-        compute_map=compute_map_b,
-        storage_indices=["b_ki", "b_ji"],
-        placement_inames=["io"],
-        temporary_name="b_smem",
-        temporary_address_space=lp.AddressSpace.LOCAL,
-        compute_insn_id="b_load"
-    )
-
-    wg_size_i = bm // tm
-    wg_size_j = bn // tn
-    knl = lp.split_iname(
-        knl,
-        "a_ii",
-        wg_size_i,
-        inner_iname="a_local",
-        outer_iname="a_tile"
-    )
-
-    knl = lp.split_iname(
-        knl,
-        "b_ji",
-        wg_size_j,
-        inner_iname="b_local",
-        outer_iname="b_tile"
-    )
-
-    # }}}
-
-    # {{{ register-level split / compute
-
-    knl = lp.extract_subst(
-        knl,
-        "a_smem_",
-        "a_smem[is, ks]",
-        parameters="is, ks"
-    )
-
-    knl = lp.extract_subst(
-        knl,
-        "b_smem_",
-        "b_smem[ks, js]",
-        parameters="ks, js"
-    )
-
-    knl = lp.split_iname(knl, "ii", tm,
-                         inner_iname="ii_reg",
-                         outer_iname="ii_thr")
-
-    knl = lp.split_iname(knl, "ji", tn,
-                         inner_iname="ji_reg",
-                         outer_iname="ji_thr")
-
-    knl = lp.split_iname(knl, "ki", 8,
-                         inner_iname="dot",
-                         outer_iname="ki_outer")
-
-    a_reg_tile = nisl.make_map(f"""{{
-        [is, ks] -> [a_reg_i, ii_thr, ki_outer, dot] :
-        is = ii_thr * {tm} + a_reg_i and
-        ks = ki_outer * 8 + dot
-    }}""")
-
-    b_reg_tile = nisl.make_map(f"""{{
-        [ks, js] -> [b_reg_j, ki_outer, dot, ji_thr] :
-        ks = ki_outer * 8 + dot and
-        js = ji_thr * {tn} + b_reg_j
-    }}""")
-
-    knl = compute(
-        knl,
-        "a_smem_",
-        compute_map=a_reg_tile,
-        storage_indices=["a_reg_i"],
-        placement_inames=["ji_thr", "io", "jo", "ko"],
-        temporary_name="a_reg",
-        temporary_address_space=lp.AddressSpace.PRIVATE,
-        compute_insn_id="a_reg_load"
-    )
-
-    knl = compute(
-        knl,
-        "b_smem_",
-        compute_map=b_reg_tile,
-        storage_indices=["b_reg_j"],
-        placement_inames=["ii_thr", "io", "jo", "ko"],
-        temporary_name="b_reg",
-        temporary_address_space=lp.AddressSpace.PRIVATE,
-        compute_insn_id="b_reg_load"
-    )
-
-    # }}}
-
-    iname_tags = {
-        # global tiles
-        "io": "g.1",
-        "jo": "g.0",
-
-        # a local storage axes
-        "a_local": "l.1",
-        "a_ki": "l.0",
-
-        # b local storage axes
-        "b_local": "l.0",
-        "b_ki": "l.1",
-
-        # register tiles
-        "ii_thr": "l.1",
-        "ji_thr": "l.0",
-
-        # register storage axes
-        "a_reg_i": "ilp",
-        "b_reg_j": "ilp",
-
-        # compute axes
-        "ii_reg": "ilp",
-        "ji_reg": "ilp"
-    }
-
-    return lp.tag_inames(knl, iname_tags)
-
-
-def make_base_kernel(
-        m: int,
-        n: int,
-        k: int,
-        dtype: lp.ToLoopyTypeConvertible
-    ) -> lp.TranslationUnit:
+def make_matmul_kernel(
+    m: int,
+    n: int,
+    k: int,
+    bm: int,
+    bn: int,
+    bk: int,
+    tm: int,
+    tn: int,
+    use_compute: bool,
+    use_cuda: bool,
+    dtype: lp.ToLoopyTypeConvertible = np.float32,
+) -> lp.TranslationUnit:
     knl = lp.make_kernel(
-        "{ [i, j, k] : 0 <= i < M and 0 <= j < N and 0 <= k < K }",
+        f"{{ [i, j, k] : 0 <= i < {m} and 0 <= j < {n} and 0 <= k < {k} }}",
         """
-        a_(is, ks) := a[is, ks]
-        b_(ks, js) := b[ks, js]
+        a(is, ks) := A[is, ks]
+        b(ks, js) := B[ks, js]
 
-        c[i, j] = sum([k], a_(i, k) * b_(k, j))
+        C[i, j] = sum([k], a(i, k) * b(k, j))
         """,
         [
-            lp.GlobalArg("a", shape=(m, k), dtype=dtype),
-            lp.GlobalArg("b", shape=(k, n), dtype=dtype),
-            lp.GlobalArg("c", shape=(m, n), is_output=True)
+            lp.GlobalArg("A", shape=(m, k), dtype=dtype),
+            lp.GlobalArg("B", shape=(k, n), dtype=dtype),
+            lp.GlobalArg("C", shape=(m, n), dtype=dtype, is_output=True),
         ],
-        lang_version=LOOPY_USE_LANGUAGE_VERSION_2018_2,
+        silenced_warnings=["v1_scheduler_fallback"],
     )
 
-    return lp.fix_parameters(knl, M=m, N=n, K=k)
+    knl = schedule_kernel(knl, bm, bn, bk, tm, tn)
+
+    if use_compute:
+        knl = add_materialization_points(knl, bm, bn, bk, tm, tn)
+
+    knl = parallelize_kernel(knl, use_compute=use_compute)
+
+    if use_cuda:
+        knl = knl.copy(target=lp.CudaTarget())
+
+    return knl
 
 
 def main(
-        m: int = 1024,
-        n: int = 1024,
-        k: int = 1024,
-        bm: int = 64,
-        bn: int = 64,
-        bk: int = 32,
-        tm: int = 4,
-        tn: int = 4,
-        shared_memory_tiled: bool = False,
-        register_tiled: bool = False,
-        compare: bool = False,
-        dtype: lp.ToLoopyTypeConvertible = np.float32,
-        print_kernel: bool = False,
-        print_device_code: bool = False,
-        run_kernel: bool = True,
-        warmup: int = 5,
-        iterations: int = 20
-    ) -> list[dict]:
+    m: int,
+    n: int,
+    k: int,
+    bm: int,
+    bn: int,
+    bk: int,
+    tm: int,
+    tn: int,
+    use_compute: bool,
+    use_cuda: bool,
+    print_device_code: bool,
+    benchmark: bool,
+    dtype: lp.ToLoopyTypeConvertible = np.float32,
+):
+    knl = make_matmul_kernel(
+        m=m,
+        n=n,
+        k=k,
+        bm=bm,
+        bn=bn,
+        bk=bk,
+        tm=tm,
+        tn=tn,
+        use_compute=use_compute,
+        use_cuda=use_cuda,
+        dtype=dtype,
+    )
 
-    queue = None
-    a = None
-    b = None
-    if run_kernel:
-        ctx = cl.create_some_context(interactive=False)
-        queue = cl.CommandQueue(
-            ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE
+    verify_correctness(
+        knl,
+        m=m,
+        n=n,
+        k=k,
+        bm=bm,
+        bn=bn,
+        bk=bk,
+        tm=tm,
+        tn=tn,
+        dtype=dtype,
+        use_cuda=use_cuda,
+    )
+
+    if benchmark:
+        benchmark_kernel(
+            knl,
+            m=m,
+            n=n,
+            k=k,
+            bm=bm,
+            bn=bn,
+            tm=tm,
+            tn=tn,
+            backend="cuda" if use_cuda else "cl",
+            dtype=dtype,
         )
 
-        rng = np.random.default_rng()
-        a = rng.standard_normal((m, k)).astype(dtype)
-        b = rng.standard_normal((k, n)).astype(dtype)
-
-    if compare:
-        base_bm = min(bm, 32)
-        base_bn = min(bn, 32)
-        variant_specs = [
-            ("naive", "baseline", {"bm": base_bm, "bn": base_bn, "bk": bk}),
-            (
-                "shared-memory tiled",
-                "optimized",
-                {"bm": base_bm, "bn": base_bn, "bk": bk},
-            ),
-            (
-                "register tiled",
-                "optimized",
-                {"bm": bm, "bn": bn, "bk": bk, "tm": tm, "tn": tn},
-            ),
-        ]
-    elif shared_memory_tiled:
-        variant_specs = [
-            ("shared-memory tiled", "optimized", {"bm": bm, "bn": bn, "bk": bk})
-        ]
-    elif register_tiled:
-        variant_specs = [
-            (
-                "register tiled",
-                "optimized",
-                {"bm": bm, "bn": bn, "bk": bk, "tm": tm, "tn": tn},
-            )
-        ]
-    else:
-        variant_specs = [
-            ("naive", "baseline", {"bm": bm, "bn": bn, "bk": bk})
-        ]
-
-    variant_records = []
-    for variant_name, role, tile_metadata in variant_specs:
-        try:
-            knl = make_base_kernel(m, n, k, dtype)
-            if variant_name == "shared-memory tiled":
-                knl = shared_memory_tiled_matmul(
-                    knl,
-                    tile_metadata["bm"],
-                    tile_metadata["bn"],
-                    tile_metadata["bk"],
-                )
-            elif variant_name == "register tiled":
-                knl = register_tiled_matmul(
-                    knl,
-                    tile_metadata["bm"],
-                    tile_metadata["bn"],
-                    tile_metadata["bk"],
-                    tile_metadata["tm"],
-                    tile_metadata["tn"],
-                )
-            else:
-                knl = naive_matmul(
-                    knl,
-                    tile_metadata["bm"],
-                    tile_metadata["bn"],
-                    tile_metadata["bk"],
-                )
-
-            if print_kernel:
-                print(knl)
-
-            if print_device_code:
-                print(lp.generate_code_v2(knl).device_code())
-
-            if run_kernel:
-                assert queue is not None
-                assert a is not None
-                assert b is not None
-                record = benchmark_kernel(
-                    knl,
-                    queue,
-                    a,
-                    b,
-                    variant_name,
-                    role,
-                    tile_metadata,
-                    nwarmup=warmup,
-                    niterations=iterations,
-                )
-            else:
-                record = variant_result(
-                    variant_name,
-                    role,
-                    flop_count=matmul_flop_count(m, n, k),
-                    bytes_moved=matmul_byte_count(m, n, k, dtype),
-                    dtype=np.dtype(dtype).name,
-                    metadata={
-                        **tile_metadata,
-                        "byte_model": "a, b, and c matrix arrays",
-                    },
-                )
-        except Exception as exc:
-            print(f"Runtime execution unavailable for {variant_name}: {exc}")
-            record = variant_result(
-                variant_name,
-                role,
-                flop_count=matmul_flop_count(m, n, k),
-                bytes_moved=matmul_byte_count(m, n, k, dtype),
-                dtype=np.dtype(dtype).name,
-                metadata={
-                    **tile_metadata,
-                    "byte_model": "a, b, and c matrix arrays",
-                },
-                error=str(exc),
-            )
-        variant_records.append(record)
-
-    if compare:
-        timings = {
-            record["name"]: record["time_s"]
-            for record in variant_records
-            if "time_s" in record and "error" not in record
-        }
-        if "naive" in timings:
-            for variant_name in ("shared-memory tiled", "register tiled"):
-                if variant_name in timings:
-                    speedup = timings["naive"] / timings[variant_name]
-                    time_reduction = (
-                        1 - timings[variant_name] / timings["naive"]) * 100
-                    print(
-                        f"{variant_name} speedup: {speedup:.3f}x; "
-                        f"relative time reduction: {time_reduction:.2f}%"
-                    )
-
-    return variant_records
+    if print_device_code:
+        print(lp.generate_code_v2(knl).device_code())
 
 
 if __name__ == "__main__":
@@ -532,64 +576,75 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
-    _ = parser.add_argument("--m", action="store", type=int, default=1024)
-    _ = parser.add_argument("--n", action="store", type=int, default=1024)
-    _ = parser.add_argument("--k", action="store", type=int, default=1024)
+    parser.add_argument("--m", action="store", type=int, default=4096)
+    parser.add_argument("--n", action="store", type=int, default=4096)
+    parser.add_argument("--k", action="store", type=int, default=4096)
 
-    _ = parser.add_argument("--bm", action="store", type=int, default=64)
-    _ = parser.add_argument("--bn", action="store", type=int, default=64)
-    _ = parser.add_argument("--bk", action="store", type=int, default=16)
+    parser.add_argument("--bm", action="store", type=int, default=32)
+    parser.add_argument("--bn", action="store", type=int, default=32)
+    parser.add_argument("--bk", action="store", type=int, default=16)
 
-    _ = parser.add_argument("--tm", action="store", type=int, default=4)
-    _ = parser.add_argument("--tn", action="store", type=int, default=4)
+    parser.add_argument("--tm", action="store", type=int, default=1)
+    parser.add_argument("--tn", action="store", type=int, default=1)
 
-    _ = parser.add_argument("--shared-memory-tiled", action="store_true")
-    _ = parser.add_argument("--register-tiled", action="store_true")
-    _ = parser.add_argument("--compare", action="store_true")
-
-    _ = parser.add_argument("--print-kernel", action="store_true")
-    _ = parser.add_argument("--print-device-code", action="store_true")
-    _ = parser.add_argument("--run-kernel", action="store_true", default=True)
-    _ = parser.add_argument("--no-run-kernel", action="store_false",
-                            dest="run_kernel")
-    _ = parser.add_argument("--warmup", action="store", type=int, default=5)
-    _ = parser.add_argument("--iterations", action="store", type=int, default=20)
-    add_json_report_argument(parser, "matmul.json")
+    parser.add_argument("--compare", action="store_true")
+    parser.add_argument("--use-compute", action="store_true")
+    parser.add_argument("--use-cuda", action="store_true")
+    parser.add_argument("--benchmark", action="store_true")
+    parser.add_argument("--print-device-code", action="store_true")
 
     args = parser.parse_args()
 
-    variants = main(
-        m=args.m, n=args.n, k=args.k,
-        bm=args.bm, bn=args.bn, bk=args.bk,
-        tm=args.tm, tn=args.tn,
-        shared_memory_tiled=args.shared_memory_tiled,
-        register_tiled=args.register_tiled,
-        compare=args.compare,
-        print_kernel=args.print_kernel,
-        print_device_code=args.print_device_code,
-        run_kernel=args.run_kernel,
-        warmup=args.warmup,
-        iterations=args.iterations,
-    )
+    if args.compare and args.use_compute:
+        print("--compare and --use-compute set. Ignoring --use-compute.")
 
-    write_json_report(
-        args.json_report,
-        benchmark_report(
-            example="matmul",
-            description="Dense matrix multiplication schedule comparison",
-            parameters={
-                "m": args.m,
-                "n": args.n,
-                "k": args.k,
-                "bm": args.bm,
-                "bn": args.bn,
-                "bk": args.bk,
-                "tm": args.tm,
-                "tn": args.tn,
-                "warmup": args.warmup,
-                "iterations": args.iterations,
-            },
-            baseline_name="naive",
-            variants=variants,
-        ),
-    )
+    if args.compare:
+        print(25 * "=", "Running without compute", 25 * "=")
+
+        main(
+            m=args.m,
+            n=args.n,
+            k=args.k,
+            bm=args.bm,
+            bn=args.bn,
+            bk=args.bk,
+            tm=args.tm,
+            tn=args.tn,
+            use_compute=False,
+            use_cuda=args.use_cuda,
+            benchmark=True,
+            print_device_code=args.print_device_code,
+        )
+
+        print(25 * "=", "Running with compute", 25 * "=")
+
+        main(
+            m=args.m,
+            n=args.n,
+            k=args.k,
+            bm=args.bm,
+            bn=args.bn,
+            bk=args.bk,
+            tm=args.tm,
+            tn=args.tn,
+            use_compute=True,
+            use_cuda=args.use_cuda,
+            benchmark=True,
+            print_device_code=args.print_device_code,
+        )
+
+    else:
+        main(
+            m=args.m,
+            n=args.n,
+            k=args.k,
+            bm=args.bm,
+            bn=args.bn,
+            bk=args.bk,
+            tm=args.tm,
+            tn=args.tn,
+            use_compute=args.use_compute,
+            use_cuda=args.use_cuda,
+            benchmark=args.benchmark,
+            print_device_code=args.print_device_code,
+        )

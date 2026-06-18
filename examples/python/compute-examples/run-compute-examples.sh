@@ -5,6 +5,14 @@ PYTHON="$(which python)"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ARTIFACT_DIR="$SCRIPT_DIR/artifacts"
 
+# choose default GPU
+PYOPENCL_CTX="${PYOPENCL_CTX:-"0:0"}"
+
+# disable caches
+PYOPENCL_NO_CACHE=1
+LOOPY_NO_CACHE=1
+CUDA_CACHE_DISABLE=1
+
 cd "$SCRIPT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 
