@@ -24,6 +24,7 @@ import logging
 from pickle import dumps, loads
 
 import pytest
+from typing_extensions import override
 
 import loopy as lp
 from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
@@ -66,6 +67,7 @@ class PickleDetector:
     def reset(cls):
         cls.instance_unpickled = False
 
+    @override
     def __getstate__(self):
         return {"state": self.state}
 

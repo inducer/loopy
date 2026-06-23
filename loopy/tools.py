@@ -377,6 +377,7 @@ class _PickledObject:
         from pickle import loads
         return loads(self.objstring)
 
+    @override
     def __getstate__(self):
         return {"objstring": self.objstring}
 
@@ -443,6 +444,7 @@ class LazilyUnpicklingDict(abc.MutableMapping[K, V]):
     def __iter__(self) -> abc.Iterator[K]:
         return iter(self._map)
 
+    @override
     def __getstate__(self):
         return {"_map": {
             key: _PickledObject(val)
@@ -491,6 +493,7 @@ class LazilyUnpicklingList(abc.MutableSequence[V]):
     def insert(self, key: int, value: V):
         self._list.insert(key, value)
 
+    @override
     def __getstate__(self):
         return {"_list": [_PickledObject(val) for val in self._list]}
 
@@ -608,6 +611,7 @@ class Optional(Generic[T_co]):
             return "Optional()"
         return "Optional(%r)" % self._value
 
+    @override
     def __getstate__(self):
         if not self.has_value:
             return _no_value
