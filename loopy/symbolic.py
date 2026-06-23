@@ -97,7 +97,7 @@ from loopy.diagnostic import (
     LoopyError,
     UnableToDetermineAccessRangeError,
 )
-from loopy.typing import InsnId, ShapeType, not_none
+from loopy.typing import InameStr, InsnId, ShapeType, VarNameStr, not_none
 
 
 if TYPE_CHECKING:
@@ -2973,7 +2973,9 @@ def get_access_map(
 
 class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
     kernel: LoopKernel
-    access_maps: defaultdict[str, defaultdict[AbstractSet[str], isl.Map | None]]
+    access_maps: defaultdict[
+        VarNameStr,
+        defaultdict[AbstractSet[InameStr], isl.Map | None]]
     bad_subscripts: defaultdict[str, list[p.Subscript | LinearSubscript]]
     _overestimate: bool
     _var_names: Collection[str]

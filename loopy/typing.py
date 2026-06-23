@@ -76,6 +76,7 @@ ShapeType: TypeAlias = tuple[ArithmeticExpression, ...]
 StridesType: TypeAlias = ShapeType
 
 InameStr: TypeAlias = str
+VarNameStr: TypeAlias = str
 InameStrSet: TypeAlias = frozenset[InameStr]
 ToInameStrSetConvertible: TypeAlias = "Iterable[InameStr] | InameStr"
 
