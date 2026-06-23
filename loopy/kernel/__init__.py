@@ -1345,6 +1345,7 @@ class LoopKernel(Taggable):
 
     # {{{ pickling
 
+    @override
     def __getstate__(self):
         result = {
                 fld.name: getattr(self, fld.name)
