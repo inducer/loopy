@@ -366,6 +366,133 @@ def test_scalar_global_args():
     assert out == (n*(n-1)/2)  # noqa: RUF069
 
 
+@pytest.mark.parametrize("signed_dtype,unsigned_dtype", [
+    (np.int8, np.uint8),
+    (np.int16, np.uint16),
+    (np.int32, np.uint32),
+    (np.int64, np.uint64),
+])
+def test_mixed_sign_comparison(signed_dtype, unsigned_dtype):
+    """Mixed-sign comparisons must follow Python semantics (not C's
+    implicit unsigned-promotion rule).  The classic C footgun is:
+
+        int x = -1; unsigned int y = 1;
+        if (x < y) { ... }  // NOT taken — x becomes UINT_MAX
+
+    Loopy should generate explicit casts so the branch IS taken.
+    """
+    t_unit = lp.make_kernel(
+        "{:}",
+        """
+        lt_result   = if(sv < uv, 1, 0)
+        le_result   = if(sv <= uv, 1, 0)
+        gt_result   = if(sv > uv, 1, 0)
+        ge_result   = if(sv >= uv, 1, 0)
+        eq_result   = if(sv == uv, 1, 0)
+        ne_result   = if(sv != uv, 1, 0)
+        """,
+        [
+            lp.ValueArg("sv", signed_dtype),
+            lp.ValueArg("uv", unsigned_dtype),
+            lp.GlobalArg("lt_result, le_result, gt_result, "
+                         "ge_result, eq_result, ne_result",
+                         np.int32, shape=lp.auto),
+        ],
+        target=lp.ExecutableCTarget(),
+    )
+    t_unit = lp.set_options(t_unit, return_dict=True)
+
+    # --- sv = -1, uv = 1 -------------------------------------------------------
+    # Python:  -1 < 1  → True, -1 <= 1 → True, -1 > 1 → False,
+    #          -1 >= 1 → False, -1 == 1 → False, -1 != 1 → True
+    sv = signed_dtype(-1)
+    uv = unsigned_dtype(1)
+    _evt, out = t_unit(sv=sv, uv=uv)
+    assert out["lt_result"][()] == 1, f"{sv} < {uv} should be True"
+    assert out["le_result"][()] == 1, f"{sv} <= {uv} should be True"
+    assert out["gt_result"][()] == 0, f"{sv} > {uv} should be False"
+    assert out["ge_result"][()] == 0, f"{sv} >= {uv} should be False"
+    assert out["eq_result"][()] == 0, f"{sv} == {uv} should be False"
+    assert out["ne_result"][()] == 1, f"{sv} != {uv} should be True"
+
+    # --- sv = 1, uv = 1 --------------------------------------------------------
+    sv = signed_dtype(1)
+    uv = unsigned_dtype(1)
+    _evt, out = t_unit(sv=sv, uv=uv)
+    assert out["lt_result"][()] == 0, f"{sv} < {uv} should be False"
+    assert out["le_result"][()] == 1, f"{sv} <= {uv} should be True"
+    assert out["gt_result"][()] == 0, f"{sv} > {uv} should be False"
+    assert out["ge_result"][()] == 1, f"{sv} >= {uv} should be True"
+    assert out["eq_result"][()] == 1, f"{sv} == {uv} should be True"
+    assert out["ne_result"][()] == 0, f"{sv} != {uv} should be False"
+
+    # --- sv = 2, uv = 1 --------------------------------------------------------
+    sv = signed_dtype(2)
+    uv = unsigned_dtype(1)
+    _evt, out = t_unit(sv=sv, uv=uv)
+    assert out["lt_result"][()] == 0, f"{sv} < {uv} should be False"
+    assert out["le_result"][()] == 0, f"{sv} <= {uv} should be False"
+    assert out["gt_result"][()] == 1, f"{sv} > {uv} should be True"
+    assert out["ge_result"][()] == 1, f"{sv} >= {uv} should be True"
+    assert out["eq_result"][()] == 0, f"{sv} == {uv} should be False"
+    assert out["ne_result"][()] == 1, f"{sv} != {uv} should be True"
+
+
+@pytest.mark.parametrize("signed_dtype,unsigned_dtype", [
+    (np.int8, np.uint8),
+    (np.int16, np.uint16),
+    (np.int32, np.uint32),
+    (np.int64, np.uint64),
+])
+def test_mixed_sign_subtraction(signed_dtype, unsigned_dtype):
+    """Mixed-sign subtraction must follow Python semantics.
+
+    In C, ``(int32_t)-1 - (uint32_t)1`` is computed as
+    ``(uint32_t)UINT_MAX - 1 = 4294967294``, which when cast to int64
+    gives 4294967294, not -2.  Loopy must insert explicit casts so the
+    result is -2.
+    """
+    # result dtype: the narrowest signed type wide enough to hold both
+    result_dtype = np.result_type(signed_dtype, unsigned_dtype)
+    if result_dtype.kind != "i":
+        # int64 vs uint64: numpy promotes to float64; use int64 instead
+        result_dtype = np.dtype(np.int64)
+
+    t_unit = lp.make_kernel(
+        "{:}",
+        """
+        diff_sv_uv = sv - uv
+        diff_uv_sv = uv - sv
+        """,
+        [
+            lp.ValueArg("sv", signed_dtype),
+            lp.ValueArg("uv", unsigned_dtype),
+            lp.GlobalArg("diff_sv_uv", result_dtype, shape=lp.auto),
+            lp.GlobalArg("diff_uv_sv", result_dtype, shape=lp.auto),
+        ],
+        target=lp.ExecutableCTarget(),
+    )
+    t_unit = lp.set_options(t_unit, return_dict=True)
+
+    # --- sv = -1, uv = 1 → expected -2 / 2 ------------------------------------
+    sv = signed_dtype(-1)
+    uv = unsigned_dtype(1)
+    _evt, out = t_unit(sv=sv, uv=uv)
+    assert out["diff_sv_uv"][()] == -2, \
+        f"{sv} - {uv} should be -2, got {out['diff_sv_uv'][()]}"
+    assert out["diff_uv_sv"][()] == 2, \
+        f"{uv} - {sv} should be 2, got {out['diff_uv_sv'][()]}"
+
+    # --- sv = 5, uv = 3 → expected 2 / -2 -------------------------------------
+    sv = signed_dtype(5)
+    uv = unsigned_dtype(3)
+    _evt, out = t_unit(sv=sv, uv=uv)
+    assert out["diff_sv_uv"][()] == 2, \
+        f"{sv} - {uv} should be 2, got {out['diff_sv_uv'][()]}"
+    assert out["diff_uv_sv"][()] == -2, \
+        f"{uv} - {sv} should be -2, got {out['diff_uv_sv'][()]}"
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
