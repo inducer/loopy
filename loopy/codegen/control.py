@@ -33,8 +33,10 @@ import islpy as isl
 from loopy.codegen.result import CodeGenerationResult, merge_codegen_results, wrap_in_if
 from loopy.diagnostic import LoopyError
 from loopy.schedule import (
+    AllocTemp,
     Barrier,
     CallKernel,
+    DeallocTemp,
     EnterLoop,
     LeaveLoop,
     RunInstruction,
@@ -185,6 +187,12 @@ def generate_code_for_sched_index(
                 "instruction %s" % insn.id,
                 lambda inner_cgs: generate_instruction_code(inner_cgs, insn))
 
+    elif isinstance(sched_item, AllocTemp):
+        return codegen_state.ast_builder.emit_alloc_temp(codegen_state, sched_item.temp)
+    elif isinstance(sched_item, DeallocTemp):
+        return codegen_state.ast_builder.emit_dealloc_temp(
+            codegen_state, sched_item.temp)
+
     else:
         raise RuntimeError("unexpected schedule item type: %s"
                 % type(sched_item))
@@ -198,7 +206,7 @@ def get_required_predicates(
 
     result = None
     for _, sched_item in generate_sub_sched_items(kernel.linearization, sched_index):
-        if isinstance(sched_item, Barrier):
+        if isinstance(sched_item, (Barrier, AllocTemp, DeallocTemp)):
             my_preds = frozenset()
         elif isinstance(sched_item, RunInstruction):
             my_preds = kernel.id_to_insn[sched_item.insn_id].predicates
@@ -279,7 +287,7 @@ def build_loop_nest(
             assert i <= codegen_state.schedule_index_end, \
                     "schedule block extends beyond schedule_index_end"
 
-        elif isinstance(sched_item, (Barrier, RunInstruction)):
+        elif isinstance(sched_item, (Barrier, RunInstruction, AllocTemp, DeallocTemp)):
             i += 1
         else:
             raise RuntimeError("unexpected schedule item type: %s"
