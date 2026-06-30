@@ -1394,8 +1394,10 @@ def _check_for_unused_hw_axes_in_kernel_chunk(
             sched_index: int | None = None
         ) -> int:
     from loopy.schedule import (
+        AllocTemp,
         Barrier,
         CallKernel,
+        DeallocTemp,
         EnterLoop,
         LeaveLoop,
         ReturnFromKernel,
@@ -1490,7 +1492,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(
                         "Calling loopy.add_inames_for_unused_hw_axes(...) "
                         "might help.")
 
-        elif isinstance(sched_item, (Barrier, EnterLoop, LeaveLoop)):
+        elif isinstance(sched_item, (Barrier, EnterLoop, LeaveLoop,
+                                     AllocTemp, DeallocTemp)):
             i += 1
             continue
 
