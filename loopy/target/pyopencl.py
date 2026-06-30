@@ -796,24 +796,13 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 ["_lpy_cl_kernels", "queue", *kai.passed_arg_names,
                     "wait_for=None", "allocator=None"])
 
-        from genpy import For, Function, Line, Return, Statement as S, Suite
+        from genpy import Function, Line, Return, Suite
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
                     Line(),
-                    ] + [
-                    Line(),
                     function_body,
-                    Line(),
-                    ] + ([
-                        For("_tv", "_global_temporaries",
-                            # Free global temporaries.
-                            # Zero-size temporaries allocate as None, tolerate that.
-                            # https://documen.tician.de/pyopencl/tools.html#pyopencl.tools.ImmediateAllocator
-                            S("if _tv is not None: _tv.release()"))
-                        ] if self._get_global_temporaries(codegen_state) else []
-                    ) + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
@@ -841,39 +830,36 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 codegen_state: CodeGenerationState,
                 schedule_index: int
             ) -> list[genpy.Generable]:
-        from genpy import Assign, Comment, Line
+        return []
+
+    @override
+    def emit_alloc_temp(self, codegen_state, var_name):
+        from genpy import Assign
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
         global_temporaries = self._get_global_temporaries(codegen_state)
-        if not global_temporaries:
-            return []
-
-        allocated_var_names: list[str] = []
-        code_lines: list[genpy.Generable] = []
-        code_lines.extend((Line(), Comment("{{{ allocate global temporaries"), Line()))
 
         for tv in global_temporaries:
-            if not tv.base_storage:
-                if tv.nbytes:
-                    # NB: This does not prevent all zero-size allocations,
-                    # as sizes are parametric, and allocation size
-                    # could turn out to be zero at runtime.
-                    nbytes_str = ecm(tv.nbytes, PREC_NONE, type_context="i")
-                    allocated_var_names.append(tv.name)
-                    code_lines.append(Assign(tv.name,
-                                             f"allocator({nbytes_str})"))
-                else:
-                    code_lines.append(Assign(tv.name, "None"))
+            if tv.name == var_name:
+                if not tv.base_storage:
+                    if tv.nbytes:
+                        # NB: This does not prevent all zero-size allocations,
+                        # as sizes are parametric, and allocation size
+                        # could turn out to be zero at runtime.
+                        nbytes_str = ecm(tv.nbytes, PREC_NONE, type_context="i")
+                        return Assign(tv.name, f"allocator({nbytes_str})")
+                    else:
+                        return Assign(tv.name, "None")
 
-        code_lines.extend((
-            Assign("_global_temporaries",
-                "[{tvs}]".format(tvs=", ".join(tv for tv in allocated_var_names))),
-            Line(),
-            Comment("}}}"),
-            Line()))
+        # return Comment("Var %s not found" % var_name)
+        return Line()
 
-        return code_lines
+    @override
+    def emit_dealloc_temp(self, codegen_state, var_name):
+        from genpy import Statement
+
+        return Statement("if %s is not None: %s.release()" % (var_name, var_name))
 
     def get_kernel_call(
             self, codegen_state: CodeGenerationState,
