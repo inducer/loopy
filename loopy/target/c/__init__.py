@@ -67,6 +67,7 @@ from loopy.kernel.instruction import (
     CallInstruction,
     VarAtomicity,
 )
+from loopy.schedule import CallKernel
 from loopy.symbolic import IdentityMapper
 from loopy.target import ASTBuilderBase, DummyHostASTBuilder, TargetBase
 from loopy.tools import remove_common_indentation
@@ -83,7 +84,6 @@ if TYPE_CHECKING:
     from loopy.codegen.result import CodeGenerationResult
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import MultiAssignmentBase
-    from loopy.schedule import CallKernel
     from loopy.target.execution import ExecutorBase
     from loopy.translation_unit import (
         CallableId,
@@ -1010,6 +1010,9 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
         kernel = codegen_state.kernel
 
         assert codegen_state.kernel.linearization is not None
+        while not isinstance(kernel.linearization[schedule_index], CallKernel):
+            schedule_index += 1
+            assert schedule_index < len(kernel.linearization)
         subkernel_name = cast(
                         "CallKernel",
                         codegen_state.kernel.linearization[schedule_index]
@@ -1105,6 +1108,11 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             temporaries_read_in_subkernel,
             temporaries_written_in_subkernel,
         )
+
+        while not isinstance(kernel.linearization[schedule_index], CallKernel):
+            schedule_index += 1
+            assert schedule_index < len(kernel.linearization)
+
         subkernel_name = kernel.linearization[schedule_index].kernel_name
         sub_knl_temps = (
                 temporaries_read_in_subkernel(kernel, subkernel_name)
@@ -1143,6 +1151,16 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             result.append(Line())
 
         return result
+
+    @override
+    def emit_alloc_temp(self, codegen_state, var_name):
+        from cgen import Line
+        return Line()
+
+    @override
+    def emit_dealloc_temp(self, codegen_state, var_name):
+        from cgen import Line
+        return Line()
 
     @property
     @override
