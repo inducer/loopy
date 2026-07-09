@@ -26,8 +26,8 @@ THE SOFTWARE.
 
 from typing import TYPE_CHECKING, Any, cast
 
-import islpy as isl
-from islpy import dim_type
+import namedisl as nisl
+from namedisl import DimType
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import fset_union
 
@@ -51,13 +51,13 @@ if TYPE_CHECKING:
 def get_slab_decomposition(
             kernel: LoopKernel,
             iname: InameStr
-        ) -> Sequence[tuple[str, isl.BasicSet]]:
+        ) -> Sequence[tuple[str, nisl.Set]]:
     iname_domain = kernel.get_inames_domain(iname)
 
     if iname_domain.is_empty():
         return ()
 
-    space = iname_domain.space
+    v = iname_domain.var_pw_affs
 
     lower_incr, upper_incr = kernel.iname_slab_increments.get(iname, (0, 0))
     lower_bulk_bound = None
@@ -66,61 +66,37 @@ def get_slab_decomposition(
     if lower_incr or upper_incr:
         bounds = kernel.get_iname_bounds(iname)
 
-        lower_bound_pw_aff_pieces = bounds.lower_bound_pw_aff.coalesce().get_pieces()
-        upper_bound_pw_aff_pieces = bounds.upper_bound_pw_aff.coalesce().get_pieces()
-
-        if len(lower_bound_pw_aff_pieces) > 1:
-            raise NotImplementedError("lower bound for slab decomp of '%s' needs "
-                    "conditional/has more than one piece" % iname)
-        if len(upper_bound_pw_aff_pieces) > 1:
-            raise NotImplementedError("upper bound for slab decomp of '%s' needs "
-                    "conditional/has more than one piece" % iname)
-
-        (_, lower_bound_aff), = lower_bound_pw_aff_pieces
-        (_, upper_bound_aff), = upper_bound_pw_aff_pieces
-
-        from loopy.isl_helpers import iname_rel_aff
-
         if lower_incr:
             assert lower_incr > 0
-            lower_slab = ("initial", isl.BasicSet.universe(space)
-                    .add_constraint(
-                        isl.Constraint.inequality_from_aff(
-                            iname_rel_aff(space,
-                                iname, "<", lower_bound_aff+lower_incr))))
-            lower_bulk_bound = (
-                    isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(space,
-                            iname, ">=", lower_bound_aff+lower_incr)))
+            lower_slab = ("initial",
+                v[iname].where("<", bounds.lower_bound_pw_aff + lower_incr))
+
+            lower_bulk_bound = \
+                v[iname].where(">=", bounds.lower_bound_pw_aff + lower_incr)
         else:
             lower_slab = None
 
         if upper_incr:
             assert upper_incr > 0
-            upper_bset = isl.BasicSet.universe(space).add_constraint(
-                isl.Constraint.inequality_from_aff(
-                    iname_rel_aff(space,
-                        iname, ">", upper_bound_aff-upper_incr)))
-            if lower_incr:
+            upper_bset = v[iname].where(">", bounds.upper_bound_pw_aff-upper_incr)
+            if lower_slab is not None:
                 # Ensure that this slab is actually distinct from the
                 # lower one, if it exists.
                 _, lower_bset = lower_slab
-                upper_bset, = upper_bset.subtract(lower_bset).get_basic_sets()
+                upper_bset = upper_bset - lower_bset
             upper_slab = ("final", upper_bset)
-            upper_bulk_bound = (
-                    isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(space,
-                            iname, "<=", upper_bound_aff-upper_incr)))
+            upper_bulk_bound = \
+                v[iname].where("<=", bounds.upper_bound_pw_aff - upper_incr)
         else:
             upper_slab = None
 
-        slabs: list[tuple[str, isl.BasicSet]] = []
+        slabs: list[tuple[str, nisl.Set]] = []
 
-        bulk_slab = isl.BasicSet.universe(space)
+        bulk_slab = iname_domain.universe_like_me()
         if lower_bulk_bound is not None:
-            bulk_slab = bulk_slab.add_constraint(lower_bulk_bound)
+            bulk_slab = bulk_slab & lower_bulk_bound
         if upper_bulk_bound is not None:
-            bulk_slab = bulk_slab.add_constraint(upper_bulk_bound)
+            bulk_slab = bulk_slab & upper_bulk_bound
 
         slabs.append(("bulk", bulk_slab))
         if lower_slab:
@@ -131,26 +107,33 @@ def get_slab_decomposition(
         return slabs
 
     else:
-        return [("bulk", (isl.BasicSet.universe(space)))]
+        return [("bulk", iname_domain.universe_like_me())]
 
 # }}}
 
 
 # {{{ unrolled loops
 
-def generate_unroll_loop(codegen_state, sched_index):
+def generate_unroll_loop(
+    codegen_state: CodeGenerationState,
+    sched_index: int
+):
     kernel = codegen_state.kernel
 
-    iname = kernel.linearization[sched_index].iname
+    assert kernel.linearization is not None
+    sched_item = kernel.linearization[sched_index]
+    from loopy.schedule import EnterLoop
+    assert isinstance(sched_item, EnterLoop)
+    iname = sched_item.iname
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
     from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
-    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
+    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True).as_pw_aff()
 
-    if not length_aff.is_cst():
+    if not length_aff.is_constant():
         raise LoopyError(
                 "length of unrolled loop '%s' is not a constant, "
                 "cannot unroll")
@@ -168,7 +151,7 @@ def generate_unroll_loop(codegen_state, sched_index):
 
     for i in range(length):
         idx_aff = lower_bound_aff + i
-        new_codegen_state = codegen_state.fix(iname, idx_aff)
+        new_codegen_state = codegen_state.fix(iname, idx_aff.as_pw_aff())
         result.append(
                 build_loop_nest(new_codegen_state, sched_index+1))
 
@@ -179,19 +162,26 @@ def generate_unroll_loop(codegen_state, sched_index):
 
 # {{{ vectorized loops
 
-def generate_vectorize_loop(codegen_state, sched_index):
+def generate_vectorize_loop(
+    codegen_state: CodeGenerationState,
+    sched_index: int,
+):
     kernel = codegen_state.kernel
 
-    iname = kernel.linearization[sched_index].iname
+    assert kernel.linearization is not None
+    sched_item = kernel.linearization[sched_index]
+    from loopy.schedule import EnterLoop
+    assert isinstance(sched_item, EnterLoop)
+    iname = sched_item.iname
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
     from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
-    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
+    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True).as_pw_aff()
 
-    if not length_aff.is_cst():
+    if not length_aff.is_constant():
         warn(kernel, "vec_upper_not_const",
                 "upper bound for vectorized loop '%s' is not a constant, "
                 "cannot vectorize--unrolling instead")
@@ -216,9 +206,13 @@ def generate_vectorize_loop(codegen_state, sched_index):
 
     domain = kernel.get_inames_domain(iname)
 
-    from loopy.isl_helpers import make_slab
-    slab = make_slab(domain.get_space(), iname,
-            lower_bound_aff, lower_bound_aff+length)
+    iname_pw_aff = domain.var_pw_affs[iname]
+    slab = (
+        iname_pw_aff.where(">=", (lower_bound_aff).as_pw_aff())
+        &
+        iname_pw_aff.where("<", (lower_bound_aff+length).as_pw_aff())
+    )
+
     codegen_state = codegen_state.intersect(slab)
 
     # }}}
@@ -235,12 +229,18 @@ def generate_vectorize_loop(codegen_state, sched_index):
 # }}}
 
 
-def intersect_kernel_with_slab(kernel, slab, iname):
+def intersect_kernel_with_slab(kernel: LoopKernel, slab: nisl.Set, iname: InameStr):
     from loopy.kernel.tools import DomainChanger
 
     domch = DomainChanger(kernel, (iname,))
     orig_domain = domch.domain
-    orig_domain, slab = isl.align_two(slab, orig_domain)
+
+    # Anything that's a set iname in slab but a param in the original
+    # domain should be made a param.
+    slab = slab.move_dims(
+        orig_domain.space.param_names & slab.space.set_names,
+        DimType.param)
+
     return domch.get_kernel_with(orig_domain & slab)
 
 
@@ -322,17 +322,13 @@ def set_up_hw_parallel_loops(
     # It's ok to find a bound that's too "loose". The conditional
     # generators will mop up after us.
     from loopy.kernel.tools import get_hw_axis_base_for_codegen
-    lower_bound = get_hw_axis_base_for_codegen(kernel, iname).to_pw_aff()
+    lower_bound = get_hw_axis_base_for_codegen(kernel, iname).as_pw_aff()
 
     # These bounds are 'implemented' by the hardware. Make sure
     # that the downstream conditional generators realize that.
-    if not isinstance(hw_axis_size, int):
-        hw_axis_size, lower_bound = isl.align_two(hw_axis_size, lower_bound)
-
-    from loopy.isl_helpers import make_slab
-    slab = make_slab(domain.get_space(), iname,
-            lower_bound, lower_bound+hw_axis_size)
-    codegen_state = codegen_state.intersect(slab.to_set())
+    v = domain.var_pw_affs
+    slab = v[iname].where(">=", 0) & v[iname].where("<", lower_bound+hw_axis_size)
+    codegen_state = codegen_state.intersect(slab)
 
     from loopy.symbolic import pw_aff_to_expr
     hw_axis_expr = flatten(hw_axis_expr + pw_aff_to_expr(lower_bound))
@@ -404,45 +400,27 @@ def generate_sequential_loop_dim_code(
 
         # {{{ find bounds
 
-        aligned_domain = isl.align_spaces(domain, slab, obj_bigger_ok=True)
-
-        dom_and_slab = aligned_domain & slab
-
-        assumptions_non_param = isl.BasicSet.from_params(kernel.assumptions)
-        dom_and_slab, assumptions_non_param = isl.align_two(
-                dom_and_slab, assumptions_non_param)
-        dom_and_slab = dom_and_slab & assumptions_non_param
+        dom_and_slab = domain & slab & kernel.assumptions
 
         # move inames that are usable into parameters
-        moved_inames = []
-        for das_iname in sorted(dom_and_slab.get_var_names_not_none(dim_type.set)):
-            if das_iname in usable_inames:
-                moved_inames.append(das_iname)
-                dt, idx = dom_and_slab.get_var_dict()[das_iname]
-                dom_and_slab = dom_and_slab.move_dims(
-                        dim_type.param, dom_and_slab.dim(dim_type.param),
-                        dt, idx, 1)
+        moved_inames = sorted(dom_and_slab.space.set_names & usable_inames)
+        dom_and_slab = dom_and_slab.move_dims(moved_inames, DimType.param)
 
-        _, loop_iname_idx = dom_and_slab.get_var_dict()[loop_iname]
-
-        impl_domain = isl.align_spaces(
-            codegen_state.implemented_domain,
-            dom_and_slab,
-            obj_bigger_ok=True
-            ).params()
+        impl_moved = codegen_state.implemented_domain.move_dims(moved_inames, DimType.param)
 
         lbound = (
-                kernel.cache_manager.dim_min(
-                    dom_and_slab, loop_iname_idx)
+                dom_and_slab.dim_min(loop_iname, cache=kernel.isl_cache)
                 .gist(kernel.assumptions)
-                .gist(impl_domain)
-                .coalesce())
+                .gist(impl_moved)
+                .coalesce()
+                .move_dims(moved_inames, DimType.in_))
         ubound = (
-            kernel.cache_manager.dim_max(
-                dom_and_slab, loop_iname_idx)
+            dom_and_slab.dim_max(loop_iname, cache=kernel.isl_cache)
             .gist(kernel.assumptions)
-            .gist(impl_domain)
-            .coalesce())
+            .gist(impl_moved)
+            .coalesce()
+            .move_dims(moved_inames, DimType.in_)
+        )
 
         # }}}
 
@@ -453,19 +431,11 @@ def generate_sequential_loop_dim_code(
         impl_ubound = pw_aff_to_pw_aff_implemented_by_expr(ubound)
 
         # impl_loop may be overapproximated
-        from loopy.isl_helpers import make_loop_bounds_from_pwaffs
-        impl_loop = make_loop_bounds_from_pwaffs(
-                dom_and_slab.space,
-                loop_iname,
-                impl_lbound,
-                impl_ubound)
-
-        for moved_iname in moved_inames:
-            # move moved_iname to 'set' dim_type in impl_loop
-            dt, idx = impl_loop.get_var_dict()[moved_iname]
-            impl_loop = impl_loop.move_dims(
-                    dim_type.set, impl_loop.dim(dim_type.set),
-                    dt, idx, 1)
+        iname_pwaff = domain.var_pw_affs[loop_iname]
+        impl_loop = (
+            iname_pwaff.where(">=", impl_lbound)
+            &
+            iname_pwaff.where("<=", impl_ubound))
 
         new_codegen_state = (
                 codegen_state
@@ -484,7 +454,7 @@ def generate_sequential_loop_dim_code(
 
         from loopy.symbolic import pw_aff_to_expr
 
-        if impl_ubound.is_equal(impl_lbound):
+        if impl_ubound.equals(impl_lbound):
             # single-trip, generate just a variable assignment, not a loop
             inner = merge_codegen_results(codegen_state, [
                 astb.emit_initializer(

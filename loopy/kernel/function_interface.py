@@ -41,7 +41,7 @@ from loopy.symbolic import DependencyMapper, SubArrayRef, WalkMapper
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence, Set as AbstractSet
 
-    import islpy as isl
+    import namedisl as nisl
     from pymbolic.typing import ArithmeticExpression, Expression
 
     from loopy.codegen import CodeGenerationState
@@ -515,9 +515,9 @@ class InKernelCallable(ABC):
     @abstractmethod
     def get_hw_axes_sizes(self,
                 arg_id_to_arg: Mapping[int, Expression],
-                space: isl.Space,
+                space: nisl.Space,
                 callables_table: CallablesTable
-            ) -> tuple[Mapping[int, isl.PwAff], Mapping[int, isl.PwAff]]:
+            ) -> tuple[Mapping[int, nisl.PwAff], Mapping[int, nisl.PwAff]]:
         """
         Returns ``gsizes, lsizes``, where *gsizes* and *lsizes* are mappings
         from axis indices to corresponding group or local hw axis sizes. The hw
@@ -690,9 +690,9 @@ class ScalarCallable(InKernelCallable):
     @override
     def get_hw_axes_sizes(self,
                     arg_id_to_arg: Mapping[int, Expression],
-                    space: isl.Space,
+                    space: nisl.Space,
                     callables_table: CallablesTable,
-                ) -> tuple[Mapping[int, isl.PwAff], Mapping[int, isl.PwAff]]:
+                ) -> tuple[Mapping[int, nisl.PwAff], Mapping[int, nisl.PwAff]]:
         return {}, {}
 
     @override
@@ -1056,9 +1056,9 @@ class CallableKernel(InKernelCallable):
     @override
     def get_hw_axes_sizes(self,
                     arg_id_to_arg: Mapping[int, Expression],
-                    space: isl.Space,
+                    space: nisl.Space,
                     callables_table: CallablesTable,
-                ) -> tuple[Mapping[int, isl.PwAff], Mapping[int, isl.PwAff]]:
+                ) -> tuple[Mapping[int, nisl.PwAff], Mapping[int, nisl.PwAff]]:
         from loopy.isl_helpers import subst_into_pwaff
         _, pos_to_kw = get_kw_pos_association(self.subkernel)
         gsize, lsize = self.subkernel.get_grid_size_upper_bounds(callables_table,

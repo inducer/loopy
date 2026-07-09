@@ -22,12 +22,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
+from collections.abc import Collection
 from typing import TYPE_CHECKING, TypeVar
 
 from constantdict import constantdict
 
-import islpy as isl
-from islpy import dim_type
+import namedisl as nisl
+from namedisl import DimType
 from pymbolic import var
 
 from loopy.diagnostic import LoopyError
@@ -57,7 +58,10 @@ def _apply_renames_in_exprs(kernel, var_renames):
     return subst_map.map_kernel(kernel)
 
 
-def _rename_temporaries(kernel, suffix, all_identifiers):
+def _rename_temporaries(
+            kernel: LoopKernel,
+            suffix: str,
+            all_identifiers: Collection[str]):
     var_renames = {}
 
     vng = kernel.get_var_name_generator()
@@ -77,12 +81,15 @@ def _rename_temporaries(kernel, suffix, all_identifiers):
     return _apply_renames_in_exprs(kernel, var_renames)
 
 
-def _find_fusable_loop_domain_index(domain, other_domains):
-    my_inames = set(domain.get_var_dict(dim_type.set))
+def _find_fusable_loop_domain_index(
+            domain: nisl.Set,
+            other_domains: Sequence[nisl.Set]
+):
+    my_inames = set(domain.space.set_names)
 
-    overlap_domains = []
+    overlap_domains: list[int] = []
     for i, o_dom in enumerate(other_domains):
-        o_inames = set(o_dom.get_var_dict(dim_type.set))
+        o_inames = set(o_dom.space.set_names)
         if my_inames & o_inames:
             overlap_domains.append(i)
 
@@ -157,15 +164,11 @@ def _fuse_two_kernels(kernela: LoopKernel, kernelb: LoopKernel):
             new_domains.append(dom_b)
         else:
             dom_a = new_domains[i_fuse]
-            dom_a, dom_b = isl.align_two(dom_a, dom_b)
 
-            shared_inames = list(
-                    set(dom_a.get_var_dict(dim_type.set))
-                    &
-                    set(dom_b.get_var_dict(dim_type.set)))
+            shared_inames = list(dom_a.space.set_names & dom_b.space.set_names)
 
-            dom_a_s = dom_a.project_out_except(shared_inames, [dim_type.set])
-            dom_b_s = dom_a.project_out_except(shared_inames, [dim_type.set])
+            dom_a_s = dom_a.project_out_except(shared_inames)
+            dom_b_s = dom_a.project_out_except(shared_inames)
 
             if not (dom_a_s <= dom_b_s <= dom_a_s):
                 raise LoopyError("kernels do not agree on domain of "
@@ -227,20 +230,16 @@ def _fuse_two_kernels(kernela: LoopKernel, kernelb: LoopKernel):
 
     assump_a = kernela.assumptions
     assump_b = kernelb.assumptions
-    assump_a, assump_b = isl.align_two(assump_a, assump_b)
 
-    shared_param_names = list(
-            set(assump_a.get_var_dict(dim_type.set))
-            &
-            set(assump_b.get_var_dict(dim_type.set)))
+    shared_param_names = list(assump_a.space.set_names & assump_b.space.set_names)
 
-    assump_a_s = assump_a.project_out_except(shared_param_names, [dim_type.param])
-    assump_b_s = assump_a.project_out_except(shared_param_names, [dim_type.param])
+    assump_a_s = assump_a.project_out_except(shared_param_names)
+    assump_b_s = assump_a.project_out_except(shared_param_names)
 
     if not (assump_a_s <= assump_b_s <= assump_a_s):
         raise LoopyError("assumptions do not agree on kernels to be merged")
 
-    new_assumptions = (assump_a & assump_b).params()
+    new_assumptions = assump_a & assump_b
 
     # }}}
 

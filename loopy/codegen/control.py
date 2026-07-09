@@ -52,6 +52,7 @@ if TYPE_CHECKING:
         Set as AbstractSet,
     )
 
+    import namedisl as nisl
     from pymbolic import Expression
 
     from loopy.codegen import CodeGenerationState
@@ -332,7 +333,7 @@ def build_loop_nest(
 
     @final
     class BoundsCheckCache:
-        def __init__(self, kernel: LoopKernel, impl_domain: isl.Set):
+        def __init__(self, kernel: LoopKernel, impl_domain: nisl.Set):
             self.kernel = kernel
             self.impl_domain = impl_domain
 
@@ -341,14 +342,13 @@ def build_loop_nest(
             if not check_inames:
                 return []
 
-            domain = isl.align_spaces(
-                    self.kernel.get_inames_domain(check_inames),
-                    self.impl_domain, obj_bigger_ok=True)
+            domain = self.kernel.get_inames_domain(check_inames)
+
             from loopy.codegen.bounds import get_approximate_convex_bounds_checks
-            # Each instruction individually gets its bounds checks,
+            # Each instruction individually gets its actual bounds checks,
             # so we can safely overapproximate here.
-            return get_approximate_convex_bounds_checks(domain.to_set(),
-                    check_inames, self.impl_domain, self.kernel.cache_manager)
+            return get_approximate_convex_bounds_checks(domain,
+                    check_inames, self.impl_domain, self.kernel.isl_cache)
 
     def build_insn_group(
                 sched_index_info_entries: Sequence[ScheduleIndexInfo],
@@ -455,21 +455,17 @@ def build_loop_nest(
 
         check_set = None
         for cns in bounds_checks:
-            cns_set = (isl.BasicSet.universe(cns.get_space())
-                    .add_constraint(cns))
-
             if check_set is None:
-                check_set = cns_set
+                check_set = cns.as_basic_set()
             else:
-                check_set, cns_set = isl.align_two(check_set, cns_set)
-                check_set = check_set.intersect(cns_set)
+                check_set = check_set & cns.as_basic_set()
 
         if check_set is None:
             new_codegen_state = codegen_state
             is_empty = False
         else:
             is_empty = check_set.is_empty()
-            new_codegen_state = codegen_state.intersect(check_set.to_set())
+            new_codegen_state = codegen_state.intersect(check_set.as_set())
 
         if pred_checks:
             new_codegen_state = new_codegen_state.copy(

@@ -49,9 +49,10 @@ import numpy as np
 from constantdict import constantdict
 from typing_extensions import Self, override
 
-import islpy as isl
+import namedisl as nisl
 import pymbolic.primitives as p
 import pytools.lex
+from namedisl import DimType
 from pymbolic.mapper import (
     CachedCombineMapper as CombineMapperBase,
     CachedIdentityMapper as IdentityMapperBase,
@@ -2041,21 +2042,20 @@ class ArrayAccessFinder(CombineMapper[AbstractSet[p.Subscript], []]):
 
 # {{{ (pw)aff to expr conversion
 
-def aff_to_expr(aff: isl.Aff) -> ArithmeticExpression:
+def aff_to_expr(aff: nisl.Aff) -> ArithmeticExpression:
     from pymbolic import var
 
-    denom = aff.get_denominator_val().to_python()
+    denom = aff.get_denominator().to_python()
 
-    result = (aff.get_constant_val()*denom).to_python()
-    for dt in [isl.dim_type.in_, isl.dim_type.param]:
-        for i in range(aff.dim(dt)):
-            coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
+    result = (aff.get_constant()*denom).to_python()
+    for dt in aff.active_dim_types:
+        for name in aff.space.dimtype_to_names[dt]:
+            coeff = (aff.get_coefficient(name)*denom).to_python()
             if coeff:
-                dim_name = not_none(aff.get_dim_name(dt, i))
-                result += coeff*var(dim_name)
+                result += coeff*var(name)
 
-    for i in range(aff.dim(isl.dim_type.div)):
-        coeff = (aff.get_coefficient_val(isl.dim_type.div, i)*denom).to_python()
+    for i in range(aff.num_divs):
+        coeff = (aff.get_div_coefficient(i)*denom).to_python()
         if coeff:
             result += coeff*aff_to_expr(aff.get_div(i))
 
@@ -2067,12 +2067,12 @@ def aff_to_expr(aff: isl.Aff) -> ArithmeticExpression:
 def pw_aff_to_expr(pw_aff: int, int_ok: bool = False) -> int: ...
 
 @overload
-def pw_aff_to_expr(pw_aff: isl.PwAff | isl.Aff,
+def pw_aff_to_expr(pw_aff: nisl.PwAff,
                    int_ok: bool = False) -> ArithmeticExpression: ...
 
 
 def pw_aff_to_expr(
-            pw_aff: int | isl.PwAff | isl.Aff,
+            pw_aff: int | nisl.PwAff,
             int_ok: bool = False
         ) -> ArithmeticExpression:
     if isinstance(pw_aff, int):
@@ -2096,121 +2096,136 @@ def pw_aff_to_expr(
     return expr
 
 
-def pw_aff_to_pw_aff_implemented_by_expr(pw_aff: isl.PwAff) -> isl.PwAff:
+def pw_aff_to_pw_aff_implemented_by_expr(pw_aff: nisl.PwAff) -> nisl.PwAff:
+    """Addresses a subtle mismatch involving what loop bounds the code thought
+    were implemented.
+
+    The issue comes from the fact that a loop bound predicated on a
+    parameter such as
+
+    [n] -> { [(-1 + n - floor((3n)/4))] : n > 0 }
+
+    (which may result from slabbing) will be converted by pw_aff_to_expr()
+    to an unconditional expression, even though the original pw aff is
+    conditional. As a result the previous code might not actually ensure
+    that n > 0.
+
+    This routine ensures that the aggregate domain of the result
+    is the universe.
+
+    """
     pieces = pw_aff.get_pieces()
 
-    rest = isl.Set.universe(pw_aff.space.params())
     aff_set, aff = pieces[0]
-    impl_pw_aff = isl.PwAff.alloc(aff_set, aff)
-    rest = rest.intersect_params(aff_set.complement())
+    needs_defining = aff_set.universe_like_me()
+    impl_pw_aff = nisl.PwAff.from_piece_and_aff(aff_set, aff)
+    needs_defining = needs_defining & aff_set.complement()
 
     for aff_set, aff in pieces[1:-1]:
         impl_pw_aff = impl_pw_aff.union_max(
-            isl.PwAff.alloc(aff_set, aff))
-        rest = rest.intersect_params(aff_set.complement())
+            nisl.PwAff.from_piece_and_aff(aff_set, aff))
+        needs_defining = needs_defining & aff_set.complement()
 
     _, aff = pieces[-1]
-    return impl_pw_aff.union_max(isl.PwAff.alloc(rest, aff)).coalesce()
+    return impl_pw_aff.union_max(
+        nisl.PwAff.from_piece_and_aff(needs_defining, aff)
+    ).coalesce()
 
 # }}}
 
 
 # {{{ (pw)aff_from_expr
 
-class PwAffEvaluationMapper(EvaluationMapperBase[isl.PwAff]):
-    zero: isl.Aff
-    pw_zero: isl.PwAff
+class PwAffEvaluationMapper(EvaluationMapperBase[nisl.PwAff]):
+    zero: nisl.Aff
+    pw_zero: nisl.PwAff
 
     def __init__(self,
-                 space: isl.Space,
-                 vars_to_zero: Collection[str] | None) -> None:
+            vars_to_pw_aff: Mapping[str | TypingLiteral[0], nisl.PwAff],
+            *, vars_to_zero: Collection[str] | None) -> None:
         if vars_to_zero is None:
             vars_to_zero = ()
 
-        self.zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
-        self.pw_zero = isl.PwAff.from_aff(self.zero)
+        context_with_zero = dict(vars_to_pw_aff)
+        self.pw_zero = context_with_zero.pop(0)
 
-        context: dict[str, isl.PwAff] = {}
-        for name, (dt, pos) in space.get_var_dict().items():
-            if dt == isl.dim_type.set:
-                dt = isl.dim_type.in_
-
-            context[name] = isl.PwAff.from_aff(
-                    self.zero.set_coefficient_val(dt, pos, 1))
-
+        context: dict[str, nisl.PwAff] = cast(
+            "dict[str, nisl.PwAff]", context_with_zero)
         for v in vars_to_zero:
             context[v] = self.pw_zero
 
         super().__init__(context)
 
     @override
-    def map_constant(self, expr: object, /) -> isl.PwAff:
+    def map_constant(self, expr: object, /) -> nisl.PwAff:
         iexpr = int(cast("int", expr))
 
         return self.pw_zero + iexpr
 
     @override
-    def map_min(self, expr: p.Min, /) -> isl.PwAff:
+    def map_min(self, expr: p.Min, /) -> nisl.PwAff:
         from functools import reduce
         return reduce(
                 lambda a, b: a.min(b),
                 (self.rec(ch) for ch in expr.children))
 
     @override
-    def map_max(self, expr: p.Max, /) -> isl.PwAff:
+    def map_max(self, expr: p.Max, /) -> nisl.PwAff:
         from functools import reduce
         return reduce(
                 lambda a, b: a.max(b),
                 (self.rec(ch) for ch in expr.children))
 
     @override
-    def map_quotient(self, expr: p.Quotient, /) -> isl.PwAff:
+    def map_quotient(self, expr: p.Quotient, /) -> nisl.PwAff:
         raise TypeError(
             f"true division in '{expr}' not supported for as-pwaff evaluation")
 
     @override
-    def map_floor_div(self, expr: p.FloorDiv, /) -> isl.PwAff:
+    def map_floor_div(self, expr: p.FloorDiv, /) -> nisl.PwAff:
         num = self.rec(expr.numerator)
         denom = self.rec(expr.denominator)
         return num.div(denom).floor()
 
     @override
-    def map_remainder(self, expr: p.Remainder, /) -> isl.PwAff:
+    def map_remainder(self, expr: p.Remainder, /) -> nisl.PwAff:
         num = self.rec(expr.numerator)
         denom = self.rec(expr.denominator)
-        if not denom.is_cst():
+        if not denom.is_constant():
             raise TypeError(
                     f"modulo non-constant in '{expr}' not supported "
                     "for as-pwaff evaluation")
 
         (_s, denom_aff), = denom.get_pieces()
-        denom = denom_aff.get_constant_val()
+        denom = denom_aff.get_constant()
 
-        return num.mod_val(denom)
+        return num % denom
 
-    def map_literal(self, expr: Literal, /) -> isl.PwAff:
+    def map_literal(self, expr: Literal, /) -> nisl.PwAff:
         raise TypeError(f"literal '{expr}' not supported for as-pwaff evaluation")
 
-    def map_reduction(self, expr: Reduction, /) -> isl.PwAff:
+    def map_reduction(self, expr: Reduction, /) -> nisl.PwAff:
         raise TypeError(
                 f"reduction in '{expr}' not supported for as-pwaff evaluation")
 
     @override
-    def map_call(self, expr: p.Call, /) -> isl.PwAff:
+    def map_call(self, expr: p.Call, /) -> nisl.PwAff:
         # FIXME: There are some things here that we could handle, e.g. "abs".
         raise TypeError(f"call in '{expr}' not supported "
                 "for as-pwaff evaluation")
 
 
 def aff_from_expr(
-            space: isl.Space,
+            vars_to_aff: Mapping[str | TypingLiteral[0], nisl.Aff],
             expr: Expression,
-            vars_to_zero: Collection[str] | None = None,
-        ) -> isl.Aff:
+            *, vars_to_zero: Collection[str] | None = None,
+        ) -> nisl.Aff:
     if vars_to_zero is None:
         vars_to_zero = frozenset()
 
-    pwaff = pwaff_from_expr(space, expr, vars_to_zero).coalesce()
+    pwaff = pwaff_from_expr(
+        {k: a.as_pw_aff() for k, a in vars_to_aff. items()},
+        expr, vars_to_zero=vars_to_zero).coalesce()
 
     pieces = pwaff.get_pieces()
     if len(pieces) == 1:
@@ -2224,16 +2239,18 @@ def aff_from_expr(
 
 
 def pwaff_from_expr(
-            space: isl.Space,
+            vars_to_pw_aff: Mapping[str | TypingLiteral[0], nisl.PwAff],
             expr: Expression,
-            vars_to_zero: Collection[str] | None = None,
-        ) -> isl.PwAff:
-    return PwAffEvaluationMapper(space, vars_to_zero)(expr)
+            *, vars_to_zero: Collection[str] | None = None,
+        ) -> nisl.PwAff:
+    return PwAffEvaluationMapper(vars_to_pw_aff, vars_to_zero=vars_to_zero)(expr)
 
 
 def with_aff_conversion_guard(
-            f: Callable[Concatenate[isl.Space, Expression, P], T],
-            space: isl.Space,
+            f: Callable[
+                Concatenate[Mapping[str | TypingLiteral[0], nisl.PwAff], Expression, P],
+                T],
+            vars_to_pw_aff: Mapping[str | TypingLiteral[0], nisl.PwAff],
             expr: Expression,
             *args: P.args,
             **kwargs: P.kwargs,
@@ -2246,7 +2263,7 @@ def with_aff_conversion_guard(
     err = None
 
     try:
-        return f(space, expr, *args, **kwargs)
+        return f(vars_to_pw_aff, expr, *args, **kwargs)
     except TypeError as e:
         err = e
     except isl.Error as e:
@@ -2264,50 +2281,52 @@ def with_aff_conversion_guard(
 
 
 def guarded_aff_from_expr(
-            space: isl.Space,
+            vars_to_aff: Mapping[str | TypingLiteral[0], nisl.Aff],
             expr: Expression,
-            vars_to_zero: Collection[str] | None = None,
-        ) -> isl.Aff:
+            *, vars_to_zero: Collection[str] | None = None,
+        ) -> nisl.Aff:
     """Performs the same operation as :func:`aff_from_expr` but only raises
     :exc:`loopy.diagnostic.ExpressionToAffineConversionError`
     """
-    return with_aff_conversion_guard(aff_from_expr, space, expr, vars_to_zero)
+    return with_aff_conversion_guard(aff_from_expr, vars_to_aff, expr,
+        vars_to_zero=vars_to_zero)
 
 
 def guarded_pwaff_from_expr(
-            space: isl.Space,
+            vars_to_pw_aff: Mapping[str | TypingLiteral[0], nisl.PwAff],
             expr: Expression,
-            vars_to_zero: Collection[str] | None = None,
-        ) -> isl.PwAff:
+            *, vars_to_zero: Collection[str] | None = None,
+        ) -> nisl.PwAff:
     """Performs the same operation as :func:`aff_from_expr` but only raises
     :exc:`loopy.diagnostic.ExpressionToAffineConversionError`
     """
-    return with_aff_conversion_guard(pwaff_from_expr, space, expr, vars_to_zero)
+    return with_aff_conversion_guard(pwaff_from_expr, vars_to_pw_aff, expr,
+        vars_to_zero=vars_to_zero)
 
 # }}}
 
 
 # {{{ (pw_)?qpoly_from_expr
 
-class PwQPolyEvaluationMapper(EvaluationMapperBase[isl.PwQPolynomial]):
-    pw_zero: isl.PwQPolynomial
+class PwQPolyEvaluationMapper(EvaluationMapperBase[nisl.PwQPolynomial]):
+    pw_zero: nisl.PwQPolynomial
 
     def __init__(self,
-                 space: isl.Space,
+                 space: nisl.Space,
                  vars_to_zero: Collection[str] | None = None) -> None:
         if vars_to_zero is None:
             vars_to_zero = ()
 
-        context: dict[str, isl.PwQPolynomial] = {}
+        context: dict[str, nisl.PwQPolynomial] = {}
         for name, (dt, pos) in space.get_var_dict().items():
-            if dt == isl.dim_type.set:
-                dt = isl.dim_type.in_
+            if dt == DimType.set:
+                dt = DimType.in_
 
-            context[name] = isl.PwQPolynomial.from_qpolynomial(
-                    isl.QPolynomial.var_on_domain(space, dt, pos))
+            context[name] = nisl.PwQPolynomial.from_qpolynomial(
+                    nisl.QPolynomial.var_on_domain(space, dt, pos))
 
-        pw_zero = isl.PwQPolynomial.from_qpolynomial(
-                    isl.QPolynomial.zero_on_domain(space))
+        pw_zero = nisl.PwQPolynomial.from_qpolynomial(
+                    nisl.QPolynomial.zero_on_domain(space))
         for v in vars_to_zero:
             context[v] = pw_zero
 
@@ -2315,19 +2334,19 @@ class PwQPolyEvaluationMapper(EvaluationMapperBase[isl.PwQPolynomial]):
         super().__init__(context)
 
     @override
-    def map_constant(self, expr: object, /) -> isl.PwQPolynomial:
+    def map_constant(self, expr: object, /) -> nisl.PwQPolynomial:
         iexpr = int(cast("int", expr))
 
         return self.pw_zero + iexpr
 
     @override
-    def map_quotient(self, expr: p.Quotient, /) -> isl.PwQPolynomial:
+    def map_quotient(self, expr: p.Quotient, /) -> nisl.PwQPolynomial:
         raise TypeError(
                 f"true division in '{expr}' not supported "
                 "for as-pwqpoly evaluation")
 
     @override
-    def map_power(self, expr: p.Power, /) -> isl.PwQPolynomial:
+    def map_power(self, expr: p.Power, /) -> nisl.PwQPolynomial:
         from numbers import Integral
         if not isinstance(expr.exponent, Integral):
             raise TypeError("Only integral powers allowed in pwqpolynomials.")
@@ -2340,13 +2359,13 @@ class PwQPolyEvaluationMapper(EvaluationMapperBase[isl.PwQPolynomial]):
 
 
 def pw_qpolynomial_from_expr(
-            space: isl.Space,
+            space: nisl.Space,
             expr: Expression,
-            vars_to_zero: Collection[str] | None = None) -> isl.PwQPolynomial:
+            vars_to_zero: Collection[str] | None = None) -> nisl.PwQPolynomial:
     return PwQPolyEvaluationMapper(space, vars_to_zero)(expr)
 
 
-def qpolynomial_from_expr(space: isl.Space, expr: Expression) -> isl.QPolynomial:
+def qpolynomial_from_expr(space: nisl.Space, expr: Expression) -> nisl.QPolynomial:
     pw_qpoly = pw_qpolynomial_from_expr(space, expr).coalesce()
 
     pieces = pw_qpoly.get_pieces()
@@ -2367,12 +2386,13 @@ def simplify_via_aff(expr: Expression) -> Expression:
     from loopy.diagnostic import ExpressionToAffineConversionError
 
     deps = sorted(get_dependencies(expr))
+    space = nisl.Space.from_names(list(deps), out=[])
+    zero = nisl.Aff.zero_on_domain(space)
     try:
-        return aff_to_expr(guarded_aff_from_expr(
-            isl.Space.create_from_names(isl.DEFAULT_CONTEXT, list(deps)),
-            expr))
+        return aff_to_expr(guarded_aff_from_expr(zero.var_affs, expr))
     except ExpressionToAffineConversionError:
-        return expr
+        # Accomplish at least *some* simplification
+        return flatten(expr)
 
 
 @memoize_on_first_arg
@@ -2392,22 +2412,17 @@ def simplify_using_aff(
     # FIXME: Ideally, we should find out what inames are usable and allow
     # the simplification to use all of those. For now, fall back to making
     # sure that the simplification only uses inames that were already there.
-    domain = (
-            kernel
-            .get_inames_domain(inames)
-            .project_out_except(inames, [isl.dim_type.set]))
+    inames_domain = kernel.get_inames_domain(inames)
 
-    non_inames = deps - set(domain.get_var_dict().keys())
+    # FIXME: Should we also leave params in?
+    domain = inames_domain.project_out_except(inames_domain.space.set_names)
+
+    non_inames = deps - set(domain.space.names)
     non_inames = {name for name in set(non_inames) if name.isidentifier()}
-    if non_inames:
-        cur_dim = domain.dim(isl.dim_type.set)
-        domain = domain.insert_dims(isl.dim_type.set, cur_dim, len(non_inames))
-        for non_iname in sorted(non_inames):
-            domain = domain.set_dim_name(isl.dim_type.set, cur_dim, non_iname)
-            cur_dim += 1
+    domain.add_dims(DimType.out, non_inames)
 
     try:
-        aff = guarded_aff_from_expr(domain.space, expr)
+        aff = guarded_aff_from_expr(domain.var_affs, expr)
     except ExpressionToAffineConversionError:
         # Accomplish at least *some* simplification
         return flatten(expr)
@@ -2423,11 +2438,11 @@ def simplify_using_aff(
 # {{{ qpolynomial_to_expr
 
 def _get_monomial_coeff_from_term(
-            space: isl.Space, term: isl.Term
-        ) -> tuple[ArithmeticExpression, isl.Val]:
+            space: nisl.Space, term: nisl.Term
+        ) -> tuple[ArithmeticExpression, nisl.Val]:
     result = 1
 
-    for dt in isl._CHECK_DIM_TYPES:
+    for dt in nisl._CHECK_DIM_TYPES:
         for i in range(term.dim(dt)):
             exp = term.get_exp(dt, i)
             if exp:
@@ -2436,20 +2451,20 @@ def _get_monomial_coeff_from_term(
 
                 result = result*p.Variable(name)**exp
 
-    for i in range(term.dim(isl.dim_type.div)):
-        exp = term.get_exp(isl.dim_type.div, i)
+    for i in range(term.dim(DimType.div)):
+        exp = term.get_exp(DimType.div, i)
         result *= (aff_to_expr(term.get_div(i))**exp)
 
     return result, term.get_coefficient_val()
 
 
 def _take_common_denominator(
-            coeffs: Sequence[isl.Val],
+            coeffs: Sequence[nisl.Val],
         ) -> tuple[tuple[int, ...], int]:
     denominators = [coeff.get_den_val() for coeff in coeffs]
     numerators = [coeff * den for coeff, den in zip(coeffs, denominators, strict=True)]
 
-    common_denominator = isl.Val.one(coeffs[0].get_ctx())
+    common_denominator = nisl.Val.one(coeffs[0].get_ctx())
     for den in denominators:
         # LCM(a, b) = a * b / GCD(a, b)
         common_denominator = ((common_denominator * den)
@@ -2463,7 +2478,7 @@ def _take_common_denominator(
             common_denominator.to_python())
 
 
-def qpolynomial_to_expr(qpoly: isl.QPolynomial) -> Expression:
+def qpolynomial_to_expr(qpoly: nisl.QPolynomial) -> Expression:
     from pymbolic.primitives import FloorDiv
 
     space = qpoly.space
@@ -2493,7 +2508,7 @@ def qpolynomial_to_expr(qpoly: isl.QPolynomial) -> Expression:
 
 # {{{ expression/set <-> constraint conversion
 
-def constraint_to_cond_expr(cns: isl.Constraint) -> ArithmeticExpression:
+def constraint_to_cond_expr(cns: nisl.Constraint) -> ArithmeticExpression:
     # Looks like this is ok after all--get_aff() performs some magic.
     # Not entirely sure though... FIXME
     #
@@ -2501,10 +2516,10 @@ def constraint_to_cond_expr(cns: isl.Constraint) -> ArithmeticExpression:
     # if ls.dim(dim_type.div):
     #     raise RuntimeError("constraint has an existentially quantified variable")
 
-    expr = aff_to_expr(cns.get_aff())
+    expr = aff_to_expr(cns.as_aff())
 
     from pymbolic.primitives import Comparison
-    if cns.is_equality():
+    if cns.is_equality:
         return Comparison(expr, "==", 0)
     else:
         return Comparison(expr, ">=", 0)
@@ -2568,40 +2583,26 @@ class ConditionExpressionToBooleanOpsExpression(IdentityMapper[[]]):
 
 
 @dataclass
-class AffineConditionToISLSetMapper(Mapper[isl.Set, []]):
+class AffineConditionToISLSetMapper(Mapper[nisl.Set, []]):
     """
     Mapper to convert a condition :class:`~pymbolic.primitives.Expression` to a
     :class:`~islpy.Set`.
     """
 
-    space: isl.Space
+    vars_to_pw_aff: Mapping[str | TypingLiteral[0], nisl.PwAff]
 
     @override
-    def map_comparison(self, expr: p.Comparison, /) -> isl.Set:
+    def map_comparison(self, expr: p.Comparison, /) -> nisl.Set:
         if expr.operator == "!=":
             return self.rec(p.LogicalNot(p.Comparison(expr.left, "==", expr.right)))
 
-        left_aff = guarded_aff_from_expr(self.space, expr.left)
-        right_aff = guarded_aff_from_expr(self.space, expr.right)
-
-        if expr.operator == "==":
-            cnst = isl.Constraint.equality_from_aff(left_aff-right_aff)
-        elif expr.operator == ">=":
-            cnst = isl.Constraint.inequality_from_aff(left_aff-right_aff)
-        elif expr.operator == ">":
-            cnst = isl.Constraint.inequality_from_aff(left_aff-right_aff-1)
-        elif expr.operator == "<=":
-            cnst = isl.Constraint.inequality_from_aff(right_aff-left_aff)
-        elif expr.operator == "<":
-            cnst = isl.Constraint.inequality_from_aff(right_aff-left_aff-1)
-        else:
-            raise AssertionError()
-
-        return isl.Set.universe(self.space).add_constraint(cnst)
+        left_aff = guarded_pwaff_from_expr(self.vars_to_pw_aff, expr.left)
+        right_aff = guarded_pwaff_from_expr(self.vars_to_pw_aff, expr.right)
+        return left_aff.where(expr.operator, right_aff)
 
     def _map_logical_reduce(self,
                             expr: p.LogicalOr | p.LogicalAnd,
-                            f: Callable[[isl.Set, isl.Set], isl.Set]) -> isl.Set:
+                            f: Callable[[nisl.Set, nisl.Set], nisl.Set]) -> nisl.Set:
         """
         :arg f: Reduction callable.
         """
@@ -2609,42 +2610,44 @@ class AffineConditionToISLSetMapper(Mapper[isl.Set, []]):
         return reduce(f, sets)
 
     @override
-    def map_logical_or(self, expr: p.LogicalOr, /) -> isl.Set:
+    def map_logical_or(self, expr: p.LogicalOr, /) -> nisl.Set:
         import operator
         return self._map_logical_reduce(expr, operator.or_)
 
     @override
-    def map_logical_and(self, expr: p.LogicalAnd, /) -> isl.Set:
+    def map_logical_and(self, expr: p.LogicalAnd, /) -> nisl.Set:
         import operator
         return self._map_logical_reduce(expr, operator.and_)
 
     @override
-    def map_logical_not(self, expr: p.LogicalNot, /) -> isl.Set:
+    def map_logical_not(self, expr: p.LogicalNot, /) -> nisl.Set:
         set_ = self.rec(expr.child)
         return set_.complement()
 
 
-def isl_set_from_expr(space: isl.Space, expr: Expression) -> isl.Set:
+def isl_set_from_expr(
+            vars_to_pw_aff: Mapping[str | TypingLiteral[0], nisl.PwAff],
+            expr: Expression
+        ) -> nisl.Set:
     """
     :arg expr: An instance of :class:`pymbolic.primitives.Expression` whose
         boolean value is evaluated according to C-semantics.
     """
-    mapper = AffineConditionToISLSetMapper(space)
+    mapper = AffineConditionToISLSetMapper(vars_to_pw_aff)
     expr = ConditionExpressionToBooleanOpsExpression()(expr)
     set_ = mapper(expr)
-    assert isinstance(set_, isl.Set)
+    assert isinstance(set_, nisl.Set)
 
     return set_
 
 
-def condition_to_set(space: isl.Space, expr: Expression) -> isl.Set | None:
+def condition_to_set(space: nisl.Space, expr: Expression) -> nisl.Set | None:
     """
     Returns an instance of :class:`islpy.Set` if *expr* can be expressed as an
-    :class:`isl.Set` on *space*, if not then returns *None*.
+    :class:`nisl.Set` on *space*, if not then returns *None*.
     """
     from loopy.symbolic import get_dependencies
-    if get_dependencies(expr) <= frozenset(
-            space.get_var_dict()):
+    if get_dependencies(expr) <= space.names:
         try:
             from loopy.symbolic import isl_set_from_expr
             return isl_set_from_expr(space, expr)
@@ -2660,7 +2663,7 @@ def condition_to_set(space: isl.Space, expr: Expression) -> isl.Set | None:
 
 # {{{ set_to_cond_expr
 
-def basic_set_to_cond_expr(isl_basicset: isl.BasicSet) -> Expression:
+def basic_set_to_cond_expr(isl_basicset: nisl.BasicSet) -> Expression:
     constrs: list[Expression] = [
         constraint_to_cond_expr(constr)
         for constr in isl_basicset.get_constraints()]
@@ -2674,7 +2677,7 @@ def basic_set_to_cond_expr(isl_basicset: isl.BasicSet) -> Expression:
         return p.LogicalAnd(tuple(constrs))
 
 
-def set_to_cond_expr(isl_set: isl.Set) -> Expression:
+def set_to_cond_expr(isl_set: nisl.Set) -> Expression:
     conjs: list[Expression] = [
         basic_set_to_cond_expr(isl_basicset)
         for isl_basicset in isl_set.get_basic_sets()]
@@ -2816,17 +2819,21 @@ class PrimeAdder(IdentityMapper[[]]):
 # }}}
 
 
-# {{{ get access range
+# {{{ get access map
+
+def get_access_map_storage_names(access_map: nisl.Set | nisl.Map) -> Sequence[str]:
+    return [f"_lpy_s{i}" for i in range(access_map.space.dim(DimType.out))]
+
 
 def get_access_map(
-            domain: isl.Set,
+            domain: nisl.Set,
             subscript: tuple[Expression, ...],
-            assumptions: isl.BasicSet | None = None,
+            assumptions: nisl.Set | None = None,
             shape: ShapeType | None = None,
             allowed_constant_names: Collection[str] | None = None
-        ) -> isl.Map:
+        ) -> nisl.Map:
     """
-    Returns an instance of :class:`isl.Map` accessed by *subscript*.
+    Returns an instance of :class:`nisl.Map` accessed by *subscript*.
 
     :arg subscript: An instance of :class:`tuple` of index expressions.
     :arg assumptions: An instance of :class:`islpy.BasicSet` or *None*. *None*
@@ -2842,58 +2849,47 @@ def get_access_map(
         >>> import islpy as isl
         >>> from loopy.symbolic import get_access_map
         >>> from pymbolic import var
-        >>> get_access_map(isl.BasicSet("[n]->{[i, j]: 0<=i<n and i<=j<n}"),
+        >>> get_access_map(nisl.BasicSet("[n]->{[i, j]: 0<=i<n and i<=j<n}"),
                            (var("i") + 1, var("j")))
         >>> Map("[n]->{[i, j]->[i+1, j]: 0<=i<n and i<=j<n}")
     """
 
     if assumptions is not None:
-        domain, assumptions = isl.align_two(domain,
-                assumptions)
         domain = domain & assumptions
         del assumptions
 
     dims = len(subscript)
 
-    # we build access_map as a set because (idiocy!) Affs
+    # we build access_map as a set because (idiocy!) PwAffs
     # cannot live on maps.
 
-    # dims: [domain](dn)[storage]
+    # dims: [domain][storage_axis_names]
     access_map = domain
 
-    if isinstance(access_map, isl.BasicSet):
-        access_map = isl.Set.from_basic_set(access_map)
-
     if allowed_constant_names is not None:
-        allowed_constant_names = set(allowed_constant_names) - {
-                access_map.get_dim_name(isl.dim_type.param, i)
-                for i in range(access_map.dim(isl.dim_type.param))}
+        allowed_constant_names = \
+            set(allowed_constant_names) - access_map.space.param_names
+        access_map = access_map.add_dims(DimType.param, allowed_constant_names)
 
-        par_base = access_map.dim(isl.dim_type.param)
-        access_map = access_map.insert_dims(isl.dim_type.param, par_base,
-                len(allowed_constant_names))
-        for i, const_name in enumerate(allowed_constant_names):
-            access_map = access_map.set_dim_name(
-                    isl.dim_type.param, par_base+i, const_name)
-
-    dn = access_map.dim(isl.dim_type.set)
-    access_map = access_map.insert_dims(isl.dim_type.set, dn, dims)
+    storage_axis_names = [f"_lpy_s{i}" for i in range(dims)]
+    access_map = access_map.add_dims(DimType.out, storage_axis_names)
 
     from loopy.diagnostic import ExpressionToAffineConversionError
 
-    for idim in range(dims):
+    var_pw_affs = access_map.var_pw_affs
+    for idim, stor_axis in enumerate(storage_axis_names):
         idx_aff = None
 
         try:
-            idx_aff = guarded_aff_from_expr(access_map.space, subscript[idim])
+            idx_aff = guarded_pwaff_from_expr(var_pw_affs, subscript[idim])
         except ExpressionToAffineConversionError as err:
-            shape_aff = None
+            shape_pw_aff = None
 
-            if shape is not None and shape[idim] is not None:
+            if shape is not None:
                 with contextlib.suppress(ExpressionToAffineConversionError):
-                    shape_aff = guarded_aff_from_expr(access_map.space, shape[idim])
+                    shape_pw_aff = guarded_pwaff_from_expr(var_pw_affs, shape[idim])
 
-            if shape_aff is None:
+            if shape_pw_aff is None:
                 # failed to convert shape[idim] to aff
                 subs = ", ".join(str(si) for si in subscript)
                 raise UnableToDetermineAccessRangeError(
@@ -2902,33 +2898,17 @@ def get_access_map(
                         f"(encountered {type(err).__name__}: {err})") from err
 
             # successfully converted shape[idim] to aff, but not subscript[idim]
+            access_map = access_map & (
+                var_pw_affs[stor_axis].where("<", shape_pw_aff)
+                & var_pw_affs[stor_axis].where(">=", 0)
 
-            upper_bound_cns = isl.Constraint.inequality_from_aff(
-                    shape_aff.set_coefficient_val(
-                        isl.dim_type.in_, dn+idim, -1) - 1)
-            lower_bound_cns = isl.Constraint.inequality_from_aff(
-                    isl.Aff.zero_on_domain(access_map.space).set_coefficient_val(
-                        isl.dim_type.in_, dn+idim, 1))
-
-            access_map = access_map.add_constraint(upper_bound_cns)
-            access_map = access_map.add_constraint(lower_bound_cns)
+            )
 
         else:
             # successfully converted subscript[idim] -> idx_aff
+            access_map = access_map & idx_aff.where("==", var_pw_affs[stor_axis])
 
-            idx_aff = idx_aff.set_coefficient_val(
-                    isl.dim_type.in_, dn+idim, -1)
-
-            access_map = access_map.add_constraint(
-                    isl.Constraint.equality_from_aff(idx_aff))
-
-    access_map_as_map = isl.Map.universe(access_map.get_space())
-    access_map_as_map = access_map_as_map.intersect_range(access_map)
-    access_map = access_map_as_map.move_dims(
-            isl.dim_type.in_, 0,
-            isl.dim_type.out, 0, dn)
-
-    return access_map
+    return access_map.as_map(domain.space.set_names)
 
 # }}}
 
@@ -2939,7 +2919,7 @@ class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
     kernel: LoopKernel
     access_maps: defaultdict[
         VarNameStr,
-        defaultdict[AbstractSet[InameStr], isl.Map | None]]
+        defaultdict[AbstractSet[InameStr], nisl.Map | None]]
     bad_subscripts: defaultdict[str, list[p.Subscript | LinearSubscript]]
     _overestimate: bool
     _var_names: Collection[str]
@@ -2956,7 +2936,7 @@ class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
         self._var_names = set(var_names)
         super().__init__()
 
-    def get_access_range(self, var_name: str) -> isl.Set | None:
+    def get_access_range(self, var_name: str) -> nisl.Set | None:
         loops_to_amaps = self.access_maps[var_name]
         if not loops_to_amaps:
             return None
@@ -2986,7 +2966,7 @@ class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
 
         try:
             access_map = get_access_map(
-                    domain.to_set(), subscript, self.kernel.assumptions,
+                    domain, subscript, self.kernel.assumptions,
                     shape=cast("ShapeType | None", descriptor.shape)
                         if self._overestimate else None,
                     allowed_constant_names=self.kernel.get_unwritten_value_args())
@@ -3000,8 +2980,8 @@ class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
             other_access_map = next(iter(self.access_maps[arg_name].values()))
             assert other_access_map is not None
 
-            if (other_access_map.dim(isl.dim_type.set)
-                    != access_map.dim(isl.dim_type.set)):
+            if (other_access_map.space.dim(DimType.out)
+                    != access_map.space.dim(DimType.out)):
                 raise RuntimeError(
                         f"error while determining shape of argument '{arg_name}': "
                         "varying number of indices encountered")
@@ -3049,8 +3029,7 @@ class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
         amap = self.access_maps[arg_name].pop(total_inames)
         for iname in expr.swept_inames:
             assert amap is not None
-            dt, pos = amap.get_var_dict()[iname.name]
-            amap = amap.project_out(dt, pos, 1)
+            amap = amap.project_out([iname.name])
 
         # }}}
 
@@ -3088,7 +3067,7 @@ class AccessRangeMapper:
         return self.inner_mapper(expr, inames)
 
     @property
-    def access_range(self) -> isl.Set | None:
+    def access_range(self) -> nisl.Set | None:
         return self.inner_mapper.get_access_range(self.var_name)
 
     @property
@@ -3124,7 +3103,7 @@ class AccessRangeOverlapChecker:
             exprs.extend(insn.predicates)
 
         from collections import defaultdict
-        ranges: defaultdict[str, bool | isl.Set | None] = defaultdict(lambda: False)
+        ranges: defaultdict[str, bool | nisl.Set | None] = defaultdict(lambda: False)
 
         arm = BatchedAccessMapMapper(self.kernel, self.vars, overestimate=True)
 

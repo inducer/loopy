@@ -37,6 +37,7 @@ dependencies = [
 
     "cgen>=2025.1",
     "islpy>=2025.2.5",
+    "namedisl>=2026.1",
     "codepy>=2017.1",
     "colorama",
     "Mako",
@@ -143,6 +144,7 @@ known-first-party = [
     "pytools",
     "pymbolic",
     "islpy",
+    "namedisl",
     "pyopencl",
     "cgen",
     "genpy",

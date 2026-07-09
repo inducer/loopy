@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loopy.isl_helpers import base_index_and_length
+
 
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
@@ -25,11 +27,12 @@ THE SOFTWARE.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from typing_extensions import Self, override
 
 import islpy as isl
+import namedisl as nisl
 from islpy import dim_type
 from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.substitutor import make_subst_func
@@ -43,6 +46,40 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from loopy.kernel import LoopKernel
+
+
+SetT = TypeVar("SetT", isl.BasicSet, isl.Set)
+
+
+def _align_and_intersect(d1: SetT, d2: SetT) -> SetT:
+    d1, d2 = isl.align_two(d1, d2)
+    return d1 & d2
+
+
+def duplicate_axes(
+            isl_obj: SetT,
+            duplicate_inames: Sequence[str],
+            new_inames: Sequence[str]
+        ) -> SetT:
+    # old version from isl_helpers, non-named
+    if not isinstance(isl_obj, (isl.Set, isl.BasicSet)):
+        return [
+                duplicate_axes(i, duplicate_inames, new_inames)
+                for i in isl_obj]
+
+    if not duplicate_inames:
+        return isl_obj
+
+    old_name_to_new_name = dict(zip(duplicate_inames, new_inames, strict=True))
+
+    dup_isl_obj = isl_obj
+
+    for old_name, (dt, pos) in isl_obj.get_var_dict().items():
+        dup_isl_obj = dup_isl_obj.set_dim_name(dt, pos,
+                                               old_name_to_new_name.get(old_name,
+                                                                        old_name))
+
+    return _align_and_intersect(dup_isl_obj, isl_obj)
 
 
 @dataclass(frozen=True)
@@ -103,6 +140,8 @@ def build_per_access_storage_to_domain_map(
             dim_type.out, rn,
             dim_type.in_, 0, stor_dim).range()
 
+    set_space_universe = nisl.to_named(isl.BasicSet.universe(set_space))
+
     # set_space: [domain](dup_sweep_index)[dup_sweep](rn)[stor_axes']
 
     stor2sweep = None
@@ -111,7 +150,7 @@ def build_per_access_storage_to_domain_map(
 
     for saxis, sa_expr in zip(storage_axis_names, storage_axis_exprs, strict=True):
         cns_expr = var(saxis+"'") - prime_sweep_inames(sa_expr)
-        cns_aff = guarded_aff_from_expr(set_space, cns_expr)
+        cns_aff = guarded_aff_from_expr(set_space_universe.var_affs, cns_expr).as_isl()
         cns = isl.Constraint.equality_from_aff(cns_aff)
 
         cns_map = isl.BasicMap.from_constraint(cns)
@@ -184,15 +223,21 @@ def build_global_storage_to_sweep_map(
 def find_var_base_indices_and_shape_from_inames(
         domain, inames, cache_manager, context=None,
         n_allowed_params_in_shape=None):
+    assert n_allowed_params_in_shape is not None
     base_indices_and_sizes = [
-            cache_manager.base_index_and_length(
-                domain, iname, context,
-                n_allowed_params_in_length=n_allowed_params_in_shape)
+            base_index_and_length(
+                cache_manager,
+                nisl.to_named(domain), iname, context,
+                allowed_params_in_length=[
+                    domain.get_dim_name(dim_type.param, i)
+                    for i in range(n_allowed_params_in_shape)
+                ]
+            )
             for iname in inames]
     return list(zip(*base_indices_and_sizes, strict=True))
 
 
-def compute_bounds(kernel, domain, stor2sweep,
+def compute_bounds(kernel: LoopKernel, domain, stor2sweep,
         primed_sweep_inames, storage_axis_names):
 
     bounds_footprint_map = move_to_par_from_out(
@@ -206,7 +251,7 @@ def compute_bounds(kernel, domain, stor2sweep,
 
     return find_var_base_indices_and_shape_from_inames(
             storage_domain, [saxis+"'" for saxis in storage_axis_names],
-            kernel.cache_manager, context=kernel.assumptions,
+            kernel.isl_cache, context=kernel.assumptions,
             n_allowed_params_in_shape=stor2sweep.dim(isl.dim_type.param))
 
 # }}}
@@ -251,7 +296,6 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
 
         self.primed_sweep_inames = [psin+"'" for psin in sweep_inames]
 
-        from loopy.isl_helpers import duplicate_axes
         dup_sweep_index = domain.space.dim(dim_type.out)
         domain_dup_sweep = duplicate_axes(
                 domain, sweep_inames,
@@ -327,8 +371,8 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
                 storage_shape, strict=True):
             if s != 1:
                 cns = isl.Constraint.equality_from_aff(
-                        aff_from_expr(aug_domain.get_space(),
-                            var(saxis) - (var(saxis+"'") - bi)))
+                        aff_from_expr(nisl.to_named(aug_domain).var_affs,
+                            var(saxis) - (var(saxis+"'") - bi)).as_isl())
 
                 aug_domain = aug_domain.add_constraint(cns)
 
@@ -380,10 +424,11 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
 
         from loopy.isl_helpers import boxify, convexify
         if boxify_sweep:
-            return boxify(self.kernel.cache_manager, dom_and_aug,
-                    new_non1_storage_axis_names, self.kernel.assumptions)
+            return boxify(self.kernel.isl_cache, nisl.to_named(dom_and_aug),
+                frozenset(new_non1_storage_axis_names), self.kernel.assumptions
+            ).as_isl()
         else:
-            return convexify(dom_and_aug)
+            return convexify(nisl.to_named(dom_and_aug)).as_isl()
 
     def is_access_descriptor_in_footprint(self, accdesc: AccessDescriptor) -> bool:
         assert accdesc.storage_axis_exprs is not None
@@ -407,7 +452,8 @@ class ArrayToBufferMap(ArrayToBufferMapBase):
 
         from loopy.kernel import CannotBranchDomainTree
         try:
-            usage_domain = self.kernel.get_inames_domain(arg_inames)
+            usage_domain = (self.kernel.get_inames_domain(arg_inames)
+                .as_basic().as_isl())
         except CannotBranchDomainTree:
             return False
 

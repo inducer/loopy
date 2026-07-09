@@ -27,6 +27,7 @@ THE SOFTWARE.
 import dataclasses
 import itertools
 import logging
+import operator
 import sys
 from collections.abc import Set as AbstractSet
 from functools import reduce
@@ -43,7 +44,7 @@ from typing import (
 import numpy as np
 from typing_extensions import deprecated, override
 
-import islpy as isl
+import namedisl as nisl
 import pymbolic.primitives as p
 from islpy import dim_type
 from pymbolic import Expression
@@ -59,7 +60,7 @@ from loopy.kernel.instruction import (
     MultiAssignmentBase,
     _DataObliviousInstruction,
 )
-from loopy.symbolic import CombineMapper
+from loopy.symbolic import CombineMapper, get_access_map_storage_names
 from loopy.translation_unit import (
     CallableId,
     CallablesTable,
@@ -336,7 +337,7 @@ def find_all_insn_inames(kernel: LoopKernel) -> dict[str, InameStrSet]:
             for iname in inames_old:
                 home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
 
-                for par in home_domain.get_var_names(dim_type.param):
+                for par in home_domain.space.param_names:
                     # Add all inames occurring in parameters of domains that my
                     # current inames refer to.
 
@@ -381,7 +382,7 @@ def find_all_insn_inames(kernel: LoopKernel) -> dict[str, InameStrSet]:
 
 # {{{ set operation cache
 
-SetLikeT = TypeVar("SetLikeT", isl.Set, isl.BasicSet)
+SetLikeT = TypeVar("SetLikeT", nisl.Set, nisl.BasicSet)
 
 
 def _eliminate_except(
@@ -392,14 +393,14 @@ def _eliminate_except(
     return set_.eliminate_except(except_inames, dts)
 
 
-def _get_dim_max(set_: isl.BasicSet | isl.Set, idx: int):
-    if isinstance(set_, isl.BasicSet):
+def _get_dim_max(set_: nisl.BasicSet | nisl.Set, idx: int):
+    if isinstance(set_, nisl.BasicSet):
         set_ = set_.to_set()
     return set_.dim_max(idx)
 
 
-def _get_dim_min(set_: isl.BasicSet | isl.Set, idx: int):
-    if isinstance(set_, isl.BasicSet):
+def _get_dim_min(set_: nisl.BasicSet | nisl.Set, idx: int):
+    if isinstance(set_, nisl.BasicSet):
         set_ = set_.to_set()
     return set_.dim_min(idx)
 
@@ -409,14 +410,14 @@ P = ParamSpec("P")
 
 
 class SetOperationCacheManager:
-    cache: dict[int, list[tuple[isl.Set | isl.BasicSet, object]]]
+    cache: dict[int, list[tuple[nisl.Set | nisl.BasicSet, object]]]
 
     def __init__(self) -> None:
         self.cache = {}
 
     def op(self,
-           set_: isl.Set | isl.BasicSet,
-           op: Callable[Concatenate[isl.Set | isl.BasicSet, P], ResultT],
+           set_: nisl.Set | nisl.BasicSet,
+           op: Callable[Concatenate[nisl.Set | nisl.BasicSet, P], ResultT],
            *args: P.args,
            **kwargs: P.kwargs) -> ResultT:
         assert not kwargs
@@ -424,7 +425,7 @@ class SetOperationCacheManager:
         hashval = hash((set_, op, args))
         bucket = self.cache.setdefault(hashval, [])
 
-        cmp_set = set_.to_set() if isinstance(set_, isl.BasicSet) else set_
+        cmp_set = set_.to_set() if isinstance(set_, nisl.BasicSet) else set_
         for bkt_set, result in bucket:
             if cmp_set.plain_is_equal(bkt_set):
                 return cast("ResultT", result)
@@ -433,13 +434,13 @@ class SetOperationCacheManager:
         bucket.append((set_, result))
         return result
 
-    def dim_min(self, set_: isl.Set | isl.BasicSet, axis: int):
+    def dim_min(self, set_: nisl.Set | nisl.BasicSet, axis: int):
         if set_.plain_is_empty():
             raise LoopyError("domain '%s' is empty" % set_)
 
         return self.op(set_, _get_dim_min, axis)
 
-    def dim_max(self, set_: isl.Set | isl.BasicSet, axis: int) -> isl.PwAff:
+    def dim_max(self, set_: nisl.Set | nisl.BasicSet, axis: int) -> nisl.PwAff:
         if set_.plain_is_empty():
             raise LoopyError("domain '%s' is empty" % set_)
 
@@ -454,9 +455,9 @@ class SetOperationCacheManager:
 
     def base_index_and_length(
             self,
-            set_: isl.Set | isl.BasicSet,
+            set_: nisl.Set | nisl.BasicSet,
             iname: int | InameStr,
-            context: isl.Set | isl.BasicSet | None = None,
+            context: nisl.Set | nisl.BasicSet | None = None,
             n_allowed_params_in_length: int | None = None
         ) -> tuple[ArithmeticExpression, ArithmeticExpression]:
         """
@@ -495,7 +496,7 @@ class SetOperationCacheManager:
             base_index = pw_aff_to_expr(base_index_aff)
 
             length = find_max_of_pwaff_with_params(
-                    upper_bound_pw_aff - isl.PwAff.from_aff(base_index_aff) + 1,
+                    upper_bound_pw_aff - nisl.PwAff.from_aff(base_index_aff) + 1,
                     n_allowed_params_in_length)
             length = pw_aff_to_expr(static_max_of_pw_aff(
                     length, constants_only=False,
@@ -514,7 +515,7 @@ class SetOperationCacheManager:
         base_index = pw_aff_to_expr(base_index_aff)
 
         length = find_max_of_pwaff_with_params(
-                upper_bound_pw_aff - isl.PwAff.from_aff(base_index_aff) + 1,
+                upper_bound_pw_aff - nisl.PwAff.from_aff(base_index_aff) + 1,
                 n_allowed_params_in_length)
         length = pw_aff_to_expr(static_max_of_pw_aff(
                 length, constants_only=False,
@@ -567,7 +568,7 @@ class DomainChanger:
     def get_original_domain(self):
         return self.domain
 
-    def get_domains_with(self, replacement: isl.BasicSet):
+    def get_domains_with(self, replacement: nisl.Set):
         result = list(self.kernel.domains)
         if self.leaf_domain_index is not None:
             result[self.leaf_domain_index] = replacement
@@ -576,7 +577,7 @@ class DomainChanger:
 
         return result
 
-    def get_kernel_with(self, replacement: isl.BasicSet):
+    def get_kernel_with(self, replacement: nisl.Set):
         if replacement == self.domain:
             return self.kernel
         else:
@@ -741,7 +742,7 @@ def show_dependency_graph(*args, **kwargs):
 def is_domain_dependent_on_inames(kernel: LoopKernel,
         domain_index: int, inames: AbstractSet[str]) -> bool:
     dom = kernel.domains[domain_index]
-    dom_parameters = set(dom.get_var_names_not_none(dim_type.param))
+    dom_parameters = set(dom.space.param_names)
 
     # {{{ check for parenthood by loop bound iname
 
@@ -935,7 +936,7 @@ def assign_automatic_axes(
         """
         try:
             desired_length = kernel.get_constant_iname_length(iname)
-        except isl.Error:
+        except nisl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
             new_inames = dict(kernel.inames)
@@ -1060,7 +1061,7 @@ def assign_automatic_axes(
             def get_iname_length(iname):
                 try:
                     return kernel.get_constant_iname_length(iname)
-                except isl.Error:
+                except nisl.Error:
                     return -1
             # assign longest auto axis inames first
             auto_axis_inames.sort(
@@ -1207,15 +1208,15 @@ def guess_var_shape(
                 shape = ()
         else:
             from loopy.isl_helpers import static_max_of_pw_aff
-            from loopy.symbolic import pw_aff_to_expr
+            from loopy.symbolic import aff_to_expr
 
             shape: Sequence[ArithmeticExpression] | None = []
-            for i in range(access_range.dim(dim_type.set)):
+            for i, axis_name in enumerate(get_access_map_storage_names(access_range)):
                 try:
                     shape.append(
-                            pw_aff_to_expr(static_max_of_pw_aff(
-                                kernel.cache_manager.dim_max(
-                                    access_range, i) + 1,
+                            aff_to_expr(static_max_of_pw_aff(
+                                access_range.dim_max(
+                                    axis_name, cache=kernel.isl_cache) + 1,
                                 constants_only=False)))
                 except Exception:
                     print("While trying to find shape axis %d of "
@@ -2214,17 +2215,17 @@ def get_call_graph(
 
 # {{{ get_outer_params
 
-def get_outer_params(domains):
+def get_outer_params(domains: Sequence[nisl.Set]):
     """
     Returns names of dims that appear only as params in *domains*.
 
-    :arg domains: An instance of :class:`list` of :class:`isl.BasicSet`.
+    :arg domains: An instance of :class:`list` of :class:`nisl.BasicSet`.
     """
-    all_inames = set()
-    all_params = set()
+    all_inames: set[InameStr] = set()
+    all_params: set[InameStr] = set()
     for dom in domains:
-        all_inames.update(dom.get_var_names(dim_type.set))
-        all_params.update(dom.get_var_names(dim_type.param))
+        all_inames.update(dom.space.set_names)
+        all_params.update(dom.space.param_names)
 
     from loopy.tools import intern_frozenset_of_ids
     return intern_frozenset_of_ids(all_params-all_inames)
@@ -2232,9 +2233,9 @@ def get_outer_params(domains):
 # }}}
 
 
-def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
+def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> nisl.Aff:
     """
-    Returns a :class:`isl.PwAff` hardware axes lower bound to serve as an
+    Returns a :class:`nisl.PwAff` hardware axes lower bound to serve as an
     offsetting expression
     during the hardware ina
     """
@@ -2283,9 +2284,8 @@ class _IndexCollector(CombineMapper[AbstractSet[tuple[Expression, ...]], []]):
         return frozenset()
 
 
-def _union_amaps(amaps: Sequence[isl.Map]):
-    import islpy as isl
-    return reduce(isl.Map.union, amaps[1:], amaps[0])
+def _union_amaps(amaps: Sequence[nisl.Map]):
+    return reduce(operator.or_, amaps[1:], amaps[0])
 
 
 def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
@@ -2304,7 +2304,7 @@ def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
 
     amaps = [
         get_access_map(
-            kernel.get_inames_domain(insn.within_inames).to_set(),
+            kernel.get_inames_domain(insn.within_inames),
             idx, kernel.assumptions
         )
         for idx in indices

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from loopy.isl_helpers import base_index_and_length
+
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -38,6 +40,7 @@ from strenum import StrEnum
 from typing_extensions import override
 
 import islpy as isl
+import namedisl as nisl
 from islpy import dim_type
 from pymbolic.mapper import CSECachingMapperMixin
 from pymbolic.primitives import (
@@ -73,6 +76,8 @@ from loopy.symbolic import (
     SubArrayRef,
     SubstitutionRuleExpander,
     WalkMapper,
+    get_access_map_storage_names,
+    pwaff_from_expr,
 )
 from loopy.tools import Optional, intern_frozenset_of_ids
 from loopy.translation_unit import TranslationUnit, for_each_kernel
@@ -1054,13 +1059,16 @@ def _find_existentially_quantified_inames(dom_str: str) -> set[str]:
     return {ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str)}
 
 
+ToSetConvertible: TypeAlias = str | isl.BasicSet | isl.Set | nisl.BasicSet | nisl.Set
+
+
 def parse_domains(
-        domains: str | isl.BasicSet | Iterable[str | isl.BasicSet]
-    ) -> Sequence[isl.BasicSet]:
-    if isinstance(domains, (isl.BasicSet, str)):
+        domains: ToSetConvertible | Iterable[ToSetConvertible]
+    ) -> Sequence[nisl.Set]:
+    if isinstance(domains, ToSetConvertible):
         domains = [domains]
 
-    result: list[isl.BasicSet] = []
+    result: list[nisl.Set] = []
     used_inames: set[InameStr] = set()
 
     for dom in domains:
@@ -1081,17 +1089,11 @@ def parse_domains(
             assert isinstance(dom, (isl.Set, isl.BasicSet))
             # assert dom.get_ctx() == ctx
 
-        if isinstance(dom, isl.Set):
-            from loopy.isl_helpers import convexify
-            dom = convexify(dom)
+        dom = nisl.to_named(dom)
+        if isinstance(dom, nisl.BasicSet):
+            dom = dom.as_set()
 
-        for i_iname in range(dom.dim(dim_type.set)):
-            iname = dom.get_dim_name(dim_type.set, i_iname)
-
-            if iname is None:
-                raise RuntimeError("domain '%s' provided no iname at index "
-                        "%d (redefined iname?)" % (dom, i_iname))
-
+        for iname in dom.space.set_names:
             if iname in used_inames:
                 raise RuntimeError("domain '%s' redefines iname '%s' "
                         "that is part of a previous domain" % (dom, iname))
@@ -1101,7 +1103,7 @@ def parse_domains(
         result.append(dom)
 
     if result == []:
-        result = [isl.BasicSet("{:}")]
+        result = [nisl.make_set("{:}")]
 
     return result
 
@@ -1142,7 +1144,7 @@ class IndexRankFinder(CSECachingMapperMixin[None, []], WalkMapper[[]]):
 
 
 class ArgumentGuesser:
-    domains: Sequence[isl.BasicSet]
+    domains: Sequence[nisl.Set]
     instructions: Sequence[InstructionBase]
     subst_rules: dict[str, SubstitutionRule]
     temporary_variables: dict[str, TemporaryVariable]
@@ -1156,7 +1158,7 @@ class ArgumentGuesser:
     all_written_names: set[str]
 
     def __init__(self,
-                 domains: Sequence[isl.BasicSet],
+                 domains: Sequence[nisl.Set],
                  instructions: Sequence[InstructionBase],
                  temporary_variables: dict[str, TemporaryVariable],
                  subst_rules: dict[str, SubstitutionRule],
@@ -1172,11 +1174,11 @@ class ArgumentGuesser:
 
         self.all_inames = set()
         for dom in domains:
-            self.all_inames.update(dom.get_var_names_not_none(dim_type.set))
+            self.all_inames.update(dom.space.set_names)
 
         all_params: set[InameStr] = set()
         for dom in domains:
-            all_params.update(dom.get_var_names_not_none(dim_type.param))
+            all_params.update(dom.space.param_names)
         self.all_params = all_params - self.all_inames
 
         self.all_names = set()
@@ -1337,11 +1339,10 @@ def check_for_nonexistent_iname_deps(knl: LoopKernel) -> None:
 
 
 def check_for_multiple_writes_to_loop_bounds(knl: LoopKernel) -> None:
-    from islpy import dim_type
 
     domain_parameters: set[str] = set()
     for dom in knl.domains:
-        domain_parameters.update(dom.get_space().get_var_dict(dim_type.param))
+        domain_parameters.update(dom.space.param_names)
 
     temp_var_domain_parameters = domain_parameters & set(knl.temporary_variables)
 
@@ -1573,6 +1574,9 @@ def find_shapes_of_vars(
     ) -> tuple[dict[str, tuple[ArithmeticExpression, ...]],
                dict[str, tuple[ArithmeticExpression, ...]],
                dict[str, str]]:
+
+    # FIXME: Seems redundant wrt guess_var_shape.
+
     if not var_names:
         return {}, {}, {}
 
@@ -1599,10 +1603,12 @@ def find_shapes_of_vars(
         bad_subscripts = armap.bad_subscripts[var_name]
 
         if access_range is not None:
+            stor_axis_names = get_access_map_storage_names(access_range)
             try:
                 base_indices, shape = list(zip(*[
-                        knl.cache_manager.base_index_and_length(access_range, i)
-                        for i in range(access_range.dim(dim_type.set))], strict=True))
+                    base_index_and_length(
+                        knl.isl_cache, access_range, ax_name)
+                        for ax_name in stor_axis_names], strict=True))
             except StaticValueFindingError as e:
                 var_to_error[var_name] = str(e)
                 continue
@@ -2156,36 +2162,42 @@ class SliceToInameReplacer(IdentityMapper[[]]):
         # See: https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
 
-    def get_iname_domain_as_isl_set(self) -> Sequence[isl.BasicSet]:
+    def get_iname_domain_as_isl_set(self) -> Sequence[nisl.Set]:
         """
         Returns the extra domain constraints imposed by the slice inames,
         recorded in :attr:`iname_domains`.
         """
-        subarray_ref_domains: list[isl.BasicSet] = []
+        subarray_ref_domains: list[nisl.Set] = []
         for sar_bounds in self.subarray_ref_bounds:
-            ctx = self.knl.isl_context
-            space = isl.Space.create_from_names(ctx, set=list(sar_bounds))
 
             from loopy.symbolic import get_dependencies
             args_as_params_for_domains: set[str] = set()
             for slice_ in sar_bounds.values():
                 args_as_params_for_domains |= get_dependencies(slice_)
 
-            space = space.add_dims(dim_type.param, len(args_as_params_for_domains))
-            for i, arg in enumerate(args_as_params_for_domains):
-                space = space.set_dim_name(dim_type.param, i, arg)
+            space = nisl.Space.from_names(
+                param=args_as_params_for_domains,
+                out=sar_bounds)
 
-            iname_set = isl.BasicSet.universe(space)
+            iname_set = nisl.Set.universe(space)
+            v = iname_set.var_pw_affs
 
-            from loopy.isl_helpers import make_slab
             for iname, (start, stop, step) in sar_bounds.items():
+                start_pw = pwaff_from_expr(v, start)
+                stop_pw = pwaff_from_expr(v, stop)
                 if step > 0:
-                    iname_set = iname_set & make_slab(space, iname, 0,
-                                                      stop-start, step)
+                    slab = (
+                        (step*v[iname]).where(">=", 0)
+                        & (step*v[iname]).where("<", stop_pw - start_pw)
+                    )
+                elif step < 0:
+                    slab = (
+                        (-step*v[iname]).where(">=", 0)
+                        & (-step*v[iname]).where("<", start_pw - stop_pw)
+                    )
                 else:
-                    iname_set = iname_set & make_slab(space, iname, 0,
-                                                      start-stop, -step)
-
+                    raise ValueError("step must be nonzero in subarray ref")
+                iname_set = iname_set & slab
             subarray_ref_domains.append(iname_set)
 
         return subarray_ref_domains
@@ -2465,10 +2477,6 @@ def make_function(
 
     # {{{ find/create isl_context
 
-    for domain in domains:
-        if isinstance(domain, isl.BasicSet):
-            assert domain.get_ctx() == isl.DEFAULT_CONTEXT
-
     # }}}
 
     instructions, inames_to_dup, cse_temp_vars = expand_cses(
@@ -2477,14 +2485,17 @@ def make_function(
         temporary_variables[tv.name] = tv
     del cse_temp_vars
 
-    domains = parse_domains(domains)
+    parsed_domains = parse_domains(domains)
+
+    for domain in parsed_domains:
+        assert domain._obj.get_ctx() == isl.DEFAULT_CONTEXT
 
     # {{{ process assumptions
 
     from loopy.kernel.tools import get_outer_params
 
     if assumptions is None:
-        dom0_space = domains[0].get_space()
+        dom0_space = parsed_domains[0].get_space()
         assumptions_space = isl.Space.params_alloc(
                 dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
         for i in range(dom0_space.dim(dim_type.param)):
@@ -2494,10 +2505,9 @@ def make_function(
         assumptions = isl.BasicSet.universe(assumptions_space)
     elif isinstance(assumptions, str):
         assumptions_set_str = "[%s] -> { : %s}" \
-                % (",".join(s for s in get_outer_params(domains)),
+                % (",".join(s for s in get_outer_params(parsed_domains)),
                     assumptions)
-        assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
-                                                 assumptions_set_str)
+        assumptions = nisl.make_set(assumptions_set_str)
     else:
         if not isinstance(assumptions, isl.BasicSet):
             raise LoopyError("assumptions must be either 'str' or BasicSet")
@@ -2507,7 +2517,7 @@ def make_function(
     from loopy.kernel import _get_inames_from_domains
     from loopy.kernel.data import Iname
     inames = {name: Iname(name, frozenset())
-              for name in _get_inames_from_domains(domains)}
+              for name in _get_inames_from_domains(parsed_domains)}
 
     substitutions = constantdict(substitutions)
     for sname, rule in inline_substitutions.items():
@@ -2517,7 +2527,7 @@ def make_function(
 
         substitutions = substitutions.set(sname, rule)
 
-    arg_guesser = ArgumentGuesser(domains, instructions,
+    arg_guesser = ArgumentGuesser(parsed_domains, instructions,
             temporary_variables, substitutions,
             default_offset)
 
@@ -2539,7 +2549,7 @@ def make_function(
         preamble_generators = tuple(preamble_generators)
 
     from loopy.kernel import LoopKernel
-    knl = LoopKernel(domains, instructions, kernel_args,
+    knl = LoopKernel(parsed_domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
             substitutions=substitutions,
             silenced_warnings=frozenset(silenced_warnings),
