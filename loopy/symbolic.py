@@ -1564,7 +1564,7 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
     def __call__(self,  # pyright: ignore[reportIncompatibleMethodOverride]
                  expr: Expression,
                  kernel: LoopKernel,
-                 insn: InstructionBase,
+                 insn: InstructionBase | None,
                  *args: P.args, **kwargs: P.kwargs) -> Expression:
         """
         :arg insn: A :class:`~loopy.kernel.InstructionBase` of which *expr* is
@@ -2081,8 +2081,8 @@ def aff_to_expr(aff: isl.Aff) -> ArithmeticExpression:
     from pymbolic import var
 
     denom = aff.get_denominator_val().to_python()
-
     result = (aff.get_constant_val()*denom).to_python()
+
     for dt in [isl.dim_type.in_, isl.dim_type.param]:
         for i in range(aff.dim(dt)):
             coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
@@ -2544,6 +2544,26 @@ def constraint_to_cond_expr(cns: isl.Constraint) -> ArithmeticExpression:
         return Comparison(expr, "==", 0)
     else:
         return Comparison(expr, ">=", 0)
+
+# }}}
+
+
+# {{{ MultiPwAff from sequence of pymbolic exprs
+
+def multi_pw_aff_from_exprs(
+        exprs: Sequence[Expression],
+        space: isl.Space
+    ) -> isl.MultiPwAff:
+
+    mpwaff = isl.MultiPwAff.zero(space)
+    for i in range(len(exprs)):
+        local_space = mpwaff.get_at(i).get_space().domain()
+        mpwaff = mpwaff.set_pw_aff(
+            i,
+            pwaff_from_expr(local_space, exprs[i])
+        )
+
+    return mpwaff
 
 # }}}
 
