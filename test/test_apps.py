@@ -210,7 +210,7 @@ def test_rob_stroud_bernstein():
                 "coeffs": np.float32,
                 "tmp": np.float32,
                 })
-    print(lp.generate_code_v2(knl))
+    logger.info("%s", lp.generate_code_v2(knl))
 
 
 def test_rob_stroud_bernstein_full():
@@ -295,7 +295,7 @@ def test_rob_stroud_bernstein_full():
                 "coeffs": np.float32,
                 "result": np.float32,
                 })
-    print(lp.generate_code_v2(knl))
+    logger.info("%s", lp.generate_code_v2(knl))
 
 
 def test_stencil(ctx_factory: cl.CtxFactory):
@@ -414,7 +414,7 @@ def test_sum_factorization():
     knl = lp.extract_subst(knl, "temp_array",
             "sum(k, phi1(i,x[0,k]) *psi1(ip, x[0,k]) * w[0,k])")
 
-    print(knl)
+    logger.info("%s", knl)
 
 
 def test_lbm(ctx_factory: cl.CtxFactory):
@@ -507,7 +507,7 @@ def test_fd_demo():
     knl = lp.set_options(knl, write_code=True)
     knl = lp.add_and_infer_dtypes(knl, {"u": np.float32})
     code, _inf = lp.generate_code(knl)
-    print(code)
+    logger.info("%s", code)
 
     assert "double" not in code
 
@@ -554,8 +554,7 @@ def test_poisson_fem(ctx_factory: cl.CtxFactory):
                     J[c] * w[k] * sum(ell, dpsi(i,k,ell) * dpsi(j,k,ell))
             """,
             assumptions="nels>=1 and nbf >= 1 and nels mod 4 = 0")
-
-    print(knl)
+    logger.info("%s", knl)
 
     knl = lp.fix_parameters(knl, nbf=nbf, sdim=sdim, nqp=nqp)
 
@@ -690,7 +689,7 @@ def test_abs_as_index():
             lp.GlobalArg("a", np.float32),
             ...
             ])
-    print(lp.generate_code_v2(knl).device_code())
+    logger.info("%s", lp.generate_code_v2(knl).device_code())
 
 
 def test_sumpy_p2p_reduced():

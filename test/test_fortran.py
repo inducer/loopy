@@ -80,7 +80,7 @@ def test_assign_double_precision_scalar(ctx_factory: cl.CtxFactory):
         """
 
     t_unit = lp.parse_fortran(fortran_src)
-    print(lp.generate_code_v2(t_unit).device_code())
+    logger.info("%s", lp.generate_code_v2(t_unit).device_code())
     assert "1.1;" in lp.generate_code_v2(t_unit).device_code()
 
     a_dev = cl.array.empty(queue, 1, dtype=np.float64, order="F")
@@ -625,7 +625,7 @@ def test_fortran_subroutines():
         end subroutine
         """
     t_unit = lp.parse_fortran(fortran_src).with_entrypoints("twice_cross")
-    print(lp.generate_code_v2(t_unit).device_code())
+    logger.info("%s", lp.generate_code_v2(t_unit).device_code())
 
 
 def test_domain_fusion_imperfectly_nested():
@@ -665,8 +665,7 @@ def test_division_in_shapes(ctx_factory: cl.CtxFactory):
         """
     t_unit = lp.parse_fortran(fortran_src)
     ref_t_unit = t_unit
-
-    print(t_unit)
+    logger.info("%s", t_unit)
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit, parameters={"m": 128})

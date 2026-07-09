@@ -20,7 +20,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import logging
+
 import islpy as isl
+
+
+logger = logging.getLogger(__name__)
 
 
 def test_aff_to_expr():
@@ -30,9 +35,11 @@ def test_aff_to_expr():
     b = zero.set_coefficient_val(isl.dim_type.in_, 1, 1)
 
     x = (5*a + 3*b) % 17 % 5
-    print(x)
+    logger.info("x = %s", x)
+
     from loopy.symbolic import aff_to_expr
-    print(aff_to_expr(x))
+
+    logger.info("%s", aff_to_expr(x))
 
 
 def test_aff_to_expr_2():
