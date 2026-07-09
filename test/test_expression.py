@@ -338,8 +338,8 @@ def test_fuzz_expression_code_gen(
     knl = lp.make_kernel("{ : }", instructions, data, seq_dependencies=True,
             target=target)
 
-    import islpy as isl
-    knl = lp.assume(knl, isl.BasicSet(
+    import namedisl as nisl
+    knl = lp.assume(knl, nisl.make_set(
             "[%s] -> { : %s}"
             % (
                 ", ".join(var_names),

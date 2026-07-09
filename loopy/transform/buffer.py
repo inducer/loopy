@@ -28,6 +28,7 @@ from typing import cast
 
 from constantdict import constantdict
 
+import namedisl as nisl
 import pymbolic.primitives as p
 from pymbolic import ArithmeticExpression, Expression, var
 from pymbolic.mapper.substitutor import make_subst_func
@@ -326,7 +327,8 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
 
         # }}}
 
-        abm = ArrayToBufferMap(kernel, domch.domain, buffer_inames,
+        isl_basic_domain = domch.domain.as_basic().as_isl()
+        abm = ArrayToBufferMap(kernel, isl_basic_domain, buffer_inames,
                 access_descriptors, len(var_shape))
 
         for i in range(len(var_shape)):
@@ -337,14 +339,14 @@ def buffer_array_for_single_kernel(kernel, callables_table, var_name,
                 del new_iname_to_tag[init_inames[i]]
                 del new_iname_to_tag[store_inames[i]]
 
-        new_domain = domch.domain
+        new_domain = isl_basic_domain
         new_domain = abm.augment_domain_with_sweep(
                     new_domain, non1_init_inames,
                     boxify_sweep=fetch_bounding_box)
         new_domain = abm.augment_domain_with_sweep(
                     new_domain, non1_store_inames,
                     boxify_sweep=fetch_bounding_box)
-        new_kernel_domains = domch.get_domains_with(new_domain)
+        new_kernel_domains = domch.get_domains_with(nisl.to_named(new_domain).as_set())
         del new_domain
 
     else:

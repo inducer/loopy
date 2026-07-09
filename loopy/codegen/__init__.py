@@ -33,7 +33,7 @@ from typing import (
 import constantdict
 from typing_extensions import Self
 
-import islpy as isl
+import namedisl as nisl
 from pytools import ProcessLogger, UniqueNameGenerator
 from pytools.persistent_dict import WriteOncePersistentDict
 
@@ -146,7 +146,7 @@ class CodeGenerationState:
     # LoopKernel should not have a target, should use this instead
     target: TargetBase
 
-    implemented_domain: isl.Set
+    implemented_domain: nisl.Set
     """
     The entire implemented domain (as an :class:`islpy.Set`)
     i.e. all constraints that have been enforced so far.
@@ -193,33 +193,17 @@ class CodeGenerationState:
     def expression_to_code_mapper(self):
         return self.ast_builder.get_expression_to_code_mapper(self)
 
-    def intersect(self, other: isl.Set):
-        new_impl, new_other = isl.align_two(self.implemented_domain, other)
-        return self.copy(implemented_domain=new_impl & new_other)
+    def intersect(self, other: nisl.Set):
+        return self.copy(implemented_domain=self.implemented_domain & other)
 
-    def fix(self, iname: str, aff: isl.Aff) -> CodeGenerationState:
-        new_impl_domain = self.implemented_domain
-
-        impl_space = self.implemented_domain.get_space()
-        if iname not in impl_space.get_var_dict():
-            new_impl_domain = (new_impl_domain
-                    .add_dims(isl.dim_type.set, 1)
-                    .set_dim_name(
-                        isl.dim_type.set,
-                        new_impl_domain.dim(isl.dim_type.set),
-                        iname))
-            impl_space = new_impl_domain.get_space()
-
-        from loopy.isl_helpers import iname_rel_aff
-        iname_plus_lb_aff = iname_rel_aff(impl_space, iname, "==", aff)
+    def fix(self, iname: str, pw_aff: nisl.PwAff) -> CodeGenerationState:
+        if iname not in pw_aff.space.in_names:
+            pw_aff = pw_aff.add_dims(nisl.DimType.in_, [iname])
 
         from loopy.symbolic import pw_aff_to_expr
-        cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
-        expr = pw_aff_to_expr(aff)
-
-        new_impl_domain = new_impl_domain.add_constraint(cns)
-        return self.copy_and_assign(iname, expr).copy(
-                implemented_domain=new_impl_domain)
+        return self.copy_and_assign(iname, pw_aff_to_expr(pw_aff)).copy(
+            implemented_domain=self.implemented_domain
+            & pw_aff.where("==", pw_aff.var_pw_affs[iname]))
 
     def try_vectorized(self,
                 what: str,
@@ -259,9 +243,9 @@ class CodeGenerationState:
         novec_self = self.copy(vectorization_info=None)
 
         for i in range(vinf.length):
-            idx_aff = isl.Aff.zero_on_domain(
-                        isl.Space.params_alloc(self.kernel.isl_context, 0)) + i
-            new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
+            idx_aff = nisl.Aff.zero_on_domain(
+                        nisl.Space.from_names(param=[], out=[])) + i
+            new_codegen_state = novec_self.fix(vinf.iname, idx_aff.as_pw_aff())
             generated = func(new_codegen_state)
 
             if isinstance(generated, list):
@@ -347,14 +331,14 @@ def generate_code_for_a_single_kernel(
     seen_functions = set()
     seen_atomic_dtypes = set()
 
-    initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
+    initial_implemented_domain = kernel.assumptions
 
     from loopy.codegen.tools import CodegenOperationCacheManager
 
     codegen_state = CodeGenerationState(
             kernel=kernel,
             target=target,
-            implemented_domain=isl.Set.from_basic_set(initial_implemented_domain),
+            implemented_domain=initial_implemented_domain,
             implemented_predicates=frozenset(),
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,

@@ -17,6 +17,7 @@ intersphinx_mapping = {
     "constantdict": ("https://matthiasdiener.github.io/constantdict/", None),
     "genpy": ("https://documen.tician.de/genpy", None),
     "islpy": ("https://documen.tician.de/islpy", None),
+    "namedisl": ("https://documen.tician.de/namedisl", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pymbolic": ("https://documen.tician.de/pymbolic", None),
     "pyopencl": ("https://documen.tician.de/pyopencl", None),
@@ -39,6 +40,8 @@ nitpick_ignore_regex = [
     ("py:class", r".*tuple\[Expression"),
     ("py:class", r".*tuple\[VarAtomicity"),
     ("py:class", r".*tuple\[str"),
+    ("py:class", r"KeyT"),
+    ("py:class", r"loopy\.statistics\.KeyT"),
 ]
 
 sphinxconfig_missing_reference_aliases = {
@@ -65,9 +68,10 @@ sphinxconfig_missing_reference_aliases = {
     "p.Variable": "obj:pymbolic.primitives.Variable",
     # isl
     "isl.BasicSet": "class:islpy.BasicSet",
-    "isl.PwAff": "class:islpy.PwAff",
-    "isl.Set": "class:islpy.Set",
-    "isl.Space": "class:islpy.Space",
+    "isl.Val": "class:islpy.Val",
+    "nisl.Space": "class:namedisl.Space",
+    "nisl.Set": "class:namedisl.Set",
+    "nisl.PwAff": "class:namedisl.PwAff",
     # loopy
     "InameStr": "obj:loopy.typing.InameStr",
     "InameStrSet": "obj:loopy.typing.InameStrSet",

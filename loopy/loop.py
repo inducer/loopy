@@ -24,12 +24,17 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
+from typing import TYPE_CHECKING
 
 from loopy.translation_unit import for_each_kernel
 
 
-def potential_loop_nest_map(kernel):
+if TYPE_CHECKING:
+    from loopy.kernel import LoopKernel
+    from loopy.typing import InameStr
+
+
+def potential_loop_nest_map(kernel: LoopKernel):
     """Returns a dictionary mapping inames to other inames that *could*
     be nested around them.
 
@@ -37,14 +42,14 @@ def potential_loop_nest_map(kernel):
     * :seealso: :func:`loopy.schedule.find_loop_nest_around_map`
     """
 
-    result = {}
+    result: dict[InameStr, set[InameStr]] = {}
 
     all_inames = kernel.all_inames()
     iname_to_insns = kernel.iname_to_insns()
 
     # examine pairs of all inames--O(n**2), I know.
     for inner_iname in all_inames:
-        inner_result = set()
+        inner_result: set[InameStr] = set()
         for outer_iname in all_inames:
             if inner_iname == outer_iname:
                 continue
@@ -59,7 +64,7 @@ def potential_loop_nest_map(kernel):
 
 
 @for_each_kernel
-def merge_loop_domains(kernel):
+def merge_loop_domains(kernel: LoopKernel):
     # FIXME: This should be moved to loopy.transforms.iname
     from loopy.kernel.tools import is_domain_dependent_on_inames
 
@@ -108,7 +113,7 @@ def merge_loop_domains(kernel):
                 outer_dom = kernel.domains[outer_domain_idx]
                 inner_dom = kernel.domains[inner_domain_idx]
 
-                outer_inames = set(outer_dom.get_var_names(isl.dim_type.set))
+                outer_inames = set(outer_dom.space.set_names)
                 if is_domain_dependent_on_inames(kernel, inner_domain_idx,
                         outer_inames):
                     # Bounds of inner domain depend on outer domain.
@@ -117,14 +122,12 @@ def merge_loop_domains(kernel):
 
                 # }}}
 
-                new_domains = kernel.domains[:]
+                new_domains = list(kernel.domains)
                 min_idx = min(inner_domain_idx, outer_domain_idx)
                 max_idx = max(inner_domain_idx, outer_domain_idx)
 
                 del new_domains[max_idx]
                 del new_domains[min_idx]
-
-                outer_dom, inner_dom = isl.align_two(outer_dom, inner_dom)
 
                 new_domains.insert(min_idx, inner_dom & outer_dom)
                 break

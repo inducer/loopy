@@ -23,18 +23,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 from typing import TYPE_CHECKING
 
-import islpy as isl
+import namedisl as nisl
 
-from loopy.kernel.data import ArrayArg, TemporaryVariable, ValueArg
+from loopy.kernel.data import ArrayArg, KernelArgument, TemporaryVariable, ValueArg
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 from loopy.translation_unit import for_each_kernel
 
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Collection, Sequence
+
+    from loopy.kernel import LoopKernel
 
 
 __doc__ = """
@@ -112,8 +113,12 @@ def _add_unique_dim_name(name, dim_names):
 
 
 @for_each_kernel
-def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
-        sequential=False):
+def to_batched(
+            kernel: LoopKernel,
+            nbatches: int | str,
+            batch_varying_args: Sequence[str] = (),
+            batch_iname_prefix: str = "ibatch",
+            sequential: bool = False):
     """Takes in a kernel that carries out an operation and returns a kernel
     that carries out a batch of these operations.
 
@@ -137,7 +142,7 @@ def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch"
     batch_iname = vng(batch_iname_prefix)
     batch_iname_expr = var(batch_iname)
 
-    new_args = []
+    new_args: list[KernelArgument] = []
 
     batch_dom_str = f"{{[{batch_iname}]: 0 <= {batch_iname} < {nbatches}}}"
     if not isinstance(nbatches, int):
@@ -148,7 +153,7 @@ def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch"
     else:
         nbatches_expr = nbatches
 
-    batch_domain = isl.BasicSet(batch_dom_str)
+    batch_domain = nisl.make_set(batch_dom_str)
     new_domains = [batch_domain, *kernel.domains]
 
     for arg in kernel.args:
@@ -173,6 +178,7 @@ def to_batched(kernel, nbatches, batch_varying_args, batch_iname_prefix="ibatch"
 
         for temp in kernel.temporary_variables.values():
             if temp_needs_batching_if_not_sequential(temp, batch_varying_args):
+                assert isinstance(temp.shape, tuple)
                 new_temps[temp.name] = temp.copy(
                         shape=(nbatches_expr, *temp.shape),
                         dim_tags=("c",) * (len(temp.shape) + 1),

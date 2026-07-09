@@ -23,6 +23,7 @@ THE SOFTWARE.
 
 import numpy as np
 
+import namedisl as nisl
 import pyopencl as cl
 from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
@@ -118,6 +119,11 @@ def test_write_block_matrix_fusion(ctx_factory: cl.CtxFactory):
             ),
             default_offset=lp.auto,
             name="write_into_global_matrix",
+            assumptions=nisl.make_set("[mdofs,ndofs,m,n,offset_i,offset_j] -> { :"
+                "ndofs + offset_i < n and mdofs + offset_j < m"
+                " and offset_i >= 0  and offset_j >= 0"
+                "}"
+            )
         )
 
     # Construct a 2x2 diagonal matrix with

@@ -20,14 +20,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import islpy as isl
+import namedisl as nisl
 
 
 def test_aff_to_expr():
-    s = isl.Space.create_from_names(isl.Context(), ["a", "b"])
-    zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(s))
-    a = zero.set_coefficient_val(isl.dim_type.in_, 0, 1)
-    b = zero.set_coefficient_val(isl.dim_type.in_, 1, 1)
+    s = nisl.Space.from_names(param=[], out=["a", "b"])
+    zero = nisl.Aff.zero_on_domain(s)
+    a = zero.with_coefficient("a", 1)
+    b = zero.with_coefficient("b", 1)
 
     x = (5*a + 3*b) % 17 % 5
     print(x)
@@ -37,7 +37,7 @@ def test_aff_to_expr():
 
 def test_aff_to_expr_2():
     from loopy.symbolic import aff_to_expr
-    x = isl.Aff("[n] -> { [i0] -> [(-i0 + 2*floor((i0)/2))] }")
+    x = nisl.make_aff("[n] -> { [i0] -> [(-i0 + 2*floor((i0)/2))] }")
     from pymbolic import var
     i0 = var("i0")
     assert aff_to_expr(x) == (-1)*i0 + 2*(i0 // 2)
@@ -45,7 +45,7 @@ def test_aff_to_expr_2():
 
 def test_pw_aff_to_conditional_expr():
     from loopy.symbolic import pw_aff_to_expr
-    cond = isl.PwAff("[i] -> { [(0)] : i = 0; [(-1 + i)] : i > 0 }")
+    cond = nisl.make_pw_aff("[i] -> { [(0)] : i = 0; [(-1 + i)] : i > 0 }")
     expr = pw_aff_to_expr(cond)
     assert str(expr) == "0 if i == 0 else -1 + i"
 
@@ -58,13 +58,13 @@ def test_subst_into_pwqpolynomial():
             "nx": Variable("nx"),
             "ny": Variable("ny"),
             "nz": Variable("nz")}
-    space = isl.Set("[nx, ny, nz] -> { []: }").space
-    poly = isl.PwQPolynomial("[m, n] -> { (256 * m + 256 * m * n) : "
+    space = nisl.make_set("[nx, ny, nz] -> { []: }").space
+    poly = nisl.make_pw_qpolynomial("[m, n] -> { (256 * m + 256 * m * n) : "
         "m > 0 and n > 0; 256 * m : m > 0 and n <= 0 }")
 
     from loopy.isl_helpers import subst_into_pwqpolynomial
     result = subst_into_pwqpolynomial(space, poly, arg_dict)
-    expected_pwqpoly = isl.PwQPolynomial("[nx, ny, nz] -> {"
+    expected_pwqpoly = nisl.make_pw_qpolynomial("[nx, ny, nz] -> {"
             "(768 * nx + 2304 * nx * ny) : nx > 0 and ny > 0;"
             "768 * nx : nx > 0 and ny <= 0 }")
     assert (result - expected_pwqpoly).is_zero()
@@ -75,15 +75,17 @@ def test_subst_into_pwaff():
     arg_dict = {
             "m": 3*Variable("nx"),
             "n": 2*Variable("ny")+4}
-    space = isl.Set("[nx, ny, nz] -> { []: }").params().space
-    poly = isl.PwAff("[m, n] -> { [3 * m + 2 * n] : "
+    space = nisl.Space.from_names(param=["nx", "ny", "nz"])
+    poly = nisl.make_pw_aff("[m, n] -> { [3 * m + 2 * n] : "
         "m > 0 and n > 0; [7* m + 4*n] : m > 0 and n <= 0 }")
 
     from loopy.isl_helpers import subst_into_pwaff
     result = subst_into_pwaff(space, poly, arg_dict)
-    expected = isl.PwAff("[nx, ny, nz] -> { [(9nx + 4ny+8)] : nx > 0 and ny > -2;"
+    expected = nisl.make_pw_aff(
+        "[nx, ny, nz] -> { [(9nx + 4ny+8)] : nx > 0 and ny > -2;"
             " [(21nx + 8ny+16)] : nx > 0 and ny <= -2 }")
-    assert result == expected
+
+    assert result.equals(expected)
 
 
 def test_simplify_via_aff_reproducibility():
@@ -100,9 +102,9 @@ def test_qpolynomrial_to_expr():
 
     from loopy.symbolic import qpolynomial_to_expr
 
-    (_, qpoly), = isl.PwQPolynomial(
+    (_, qpoly), = nisl.make_pw_qpolynomial(
         "[i,j,k] -> { ((1/3)*i + (1/2)*j + (1/4)*k) : (4i+6j+3k) mod 12 = 0}"
-    ).get_pieces()
+    ).pieces()
 
     expr = qpolynomial_to_expr(qpoly)
 

@@ -538,7 +538,7 @@ class IndexSimplifier(RuleAwareIdentityMapper):
 
 
 @for_each_kernel
-def simplify_indices(kernel):
+def simplify_indices(kernel: LoopKernel):
     """
     Returns a copy of *kernel* with the index-expressions simplified via
     :func:`loopy.symbolic.simplify_using_aff`.

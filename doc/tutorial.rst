@@ -566,7 +566,7 @@ Consider this example:
     ...
       for (int i_outer = 0; i_outer <= -1 + (15 + n) / 16; ++i_outer)
         for (int i_inner = 0; i_inner <= ((-16 + n + -16 * i_outer >= 0) ? 15 : -1 + n + -16 * i_outer); ++i_inner)
-          a[16 * i_outer + i_inner] = (float) (0.0f);
+          a[i_inner + 16 * i_outer] = (float) (0.0f);
     ...
 
 By default, the new, split inames are named *OLD_outer* and *OLD_inner*,
@@ -597,7 +597,7 @@ relation to loop nesting. For example, it's perfectly possible to request
     ...
       for (int i_inner = 0; i_inner <= ((-16 + n >= 0) ? 15 : -1 + n); ++i_inner)
         for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + (15 + n + 15 * i_inner) / 16; ++i_outer)
-          a[16 * i_outer + i_inner] = (float) (0.0f);
+          a[i_inner + 16 * i_outer] = (float) (0.0f);
     ...
 
 Notice how loopy has automatically generated guard conditionals to make
@@ -624,7 +624,7 @@ commonly called 'loop tiling':
         for (int j_outer = 0; j_outer <= (-16 + n) / 16; ++j_outer)
           for (int i_inner = 0; i_inner <= 15; ++i_inner)
             for (int j_inner = 0; j_inner <= 15; ++j_inner)
-              out[n * (16 * i_outer + i_inner) + 16 * j_outer + j_inner] = a[n * (16 * j_outer + j_inner) + 16 * i_outer + i_inner];
+              out[n * (i_inner + 16 * i_outer) + j_inner + 16 * j_outer] = a[n * (j_inner + 16 * j_outer) + i_inner + 16 * i_outer];
     ...
 
 .. }}}
@@ -739,8 +739,8 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     ...
     __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *__restrict__ a, int const n)
     {
-      if (-1 + -128 * gid(0) + -1 * lid(0) + n >= 0)
-        a[128 * gid(0) + lid(0)] = (float) (0.0f);
+      if (-1 + n + -1 * lid(0) + -128 * gid(0) >= 0)
+        a[lid(0) + 128 * gid(0)] = (float) (0.0f);
     }
 
 Loopy requires that workgroup sizes are fixed and constant at compile time.
@@ -754,9 +754,9 @@ those for us:
 
     >>> glob, loc = knl["loopy_kernel"].get_grid_size_upper_bounds(knl.callables_table)
     >>> print(glob)
-    (PwAff("[n] -> { [(floor((127 + n)/128))] }"),)
+    (PwAff('[n] -> { [] -> [(floor((127 + n)/128))] }'),)
     >>> print(loc)
-    (PwAff("[n] -> { [(128)] }"),)
+    (PwAff('[n] -> { [] -> [(128)] }'),)
 
 Note that this functionality returns internal objects and is not really
 intended for end users.
@@ -786,11 +786,11 @@ assumption:
       for (int i_outer = 0; i_outer <= -1 + (3 + n) / 4; ++i_outer)
       {
         a[4 * i_outer] = (float) (0.0f);
-        if (-2 + -4 * i_outer + n >= 0)
+        if (-2 + n + -4 * i_outer >= 0)
           a[1 + 4 * i_outer] = (float) (0.0f);
-        if (-3 + -4 * i_outer + n >= 0)
+        if (-3 + n + -4 * i_outer >= 0)
           a[2 + 4 * i_outer] = (float) (0.0f);
-        if (-4 + -4 * i_outer + n >= 0)
+        if (-4 + n + -4 * i_outer >= 0)
           a[3 + 4 * i_outer] = (float) (0.0f);
       }
     ...
@@ -824,14 +824,14 @@ enabling some cost savings:
       {
         int const i_outer = loopy_floor_div_pos_b_int32(-1 + n, 4);
     <BLANKLINE>
-        if (i_outer >= 0)
+        if (-1 + n >= 0)
         {
           a[4 * i_outer] = (float) (0.0f);
-          if (-2 + -4 * i_outer + n >= 0)
+          if (-2 + n + -4 * i_outer >= 0)
             a[1 + 4 * i_outer] = (float) (0.0f);
-          if (-3 + -4 * i_outer + n >= 0)
+          if (-3 + n + -4 * i_outer >= 0)
             a[2 + 4 * i_outer] = (float) (0.0f);
-          if (4 + 4 * i_outer + -1 * n == 0)
+          if (4 + -1 * n + 4 * i_outer == 0)
             a[3 + 4 * i_outer] = (float) (0.0f);
         }
       }
@@ -954,6 +954,7 @@ local manually.
 Consider the following example:
 
 .. doctest::
+    :options: +ELLIPSIS
 
     >>> knl = lp.make_kernel(
     ...     "{ [i_outer,i_inner, k]:  "
@@ -972,17 +973,17 @@ Consider the following example:
       __local float a_temp[16];
       float acc_k;
     <BLANKLINE>
-      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
+      if (-1 + n + -1 * lid(0) + -16 * gid(0) >= 0)
       {
-        a_temp[lid(0)] = a[16 * gid(0) + lid(0)];
+        a_temp[lid(0)] = a[lid(0) + 16 * gid(0)];
         acc_k = 0.0f;
       }
       barrier(CLK_LOCAL_MEM_FENCE) /* for a_temp (insn_0_k_update depends on insn) */;
-      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
+      if (-1 + n + -1 * lid(0) + -16 * gid(0) >= 0)
       {
         for (int k = 0; k <= 15; ++k)
           acc_k = acc_k + a_temp[k];
-        out[16 * gid(0) + lid(0)] = acc_k;
+        out[lid(0) + 16 * gid(0)] = acc_k;
       }
     }
 
@@ -1034,11 +1035,11 @@ transformation exists in :func:`loopy.add_prefetch`:
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-        a_fetch = a[16 * gid(0) + lid(0)];
+        a_fetch = a[lid(0) + 16 * gid(0)];
         acc_k = 0.0f;
         for (int k = 0; k <= 15; ++k)
           acc_k = acc_k + a_fetch;
-        out[16 * gid(0) + lid(0)] = acc_k;
+        out[lid(0) + 16 * gid(0)] = acc_k;
     ...
 
 This is not the same as our previous code and, in this scenario, a little
@@ -1055,17 +1056,17 @@ earlier:
 .. doctest::
 
     >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"], default_tag="l.0")
-    >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
+    >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)  # doctest: +ELLIPSIS
     #define lid(N) ((int) get_local_id(N))
     ...
-      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
-        a_fetch[lid(0)] = a[16 * gid(0) + lid(0)];
-      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
+      if (-1 + n + -1 * lid(0) + -16 * gid(0) >= 0)
+        a_fetch[lid(0)] = a[lid(0) + 16 * gid(0)];
+      if (-1 + n + -1 * lid(0) + -16 * gid(0) >= 0)
       {
         acc_k = 0.0f;
         for (int k = 0; k <= 15; ++k)
           acc_k = acc_k + a_fetch[lid(0)];
-        out[16 * gid(0) + lid(0)] = acc_k;
+        out[lid(0) + 16 * gid(0)] = acc_k;
       }
     ...
 
@@ -1310,7 +1311,7 @@ The kernel translates into two OpenCL kernels.
    {
      int tmp;
    <BLANKLINE>
-     tmp = arr[16 * gid(0) + lid(0)];
+     tmp = arr[lid(0) + 16 * gid(0)];
      tmp_save_slot[16 * gid(0) + lid(0)] = tmp;
    }
    <BLANKLINE>
@@ -1419,7 +1420,7 @@ Attempting to create this kernel results in an error:
     ... # While trying to find shape axis 0 of argument 'out', the following exception occurred:
     Traceback (most recent call last):
     ...
-    loopy.diagnostic.StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [(1)] : n <= 1; [(n)] : n >= 2 }'
+    loopy.diagnostic.StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [] -> [(1)] : n <= 1; [] -> [(n)] : n >= 2 }'
 
 The problem is that loopy cannot find a simple, universally valid expression
 for the length of *out* in this case. Notice how the kernel accesses both the
@@ -1504,9 +1505,9 @@ When we ask to see the code, the issue becomes apparent:
       float a_fetch[16];
     <BLANKLINE>
       ...
-          a_fetch[lid(0)] = a[n * (16 * gid(1) + lid(0)) + 16 * gid(0) + lid(1)];
+          a_fetch[lid(0)] = a[n * (lid(0) + 16 * gid(1)) + lid(1) + 16 * gid(0)];
       ...
-          out[n * (16 * gid(0) + lid(1)) + 16 * gid(1) + lid(0)] = a_fetch[lid(0)];
+          out[n * (lid(1) + 16 * gid(0)) + lid(0) + 16 * gid(1)] = a_fetch[lid(0)];
       ...
     }
 
@@ -1582,9 +1583,9 @@ Each line of output will look roughly like::
     Op(np:dtype('float32'), add, subgroup, "kernel_name") : [l, m, n] -> { l * m * n : l > 0 and m > 0 and n > 0 }
 
 :func:`loopy.get_op_map` returns a :class:`loopy.ToCountMap` of **{**
-:class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**. A
+:class:`loopy.Op` **:** :class:`namedisl.PwQPolynomial` **}**. A
 :class:`loopy.ToCountMap` holds a dictionary mapping any type of key to an
-arithmetic type. In this case, the :class:`islpy.PwQPolynomial` holds the
+arithmetic type. In this case, the :class:`namedisl.PwQPolynomial` holds the
 number of operations matching the characteristics of the :class:`loopy.Op`
 specified in the key (in terms of the :class:`loopy.LoopKernel`
 *inames*). :class:`loopy.Op` attributes include:
@@ -1595,7 +1596,7 @@ specified in the key (in terms of the :class:`loopy.LoopKernel`
 - name: A :class:`str` that specifies the kind of arithmetic operation as
   *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
 
-One way to evaluate these polynomials is with :meth:`islpy.PwQPolynomial.eval_with_dict`:
+One way to evaluate these polynomials is with :meth:`namedisl.PwQPolynomial.eval_with_dict`:
 
 .. doctest::
 
@@ -1672,7 +1673,7 @@ Each line of output will look roughly like::
     MemAccess(global, np:dtype('float32'), {}, {}, store, c, None, subgroup, 'stats_knl') : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
 
 :func:`loopy.get_mem_access_map` returns a :class:`loopy.ToCountMap` of **{**
-:class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**.
+:class:`loopy.MemAccess` **:** :class:`namedisl.PwQPolynomial` **}**.
 :class:`loopy.MemAccess` attributes include:
 
 - mtype: A :class:`str` that specifies the memory type accessed as **global**
@@ -1700,7 +1701,7 @@ Each line of output will look roughly like::
 - variable: A :class:`str` that specifies the variable name of the data
   accessed.
 
-We can evaluate these polynomials using :meth:`islpy.PwQPolynomial.eval_with_dict`:
+We can evaluate these polynomials using :meth:`namedisl.PwQPolynomial.eval_with_dict`:
 
 .. doctest::
 
@@ -1764,7 +1765,7 @@ Since we have not tagged any of the inames or parallelized the kernel across
 work-items (which would have produced iname tags), :func:`loopy.get_mem_access_map`
 finds no local or global id strides, leaving ``lid_strides`` and ``gid_strides``
 empty for each memory access. Now we'll parallelize the kernel and count the array
-accesses again. The resulting :class:`islpy.PwQPolynomial` will be more complicated
+accesses again. The resulting :class:`namedisl.PwQPolynomial` will be more complicated
 this time.
 
 .. doctest::
@@ -1874,9 +1875,9 @@ kernel from the previous example:
 
     >>> sync_map = lp.get_synchronization_map(knl)
     >>> print(sync_map)
-    Sync(kernel_launch, stats_knl): [l, m, n] -> { 1 }
+    Sync(kernel_launch, stats_knl): [l, m, n] -> { [] -> 1 }
 
-We can evaluate this polynomial using :meth:`islpy.PwQPolynomial.eval_with_dict`:
+We can evaluate this polynomial using :meth:`namedisl.PwQPolynomial.eval_with_dict`:
 
 .. doctest::
 
@@ -1931,14 +1932,14 @@ count the barriers using :func:`loopy.get_synchronization_map`:
 
     >>> sync_map = lp.get_synchronization_map(knl)
     >>> print(sync_map)
-    Sync(barrier_local, loopy_kernel): { 1000 }
-    Sync(kernel_launch, loopy_kernel): { 1 }
+    Sync(barrier_local, loopy_kernel): { [] -> 1000 }
+    Sync(kernel_launch, loopy_kernel): { [] -> 1 }
 
 Based on the kernel code printed above, we would expect each work-item to
 encounter 50x10x2 barriers, which matches the result from
 :func:`loopy.get_synchronization_map`. In this case, the number of barriers
 does not depend on any inames, so we can pass an empty dictionary to
-:meth:`islpy.PwQPolynomial.eval_with_dict`.
+:meth:`namedisl.PwQPolynomial.eval_with_dict`.
 
 .. }}}
 

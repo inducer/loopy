@@ -28,26 +28,41 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
+from enum import StrEnum
 from functools import cached_property, partial
-from typing import TYPE_CHECKING, ClassVar, Literal
+from typing import TYPE_CHECKING, Generic, Literal, TypeVar, override
 
-import islpy as isl
-from islpy import dim_type
+import namedisl as nisl
+from namedisl import DimType
 from pymbolic.mapper import CombineMapper
 from pytools import ImmutableRecord, memoize_method
 
 import loopy as lp
-from loopy.diagnostic import LoopyError, warn_with_kernel
-from loopy.kernel.data import AddressSpace, MultiAssignmentBase, TemporaryVariable
+from loopy.diagnostic import (
+    LoopyError,
+    UnableToDetermineAccessRangeError,
+    warn_with_kernel,
+)
+from loopy.kernel.data import AddressSpace, TemporaryVariable
 from loopy.kernel.function_interface import CallableKernel
+from loopy.kernel.instruction import MultiAssignmentBase
 from loopy.symbolic import CoefficientCollector, flatten
-from loopy.translation_unit import TranslationUnit
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Collection, Sequence
 
-    from loopy.match import ToMatchConvertible
+    import islpy as isl
+    import pymbolic.primitives as p
+    from pymbolic.typing import ArithmeticExpression
+
+    from loopy.kernel import LoopKernel
+    from loopy.kernel.instruction import InstructionBase
+    from loopy.match import MatchExpressionBase, ToMatchConvertible
+    from loopy.translation_unit import CallablesTable, TranslationUnit
+    from loopy.typing import InameStr, InsnId
 
 
 __doc__ = """
@@ -88,33 +103,33 @@ __doc__ = """
 # - Test for the subkernel functionality need to be written
 
 
-def get_kernel_parameter_space(kernel):
-    return isl.Space.create_from_names(kernel.isl_context,
-            set=[], params=sorted(kernel.outer_params())).params()
+def get_kernel_parameter_space(kernel: lp.LoopKernel):
+    return nisl.Space.from_names(out=[], param=sorted(kernel.outer_params()))
 
 
-def get_kernel_zero_pwqpolynomial(kernel):
+def get_kernel_zero_pwqpolynomial(kernel: lp.LoopKernel):
     space = get_kernel_parameter_space(kernel)
-    space = space.insert_dims(dim_type.out, 0, 1)
-    return isl.PwQPolynomial.zero(space)
+    return nisl.PwQPolynomial.zero_on_domain(space)
 
 
 # {{{ GuardedPwQPolynomial
 
-def _get_param_tuple(obj):
-    return tuple(
-            obj.get_dim_name(dim_type.param, i)
-            for i in range(obj.dim(dim_type.param)))
 
-
+@dataclass(frozen=True)
 class GuardedPwQPolynomial:
-    def __init__(self, pwqpolynomial, valid_domain):
-        assert isinstance(pwqpolynomial, isl.PwQPolynomial)
-        self.pwqpolynomial = pwqpolynomial
-        self.valid_domain = valid_domain
+    pwqpolynomial: nisl.PwQPolynomial
+    valid_domain: nisl.Set
 
-        assert (_get_param_tuple(pwqpolynomial.space)
-                == _get_param_tuple(valid_domain.space))
+    if __debug__:
+        def __post_init__(self):
+            if self.pwqpolynomial.space.in_names:
+                raise ValueError("piecewise quasipolynomial has in_names")
+            if not isinstance(self.pwqpolynomial, nisl.PwQPolynomial):
+                raise TypeError("unexpected type of pwqpolynomial")
+
+            if (self.pwqpolynomial.space.param_names
+                    != self.valid_domain.space.param_names):
+                raise ValueError("Parameter names don't match")
 
     @property
     def space(self):
@@ -144,16 +159,13 @@ class GuardedPwQPolynomial:
 
     __rmul__ = __mul__
 
-    def eval_with_dict(self, value_dict):
-        space = self.pwqpolynomial.space
-        pt = isl.Point.zero(space.params())
+    def eval_with_dict(self, value_dict: Mapping[str, int]):
+        sp = (self.pwqpolynomial.space
+            .drop_dim_type(DimType.in_)
+            .with_empty_dim_type(DimType.out))
+        pt = nisl.Point.from_dict(sp, value_dict)
 
-        for i in range(space.dim(dim_type.param)):
-            par_name = space.get_dim_name(dim_type.param, i)
-            pt = pt.set_coordinate_val(
-                dim_type.param, i, value_dict[par_name])
-
-        if not (isl.Set.from_point(pt) <= self.valid_domain):
+        if not (pt.as_set() <= self.valid_domain):
             raise ValueError("evaluation point outside of domain of "
                     "definition of piecewise quasipolynomial")
 
@@ -161,12 +173,14 @@ class GuardedPwQPolynomial:
 
     @staticmethod
     def zero():
-        p = isl.PwQPolynomial("{ 0 }")
-        return GuardedPwQPolynomial(p, isl.Set.universe(p.domain().space))
+        p = nisl.make_pw_qpolynomial("{ 0 }")
+        return GuardedPwQPolynomial(p, nisl.Set.universe(p.space.as_set_space()))
 
+    @override
     def __str__(self):
         return str(self.pwqpolynomial)
 
+    @override
     def __repr__(self):
         return "Guarded" + repr(self.pwqpolynomial)
 
@@ -175,7 +189,11 @@ class GuardedPwQPolynomial:
 
 # {{{ ToCountMap
 
-class ToCountMap:
+KeyT = TypeVar("KeyT")
+
+
+@dataclass(frozen=True)
+class ToCountMap(Generic[KeyT]):
     """A map from work descriptors like :class:`Op` and :class:`MemAccess`
     to any arithmetic type.
 
@@ -199,17 +217,14 @@ class ToCountMap:
 
     """
 
-    def __init__(self, count_map=None):
-        if count_map is None:
-            count_map = {}
+    count_map: Mapping[KeyT, nisl.PwQPolynomial | GuardedPwQPolynomial] \
+        = field(default_factory=dict)
 
-        self.count_map = count_map
-
-    def _zero(self) -> Literal[0] | isl.PwQPolynomial:
+    def _zero(self) -> Literal[0] | nisl.PwQPolynomial:
         return 0
 
-    def __add__(self, other):
-        result = self.count_map.copy()
+    def __add__(self, other: ToCountMap[KeyT]):
+        result = dict(self.count_map)
         for k, v in other.count_map.items():
             result[k] = self.count_map.get(k, 0) + v
         return self.copy(count_map=result)
@@ -222,7 +237,7 @@ class ToCountMap:
 
         return self
 
-    def __mul__(self, other):
+    def __mul__(self, other: GuardedPwQPolynomial):
         if isinstance(other, GuardedPwQPolynomial):
             return self.copy({
                 index: other*value
@@ -233,12 +248,14 @@ class ToCountMap:
 
     __rmul__ = __mul__
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: KeyT):
         return self.count_map[index]
 
+    @override
     def __repr__(self):
         return repr(self.count_map)
 
+    @override
     def __str__(self):
         return "\n".join(
                 f"{k}: {v}"
@@ -260,7 +277,10 @@ class ToCountMap:
     def values(self):
         return self.count_map.values()
 
-    def copy(self, count_map=None):
+    def copy(self,
+                count_map: Mapping[
+                    KeyT, nisl.PwQPolynomial | GuardedPwQPolynomial] | None = None
+            ):
         if count_map is None:
             count_map = self.count_map
 
@@ -314,7 +334,7 @@ class ToCountMap:
 
         return self.copy(count_map=new_count_map)
 
-    def filter_by_func(self, func):
+    def filter_by_func(self, func: Callable[[KeyT], bool]):
         """Keep items that pass a test.
 
         :arg func: A function that takes a map key a parameter and returns a
@@ -345,7 +365,7 @@ class ToCountMap:
 
         return self.copy(count_map=new_count_map)
 
-    def group_by(self, *args):
+    def group_by(self, *args: str):
         """Group map items together, distinguishing by only the key fields
         passed in args.
 
@@ -465,39 +485,44 @@ class ToCountMap:
 
 # {{{ ToCountPolynomialMap
 
-class ToCountPolynomialMap(ToCountMap):
+class ToCountPolynomialMap(ToCountMap[KeyT]):
     """Maps any type of key to a :class:`islpy.PwQPolynomial` or a
     :class:`~loopy.statistics.GuardedPwQPolynomial`.
 
     .. automethod:: eval_and_sum
     """
+    count_map: Mapping[KeyT, nisl.PwQPolynomial | GuardedPwQPolynomial] \
+        = field(default_factory=dict)
+    space: nisl.Space
 
-    def __init__(self, space, count_map=None):
-        if not isinstance(space, isl.Space):
+    def __init__(self,
+            space: nisl.Space,
+            count_map: Mapping[
+                KeyT, nisl.PwQPolynomial | GuardedPwQPolynomial] | None = None):
+        if not isinstance(space, nisl.Space):
             raise TypeError(
                     "first argument to ToCountPolynomialMap must be "
                     "of type islpy.Space")
 
-        assert space.is_params()
         self.space = space
 
-        space_param_tuple = _get_param_tuple(space)
-
         for val in count_map.values():
-            if isinstance(val, isl.PwQPolynomial):
-                assert val.dim(dim_type.out) == 1
+            if isinstance(val, nisl.PwQPolynomial):
+                assert val._obj.dim(DimType.out.as_isl()) == 1
             elif isinstance(val, GuardedPwQPolynomial):
-                assert val.pwqpolynomial.dim(dim_type.out) == 1
+                assert val.pwqpolynomial._obj.dim(DimType.out.as_isl()) == 1
             else:
                 raise TypeError("unexpected value type")
 
-            assert _get_param_tuple(val.space) == space_param_tuple
+            assert space.param_names == val.space.param_names
+
+        if count_map is None:
+            count_map = {}
 
         super().__init__(count_map)
 
     def _zero(self):
-        space = self.space.insert_dims(dim_type.out, 0, 1)
-        return isl.PwQPolynomial.zero(space)
+        return nisl.PwQPolynomial.zero_on_domain(self.space)
 
     def copy(self, count_map=None, space=None):
         if count_map is None:
@@ -508,7 +533,7 @@ class ToCountPolynomialMap(ToCountMap):
 
         return type(self)(space, count_map)
 
-    def eval_and_sum(self, params=None):
+    def eval_and_sum(self, params: Mapping[str, int | isl.Val] | None = None):
         """Add all counts and evaluate with provided parameter dict *params*
 
         :return: An :class:`int` containing the sum of all counts
@@ -537,20 +562,23 @@ class ToCountPolynomialMap(ToCountMap):
 
 # {{{ subst_into_to_count_map
 
-def subst_into_guarded_pwqpolynomial(new_space, guarded_poly, subst_dict):
+def subst_into_guarded_pwqpolynomial(
+            new_space: nisl.Space,
+            guarded_poly: GuardedPwQPolynomial,
+            subst_dict: Mapping[str, ArithmeticExpression],
+        ):
     from loopy.isl_helpers import get_param_subst_domain, subst_into_pwqpolynomial
 
     poly = subst_into_pwqpolynomial(
             new_space, guarded_poly.pwqpolynomial, subst_dict)
 
     valid_domain = guarded_poly.valid_domain
-    i_begin_subst_space = valid_domain.dim(dim_type.param)
 
-    valid_domain, subst_domain, _ = get_param_subst_domain(
-            new_space, guarded_poly.valid_domain, subst_dict)
+    valid_domain, subst_domain, _subst_dict, primed_names = get_param_subst_domain(
+            new_space, valid_domain, subst_dict)
 
     valid_domain = valid_domain & subst_domain
-    valid_domain = valid_domain.project_out(dim_type.param, 0, i_begin_subst_space)
+    valid_domain = valid_domain.project_out(primed_names)
     return GuardedPwQPolynomial(poly, valid_domain)
 
 
@@ -562,7 +590,7 @@ def subst_into_to_count_map(space, tcm, subst_dict):
             new_count_map[key] = subst_into_guarded_pwqpolynomial(
                     space, value, subst_dict)
 
-        elif isinstance(value, isl.PwQPolynomial):
+        elif isinstance(value, nisl.PwQPolynomial):
             new_count_map[key] = subst_into_pwqpolynomial(space, value, subst_dict)
 
         elif isinstance(value, int):
@@ -578,7 +606,7 @@ def subst_into_to_count_map(space, tcm, subst_dict):
 
 # {{{ CountGranularity
 
-class CountGranularity:
+class CountGranularity(StrEnum):
     """Strings specifying whether an operation should be counted once per
     *work-item*, *sub-group*, or *work-group*.
 
@@ -602,7 +630,6 @@ class CountGranularity:
     WORKITEM = "workitem"
     SUBGROUP = "subgroup"
     WORKGROUP = "workgroup"
-    ALL: ClassVar[Sequence[str]] = [WORKITEM, SUBGROUP, WORKGROUP]
 
 # }}}
 
@@ -643,10 +670,10 @@ class Op(ImmutableRecord):
 
     def __init__(self, dtype=None, name=None, count_granularity=None,
             kernel_name=None):
-        if count_granularity not in [*CountGranularity.ALL, None]:
+        if count_granularity not in [*CountGranularity, None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
                     "not allowed. count_granularity options: %s"
-                    % (count_granularity, [*CountGranularity.ALL, None]))
+                    % (count_granularity, [*CountGranularity, None]))
 
         if dtype is not None:
             from loopy.types import to_loopy_type
@@ -739,10 +766,10 @@ class MemAccess(ImmutableRecord):
                  *, variable_tags=None,
                  count_granularity=None, kernel_name=None):
 
-        if count_granularity not in [*CountGranularity.ALL, None]:
+        if count_granularity not in [*CountGranularity, None]:
             raise ValueError("Op.__init__: count_granularity '%s' is "
                     "not allowed. count_granularity options: %s"
-                    % (count_granularity, [*CountGranularity.ALL, None]))
+                    % (count_granularity, [*CountGranularity, None]))
 
         if variable_tags is None:
             variable_tags = frozenset()
@@ -815,8 +842,11 @@ class Sync(ImmutableRecord):
 
 # {{{ CounterBase
 
-class CounterBase(CombineMapper):
-    def __init__(self, knl, callables_table, kernel_rec):
+class CounterBase(CombineMapper[ToCountPolynomialMap[KeyT] | Literal[0], []]):
+    knl: LoopKernel
+    callables_table: CallablesTable
+
+    def __init__(self, knl: LoopKernel, callables_table, kernel_rec):
         self.knl = knl
         self.callables_table = callables_table
         self.kernel_rec = kernel_rec
@@ -831,18 +861,21 @@ class CounterBase(CombineMapper):
         return get_kernel_parameter_space(self.knl)
 
     def new_poly_map(self, count_map):
-        return ToCountPolynomialMap(self.param_space, count_map)
+        return ToCountPolynomialMap[KeyT](self.param_space, count_map)
 
     def new_zero_poly_map(self):
         return self.new_poly_map({})
 
+    @override
     def combine(self, values):
         return sum(values)
 
-    def map_constant(self, expr):
+    @override
+    def map_constant(self, expr: object):
         return self.new_zero_poly_map()
 
-    def map_call(self, expr):
+    @override
+    def map_call(self, expr: p.Call):
         from loopy.symbolic import ResolvedFunction
         assert isinstance(expr.function, ResolvedFunction)
         clbl = self.callables_table[expr.function.name]
@@ -870,11 +903,12 @@ class CounterBase(CombineMapper):
         else:
             raise NotImplementedError()
 
-    def map_call_with_kwargs(self, expr):
+    def map_call_with_kwargs(self, expr: p.CallWithKwargs):
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
 
-    def map_sum(self, expr):
+    @override
+    def map_sum(self, expr: p.Sum):
         if expr.children:
             return sum(self.rec(child) for child in expr.children)
         else:
@@ -916,7 +950,7 @@ class CounterBase(CombineMapper):
 
 # {{{ ExpressionOpCounter
 
-class ExpressionOpCounter(CounterBase):
+class ExpressionOpCounter(CounterBase[Op]):
     def __init__(self, knl, callables_table, kernel_rec,
             count_within_subscripts=True):
         super().__init__(
@@ -1190,7 +1224,7 @@ def _get_lid_and_gid_strides(knl, array, index):
 
 # {{{ MemAccessCounterBase
 
-class MemAccessCounterBase(CounterBase):
+class MemAccessCounterBase(CounterBase[MemAccess]):
     def map_sub_array_ref(self, expr):
         # generates an array view, considered free
         return self.new_zero_poly_map()
@@ -1351,55 +1385,65 @@ class GlobalMemAccessCounter(MemAccessCounterBase):
 
 # {{{ AccessFootprintGatherer
 
-class AccessFootprintGatherer(CombineMapper):
-    def __init__(self, kernel, domain, ignore_uncountable=False):
-        self.kernel = kernel
-        self.domain = domain
-        self.ignore_uncountable = ignore_uncountable
+def combine_footprint_maps(
+            values: Iterable[Mapping[str, nisl.Set]]
+        ) -> Mapping[str, nisl.Set]:
+    assert values
 
-    @staticmethod
-    def combine(values):
-        assert values
+    def merge_dicts(
+                a: Mapping[str, nisl.Set],
+                b: Mapping[str, nisl.Set]):
+        result = dict(a)
 
-        def merge_dicts(a, b):
-            result = a.copy()
+        for var_name, footprint in b.items():
+            if var_name in result:
+                result[var_name] = result[var_name] | footprint
+            else:
+                result[var_name] = footprint
 
-            for var_name, footprint in b.items():
-                if var_name in result:
-                    result[var_name] = result[var_name] | footprint
-                else:
-                    result[var_name] = footprint
+        return result
 
-            return result
+    from functools import reduce
+    return reduce(merge_dicts, values)
 
-        from functools import reduce
-        return reduce(merge_dicts, values)
 
-    def map_constant(self, expr):
+@dataclass(frozen=True)
+class AccessFootprintGatherer(CombineMapper[Mapping[str, nisl.Set], []]):
+    kernel: LoopKernel
+    domain: nisl.Set
+    ignore_uncountable: bool = False
+
+    @override
+    def combine(self,
+                values: Iterable[Mapping[str, nisl.Set]]
+            ) -> Mapping[str, nisl.Set]:
+        return combine_footprint_maps(values)
+
+    @override
+    def map_constant(self, expr: object) -> Mapping[str, nisl.Set]:
         return {}
 
-    def map_variable(self, expr):
+    @override
+    def map_variable(self, expr: p.Variable) -> Mapping[str, nisl.Set]:
         return {}
 
-    def map_subscript(self, expr):
-        subscript = expr.index
-
-        if not isinstance(subscript, tuple):
-            subscript = (subscript,)
+    @override
+    def map_subscript(self, expr: p.Subscript) -> Mapping[str, nisl.Set]:
+        subscript = expr.index_tuple
 
         from loopy.symbolic import get_access_map
 
         try:
             access_range = get_access_map(self.domain, subscript,
                     self.kernel.assumptions).range()
-        except isl.Error as err:
+        except nisl.Error as err:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:
                 return {}
             else:
                 raise LoopyError("failed to gather footprint: %s" % expr) from err
 
-        except TypeError as err:
+        except UnableToDetermineAccessRangeError as err:
             # Likely: index was non-linear, nothing we can do.
             if self.ignore_uncountable:
                 return {}
@@ -1418,86 +1462,47 @@ class AccessFootprintGatherer(CombineMapper):
 
 # {{{ count
 
-def add_assumptions_guard(kernel, pwqpolynomial):
-    return GuardedPwQPolynomial(
-            pwqpolynomial,
-            kernel.assumptions.align_params(pwqpolynomial.space))
+def add_assumptions_guard(kernel: LoopKernel, pwqpolynomial: nisl.PwQPolynomial):
+    return GuardedPwQPolynomial(pwqpolynomial, kernel.assumptions)
 
 
-def count(kernel, set, space=None):
-    if isinstance(kernel, TranslationUnit):
-        kernel_names = [i for i, clbl in kernel.callables_table.items()
-                if isinstance(clbl, CallableKernel)]
-        if len(kernel_names) > 1:
-            raise LoopyError()
-        return count(kernel[kernel_names[0]], set, space)
-
+def count(kernel: LoopKernel, set: nisl.Set):
     try:
-        if space is not None:
-            set = set.align_params(space)
-
-        return add_assumptions_guard(kernel, set.card())
+        return add_assumptions_guard(kernel, set.card(cache=kernel.isl_cache))
     except AttributeError:
         pass
 
-    total_count = isl.PwQPolynomial.zero(
-            set.space
-            .drop_dims(dim_type.set, 0, set.dim(dim_type.set))
-            .add_dims(dim_type.set, 1))
+    total_count = nisl.PwQPolynomial.zero_on_domain(
+        set.space.drop_dim_type(DimType.out).with_empty_dim_type(DimType.out))
 
-    if isinstance(set, isl.BasicSet):
-        set = set.to_set()
     set = set.make_disjoint()
 
-    from loopy.isl_helpers import get_simple_strides
-
-    for bset in set.get_basic_sets():
-        bset_as_set = bset.to_set()
+    for bset in set.basic_sets():
+        bset_as_set = bset.as_set()
         bset_count = None
-        bset_rebuilt = bset.universe(bset.space)
+        bset_rebuilt = nisl.Set.universe(bset.space)
 
-        bset_strides = get_simple_strides(bset, key_by="index")
+        for dim_name in bset.space.set_names:
+            dmax = bset_as_set.dim_max(dim_name)
+            dmin = bset_as_set.dim_min(dim_name)
 
-        for i in range(bset.dim(isl.dim_type.set)):
-            dmax = bset_as_set.dim_max(i)
-            dmin = bset_as_set.dim_min(i)
+            bset_as_set = bset.as_set()
+            stride = bset_as_set.stride_info(dim_name).stride.to_python()
 
-            stride = bset_strides.get((dim_type.set, i))
-            if stride is None:
-                stride = 1
-
-            length_pwaff = dmax - dmin + stride
-            if space is not None:
-                length_pwaff = length_pwaff.align_params(space)
-
-            length = isl.PwQPolynomial.from_pw_aff(length_pwaff)
-            length = length.scale_down_val(stride)
+            # FIXME should this be stride - 1?
+            length = ((dmax - dmin + stride) / stride).floor().as_pw_qpoly()
 
             bset_count = length if bset_count is None else bset_count * length
 
             # {{{ rebuild check domain
 
-            zero = isl.Aff.zero_on_domain(
-                        isl.LocalSpace.from_space(bset.space))
-            iname = isl.PwAff.from_aff(
-                    zero.set_coefficient_val(isl.dim_type.in_, i, 1))
-            dmin_matched = dmin.insert_dims(
-                    dim_type.in_, 0, bset.dim(isl.dim_type.set))
-            dmax_matched = dmax.insert_dims(
-                    dim_type.in_, 0, bset.dim(isl.dim_type.set))
-            for idx in range(bset.dim(isl.dim_type.set)):
-                if bset_as_set.has_dim_id(isl.dim_type.set, idx):
-                    dim_id = bset_as_set.get_dim_id(isl.dim_type.set, idx)
-                    dmin_matched = dmin_matched.set_dim_id(
-                            isl.dim_type.in_, idx, dim_id)
-                    dmax_matched = dmax_matched.set_dim_id(
-                            isl.dim_type.in_, idx, dim_id)
+            v = bset_as_set.var_pw_affs
 
             bset_rebuilt = (
                     bset_rebuilt
-                    & iname.le_set(dmax_matched)
-                    & iname.ge_set(dmin_matched)
-                    & (iname-dmin_matched).mod_val(stride).eq_set(zero))
+                    & v[dim_name].le_set(dmax)
+                    & v[dim_name].ge_set(dmin)
+                    & ((v[dim_name]-dmin) % stride).eq_set(0))
 
             # }}}
 
@@ -1530,12 +1535,17 @@ def count(kernel, set, space=None):
     return add_assumptions_guard(kernel, total_count)
 
 
-def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
+def get_unused_hw_axes_factor(
+            knl: LoopKernel,
+            callables_table: CallablesTable,
+            insn: InstructionBase,
+            disregard_local_axes: bool
+        ):
     # FIXME: Multi-kernel support
     gsize, lsize = knl.get_grid_size_upper_bounds(callables_table)
 
-    g_used = set()
-    l_used = set()
+    g_used: set[int] = set()
+    l_used: set[int] = set()
 
     from loopy.kernel.data import GroupInameTag, LocalInameTag
     for iname in insn.within_inames:
@@ -1548,7 +1558,7 @@ def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
             elif isinstance(tag, GroupInameTag):
                 g_used.add(tag.axis)
 
-    def mult_grid_factor(used_axes, sizes):
+    def mult_grid_factor(used_axes: set[int], sizes: Sequence[int | nisl.PwAff]):
         result = get_kernel_zero_pwqpolynomial(knl) + 1
 
         for iaxis, size in enumerate(sizes):
@@ -1556,8 +1566,7 @@ def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
                 if isinstance(size, int):
                     result = result * size
                 else:
-                    result = result * isl.PwQPolynomial.from_pw_aff(
-                            size.align_params(result.space))
+                    result = result * size.as_pw_qpoly()
 
         return result
 
@@ -1569,19 +1578,24 @@ def get_unused_hw_axes_factor(knl, callables_table, insn, disregard_local_axes):
     return add_assumptions_guard(knl, result)
 
 
-def count_inames_domain(knl, inames):
-    space = get_kernel_parameter_space(knl)
+def count_inames_domain(knl: LoopKernel, inames: Collection[InameStr]):
     if not inames:
         return add_assumptions_guard(knl,
                 get_kernel_zero_pwqpolynomial(knl) + 1)
 
     inames_domain = knl.get_inames_domain(inames)
-    domain = inames_domain.project_out_except(inames, [dim_type.set])
-    return count(knl, domain, space=space)
+    domain = inames_domain.project_out_except(
+        inames, dim_type=DimType.out)
+    return count(knl, domain)
 
 
-def count_insn_runs(knl, callables_table, insn, count_redundant_work,
-        disregard_local_axes=False):
+def count_insn_runs(
+        knl: LoopKernel,
+        callables_table: CallablesTable,
+        insn: InstructionBase,
+        count_redundant_work: bool,
+        disregard_local_axes: bool = False
+    ):
 
     insn_inames = insn.within_inames
 
@@ -1601,8 +1615,14 @@ def count_insn_runs(knl, callables_table, insn, count_redundant_work,
         return c
 
 
-def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
-        count_redundant_work, count_granularity=CountGranularity.WORKITEM):
+def _get_insn_count(
+            knl: LoopKernel,
+            callables_table: CallablesTable,
+            insn_id: InsnId,
+            subgroup_size: int,
+            count_redundant_work: bool,
+            count_granularity: CountGranularity | None = None
+        ):
     insn = knl.id_to_insn[insn_id]
 
     if count_granularity is None:
@@ -1632,14 +1652,17 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
         workgroup_size = 1
         if local_size:
             for size in local_size:
-                if size.n_piece() != 1:
+                size_pieces = size.pieces()
+
+                if len(size_pieces) != 1:
                     raise LoopyError("Workgroup size found to be genuinely "
                         "piecewise defined, which is not allowed in stats gathering")
 
-                (valid_set, aff), = size.get_pieces()
+                (valid_set, aff), = size_pieces
 
-                assert ((valid_set.n_basic_set() == 1)
-                        and (valid_set.get_basic_sets()[0].is_universe()))
+                if not valid_set.plain_is_universe():
+                    raise LoopyError("Workgroup size found to be piecewise defined, "
+                        "which is not allowed in stats gathering")
 
                 s = aff_to_expr(aff)
                 if not isinstance(s, int):
@@ -1664,16 +1687,21 @@ def _get_insn_count(knl, callables_table, insn_id, subgroup_size,
         # this should not happen since this is enforced in Op/MemAccess
         raise ValueError("get_insn_count: count_granularity '%s' is"
                 "not allowed. count_granularity options: %s"
-                % (count_granularity, [*CountGranularity.ALL, None]))
+                % (count_granularity, [*CountGranularity, None]))
 
 # }}}
 
 
 # {{{ get_op_map
 
-def _get_op_map_for_single_kernel(knl, callables_table,
-        count_redundant_work,
-        count_within_subscripts, subgroup_size, within):
+def _get_op_map_for_single_kernel(
+        knl: LoopKernel,
+        callables_table: CallablesTable,
+        count_redundant_work: bool,
+        count_within_subscripts: bool,
+        subgroup_size: int | None,
+        within: MatchExpressionBase,
+    ):
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
@@ -1715,9 +1743,14 @@ def _get_op_map_for_single_kernel(knl, callables_table,
     return op_map
 
 
-def get_op_map(program, count_redundant_work=False,
-               count_within_subscripts=True, subgroup_size=None,
-               entrypoint=None, within: ToMatchConvertible = None):
+def get_op_map(
+            t_unit: TranslationUnit,
+            count_redundant_work: bool = False,
+            count_within_subscripts: bool = True,
+            subgroup_size: int | None = None,
+            entrypoint: str | None = None,
+            within: ToMatchConvertible = None
+        ):
 
     """Count the number of operations in a loopy kernel.
 
@@ -1777,25 +1810,25 @@ def get_op_map(program, count_redundant_work=False,
     """
 
     if entrypoint is None:
-        if len(program.entrypoints) > 1:
+        if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
-    assert entrypoint in program.entrypoints
+    assert entrypoint in t_unit.entrypoints
 
     from loopy.preprocess import infer_unknown_types, preprocess_program
-    program = preprocess_program(program)
+    t_unit = preprocess_program(t_unit)
 
     from loopy.match import parse_match
     within = parse_match(within)
 
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
-    program = infer_unknown_types(program, expect_completion=True)
+    t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
     return _get_op_map_for_single_kernel(
-            program[entrypoint], program.callables_table,
+            t_unit[entrypoint], t_unit.callables_table,
             count_redundant_work=count_redundant_work,
             count_within_subscripts=count_within_subscripts,
             subgroup_size=subgroup_size,
@@ -1807,7 +1840,10 @@ def get_op_map(program, count_redundant_work=False,
 # {{{ subgoup size finding
 
 @memoize_method
-def _process_subgroup_size(knl, subgroup_size_requested: int | None):
+def _process_subgroup_size(
+            knl: LoopKernel,
+            subgroup_size_requested: int | Literal["guess"] | None
+        ):
 
     if isinstance(subgroup_size_requested, int):
         return subgroup_size_requested
@@ -1847,8 +1883,13 @@ def _process_subgroup_size(knl, subgroup_size_requested: int | None):
 
 # {{{ get_mem_access_map
 
-def _get_mem_access_map_for_single_kernel(knl, callables_table,
-        count_redundant_work, subgroup_size, within):
+def _get_mem_access_map_for_single_kernel(
+            knl: LoopKernel,
+            callables_table: CallablesTable,
+            count_redundant_work: bool,
+            subgroup_size: int | Literal["guess"] | None,
+            within: MatchExpressionBase
+        ):
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
@@ -1901,13 +1942,13 @@ def _get_mem_access_map_for_single_kernel(knl, callables_table,
     return access_map
 
 
-def get_mem_access_map(program, count_redundant_work=False,
-                       subgroup_size=None, entrypoint=None,
-                       within: ToMatchConvertible = None):
+def get_mem_access_map(
+            t_unit: TranslationUnit,
+            count_redundant_work: bool = False,
+            subgroup_size: int | Literal["guess"] | None = None,
+            entrypoint: str | None = None,
+            within: ToMatchConvertible = None):
     """Count the number of memory accesses in a loopy kernel.
-
-    :arg knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
-        counted.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`
@@ -1989,26 +2030,26 @@ def get_mem_access_map(program, count_redundant_work=False,
     """
 
     if entrypoint is None:
-        if len(program.entrypoints) > 1:
+        if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
-    assert entrypoint in program.entrypoints
+    assert entrypoint in t_unit.entrypoints
 
     from loopy.preprocess import infer_unknown_types, preprocess_program
 
-    program = preprocess_program(program)
+    t_unit = preprocess_program(t_unit)
 
     from loopy.match import parse_match
     within = parse_match(within)
 
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
-    program = infer_unknown_types(program, expect_completion=True)
+    t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
     return _get_mem_access_map_for_single_kernel(
-            program[entrypoint], program.callables_table,
+            t_unit[entrypoint], t_unit.callables_table,
             count_redundant_work=count_redundant_work,
             subgroup_size=subgroup_size,
             within=within)
@@ -2018,8 +2059,11 @@ def get_mem_access_map(program, count_redundant_work=False,
 
 # {{{ get_synchronization_map
 
-def _get_synchronization_map_for_single_kernel(knl, callables_table,
-        subgroup_size=None):
+def _get_synchronization_map_for_single_kernel(
+            knl: LoopKernel,
+            callables_table: CallablesTable,
+            subgroup_size: int | Literal["guess"] | None = None,
+        ):
 
     knl = lp.get_one_linearized_kernel(knl, callables_table)
 
@@ -2036,10 +2080,10 @@ def _get_synchronization_map_for_single_kernel(knl, callables_table,
             callables_table=callables_table,
             subgroup_size=subgroup_size)
 
-    sync_counter = CounterBase(knl, callables_table, kernel_rec)
+    sync_counter = CounterBase[Sync](knl, callables_table, kernel_rec)
     sync_map = sync_counter.new_zero_poly_map()
 
-    iname_list = []
+    iname_list: list[InameStr] = []
 
     for sched_item in knl.linearization:
         if isinstance(sched_item, EnterLoop):
@@ -2073,7 +2117,10 @@ def _get_synchronization_map_for_single_kernel(knl, callables_table,
     return sync_map
 
 
-def get_synchronization_map(program, subgroup_size=None, entrypoint=None):
+def get_synchronization_map(
+            t_unit: TranslationUnit,
+            subgroup_size: int | Literal["guess"] | None = None,
+            entrypoint: str | None = None):
     """Count the number of synchronization events each work-item encounters in
     a loopy kernel.
 
@@ -2110,21 +2157,21 @@ def get_synchronization_map(program, subgroup_size=None, entrypoint=None):
 
     """
     if entrypoint is None:
-        if len(program.entrypoints) > 1:
+        if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
-    assert entrypoint in program.entrypoints
+    assert entrypoint in t_unit.entrypoints
     from loopy.preprocess import infer_unknown_types, preprocess_program
 
-    program = preprocess_program(program)
+    t_unit = preprocess_program(t_unit)
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
-    program = infer_unknown_types(program, expect_completion=True)
+    t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
     return _get_synchronization_map_for_single_kernel(
-            program[entrypoint], program.callables_table,
+            t_unit[entrypoint], t_unit.callables_table,
             subgroup_size=subgroup_size)
 
 # }}}
@@ -2132,7 +2179,10 @@ def get_synchronization_map(program, subgroup_size=None, entrypoint=None):
 
 # {{{ gather_access_footprints
 
-def _gather_access_footprints_for_single_kernel(kernel, ignore_uncountable):
+def _gather_access_footprints_for_single_kernel(
+            kernel: LoopKernel,
+            ignore_uncountable: bool
+        ):
     write_footprints = []
     read_footprints = []
 
@@ -2145,8 +2195,7 @@ def _gather_access_footprints_for_single_kernel(kernel, ignore_uncountable):
 
         insn_inames = kernel.insn_inames(insn)
         inames_domain = kernel.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames,
-                                                   [dim_type.set]))
+        domain = (inames_domain.project_out_except(insn_inames, dim_type=DimType.out))
 
         afg = AccessFootprintGatherer(kernel, domain,
                 ignore_uncountable=ignore_uncountable)
@@ -2157,7 +2206,10 @@ def _gather_access_footprints_for_single_kernel(kernel, ignore_uncountable):
     return write_footprints, read_footprints
 
 
-def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None):
+def gather_access_footprints(
+            t_unit: TranslationUnit,
+            ignore_uncountable: bool = False,
+            entrypoint: str | None = None):
     """Return a dictionary mapping ``(var_name, direction)`` to
     :class:`islpy.Set` instances capturing which indices of each the array
     *var_name* are read/written (where *direction* is either ``read`` or
@@ -2169,35 +2221,35 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
     """
 
     if entrypoint is None:
-        if len(program.entrypoints) > 1:
+        if len(t_unit.entrypoints) > 1:
             raise LoopyError("Must provide entrypoint")
 
-        entrypoint = next(iter(program.entrypoints))
+        entrypoint = next(iter(t_unit.entrypoints))
 
-    assert entrypoint in program.entrypoints
+    assert entrypoint in t_unit.entrypoints
 
     # FIXME: works only for one callable kernel till now.
     if len([in_knl_callable for in_knl_callable in
-        program.callables_table.values() if isinstance(in_knl_callable,
+        t_unit.callables_table.values() if isinstance(in_knl_callable,
             CallableKernel)]) != 1:
         raise NotImplementedError("Currently only supported for program with "
             "only one CallableKernel.")
 
     from loopy.preprocess import infer_unknown_types, preprocess_program
 
-    program = preprocess_program(program)
+    t_unit = preprocess_program(t_unit)
     # Ordering restriction: preprocess might insert arguments to
     # make strides valid. Those also need to go through type inference.
-    program = infer_unknown_types(program, expect_completion=True)
+    t_unit = infer_unknown_types(t_unit, expect_completion=True)
 
     write_footprints = []
     read_footprints = []
 
     write_footprints, read_footprints = _gather_access_footprints_for_single_kernel(
-            program[entrypoint], ignore_uncountable)
+            t_unit[entrypoint], ignore_uncountable)
 
-    write_footprints = AccessFootprintGatherer.combine(write_footprints)
-    read_footprints = AccessFootprintGatherer.combine(read_footprints)
+    write_footprints = combine_footprint_maps(write_footprints)
+    read_footprints = combine_footprint_maps(read_footprints)
 
     result = {}
 
@@ -2210,7 +2262,10 @@ def gather_access_footprints(program, ignore_uncountable=False, entrypoint=None)
     return result
 
 
-def gather_access_footprint_bytes(program, ignore_uncountable=False):
+def gather_access_footprint_bytes(
+            t_unit: TranslationUnit,
+            ignore_uncountable: bool = False
+        ):
     """Return a dictionary mapping ``(var_name, direction)`` to
     :class:`islpy.PwQPolynomial` instances capturing the number of bytes  are
     read/written (where *direction* is either ``read`` or ``write`` on array
@@ -2222,11 +2277,11 @@ def gather_access_footprint_bytes(program, ignore_uncountable=False):
     """
 
     from loopy.preprocess import infer_unknown_types, preprocess_program
-    kernel = infer_unknown_types(program, expect_completion=True)
+    kernel = infer_unknown_types(t_unit, expect_completion=True)
 
     from loopy.kernel import KernelState
     if kernel.state < KernelState.PREPROCESSED:
-        kernel = preprocess_program(program)
+        kernel = preprocess_program(t_unit)
 
     result = {}
     fp = gather_access_footprints(kernel,
