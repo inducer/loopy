@@ -25,6 +25,7 @@ import logging
 import numpy as np
 import pytest
 
+import namedisl as nisl
 import pyopencl as cl
 import pyopencl.clmath
 from pyopencl.tools import (  # ruff:ignore[unused-import]
@@ -718,25 +719,22 @@ def test_nested_substs_in_insns(ctx_factory: cl.CtxFactory):
 
 # {{{ test_map_domain_vs_split_iname
 
-def _ensure_dim_names_match_and_align(obj_map, tgt_map):
+def _ensure_dim_names_match(obj_map: nisl.Set, tgt_map: nisl.Set):
     # (This function is also defined in independent, unmerged branch
     # new-dependency-and-nest-constraint-semantics-development, and used in
     # child branches thereof. Once these branches are all merged, it may make
     # sense to move this function to a location for more general-purpose
     # machinery. In the other branches, this function's name excludes the
     # leading underscore.)
-    from islpy import align_spaces, dim_type as dt
+    from namedisl import DimType
 
     # first make sure names match
     if not all(
-            set(obj_map.get_var_names(dt)) == set(tgt_map.get_var_names(dt))
-            for dt in
-            [dt.in_, dt.out, dt.param]):
+            obj_map.space.dim_names(dt) == tgt_map.space.dim_names(dt)
+            for dt in [DimType.param, DimType.out]):
         raise ValueError(
             "Cannot align spaces; names don't match:\n%s\n%s"
             % (obj_map, tgt_map))
-
-    return align_spaces(obj_map, tgt_map)
 
 
 def test_map_domain_vs_split_iname(ctx_factory: cl.CtxFactory):
@@ -765,8 +763,7 @@ def test_map_domain_vs_split_iname(ctx_factory: cl.CtxFactory):
     knl_map_dom = ref_knl
 
     # Create map_domain mapping:
-    import islpy as isl
-    transform_map = isl.BasicMap(
+    transform_map = nisl.make_map(
         "[nt] -> {[t] -> [t_outer, t_inner]: "
         "0 <= t_inner < 32 and "
         "32*t_outer + t_inner = t and "
@@ -798,9 +795,9 @@ def test_map_domain_vs_split_iname(ctx_factory: cl.CtxFactory):
     for d_map_domain, d_split_iname in zip(
             knl_map_dom["loopy_kernel"].domains,
             knl_split_iname["loopy_kernel"].domains, strict=True):
-        d_map_domain_aligned = _ensure_dim_names_match_and_align(
+        _ensure_dim_names_match(
             d_map_domain, d_split_iname)
-        assert d_map_domain_aligned == d_split_iname
+        assert d_map_domain.equals(d_split_iname)
 
     for litem_map_domain, litem_split_iname in zip(
             lin_knl_map_dom.linearization,
@@ -853,8 +850,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory
 
     # Create map_domain mapping that only includes t and y
     # (x and z should be unaffected)
-    import islpy as isl
-    transform_map = isl.BasicMap(
+    transform_map = nisl.make_map(
         "[nx,nt] -> {[t, y] -> [t_outer, t_inner, y_new]: "
         "0 <= t_inner < 16 and "
         "16*t_outer + t_inner = t and "
@@ -890,9 +886,8 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory
     for d_map_domain, d_split_iname in zip(
             knl_map_dom["loopy_kernel"].domains,
             knl_split_iname["loopy_kernel"].domains, strict=True):
-        d_map_domain_aligned = _ensure_dim_names_match_and_align(
-            d_map_domain, d_split_iname)
-        assert d_map_domain_aligned == d_split_iname
+        _ensure_dim_names_match(d_map_domain, d_split_iname)
+        assert d_map_domain.equals(d_split_iname)
 
     for litem_map_domain, litem_split_iname in zip(
             lin_knl_map_dom.linearization,
@@ -912,7 +907,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory
     # {{{ Make sure we error on a map that is not bijective
 
     # Not bijective
-    transform_map = isl.BasicMap(
+    transform_map = nisl.make_map(
         "[nx,nt] -> {[t, y, rogue] -> [t_new, y_new]: "
         "y = y_new and t = t_new"
         "}")
@@ -933,20 +928,20 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory
     test_maps = [
         # Map where some inames match exactly one domain but there's also a
         # rogue dim
-        isl.BasicMap(
+        nisl.make_map(
             "[nx,nt] -> {[t, y, rogue] -> [t_new, y_new, rogue_new]: "
             "y = y_new and t = t_new and rogue = rogue_new"
             "}"),
         # Map where all inames match exactly one domain but there's also a
         # rogue dim
-        isl.BasicMap(
+        nisl.make_map(
             "[nx,nt] -> {[t, y, x, z, rogue] -> "
             "[t_new, y_new, x_new, z_new, rogue_new]: "
             "y = y_new and t = t_new and x = x_new and z = z_new "
             "and rogue = rogue_new"
             "}"),
         # Map where no inames match any domain
-        isl.BasicMap(
+        nisl.make_map(
             "[nx,nt] -> {[rogue] -> [rogue_new]: "
             "rogue = rogue_new"
             "}"),
@@ -970,7 +965,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory
     knl = lp.prioritize_loops(knl, "y, z")
     knl = lp.prioritize_loops(knl, "x, z")
     try:
-        transform_map = isl.BasicMap(
+        transform_map = nisl.make_map(
             "[nx,nt] -> {[t, y] -> [t_new, y_new]: "
             "y = y_new and t = t_new }")
         knl = lp.map_domain(knl, transform_map)
@@ -1011,7 +1006,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory
 
     # This should fail:
     try:
-        transform_map = isl.BasicMap(
+        transform_map = nisl.make_map(
             "[n, m] -> {[i, j] -> [i_new, j_new]: "
             "i_new = i + j and j_new = 2 + i }")
         knl = lp.map_domain(knl, transform_map)
@@ -1022,7 +1017,7 @@ def test_map_domain_transform_map_validity_and_errors(ctx_factory: cl.CtxFactory
             in str(err))
 
     # This should succeed:
-    transform_map = isl.BasicMap(
+    transform_map = nisl.make_map(
         "[n, m] -> {[i] -> [i_new]: i_new = i + 2 }")
     knl = lp.map_domain(knl, transform_map)
 
@@ -1048,8 +1043,8 @@ def test_diamond_tiling(ctx_factory: cl.CtxFactory, interactive=False):
 
     ref_knl = lp.prioritize_loops(ref_knl, "it, ix")
 
-    import islpy as isl
-    m = isl.BasicMap(
+    import namedisl as nisl
+    m = nisl.make_map(
         "[nx,nt] -> {[ix, it] -> [tx, tt, tparity, itt, itx]: "
         "16*(tx - tt) + itx - itt = ix - it and "
         "16*(tx + tt + tparity) + itt + itx = ix + it and "
@@ -1230,7 +1225,6 @@ def test_rename_argument_with_auto_stride(ctx_factory: cl.CtxFactory):
 
 
 def test_rename_argument_with_assumptions():
-    import islpy as isl
     knl = lp.make_kernel(
             "{[i]: 0<=i<n_old}",
             """
@@ -1241,10 +1235,10 @@ def test_rename_argument_with_assumptions():
     knl = lp.rename_argument(knl, "n_old", "n_new")
     assumptions = knl["loopy_kernel"].assumptions
 
-    assert "n_old" not in assumptions.get_var_dict()
-    assert "n_new" in assumptions.get_var_dict()
+    assert "n_old" not in assumptions.space.names
+    assert "n_new" in assumptions.space.names
     assert (
-            (assumptions & isl.BasicSet("[n_new]->{: n_new=10}"))
+            (assumptions & nisl.make_set("[n_new]->{: n_new=10}"))
             == assumptions)
 
 

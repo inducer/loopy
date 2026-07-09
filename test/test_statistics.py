@@ -1290,7 +1290,7 @@ def test_gather_access_footprint():
     fp = gather_access_footprints(knl)
 
     for key, footprint in fp.items():
-        print(key, count(knl, footprint))
+        print(key, count(knl.default_entrypoint, footprint))
 
 
 def test_gather_access_footprint_2():
@@ -1305,8 +1305,8 @@ def test_gather_access_footprint_2():
 
     params = {"n": 200}
     for key, footprint in fp.items():
-        assert count(knl, footprint).eval_with_dict(params) == 200
-        print(key, count(knl, footprint))
+        assert count(knl.default_entrypoint, footprint).eval_with_dict(params) == 200
+        print(key, count(knl.default_entrypoint, footprint))
 
 
 def test_summations_and_filters():
@@ -1430,8 +1430,9 @@ def test_strided_footprint():
     x_l_foot = footprints["x", "read"]
 
     from loopy.statistics import count
-    num = count(knl, x_l_foot).eval_with_dict(param_dict)
-    denom = count(knl, x_l_foot.remove_divs()).eval_with_dict(param_dict)
+    num = count(knl.default_entrypoint, x_l_foot).eval_with_dict(param_dict)
+    denom = count(knl.default_entrypoint,
+        x_l_foot.remove_divs()).eval_with_dict(param_dict)
 
     assert 2*num < denom
 

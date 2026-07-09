@@ -26,37 +26,36 @@ THE SOFTWARE.
 
 from typing import TYPE_CHECKING
 
-import islpy as isl
-from islpy import dim_type
+from namedisl import DimType
 
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Sequence
 
+    import namedisl as nisl
+
     from loopy.codegen.tools import CodegenOperationCacheManager
     from loopy.kernel import LoopKernel
-    from loopy.kernel.tools import SetOperationCacheManager
     from loopy.typing import InameStr
 
 
 # {{{ approximate, convex bounds check generator
 
 def get_approximate_convex_bounds_checks(
-            domain: isl.Set,
+            domain: nisl.Set,
             check_inames: Collection[InameStr],
-            implemented_domain: isl.Set,
-            op_cache_manager: SetOperationCacheManager
-        ) -> Sequence[isl.Constraint]:
+            implemented_domain: nisl.Set,
+            cache: nisl.Cache,
+        ) -> Sequence[nisl.Constraint]:
     domain = domain.remove_redundancies()
-    result = op_cache_manager.eliminate_except(domain, check_inames,
-            (dim_type.set,))
+    result = domain.eliminate_except(
+        check_inames, dim_type=DimType.out, cache=cache)
 
     # This is ok, because we're really looking for the
     # projection, with no remaining constraints from
     # the eliminated variables.
     result = result.remove_divs()
 
-    result, implemented_domain = isl.align_two(result, implemented_domain)
     result = result.gist(implemented_domain)
 
     # (see above)
@@ -64,7 +63,7 @@ def get_approximate_convex_bounds_checks(
 
     from loopy.isl_helpers import convexify
     result = convexify(result)
-    return result.get_constraints()
+    return result.constraints()
 
 # }}}
 

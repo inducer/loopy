@@ -2008,11 +2008,7 @@ def test_tight_loop_bounds(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    if (queue.device.platform.vendor == "Intel(R) Corporation"
-            and queue.device.driver_version in [
-                "2019.8.7.0",
-                "2019.8.8.0",
-                ]):
+    if queue.device.platform.vendor == "Intel(R) Corporation":
         pytest.skip("Intel CL miscompiles this kernel")
 
     knl = lp.make_kernel(

@@ -287,7 +287,13 @@ split_arg_axis = (MovedFunctionDeprecationWrapper(split_array_dim))
 
 # {{{ split_array_axis
 
-def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
+def _split_array_axis_inner(
+        kernel: LoopKernel,
+        array_name: str,
+        axis_nr: int,
+        count: int,
+        order: Literal["C", "F"] = "C"
+):
     if count == 1:
         return kernel
 
@@ -372,13 +378,10 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
 
     var_name_gen = kernel.get_var_name_generator()
 
-    def split_access_axis(expr):
-        idx = expr.index
-        if not isinstance(idx, tuple):
-            idx = (idx,)
-        idx = list(idx)
+    def split_access_axis(expr: p.Subscript):
+        idx = list(expr.index_tuple)
 
-        axis_idx = idx[axis_nr]
+        axis_idx = cast("p.ExpressionNode | int", idx[axis_nr])
 
         from loopy.symbolic import simplify_using_aff
         inner_index = simplify_using_aff(kernel, axis_idx % count)
@@ -405,8 +408,13 @@ def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
 
 
 @for_each_kernel
-def split_array_axis(kernel, array_names, axis_nr, count,
-        order="C"):
+def split_array_axis(
+        kernel: LoopKernel,
+        array_names: str | Sequence[str],
+        axis_nr: int,
+        count: int,
+        order: Literal["C", "F"] = "C"
+):
     """
     :arg array: a list of names of temporary variables or arguments. May
         also be a comma-separated string of these.

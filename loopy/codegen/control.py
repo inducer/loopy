@@ -28,8 +28,6 @@ from dataclasses import dataclass, replace
 from functools import partial
 from typing import TYPE_CHECKING, Any, TypeVar, final
 
-import islpy as isl
-
 from loopy.codegen.result import CodeGenerationResult, merge_codegen_results, wrap_in_if
 from loopy.diagnostic import LoopyError
 from loopy.schedule import (
@@ -52,6 +50,7 @@ if TYPE_CHECKING:
         Set as AbstractSet,
     )
 
+    import namedisl as nisl
     from pymbolic import Expression
 
     from loopy.codegen import CodeGenerationState
@@ -332,25 +331,26 @@ def build_loop_nest(
 
     @final
     class BoundsCheckCache:
-        def __init__(self, kernel: LoopKernel, impl_domain: isl.Set):
+        def __init__(self, kernel: LoopKernel, impl_domain: nisl.Set):
             self.kernel = kernel
             self.impl_domain = impl_domain
 
         @memoize_method
-        def __call__(
-                    self, check_inames: Collection[InameStr]
-                ) -> Sequence[isl.Constraint]:
+        def __call__(self,
+            check_inames: Collection[InameStr]
+        ) -> Sequence[nisl.Constraint]:
             if not check_inames:
                 return []
 
-            domain = isl.align_spaces(
-                    self.kernel.get_inames_domain(check_inames),
-                    self.impl_domain, obj_bigger_ok=True)
+            domain = self.kernel.get_inames_domain(check_inames)
+
             from loopy.codegen.bounds import get_approximate_convex_bounds_checks
-            # Each instruction individually gets its bounds checks,
+            # Each instruction individually gets its actual bounds checks,
             # so we can safely overapproximate here.
-            return get_approximate_convex_bounds_checks(domain.to_set(),
-                    check_inames, self.impl_domain, self.kernel.cache_manager)
+            return get_approximate_convex_bounds_checks(domain,
+                    check_inames, self.impl_domain, self.kernel.isl_cache)
+
+        # }}}
 
     def build_insn_group(
                 sched_index_info_entries: Sequence[ScheduleIndexInfo],
@@ -397,7 +397,7 @@ def build_loop_nest(
             # size requirement.
 
             found_hoists: list[
-                    tuple[int, Sequence[isl.Constraint], AbstractSet[Expression]]
+                    tuple[int, Sequence[nisl.Constraint], AbstractSet[Expression]]
                 ] = []
 
             candidate_group_length = 1
@@ -455,23 +455,18 @@ def build_loop_nest(
             # pick largest such group
             group_length, bounds_checks, pred_checks = max(found_hoists)
 
-            check_set: isl.BasicSet | None = None
+            check_set: nisl.BasicSet | None = None
             for cns in bounds_checks:
-                cns_set = (isl.BasicSet.universe(cns.get_space())
-                        .add_constraint(cns))
+                cns_set = cns.as_basic_set()
 
-                if check_set is None:
-                    check_set = cns_set
-                else:
-                    check_set, cns_set = isl.align_two(check_set, cns_set)
-                    check_set = check_set.intersect(cns_set)
+                check_set = cns_set if check_set is None else check_set & cns_set
 
             if check_set is None:
                 new_codegen_state = codegen_state
                 is_empty = False
             else:
                 is_empty = check_set.is_empty()
-                new_codegen_state = codegen_state.intersect(check_set.to_set())
+                new_codegen_state = codegen_state.intersect(check_set.as_set())
 
             if pred_checks:
                 new_codegen_state = new_codegen_state.copy(
@@ -517,7 +512,7 @@ def build_loop_nest(
                                 gen_code_inner: Callable[
                                     [CodeGenerationState],
                                     list[CodeGenerationResult[Any]]],
-                                bounds_checks: Sequence[isl.Constraint],
+                                bounds_checks: Sequence[nisl.Constraint],
                                 pred_checks: AbstractSet[Expression],
                                 inner_codegen_state: CodeGenerationState,
                             ) -> CodeGenerationResult[Any]:
@@ -539,11 +534,9 @@ def build_loop_nest(
 
                     cannot_vectorize = False
                     if new_codegen_state.vectorization_info is not None:
-                        from loopy.isl_helpers import obj_involves_variable
                         for cond in bounds_checks:
-                            if obj_involves_variable(
-                                    cond,
-                                    new_codegen_state.vectorization_info.iname):
+                            if cond.involves_dims(
+                                    [new_codegen_state.vectorization_info.iname]):
                                 cannot_vectorize = True
                                 break
 
@@ -559,8 +552,6 @@ def build_loop_nest(
             sched_index_info_entries = sched_index_info_entries[group_length:]
 
         return results
-
-    # }}}
 
     insn_group = build_insn_group(sched_index_info_entries, codegen_state)
     return merge_codegen_results(

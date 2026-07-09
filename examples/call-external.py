@@ -1,3 +1,5 @@
+from typing import override
+
 import numpy as np
 from constantdict import constantdict
 
@@ -12,13 +14,14 @@ from loopy.version import (
 # {{{ blas callable
 
 class CBLASGEMV(lp.ScalarCallable):
-    def with_types(self, arg_id_to_dtype, callables_table):
+    @override
+    def with_types(self, arg_id_to_dtype, clbl_inf_ctx):
         mat_dtype = arg_id_to_dtype.get(0)
         vec_dtype = arg_id_to_dtype.get(1)
 
         if mat_dtype is None or vec_dtype is None:
             # types aren't specialized enough to be resolved
-            return self, callables_table
+            return self, clbl_inf_ctx
 
         if mat_dtype != vec_dtype:
             raise LoopyError("GEMV requires same dtypes for matrix and "
@@ -37,16 +40,17 @@ class CBLASGEMV(lp.ScalarCallable):
                               0: vec_dtype,
                               1: vec_dtype,
                               -1: vec_dtype})),
-                callables_table)
+                clbl_inf_ctx)
 
-    def with_descrs(self, arg_id_to_descr, callables_table):
+    @override
+    def with_descrs(self, arg_id_to_descr, clbl_inf_ctx):
         mat_descr = arg_id_to_descr.get(0)
         vec_descr = arg_id_to_descr.get(1)
         res_descr = arg_id_to_descr.get(-1)
 
         if mat_descr is None or vec_descr is None or res_descr is None:
             # shapes aren't specialized enough to be resolved
-            return self, callables_table
+            return self, clbl_inf_ctx
 
         assert mat_descr.shape[1] == vec_descr.shape[0]
         assert mat_descr.shape[0] == res_descr.shape[0]
@@ -56,7 +60,7 @@ class CBLASGEMV(lp.ScalarCallable):
         assert mat_descr.dim_tags[1].stride == 1
         assert res_descr.dim_tags[0].stride == 1
 
-        return self.copy(arg_id_to_descr=arg_id_to_descr), callables_table
+        return self.copy(arg_id_to_descr=arg_id_to_descr), clbl_inf_ctx
 
     def emit_call_insn(self, insn, target, expression_to_code_mapper):
         from pymbolic import var
@@ -80,6 +84,7 @@ class CBLASGEMV(lp.ScalarCallable):
                 False  # cblas_gemv does not return anything
                 )
 
+    @override
     def generate_preambles(self, target):
         assert isinstance(target, CTarget)
         yield ("99_cblas", "#include <cblas.h>")
