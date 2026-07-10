@@ -9,15 +9,6 @@ From Loop Domains and Instructions
 
 .. autofunction:: make_kernel
 
-From Fortran
-------------
-
-.. autofunction:: parse_fortran
-
-.. autofunction:: parse_transformed_fortran
-
-.. autofunction:: c_preprocess
-
 From Other Kernels
 ------------------
 

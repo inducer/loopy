@@ -61,7 +61,7 @@ def main():
     parser.add_argument("infile", metavar="INPUT_FILE")
     parser.add_argument("outfile", default="-", metavar="OUTPUT_FILE",
             help="Defaults to stdout ('-').", nargs="?")
-    parser.add_argument("--lang", metavar="LANGUAGE", help="loopy|fortran")
+    parser.add_argument("--lang", metavar="LANGUAGE", help="loopy")
     parser.add_argument("--target", choices=(
         "opencl", "ispc", "ispc-occa", "c", "c-fortran", "cuda"),
         default="opencl")
@@ -104,13 +104,6 @@ def main():
         lang = {
                 ".py": "loopy",
                 ".loopy": "loopy",
-                ".floopy": "fortran",
-                ".f90": "fortran",
-                ".F90": "fortran",
-                ".fpp": "fortran",
-                ".f": "fortran",
-                ".f77": "fortran",
-                ".F77": "fortran",
                 }.get(ext)
         with open(args.infile) as infile_fd:
             infile_content = infile_fd.read()
@@ -159,25 +152,6 @@ def main():
                     "to be defined on exit") from err
 
         t_unit = [kernel]
-
-    elif lang in ["fortran", "floopy", "fpp"]:
-        pre_transform_code = None
-        if args.transform:
-            with open(args.transform) as xform_fd:
-                pre_transform_code = xform_fd.read()
-
-        if args.occa_defines:
-            if pre_transform_code is None:
-                pre_transform_code = ""
-
-            with open(args.occa_defines) as defines_fd:
-                pre_transform_code = (
-                        defines_to_python_code(defines_fd.read())
-                        + pre_transform_code)
-
-        t_unit = lp.parse_transformed_fortran(
-                infile_content, pre_transform_code=pre_transform_code,
-                filename=args.infile)
 
     else:
         raise RuntimeError("unknown language: '%s'"

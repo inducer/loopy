@@ -41,7 +41,7 @@ a :class:`~loopy.target.TargetBase`. Other foreign functions could be invoked by
 
 An example demonstrating registering a ``CBlasGemv`` as a loopy callable:
 
-.. literalinclude:: ../examples/python/call-external.py
+.. literalinclude:: ../examples/call-external.py
 
 Call Instruction for a kernel call
 ----------------------------------
