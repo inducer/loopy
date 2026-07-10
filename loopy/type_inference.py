@@ -719,9 +719,6 @@ class TypeInferenceMapper(CombineMapper[Sequence[LoopyType], []]):
     def map_sub_array_ref(self, expr: SubArrayRef):
         return self.rec(expr.subscript)
 
-    def map_fortran_division(self, expr):
-        return self.combine((self.rec(expr.numerator), self.rec(expr.denominator)))
-
     @override
     def map_nan(self, expr: p.NaN):
         if expr.data_type is None:

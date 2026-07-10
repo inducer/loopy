@@ -32,11 +32,6 @@ from loopy.auto_test import auto_test_vs_ref
 from loopy.codegen import PreambleInfo, generate_body, generate_code, generate_code_v2
 from loopy.codegen.result import CodeGenerationResult, GeneratedProgram
 from loopy.diagnostic import LoopyError, LoopyWarning
-from loopy.frontend.fortran import (
-    c_preprocess,
-    parse_fortran,
-    parse_transformed_fortran,
-)
 from loopy.kernel import KernelState, LoopKernel
 from loopy.kernel.creation import UniqueName, make_function, make_kernel
 from loopy.kernel.data import (
@@ -311,7 +306,6 @@ __all__ = [
     "auto",
     "auto_test_vs_ref",
     "buffer_array",
-    "c_preprocess",
     "change_arg_to_image",
     "chunk_iname",
     "clear_in_mem_caches",
@@ -365,8 +359,6 @@ __all__ = [
     "memoize_on_disk",
     "merge",
     "pack_and_unpack_args_for_call",
-    "parse_fortran",
-    "parse_transformed_fortran",
     "precompute",
     "preprocess_kernel",
     "preprocess_program",

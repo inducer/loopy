@@ -187,11 +187,11 @@ source of examples. Here are some links:
 
 Here's a more complicated example of a loopy code:
 
-.. literalinclude:: ../examples/python/find-centers.py
+.. literalinclude:: ../examples/find-centers.py
     :language: python
 
 This example is included in the :mod:`loopy` distribution as
-:download:`examples/python/find-centers.py <../examples/python/find-centers.py>`.
+:download:`examples/find-centers.py <../examples/find-centers.py>`.
 What this does is find nearby "centers" satisfying some criteria
 for an array of points ("targets").
 
@@ -362,14 +362,14 @@ don't already have one, :func:`loopy.split_iname` will easily produce one.
 Lastly, both the array axis an the iname need the implementation tag ``"vec"``.
 Here is an example of this machinery in action:
 
-.. literalinclude:: ../examples/python/vector-types.py
+.. literalinclude:: ../examples/vector-types.py
     :language: python
 
 Note how the example slices off the last 'slab' of iterations to ensure that
 the bulk of the iteration does not require conditionals which would prevent
 successful vectorization. This generates the following code:
 
-.. literalinclude:: ../examples/python/vector-types.cl
+.. literalinclude:: ../examples/vector-types.cl
     :language: c
 
 What is the story with language versioning?

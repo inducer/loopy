@@ -263,8 +263,6 @@ class IdentityMapperMixin(Mapper[Expression, P]):
 
     map_linear_subscript: Callable[Concatenate[Self, LinearSubscript, P],
                                    Expression] = IdentityMapperBase.map_subscript
-    map_fortran_division: Callable[Concatenate[Self, FortranDivision, P],
-                                   Expression] = IdentityMapperBase.map_quotient
 
 
 class FlattenMapper(FlattenMapperBase, IdentityMapperMixin[[]]):
@@ -368,9 +366,6 @@ class WalkMapperMixin(WalkMapperBase[P]):
 
         self.rec(expr.function, *args, **kwargs)
 
-    map_fortran_division: Callable[Concatenate[Self, FortranDivision, P],
-                                   None] = WalkMapperBase.map_quotient
-
 
 class WalkMapper(WalkMapperMixin[P], WalkMapperBase[P]):
     pass
@@ -410,12 +405,6 @@ class CombineMapper(CombineMapperBase[ResultT, P]):
         return self.combine(
                 [self.rec(expr.aggregate, *args, **kwargs),
                     self.rec(expr.index, *args, **kwargs)])
-
-    def map_fortran_division(self, expr: FortranDivision, /,
-                             *args: P.args, **kwargs: P.kwargs) -> ResultT:
-        return self.combine((
-            self.rec(expr.numerator, *args, **kwargs),
-            self.rec(expr.denominator, *args, **kwargs)))
 
 
 class SubstitutionMapper(
@@ -494,12 +483,6 @@ class StringifyMapper(StringifyMapperBase[[]]):
         subscr = self.rec(expr.subscript, enclosing_prec)
 
         return f"[{inames}]: {subscr}"
-
-    def map_fortran_division(self, expr: FortranDivision, /,
-                             enclosing_prec: int) -> str:
-        from pymbolic.mapper.stringifier import PREC_NONE
-        result = self.map_quotient(expr, PREC_NONE)  # pyright: ignore[reportArgumentType]
-        return f"[FORTRANDIV]({result})"
 
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
@@ -594,9 +577,6 @@ class DependencyMapper(DependencyMapperBase[P]):
                              *args: P.args, **kwargs: P.kwargs) -> Dependencies:
         # See https://github.com/inducer/loopy/pull/323
         raise NotImplementedError
-
-    map_fortran_division: Callable[Concatenate[Self, FortranDivision, P],
-                                   Dependencies] = DependencyMapperBase.map_quotient
 
 
 class SubstitutionRuleExpander(IdentityMapper[[]]):
@@ -1120,22 +1100,6 @@ class SubArrayRef(LoopyExpressionBase):
         for iname in self.swept_inames:
             assert isinstance(iname, p.Variable)
         assert isinstance(self.subscript, p.Subscript)
-
-
-@p.expr_dataclass()
-class FortranDivision(p.QuotientBase, LoopyExpressionBase):
-    """This exists for the benefit of the Fortran frontend, which specializes
-    to floating point division for floating point inputs and round-to-zero
-    division for integer inputs.
-
-    Despite the name, this would also be usable for C semantics. (:mod:`loopy`
-    division semantics match Python's.)
-
-    .. note::
-
-        This is not a documented expression node type. It may disappear
-        at any moment.
-    """
 
 # }}}
 

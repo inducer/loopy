@@ -49,10 +49,6 @@ dependencies = [
 pyopencl = [
     "pyopencl>=2022.3",
 ]
-fortran = [
-    "fparser>=0.2.0",
-    "ply>=3.6",
-]
 
 [dependency-groups]
 dev = [
@@ -127,7 +123,6 @@ extend-ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "test/test_loopy.py" = ["B023"]
-"loopy/frontend/fortran/translator.py" = ["N802", "B028"]
 "proto-tests/*.py" = ["B"]
 "contrib/**/*.py" = ["I002"]
 "doc/conf.py" = ["I002", "S102"]
@@ -172,8 +167,6 @@ ND = "ND"
 ue = "ue"
 # used in an ordering context, "ab" / "ba"
 ba = "ba"
-# Fortran Loopy
-floopy = "floopy"
 
 [tool.typos.files]
 extend-exclude = [
@@ -215,7 +208,6 @@ exclude = [
     "proto-tests/*.py",
     "contrib/mem-pattern-explorer/*.py",
     "loopy/ipython_ext.py",
-    "loopy/frontend/fortran/*.py",
     "doc",
     ".conda-root",
     ".venv",
@@ -240,7 +232,6 @@ project-excludes = [
     "proto-tests/*.py",
     "contrib/mem-pattern-explorer/*.py",
     "loopy/ipython_ext.py",
-    "loopy/frontend/fortran/*.py",
     "doc",
     ".conda-root",
     ".venv",
