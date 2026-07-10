@@ -118,7 +118,7 @@ Pytest POCL Examples:
   - python3
   - pocl
   - large-node
-  # For examples/python/ispc-stream-harness.py
+  # For examples/ispc-stream-harness.py
   - avx2
   except:
   - tags
