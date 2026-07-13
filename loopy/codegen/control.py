@@ -337,7 +337,9 @@ def build_loop_nest(
             self.impl_domain = impl_domain
 
         @memoize_method
-        def __call__(self, check_inames: Collection[InameStr]):
+        def __call__(
+                    self, check_inames: Collection[InameStr]
+                ) -> Sequence[isl.Constraint]:
             if not check_inames:
                 return []
 
@@ -374,181 +376,189 @@ def build_loop_nest(
         # to done_group_length. (It'll also chop the set of schedule indices
         # considered down so that a callee cannot find a *longer* hoist group.)
         #
-        # Upon return the hoist is wrapped around the returned code and
-        # build_insn_group calls itself for the remainder of schedule indices
-        # that were not in the hoist group.
+        # Upon return the hoist is wrapped around the returned code, and the
+        # loop advances to the remainder of schedule indices that were not in the
+        # hoist group.
 
-        if not sched_index_info_entries:
-            return []
-
-        origin_si_entry = sched_index_info_entries[0]
-        current_iname_set = origin_si_entry.admissible_cond_inames
-        current_pred_set = (origin_si_entry.required_predicates
-                - codegen_state.implemented_predicates)
-
-        # {{{ grow schedule item group
-
-        # Keep growing schedule item group as long as group fulfills minimum
-        # size requirement.
+        results: list[CodeGenerationResult[Any]] = []
 
         bounds_check_cache = BoundsCheckCache(
                 kernel, codegen_state.implemented_domain)
 
-        found_hoists: list[
-                tuple[int, Sequence[isl.Constraint], AbstractSet[Expression]]
-            ] = []
+        while sched_index_info_entries:
+            origin_si_entry = sched_index_info_entries[0]
+            current_iname_set = origin_si_entry.admissible_cond_inames
+            current_pred_set = (origin_si_entry.required_predicates
+                    - codegen_state.implemented_predicates)
 
-        candidate_group_length = 1
-        while candidate_group_length <= len(sched_index_info_entries):
-            if candidate_group_length in done_group_lengths:
+            # {{{ grow schedule item group
+
+            # Keep growing schedule item group as long as group fulfills minimum
+            # size requirement.
+
+            found_hoists: list[
+                    tuple[int, Sequence[isl.Constraint], AbstractSet[Expression]]
+                ] = []
+
+            candidate_group_length = 1
+            while candidate_group_length <= len(sched_index_info_entries):
+                if candidate_group_length in done_group_lengths:
+                    candidate_group_length += 1
+                    continue
+
+                current_iname_set = (
+                        current_iname_set
+                        & sched_index_info_entries[candidate_group_length-1]
+                        .admissible_cond_inames)
+                current_pred_set = (
+                        current_pred_set
+                        & sched_index_info_entries[candidate_group_length-1]
+                        .required_predicates)
+
+                current_pred_set = frozenset(
+                        pred for pred in current_pred_set
+                        if get_dependencies(pred) & kernel.all_inames()
+                        <= current_iname_set)
+
+                # {{{ see which inames are actually used in group
+
+                # And only generate conditionals for those.
+                used_inames = set()
+                for sched_index_info_entry in \
+                        sched_index_info_entries[0:candidate_group_length]:
+                    used_inames |= sched_index_info_entry.used_inames_within
+
+                # }}}
+
+                only_unshared_inames = kernel._remove_inames_for_shared_hw_axes(
+                        current_iname_set & used_inames)
+
+                bounds_checks = bounds_check_cache(only_unshared_inames)
+
+                if (bounds_checks  # found a bounds check
+                        or current_pred_set
+                        or candidate_group_length == 1):
+                    # length-1 must always be an option to reach the base
+                    # case below
+                    found_hoists.append((candidate_group_length,
+                        bounds_checks, current_pred_set))
+
+                if not bounds_checks and not current_pred_set:
+                    # already no more checks possible, let's not waste time
+                    # checking longer groups.
+                    break
+
                 candidate_group_length += 1
-                continue
-
-            current_iname_set = (
-                    current_iname_set
-                    & sched_index_info_entries[candidate_group_length-1]
-                    .admissible_cond_inames)
-            current_pred_set = (
-                    current_pred_set
-                    & sched_index_info_entries[candidate_group_length-1]
-                    .required_predicates)
-
-            current_pred_set = frozenset(
-                    pred for pred in current_pred_set
-                    if get_dependencies(pred) & kernel.all_inames()
-                    <= current_iname_set)
-
-            # {{{ see which inames are actually used in group
-
-            # And only generate conditionals for those.
-            used_inames = set()
-            for sched_index_info_entry in \
-                    sched_index_info_entries[0:candidate_group_length]:
-                used_inames |= sched_index_info_entry.used_inames_within
 
             # }}}
 
-            only_unshared_inames = kernel._remove_inames_for_shared_hw_axes(
-                    current_iname_set & used_inames)
+            # pick largest such group
+            group_length, bounds_checks, pred_checks = max(found_hoists)
 
-            bounds_checks = bounds_check_cache(only_unshared_inames)
+            check_set: isl.BasicSet | None = None
+            for cns in bounds_checks:
+                cns_set = (isl.BasicSet.universe(cns.get_space())
+                        .add_constraint(cns))
 
-            if (bounds_checks  # found a bounds check
-                    or current_pred_set
-                    or candidate_group_length == 1):
-                # length-1 must always be an option to reach the recursion base
-                # case below
-                found_hoists.append((candidate_group_length,
-                    bounds_checks, current_pred_set))
-
-            if not bounds_checks and not current_pred_set:
-                # already no more checks possible, let's not waste time
-                # checking longer groups.
-                break
-
-            candidate_group_length += 1
-
-        # }}}
-
-        # pick largest such group
-        group_length, bounds_checks, pred_checks = max(found_hoists)
-
-        check_set = None
-        for cns in bounds_checks:
-            cns_set = (isl.BasicSet.universe(cns.get_space())
-                    .add_constraint(cns))
+                if check_set is None:
+                    check_set = cns_set
+                else:
+                    check_set, cns_set = isl.align_two(check_set, cns_set)
+                    check_set = check_set.intersect(cns_set)
 
             if check_set is None:
-                check_set = cns_set
+                new_codegen_state = codegen_state
+                is_empty = False
             else:
-                check_set, cns_set = isl.align_two(check_set, cns_set)
-                check_set = check_set.intersect(cns_set)
+                is_empty = check_set.is_empty()
+                new_codegen_state = codegen_state.intersect(check_set.to_set())
 
-        if check_set is None:
-            new_codegen_state = codegen_state
-            is_empty = False
-        else:
-            is_empty = check_set.is_empty()
-            new_codegen_state = codegen_state.intersect(check_set.to_set())
+            if pred_checks:
+                new_codegen_state = new_codegen_state.copy(
+                        implemented_predicates=(
+                            new_codegen_state.implemented_predicates
+                            | pred_checks))
 
-        if pred_checks:
-            new_codegen_state = new_codegen_state.copy(
-                    implemented_predicates=new_codegen_state.implemented_predicates
-                    | pred_checks)
-
-        if is_empty:
-            result: list[CodeGenerationResult[Any]] = []
-        else:
-            if group_length == 1:
-                # group only contains starting schedule item
-                def gen_code(inner_codegen_state: CodeGenerationState):
-                    result: list[CodeGenerationResult[Any]] = []
-                    for i in origin_si_entry.schedule_indices:
-                        inner = generate_code_for_sched_index(
-                            inner_codegen_state, i)
-
-                        if inner is not None:
-                            result.append(inner)
-
-                    return result
-
+            if is_empty:
+                result: list[CodeGenerationResult[Any]] = []
             else:
-                # recurse with a bigger done_group_lengths
-                def gen_code(inner_codegen_state: CodeGenerationState):
-                    return build_insn_group(
+                if group_length == 1:
+                    # group only contains starting schedule item
+                    def gen_code_for_entry(
+                                si_entry: ScheduleIndexInfo,
+                                inner_codegen_state: CodeGenerationState,
+                            ) -> list[CodeGenerationResult[Any]]:
+                        result: list[CodeGenerationResult[Any]] = []
+                        for i in si_entry.schedule_indices:
+                            inner = generate_code_for_sched_index(
+                                inner_codegen_state, i)
+
+                            if inner is not None:
+                                result.append(inner)
+
+                        return result
+
+                    gen_code = partial(gen_code_for_entry, origin_si_entry)
+
+                else:
+                    # recurse with a bigger done_group_lengths
+                    gen_code = partial(
+                            build_insn_group,
                             sched_index_info_entries[0:group_length],
-                            inner_codegen_state,
                             done_group_lengths=(
                                 done_group_lengths | {group_length}))
 
-            # gen_code returns a list
+                # gen_code returns a list
 
-            if bounds_checks or pred_checks:
-                from loopy.symbolic import constraint_to_cond_expr
+                if bounds_checks or pred_checks:
+                    from loopy.symbolic import constraint_to_cond_expr
 
-                prev_gen_code = gen_code
+                    def gen_code_with_checks(
+                                gen_code_inner: Callable[
+                                    [CodeGenerationState],
+                                    list[CodeGenerationResult[Any]]],
+                                bounds_checks: Sequence[isl.Constraint],
+                                pred_checks: AbstractSet[Expression],
+                                inner_codegen_state: CodeGenerationState,
+                            ) -> CodeGenerationResult[Any]:
+                        condition_exprs = ([
+                                constraint_to_cond_expr(cns)
+                                for cns in bounds_checks]
+                                + sorted(pred_checks, key=repr))
 
-                def gen_code(
-                            inner_codegen_state: CodeGenerationState
-                        ) -> CodeGenerationResult[Any]:
-                    condition_exprs = ([
-                            constraint_to_cond_expr(cns)
-                            for cns in bounds_checks]
-                            + sorted(pred_checks, key=lambda pred: repr(pred)))
+                        prev_result = gen_code_inner(inner_codegen_state)
 
-                    prev_result = prev_gen_code(inner_codegen_state)
+                        return wrap_in_if(
+                            inner_codegen_state,
+                            condition_exprs,
+                            merge_codegen_results(codegen_state, prev_result))
 
-                    return wrap_in_if(
-                        inner_codegen_state,
-                        condition_exprs,
-                        merge_codegen_results(codegen_state, prev_result))
+                    gen_code_checked = partial(
+                            gen_code_with_checks,
+                            gen_code, bounds_checks, pred_checks)
 
-                cannot_vectorize = False
-                if new_codegen_state.vectorization_info is not None:
-                    from loopy.isl_helpers import obj_involves_variable
-                    for cond in bounds_checks:
-                        if obj_involves_variable(
-                                cond,
-                                new_codegen_state.vectorization_info.iname):
-                            cannot_vectorize = True
-                            break
+                    cannot_vectorize = False
+                    if new_codegen_state.vectorization_info is not None:
+                        from loopy.isl_helpers import obj_involves_variable
+                        for cond in bounds_checks:
+                            if obj_involves_variable(
+                                    cond,
+                                    new_codegen_state.vectorization_info.iname):
+                                cannot_vectorize = True
+                                break
 
-                if cannot_vectorize:
-                    def gen_code_wrapper(inner_codegen_state: CodeGenerationState):
-                        # gen_code returns a list, but this needs to return a
-                        # GeneratedCode instance.
+                    if cannot_vectorize:
+                        result = [new_codegen_state.unvectorize(gen_code_checked)]
+                    else:
+                        result = [gen_code_checked(new_codegen_state)]
 
-                        return gen_code(inner_codegen_state)
-
-                    result = [new_codegen_state.unvectorize(gen_code_wrapper)]
                 else:
-                    result = [gen_code(new_codegen_state)]
+                    result = gen_code(new_codegen_state)
 
-            else:
-                result = gen_code(new_codegen_state)
+            results.extend(result)
+            sched_index_info_entries = sched_index_info_entries[group_length:]
 
-        return result + build_insn_group(
-                sched_index_info_entries[group_length:], codegen_state)
+        return results
 
     # }}}
 
