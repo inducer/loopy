@@ -31,7 +31,7 @@ from islpy import dim_type
 
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Collection, Sequence
 
     from loopy.codegen.tools import CodegenOperationCacheManager
     from loopy.kernel import LoopKernel
@@ -46,7 +46,7 @@ def get_approximate_convex_bounds_checks(
             check_inames: Collection[InameStr],
             implemented_domain: isl.Set,
             op_cache_manager: SetOperationCacheManager
-        ):
+        ) -> Sequence[isl.Constraint]:
     domain = domain.remove_redundancies()
     result = op_cache_manager.eliminate_except(domain, check_inames,
             (dim_type.set,))
