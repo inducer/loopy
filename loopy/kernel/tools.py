@@ -577,7 +577,10 @@ class DomainChanger:
         return result
 
     def get_kernel_with(self, replacement: isl.BasicSet):
-        return self.kernel.copy(
+        if replacement == self.domain:
+            return self.kernel
+        else:
+            return self.kernel.copy(
                 domains=self.get_domains_with(replacement),
 
                 # Changing the domain might look like it wants to change grid
