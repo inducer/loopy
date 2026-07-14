@@ -2142,7 +2142,8 @@ def realize_reduction_for_single_kernel(
             )
 
             if kernel_has_global_barriers(orig_kernel):
-                global_barrier = find_most_recent_global_barrier(kernel, insn.id)
+                global_barrier = find_most_recent_global_barrier(
+                    orig_kernel, insn.id)
 
                 if global_barrier is not None:
                     gb_dep = frozenset([global_barrier])
