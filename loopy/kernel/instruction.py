@@ -873,7 +873,7 @@ class MultiAssignmentBase(InstructionBase):
 
 # {{{ instruction: assignment
 
-class _not_provided:  # noqa: N801
+class _not_provided:  # ruff:ignore[invalid-class-name]
     pass
 
 

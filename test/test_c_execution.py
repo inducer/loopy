@@ -27,7 +27,9 @@ import pytest
 
 import loopy as lp
 from loopy import CACHING_ENABLED
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -270,7 +272,7 @@ def test_c_execution_with_global_temporaries():
     # global constant temporaries is None
 
     from loopy.target.c import ExecutableCTarget
-    AS = lp.AddressSpace        # noqa: N806
+    AS = lp.AddressSpace        # ruff:ignore[non-lowercase-variable-in-function]
     n = 10
 
     knl = lp.make_kernel("{[i]: 0 <= i < n}",
@@ -363,7 +365,7 @@ def test_scalar_global_args():
             "res  = sum(i, i)",
             target=lp.ExecutableCTarget())(n=n)
 
-    assert out == (n*(n-1)/2)  # noqa: RUF069
+    assert out == (n*(n-1)/2)  # ruff:ignore[float-equality-comparison]
 
 
 if __name__ == "__main__":

@@ -13,7 +13,9 @@ from loopy.tools import (
     cptr_from_numpy,
     empty_aligned,
 )
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 def transform(knl, vars, stream_dtype):

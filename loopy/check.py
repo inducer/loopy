@@ -922,7 +922,7 @@ def _check_bounds_inner(kernel: LoopKernel, callables_table: CallablesTable) -> 
             domain_with_assumptions = domain & assumptions
 
         def run_acm(expr: Expression):
-            acm(expr, domain_with_assumptions, insn.id)  # noqa: B023
+            acm(expr, domain_with_assumptions, insn.id)  # ruff:ignore[function-uses-loop-variable]
             return expr
 
         insn.with_transformed_expressions(run_acm)

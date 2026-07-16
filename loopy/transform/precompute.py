@@ -368,7 +368,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
                 continue
 
             insn = insn.with_transformed_expressions(
-                    lambda expr: self(expr, kernel, insn))  # noqa: B023
+                    lambda expr: self(expr, kernel, insn))  # ruff:ignore[function-uses-loop-variable]
 
             if self.replaced_something:
                 insn = insn.copy(
@@ -1046,7 +1046,7 @@ def precompute_for_single_kernel(
                 and insn.within_inames & prior_storage_axis_names):
             insn = (insn
                     .with_transformed_expressions(
-                        lambda expr: expr_subst_map(expr, kernel, insn))  # noqa: B023
+                        lambda expr: expr_subst_map(expr, kernel, insn))  # ruff:ignore[function-uses-loop-variable]
                     .copy(within_inames=frozenset(
                         new_iname
                         for iname in insn.within_inames

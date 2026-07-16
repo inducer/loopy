@@ -27,7 +27,7 @@ class ArrayAccessPatternContext:
 
         self.arrays = []
 
-    def l(self, index):  # noqa: E743
+    def l(self, index):  # ruff:ignore[ambiguous-function-name]
         subscript = [np.newaxis] * self.ind_length
         subscript[len(self.gsize) + index] = slice(None)
 

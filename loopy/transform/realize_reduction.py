@@ -745,7 +745,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(
 
         last_added_insn_id = insn.id
 
-        FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa: N806
+        FIRST_POINTER_ASSIGNEE_IDX = 1  # ruff:ignore[non-lowercase-variable-in-function]
 
         for assignee_nr, assignee_var_name, assignee in zip(
                 range(FIRST_POINTER_ASSIGNEE_IDX, len(assignees)),

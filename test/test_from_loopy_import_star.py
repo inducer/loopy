@@ -1,1 +1,1 @@
-from loopy import *  # noqa: F403
+from loopy import *  # ruff:ignore[undefined-local-with-import-star]

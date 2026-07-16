@@ -61,7 +61,7 @@ class SubscriptRewriter(RuleAwareIdentityMapper[[]]):
             and not any(name in self.arg_names for name in insn.dependency_names())
             else self.map_instruction(kernel,
                 insn.with_transformed_expressions(
-                    lambda expr: self(expr, kernel, insn)))  # noqa: B023
+                    lambda expr: self(expr, kernel, insn)))  # ruff:ignore[function-uses-loop-variable]
             for insn in kernel.instructions]
 
         return kernel.copy(instructions=new_insns)

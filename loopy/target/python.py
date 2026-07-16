@@ -163,7 +163,7 @@ class ExpressionToPythonMapper(StringifyMapper[[]]):
         # Synthesize PREC_IFTHENELSE, make sure it is in the right place in the
         # operator precedence hierarchy (right above "or").
         from pymbolic.mapper.stringifier import PREC_LOGICAL_OR
-        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1  # noqa: N806
+        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1  # ruff:ignore[non-lowercase-variable-in-function]
 
         then_ = self.rec(expr.then, PREC_LOGICAL_OR)
         cond_ = self.rec(expr.condition, PREC_LOGICAL_OR)

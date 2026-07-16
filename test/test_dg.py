@@ -26,12 +26,14 @@ import numpy as np
 
 import pyopencl as cl
 import pyopencl.array
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -44,10 +46,10 @@ def test_dg_volume(ctx_factory: cl.CtxFactory):
 
     order = "F"
 
-    N = 3  # noqa: N806
-    Np = (N+1)*(N+2)*(N+3)//6  # noqa: N806
+    N = 3  # ruff:ignore[non-lowercase-variable-in-function]
+    Np = (N+1)*(N+2)*(N+3)//6  # ruff:ignore[non-lowercase-variable-in-function]
 
-    K = 10000  # noqa: N806
+    K = 10000  # ruff:ignore[non-lowercase-variable-in-function]
 
     knl = lp.make_kernel([
             "{[n,m,k]: 0<= n,m < Np and 0<= k < K}",
@@ -170,12 +172,12 @@ def no_test_dg_surface(ctx_factory: cl.CtxFactory):
 
     order = "F"
 
-    N = 3  # noqa: N806
-    Np = (N+1)*(N+2)*(N+3)//6  # noqa: N806
-    Nfp = (N+1)*(N+2)//2  # noqa: N806
-    Nfaces = 4  # noqa: N806
+    N = 3  # ruff:ignore[non-lowercase-variable-in-function]
+    Np = (N+1)*(N+2)*(N+3)//6  # ruff:ignore[non-lowercase-variable-in-function]
+    Nfp = (N+1)*(N+2)//2  # ruff:ignore[non-lowercase-variable-in-function]
+    Nfaces = 4  # ruff:ignore[non-lowercase-variable-in-function]
 
-    K = 10000  # noqa: N806
+    K = 10000  # ruff:ignore[non-lowercase-variable-in-function]
 
     knl = lp.make_kernel(
             [

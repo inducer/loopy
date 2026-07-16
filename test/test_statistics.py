@@ -25,7 +25,7 @@ import logging
 import numpy as np
 
 from pymbolic.primitives import Variable
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 from pytools import div_ceil
@@ -33,7 +33,9 @@ from pytools import div_ceil
 import loopy as lp
 from loopy.statistics import CountGranularity as CG
 from loopy.types import to_loopy_type
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -269,7 +271,7 @@ def test_op_counter_triangular_domain():
     expect_fallback = False
     import islpy as isl
     try:
-        isl.BasicSet.card  # noqa: B018
+        isl.BasicSet.card  # ruff:ignore[useless-expression]
     except AttributeError:
         expect_fallback = True
     else:
@@ -700,7 +702,7 @@ def test_mem_access_counter_mixed():
     expect_fallback = False
     import islpy as isl
     try:
-        isl.BasicSet.card  # noqa: B018
+        isl.BasicSet.card  # ruff:ignore[useless-expression]
     except AttributeError:
         expect_fallback = True
     else:
@@ -1081,7 +1083,7 @@ def test_all_counters_parallel_matmul():
     sync_map = lp.get_synchronization_map(knl)
     assert len(sync_map) == 2
     assert sync_map.filter_by(kind="kernel_launch").eval_and_sum(params) == 1
-    assert sync_map.filter_by(kind="barrier_local").eval_and_sum(params) == 2*m/bsize  # noqa: RUF069
+    assert sync_map.filter_by(kind="barrier_local").eval_and_sum(params) == 2*m/bsize  # ruff:ignore[float-equality-comparison]
 
     op_map = lp.get_op_map(knl, subgroup_size=SGS, count_redundant_work=True)
     f32mul = op_map[
@@ -1164,7 +1166,7 @@ def test_all_counters_parallel_matmul():
                                           ).eval_and_sum(params)
 
     # (count-per-sub-group)*n_subgroups
-    assert local_mem_s == m*2/bsize*n_subgroups  # noqa: RUF069
+    assert local_mem_s == m*2/bsize*n_subgroups  # ruff:ignore[float-equality-comparison]
 
 
 def test_floor_div_coefficient_collector():

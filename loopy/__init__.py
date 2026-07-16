@@ -683,7 +683,7 @@ def set_default_target(target: Callable[[], TargetBase] | None):
 
 def _set_up_default_target():
     try:
-        import pyopencl  # noqa: F401
+        import pyopencl  # ruff:ignore[unused-import]
     except ImportError:
         from loopy.target.opencl import OpenCLTarget
         target = OpenCLTarget

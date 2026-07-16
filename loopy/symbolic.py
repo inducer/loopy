@@ -1176,11 +1176,11 @@ class SubArrayRefSweptInamesCollector(CombineMapper[AbstractSet[str], []]):
 
     map_constant: Callable[[Self, object], AbstractSet[str]] = _map_no_swept_inames
     map_variable: Callable[[Self, p.Variable], AbstractSet[str]] = _map_no_swept_inames
-    map_function_symbol: Callable[[Self, p.FunctionSymbol], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
+    map_function_symbol: Callable[[Self, p.FunctionSymbol], AbstractSet[str]] = _map_no_swept_inames  # ruff:ignore[line-too-long]
     map_nan: Callable[[Self, p.NaN], AbstractSet[str]] = _map_no_swept_inames
-    map_tagged_variable: Callable[[Self, TaggedVariable], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
+    map_tagged_variable: Callable[[Self, TaggedVariable], AbstractSet[str]] = _map_no_swept_inames  # ruff:ignore[line-too-long]
     map_type_cast: Callable[[Self, TypeCast], AbstractSet[str]] = _map_no_swept_inames
-    map_resolved_function: Callable[[Self, ResolvedFunction], AbstractSet[str]] = _map_no_swept_inames  # noqa: E501
+    map_resolved_function: Callable[[Self, ResolvedFunction], AbstractSet[str]] = _map_no_swept_inames  # ruff:ignore[line-too-long]
 
 
 def get_sub_array_ref_swept_inames(expr: SubArrayRef) -> AbstractSet[str]:
@@ -1563,7 +1563,7 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
             insn if not kernel.substitutions and not within(kernel, insn, ()) else
             self.map_instruction(kernel,
                 insn.with_transformed_expressions(
-                    lambda expr: self(expr, kernel, insn)))  # noqa: B023 # pyright: ignore[reportCallIssue]
+                    lambda expr: self(expr, kernel, insn)))  # ruff:ignore[function-uses-loop-variable] # pyright: ignore[reportCallIssue]
             for insn in kernel.instructions]
 
         from functools import partial

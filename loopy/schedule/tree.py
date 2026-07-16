@@ -38,7 +38,9 @@ from dataclasses import dataclass
 from functools import cached_property, reduce
 from typing import Generic, TypeVar
 
-from constantdict import constantdict as Map  # noqa: N812
+from constantdict import (
+    constantdict as Map,  # ruff:ignore[lowercase-imported-as-non-lowercase]
+)
 
 from pytools import memoize_method
 

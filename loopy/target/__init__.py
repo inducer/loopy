@@ -120,13 +120,13 @@ class TargetBase(ABC):
     def preprocess(self, kernel: LoopKernel):
         return kernel
 
-    def pre_codegen_entrypoint_check(self,  # noqa: B027
+    def pre_codegen_entrypoint_check(self,  # ruff:ignore[empty-method-without-abstract-decorator]
                 kernel: LoopKernel,
                 callables_table: CallablesTable
             ) -> None:
         pass
 
-    def pre_codegen_callable_check(self,  # noqa: B027
+    def pre_codegen_callable_check(self,  # ruff:ignore[empty-method-without-abstract-decorator]
             kernel: LoopKernel,
             callables_table: CallablesTable,
             ) -> None:
