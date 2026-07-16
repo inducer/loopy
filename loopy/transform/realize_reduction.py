@@ -1812,7 +1812,7 @@ def map_reduction(
             nresults: int
         ):
     kernel_with_updated_domains = red_realize_ctx.kernel.copy(
-            domains=red_realize_ctx.domains)
+            domains=list(red_realize_ctx.domains))
 
     from loopy.type_inference import (
         infer_arg_and_reduction_dtypes_for_reduction_expression,
@@ -2172,7 +2172,7 @@ def realize_reduction_for_single_kernel(
             kernel = kernel.copy(
                     instructions=finished_insns + insn_queue,
                     temporary_variables=new_temporary_variables,
-                    domains=domains)
+                    domains=list(domains))
             from loopy.transform.iname import tag_inames
             kernel = tag_inames(kernel, red_realize_ctx.additional_iname_tags)
 
