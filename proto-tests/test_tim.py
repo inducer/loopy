@@ -1,8 +1,8 @@
 import numpy as np
 
-import pyopencl as cl  # noqa: F401
+import pyopencl as cl  # ruff:ignore[unused-import]
 from pyopencl.tools import (
-    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # noqa: F401
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,  # ruff:ignore[unused-import]
 )
 
 import loopy as lp
@@ -19,7 +19,7 @@ def test_tim2d(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa: N806
+    K_sym = var("K")  # ruff:ignore[non-lowercase-variable-in-function]
 
     field_shape = (K_sym, n, n)
 
@@ -57,19 +57,19 @@ def test_tim2d(ctx_factory):
     knl = lp.tag_inames(knl, {"o": "unr"})
     knl = lp.tag_inames(knl, {"m": "unr"})
 
-    # knl = lp.add_prefetch(knl, "G", [2,3], default_tag=None) # axis/argument indices on G  # noqa: E501
-    knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # noqa: E501
+    # knl = lp.add_prefetch(knl, "G", [2,3], default_tag=None) # axis/argument indices on G  # ruff:ignore[line-too-long]
+    knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # ruff:ignore[line-too-long]
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
-    K = 1000  # noqa: N806
+    K = 1000  # ruff:ignore[non-lowercase-variable-in-function]
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=K*(n*n*n*2*2 + n*n*2*3 + n**3 * 2*2)/1e9,
             op_label="GFlops",
             parameters={"K": K})
 
-    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa: E501
+    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # ruff:ignore[line-too-long]
 
 
 def test_red2d(ctx_factory):
@@ -80,7 +80,7 @@ def test_red2d(ctx_factory):
     n = 16
 
     from pymbolic import var
-    K_sym = var("K")  # noqa: N806
+    K_sym = var("K")  # ruff:ignore[non-lowercase-variable-in-function]
 
     field_shape = (K_sym, n, n)
 
@@ -120,18 +120,18 @@ def test_red2d(ctx_factory):
     knl = lp.tag_inames(knl, {"o": "unr"})
     knl = lp.tag_inames(knl, {"m": "unr"})
 
-    knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # noqa: E501
+    knl = lp.add_prefetch(knl, "G", [2, 3], default_tag="l.auto")  # axis/argument indices on G  # ruff:ignore[line-too-long]
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
-    K = 1000  # noqa: N806
+    K = 1000  # ruff:ignore[non-lowercase-variable-in-function]
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=K*((n**3)*2*2 + n*n*2*3 + (n**3)*2*2)/1e9,
             op_label="GFlops",
             parameters={"K": K})
 
-    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa: E501
+    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # ruff:ignore[line-too-long]
 
 
 def test_tim3d(ctx_factory):
@@ -142,7 +142,7 @@ def test_tim3d(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa: N806
+    K_sym = var("K")  # ruff:ignore[non-lowercase-variable-in-function]
 
     field_shape = (K_sym, n, n, n)
 
@@ -155,9 +155,9 @@ def test_tim3d(ctx_factory):
             "ut(a,b,c) := sum_float32(@o, D[c,o]*u[e,a,b,o])",
 
             "lap[e,i,j,k]  = "
-            "   sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # noqa: E501
-            " + sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # noqa: E501
-            " + sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # noqa: E501
+            "   sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # ruff:ignore[line-too-long]
+            " + sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # ruff:ignore[line-too-long]
+            " + sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # ruff:ignore[line-too-long]
              ],
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
@@ -191,18 +191,18 @@ def test_tim3d(ctx_factory):
     knl = lp.tag_inames(knl, {"m": "unr"})
     # knl = lp.tag_inames(knl, dict(i="unr"))
 
-    knl = lp.add_prefetch(knl, "G", [2, 3, 4], default_tag="l.auto")  # axis/argument indices on G  # noqa: E501
+    knl = lp.add_prefetch(knl, "G", [2, 3, 4], default_tag="l.auto")  # axis/argument indices on G  # ruff:ignore[line-too-long]
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {"K": 1000})
 
-    K = 4000  # noqa: N806
+    K = 4000  # ruff:ignore[non-lowercase-variable-in-function]
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=K*((n**4)*3*2 + (n**3)*5*3 + (n**4)*3*2)/1e9,
             op_label="GFlops",
             parameters={"K": K})
 
-    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # noqa: E501
+    # TW:   ^^^^^^^^^^^^^^^ TypeError: auto_test_vs_ref() got an unexpected keyword argument 'print_seq_code'  # ruff:ignore[line-too-long]
 
 
 if __name__ == "__main__":

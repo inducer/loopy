@@ -115,7 +115,7 @@ class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):
 
 # {{{ vector types
 
-class vec:  # noqa: N801
+class vec:  # ruff:ignore[invalid-class-name]
     pass
 
 

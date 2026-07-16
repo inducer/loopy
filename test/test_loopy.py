@@ -28,12 +28,14 @@ import pytest
 import pyopencl as cl
 import pyopencl.array as cl_array
 from pyopencl import clmath, clrandom
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -2187,7 +2189,7 @@ def test_nosync_option_parsing():
     assert "id=insn1, no_sync_with=insn1@any" in kernel_str
     assert "id=insn2, no_sync_with=insn1@any:insn2@any" in kernel_str
     assert "id=insn3, no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
-    assert "id=insn4, no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa: E501
+    assert "id=insn4, no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # ruff:ignore[line-too-long]
     assert "id=insn5, no_sync_with=insn1@any" in kernel_str
 
 

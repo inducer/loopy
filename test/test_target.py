@@ -30,7 +30,7 @@ import pymbolic.primitives as prim
 import pyopencl as cl
 import pyopencl.tools as cl_tools
 from pyopencl import clrandom
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
@@ -39,7 +39,7 @@ from loopy.diagnostic import LoopyError
 from loopy.target.c import CTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.version import (
-    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
 )
 
 
@@ -94,7 +94,7 @@ def test_cuda_target():
 def test_generate_c_snippet():
     from pymbolic import var
 
-    I = var("I")  # noqa: N806,E741
+    I = var("I")  # ruff:ignore[non-lowercase-variable-in-function, ambiguous-variable-name]
     f = var("f")
     df = var("df")
     q_v = var("q_v")
@@ -105,7 +105,7 @@ def test_generate_c_snippet():
 
     l_sum = partial(lp.Reduction, "sum", allow_simultaneous=True)
 
-    Instr = lp.Assignment  # noqa: N806
+    Instr = lp.Assignment  # ruff:ignore[non-lowercase-variable-in-function]
 
     knl = lp.make_kernel(
         "{[I, k]: 0<=I<nSpace and 0<=k<nQuad}",
@@ -223,7 +223,7 @@ def test_tuple(ctx_factory: cl.CtxFactory):
     _evt, (a, b) = knl(queue)
 
     assert a.get() == 1
-    assert b.get() == 2.  # noqa: RUF069
+    assert b.get() == 2.  # ruff:ignore[float-equality-comparison]
 
 
 def test_clamp(ctx_factory: cl.CtxFactory):
@@ -334,7 +334,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 7.  # noqa: RUF069
+    assert x[0] == 7.  # ruff:ignore[float-equality-comparison]
 
     # test numpy input for x is written to and returned, even when a pyopencl array
     # is passed for y
@@ -343,7 +343,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 7.  # noqa: RUF069
+    assert x[0] == 7.  # ruff:ignore[float-equality-comparison]
 
     # test numpy input for x is written to and returned, even when output-only
     knl = lp.make_kernel("{:}", ["x[0] = y[0] + 2"])
@@ -352,7 +352,7 @@ def test_pyopencl_execution_numpy_handling(ctx_factory: cl.CtxFactory):
     x = np.array([4.])
     _evt, out = knl(queue, y=y, x=x)
     assert out[0] is x
-    assert x[0] == 5.  # noqa: RUF069
+    assert x[0] == 5.  # ruff:ignore[float-equality-comparison]
 
 
 def test_opencl_support_for_bool(ctx_factory: cl.CtxFactory):

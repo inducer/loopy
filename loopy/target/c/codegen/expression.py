@@ -225,12 +225,12 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
                             % expr.name)
 
             if isinstance(arg, ValueArg) and self.fortran_abi:
-                postproc = lambda x: x[0]  # noqa: E731
+                postproc = lambda x: x[0]  # ruff:ignore[lambda-assignment]
         elif expr.name in self.kernel.temporary_variables:
             temporary = self.kernel.temporary_variables[expr.name]
             if (temporary.base_storage
                     or temporary.address_space == AddressSpace.GLOBAL):
-                postproc = lambda x: x[0]  # noqa: E731
+                postproc = lambda x: x[0]  # ruff:ignore[lambda-assignment]
 
         result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
         if result is not None:

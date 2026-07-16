@@ -25,12 +25,14 @@ import logging
 import numpy as np
 
 import pyopencl as cl
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ def test_tim2d(ctx_factory: cl.CtxFactory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")  # noqa: N806
+    K_sym = var("K")  # ruff:ignore[non-lowercase-variable-in-function]
 
     field_shape = (K_sym, n, n)
 
@@ -107,7 +109,7 @@ def test_tim2d(ctx_factory: cl.CtxFactory):
         return knl
 
     for variant in [variant_orig]:
-        K = 1000  # noqa: N806
+        K = 1000  # ruff:ignore[non-lowercase-variable-in-function]
         lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[K*(n*n*n*2*2 + n*n*2*3 + n**3 * 2*2)/1e9],
                 op_label=["GFlops"],
