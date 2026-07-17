@@ -44,7 +44,7 @@ from pytools.tag import Tag, Taggable, TagT, UniqueTag as UniqueTagBase
 
 from loopy.diagnostic import LoopyError
 from loopy.kernel.array import ArrayBase, ArrayDimImplementationTag
-from loopy.kernel.instruction import (  # noqa: F401
+from loopy.kernel.instruction import (  # ruff:ignore[unused-import]
     Assignment,
     AtomicInit,
     AtomicUpdate,
@@ -525,7 +525,7 @@ class ArrayArg(ArrayBase, KernelArgument):
 # Making this a function prevents incorrect use in isinstance.
 # Note: This is *not* deprecated, as it is super-common and
 # incrementally more convenient to use than ArrayArg directly.
-def GlobalArg(*args, **kwargs) -> ArrayArg:  # noqa: N802
+def GlobalArg(*args, **kwargs) -> ArrayArg:  # ruff:ignore[invalid-function-name]
     address_space = kwargs.pop("address_space", None)
     if address_space is not None:
         raise TypeError("may not pass 'address_space' to GlobalArg")

@@ -104,19 +104,19 @@ class LoopyKeyBuilder(KeyBuilderBase):
         else:
             super().update_for_Map(key_hash, key)
 
-    def update_for_BasicMap(self, key_hash: Hash, key: isl.BasicMap):  # noqa: N802
+    def update_for_BasicMap(self, key_hash: Hash, key: isl.BasicMap):  # ruff:ignore[invalid-function-name]
         if isinstance(key, isl.BasicMap):
             self._update_for_isl_obj(key_hash, key)
         else:
             raise TypeError("called on a non-isl type")
 
-    def update_for_Set(self, key_hash: Hash, key: isl.Set):  # noqa: N802
+    def update_for_Set(self, key_hash: Hash, key: isl.Set):  # ruff:ignore[invalid-function-name]
         if isinstance(key, isl.Set):
             self._update_for_isl_obj(key_hash, key)
         else:
             raise TypeError("called on a non-isl type")
 
-    def update_for_BasicSet(self, key_hash: Hash, key: isl.BasicSet):  # noqa: N802
+    def update_for_BasicSet(self, key_hash: Hash, key: isl.BasicSet):  # ruff:ignore[invalid-function-name]
         if isinstance(key, isl.BasicSet):
             self._update_for_isl_obj(key_hash, key)
         else:
@@ -573,7 +573,7 @@ class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList[V]):
 
 # {{{ optional object
 
-class _no_value:  # noqa: N801
+class _no_value:  # ruff:ignore[invalid-class-name]
     pass
 
 
@@ -684,7 +684,7 @@ def _is_generated_t_unit_the_same(
     returns *False*.
     """
     reproducer_variables = {}
-    exec(python_code, reproducer_variables)  # noqa: S102
+    exec(python_code, reproducer_variables)  # ruff:ignore[exec-builtin]
     t_unit = reproducer_variables[var_name]
     return t_unit == ref_t_unit
 

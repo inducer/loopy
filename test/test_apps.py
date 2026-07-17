@@ -26,13 +26,15 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
 from loopy.diagnostic import LoopyError
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -470,7 +472,7 @@ def test_lbm(ctx_factory: cl.CtxFactory):
                 f_new[i, j, 11] =  + 0.25*m[8] - 0.125*m[10] - 0.25*m[11]
            end
         end
-        """)  # noqa: E501
+        """)  # ruff:ignore[line-too-long]
 
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
 
@@ -593,7 +595,7 @@ def test_poisson_fem(ctx_factory: cl.CtxFactory):
 def test_domain_tree_nesting():
     # From https://github.com/inducer/loopy/issues/78
 
-    AS = lp.AddressSpace        # noqa: N806
+    AS = lp.AddressSpace        # ruff:ignore[non-lowercase-variable-in-function]
 
     out_map = np.array([1, 2], dtype=np.int32)
     if_val = np.array([-1, 0], dtype=np.int32)
@@ -601,7 +603,7 @@ def test_domain_tree_nesting():
     num_vals = np.array([2, 4], dtype=np.int32)
     num_vals_offset = np.array(np.cumsum(num_vals) - num_vals, dtype=np.int32)
 
-    TV = lp.TemporaryVariable  # noqa: N806
+    TV = lp.TemporaryVariable  # ruff:ignore[non-lowercase-variable-in-function]
 
     knl = lp.make_kernel(["{[i]: 0 <= i < 12}",
                     "{[j]: 0 <= j < 100}",

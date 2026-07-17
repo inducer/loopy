@@ -450,15 +450,15 @@ def sched_item_to_insn_id(sched_item: ScheduleItem) -> Iterator[str]:
 # {{{ debug help
 
 def format_insn_id(kernel: LoopKernel, insn_id: InsnId):
-    Fore = kernel.options._fore  # noqa: N806
-    Style = kernel.options._style  # noqa: N806
+    Fore = kernel.options._fore  # ruff:ignore[non-lowercase-variable-in-function]
+    Style = kernel.options._style  # ruff:ignore[non-lowercase-variable-in-function]
     return Fore.GREEN + insn_id + Style.RESET_ALL
 
 
 def format_insn(kernel: LoopKernel, insn_id: InsnId):
     insn = kernel.id_to_insn[insn_id]
-    Fore = kernel.options._fore  # noqa: N806
-    Style = kernel.options._style  # noqa: N806
+    Fore = kernel.options._fore  # ruff:ignore[non-lowercase-variable-in-function]
+    Style = kernel.options._style  # ruff:ignore[non-lowercase-variable-in-function]
     from loopy.kernel.instruction import (
         BarrierInstruction,
         MultiAssignmentBase,
@@ -477,7 +477,7 @@ def format_insn(kernel: LoopKernel, insn_id: InsnId):
 
         insn_id = format_insn_id(kernel, insn_id)
         sync_kind = insn.synchronization_kind[0]
-        return f"[{insn_id}] {Fore.MAGENTA}... {sync_kind}barrier{mem_kind}{Style.RESET_LL}"  # noqa: E501
+        return f"[{insn_id}] {Fore.MAGENTA}... {sync_kind}barrier{mem_kind}{Style.RESET_LL}"  # ruff:ignore[line-too-long]
     elif isinstance(insn, NoOpInstruction):
         insn_id = format_insn_id(kernel, insn_id)
         return f"[{insn_id}] {Fore.MAGENTA}... nop{Style.RESET_ALL}"
@@ -1042,8 +1042,8 @@ def _generate_loop_schedules_internal(
     # allow_insn is set to False initially and after entering each loop
     # to give loops containing high-priority instructions a chance.
     kernel = sched_state.kernel
-    Fore = kernel.options._fore  # noqa: N806
-    Style = kernel.options._style  # noqa: N806
+    Fore = kernel.options._fore  # ruff:ignore[non-lowercase-variable-in-function]
+    Style = kernel.options._style  # ruff:ignore[non-lowercase-variable-in-function]
 
     active_inames_set = frozenset(sched_state.active_inames)
 

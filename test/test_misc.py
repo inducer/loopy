@@ -27,7 +27,9 @@ import pytest
 from typing_extensions import override
 
 import loopy as lp
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -256,7 +258,7 @@ def test_optional():
     opt = Optional()
     assert not opt.has_value
     with pytest.raises(AttributeError):
-        opt.value  # noqa: B018
+        opt.value  # ruff:ignore[useless-expression]
 
     opt = Optional(1)
     assert opt.has_value

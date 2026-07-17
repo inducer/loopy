@@ -4,7 +4,9 @@ from constantdict import constantdict
 import loopy as lp
 from loopy.diagnostic import LoopyError
 from loopy.target.c import CTarget
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 # {{{ blas callable

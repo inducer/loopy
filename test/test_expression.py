@@ -27,13 +27,15 @@ import pytest
 
 import pyopencl as cl
 from pymbolic.mapper.evaluator import EvaluationMapper
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
 from loopy.target import TargetBase
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -375,7 +377,7 @@ def test_fuzz_expression_code_gen(
             print("reference=%r" % ref_value)
             print("loopy=%r" % lp_value)
             print(80*"-")
-            1/0  # noqa: B018
+            1/0  # ruff:ignore[useless-expression]
 
     print(lp.generate_code_v2(knl).device_code())
 

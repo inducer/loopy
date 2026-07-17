@@ -94,15 +94,15 @@ class LoopyIndexError(LoopyError):
     pass
 
 
-class CannotBranchDomainTree(LoopyError):  # noqa: N818
+class CannotBranchDomainTree(LoopyError):  # ruff:ignore[error-suffix-on-exception-name]
     pass
 
 
-class TypeInferenceFailure(LoopyError):  # noqa: N818
+class TypeInferenceFailure(LoopyError):  # ruff:ignore[error-suffix-on-exception-name]
     pass
 
 
-class AutomaticTestFailure(LoopyError):  # noqa: N818
+class AutomaticTestFailure(LoopyError):  # ruff:ignore[error-suffix-on-exception-name]
     pass
 
 
@@ -146,11 +146,11 @@ class ExpressionToAffineConversionError(LoopyError):
     pass
 
 
-class VariableAccessNotOrdered(LoopyError):  # noqa: N818
+class VariableAccessNotOrdered(LoopyError):  # ruff:ignore[error-suffix-on-exception-name]
     pass
 
 
-class DependencyCycleFound(LoopyError):  # noqa: N818
+class DependencyCycleFound(LoopyError):  # ruff:ignore[error-suffix-on-exception-name]
     pass
 
 

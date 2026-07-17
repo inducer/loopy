@@ -1262,7 +1262,7 @@ class SetTrie:
         if len(key) == 0:
             return
 
-        for child_key, child in self.children.items():  # noqa: B007
+        for child_key, child in self.children.items():  # ruff:ignore[unused-loop-control-variable]
             common = child_key & key
             if common:
                 break
@@ -1613,8 +1613,8 @@ def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
 
     import loopy as lp
 
-    Fore = kernel.options._fore  # noqa: N806
-    Style = kernel.options._style  # noqa: N806
+    Fore = kernel.options._fore  # ruff:ignore[non-lowercase-variable-in-function]
+    Style = kernel.options._style  # ruff:ignore[non-lowercase-variable-in-function]
 
     uniform_arrow_length, arrows_and_extenders = \
             draw_dependencies_as_unicode_arrows(
@@ -1666,7 +1666,7 @@ def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
 
         current_inames[0] = new_inames
 
-    for insn, (arrows, extender) in zip(  # noqa: B007
+    for insn, (arrows, extender) in zip(  # ruff:ignore[unused-loop-control-variable]
             printed_insn_order, arrows_and_extenders, strict=True):
         if isinstance(insn, lp.MultiAssignmentBase):
             lhs = ", ".join(str(a) for a in insn.assignees)

@@ -29,13 +29,15 @@ import pytest
 
 import pyopencl as cl
 from pyopencl import cltypes
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 
 import loopy as lp
 from loopy.translation_unit import TranslationUnit
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -647,8 +649,8 @@ def test_small_batched_matvec(ctx_factory: cl.CtxFactory):
 
     order = "C"
 
-    K = 9997  # noqa: N806
-    Np = 36  # noqa: N806
+    K = 9997  # ruff:ignore[non-lowercase-variable-in-function]
+    Np = 36  # ruff:ignore[non-lowercase-variable-in-function]
 
     knl = lp.make_kernel(
             "{[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,

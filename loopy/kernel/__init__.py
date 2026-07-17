@@ -212,7 +212,7 @@ class LoopKernel(Taggable):
     were applied to the kernel. These are stored so that they may be repeated
     on expressions the user specifies later.
     """
-    index_dtype: NumpyType = NumpyType(np.dtype(np.int32))  # noqa: RUF009
+    index_dtype: NumpyType = NumpyType(np.dtype(np.int32))  # ruff:ignore[function-call-in-dataclass-default-argument]
     silenced_warnings: frozenset[str] = frozenset()
 
     # FIXME Yuck, this should go.
@@ -1441,7 +1441,7 @@ class LoopKernel(Taggable):
             #   resolve hash conflicts.
             ]
 
-    update_persistent_hash = update_persistent_hash  # noqa: RUF045
+    update_persistent_hash = update_persistent_hash  # ruff:ignore[implicit-class-var-in-dataclass]
 
     @memoize_method
     def __hash__(self):

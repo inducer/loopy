@@ -87,7 +87,7 @@ PreambleGenerator: TypeAlias = """Callable[
 SymbolMangler: TypeAlias = "Callable[[LoopKernel, str], tuple[LoopyType, str] | None]"
 
 
-class auto:  # noqa: N801
+class auto:  # ruff:ignore[invalid-class-name]
     """A generic placeholder object for something that should be automatically
     determined.  See, for example, the *shape* or *strides* argument of
     :class:`~loopy.ArrayArg`.

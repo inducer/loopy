@@ -27,13 +27,15 @@ import pytest
 
 import pyopencl as cl
 import pyopencl.clrandom
-from pyopencl.tools import (  # noqa: F401
+from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
 from pytools import ImmutableRecord
 
 import loopy as lp
-from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_2  # noqa: F401
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 logger = logging.getLogger(__name__)
@@ -1099,7 +1101,7 @@ def test_inlining_does_not_require_barrier(inline: bool):
         table_idx_4 = iN1_sum_4*(iN2_4 + 441*iN1_4) {id=idx_4, dep=reset_4}
         exp_4 = exp_table[table_idx_4 % 1323] {id=exp_4, dep=exp_table:idx_4}
         x[ifft_4 + iN1_4*441 + iN2_4] = x[ifft_4 + iN1_4*441 + iN2_4] + exp_4*temp[ifft_4 + iN2_4*3 + iN1_sum_4] {id=update_4, dep=exp_4}
-        """,  # noqa: E501
+        """,  # ruff:ignore[line-too-long]
         [
             lp.GlobalArg(
                 name="x", dtype=np.complex128,
