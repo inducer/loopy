@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 import logging
 import sys
+from collections import defaultdict
 from dataclasses import dataclass, replace
 from typing import (
     TYPE_CHECKING,
@@ -40,13 +41,13 @@ from pytools import MinRecursionLimit, ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.diagnostic import LoopyError, ScheduleDebugInputError, warn_with_kernel
+from loopy.kernel.data import AddressSpace
 from loopy.tools import LoopyKeyBuilder, caches
 from loopy.typing import not_none as not_none
 from loopy.version import DATA_MODEL_VERSION
 
 
 if TYPE_CHECKING:
-    from collections import defaultdict
     from collections.abc import (
         Collection,
         Hashable,
@@ -112,6 +113,16 @@ class LeaveLoop(EndBlockItem):
 @dataclass(frozen=True)
 class RunInstruction(ScheduleItem):
     insn_id: str
+
+
+@dataclass(frozen=True)
+class AllocTemp(ScheduleItem):
+    temp: str
+
+
+@dataclass(frozen=True)
+class DeallocTemp(ScheduleItem):
+    temp: str
 
 
 @dataclass(frozen=True)
@@ -514,6 +525,10 @@ def dump_schedule(kernel: LoopKernel, schedule: Sequence[ScheduleItem]):
         elif isinstance(sched_item, Barrier):
             lines.append(indent + "... %sbarrier" %
                          sched_item.synchronization_kind[0])
+        elif isinstance(sched_item, AllocTemp):
+            lines.append(indent + "ALLOCATE %s" % sched_item.temp)
+        elif isinstance(sched_item, DeallocTemp):
+            lines.append(indent + "DEALLOCATE %s" % sched_item.temp)
         else:
             raise AssertionError()
 
@@ -2160,7 +2175,9 @@ def insert_barriers(
                 dep_tracker.add_source(sched_item.insn_id)
                 i += 1
 
-            elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
+            # TODO: check if this is correct
+            elif isinstance(sched_item, (CallKernel, ReturnFromKernel,
+                                         AllocTemp, DeallocTemp)):
                 result.append(sched_item)
                 i += 1
 
@@ -2190,7 +2207,8 @@ def insert_barriers(
             i = new_i
 
         elif isinstance(sched_item,
-                (Barrier, RunInstruction, CallKernel, ReturnFromKernel)):
+                (Barrier, RunInstruction, CallKernel,
+                 ReturnFromKernel, AllocTemp, DeallocTemp)):
             result.append(sched_item)
             i += 1
 
@@ -2276,7 +2294,99 @@ def _postprocess_schedule(
         # Device mapper only gets run once.
         new_kernel = map_schedule_onto_host_or_device(new_kernel)
 
+    new_kernel = insert_temporary_alloc_dealloc(new_kernel)
     return new_kernel
+
+
+def insert_temporary_alloc_dealloc(kernel: LoopKernel):
+    schedule = kernel.linearization
+    inserted_allocs = set()
+    inserted_deallocs = set()
+
+    kernel_entry_idx = -1
+    loops_entry_idxs = []
+
+    insert_alloc_idxs = defaultdict(frozenset)
+    for idx, sched_item in enumerate(schedule):
+        if isinstance(sched_item, EnterLoop):
+            loops_entry_idxs.append(idx)
+        elif isinstance(sched_item, LeaveLoop):
+            loops_entry_idxs.pop()
+        elif isinstance(sched_item, CallKernel):
+            kernel_entry_idx = idx
+        elif isinstance(sched_item, ReturnFromKernel):
+            kernel_entry_idx = -1
+        elif isinstance(sched_item, RunInstruction):
+            insn = kernel.id_to_insn[sched_item.insn_id]
+            for var_name in set(insn.assignee_var_names()):
+                if var_name not in kernel.temporary_variables:
+                    continue
+                tv = kernel.temporary_variables[var_name]
+                if tv.base_storage:
+                    var_name = tv.base_storage
+                    tv = kernel.temporary_variables[var_name]
+                if var_name in inserted_allocs:
+                    continue
+                if tv.address_space == AddressSpace.GLOBAL:
+                    inserted_allocs.add(var_name)
+                    target_idx = idx
+                    if (kernel_entry_idx != -1):
+                        # lift the alloc out of ALL loops
+                        target_idx = min(idx, kernel_entry_idx, *loops_entry_idxs)
+                    else:
+                        target_idx = min(idx, *loops_entry_idxs)
+                    insert_alloc_idxs[target_idx] |= {var_name}
+
+    kernel_entry_idx = -1
+    loops_entry_idxs = []
+    insert_dealloc_idxs = defaultdict(frozenset)
+    for idx, sched_item in enumerate(reversed(schedule)):
+        idx = len(schedule) - idx - 1
+        if isinstance(sched_item, LeaveLoop):
+            loops_entry_idxs.append(idx)
+        elif isinstance(sched_item, EnterLoop):
+            loops_entry_idxs.pop()
+        elif isinstance(sched_item, ReturnFromKernel):
+            kernel_entry_idx = idx
+        elif isinstance(sched_item, CallKernel):
+            kernel_entry_idx = -1
+        elif isinstance(sched_item, RunInstruction):
+            insn = kernel.id_to_insn[sched_item.insn_id]
+            for var_name in set(insn.read_dependency_names()):
+                if var_name not in kernel.temporary_variables:
+                    continue
+                tv = kernel.temporary_variables[var_name]
+                if tv.base_storage:
+                    var_name = tv.base_storage
+                    tv = kernel.temporary_variables[var_name]
+                if var_name in inserted_deallocs:
+                    continue
+                if tv.address_space != AddressSpace.GLOBAL:
+                    continue
+                if var_name in inserted_allocs:
+                    inserted_deallocs.add(var_name)
+                    target_idx = idx
+                    if (kernel_entry_idx != -1):
+                        # lift the dealloc out of ALL loops
+                        target_idx = max(idx, kernel_entry_idx, *loops_entry_idxs)
+                    else:
+                        target_idx = max(idx, *loops_entry_idxs)
+                    insert_dealloc_idxs[target_idx] |= {var_name}
+
+    insert_dealloc_idxs[len(schedule)-1] |= (inserted_allocs - inserted_deallocs)
+
+    new_schedule = []
+    for idx, sched_item in enumerate(schedule):
+        if idx in insert_alloc_idxs:
+            for var_name in insert_alloc_idxs[idx]:
+                new_schedule.append(AllocTemp(var_name))
+        new_schedule.append(sched_item)
+
+        if idx in insert_dealloc_idxs:
+            for var_name in insert_dealloc_idxs[idx]:
+                new_schedule.append(DeallocTemp(var_name))
+
+    return kernel.copy(linearization=new_schedule)
 
 
 def _generate_loop_schedules_inner(
