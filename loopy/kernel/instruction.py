@@ -141,7 +141,7 @@ class HappensAfter:
         statement-level dependencies of prior versions of :mod:`loopy`.
     """
 
-    instances_rel: nisl.Map | None
+    instances_rel: nisl.Map | nisl.BasicMap | None
 
 # }}}
 
