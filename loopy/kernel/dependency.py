@@ -348,17 +348,13 @@ def _relax_strict_happens_after_inner(
     ) -> nisl.Map:
 
         sink_map = sink_map.rename_dims(
-
-                (name, name[: len(name) - len("_before")])
-                for name in sink_map.space.out_names
-
+            (name, name[: len(name) - len("_before")])
+            for name in sink_map.space.out_names
         )
 
         source_map = source_map.rename_dims(
-
-                (name, name[: len(name) - len("_after")])
-                for name in source_map.space.in_names
-
+            (name, name[: len(name) - len("_after")])
+            for name in source_map.space.in_names
         )
 
         return sink_map.apply_range(source_map)
