@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     from pymbolic.typing import Expression
 
     from loopy.kernel import LoopKernel
-    from loopy.typing import ShapeType
 
 
 @final
@@ -44,15 +43,15 @@ class AccessType(Enum):
 
 
 class AccessRelationFinder(WalkMapper[[str, AccessType]]):
+    """Collect per-instruction statement-instance-to-cell access relations."""
+
     kernel: LoopKernel
-    variables: frozenset[str]
     _additional_inames: frozenset[str]
     _read_relations: dict[str, dict[str, nisl.Map]]
     _write_relations: dict[str, dict[str, nisl.Map]]
 
     def __init__(self, kernel: LoopKernel):
         self.kernel = kernel
-        self.variables = frozenset(kernel.all_variable_names())
         self._additional_inames = frozenset()
         self._read_relations = {insn.id: {} for insn in kernel.instructions}
         self._write_relations = {insn.id: {} for insn in kernel.instructions}
@@ -63,9 +62,6 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         self,
         domain: nisl.Set,
         subscript: tuple[Expression, ...],
-        assumptions: nisl.BasicSet | None = None,
-        shape: ShapeType | None = None,
-        allowed_constant_names: frozenset[str] | None = None,
     ) -> nisl.Map:
         instance_names = domain.space.dimtype_to_names[DimType.out]
         cell_names = tuple(f"ax_{axis}" for axis in range(len(subscript)))
@@ -97,7 +93,7 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         )
 
     def _insn_accesses_var(self, insn_id: str, var: str) -> bool:
-        return self._insn_reads_var(insn_id, var) | self._insn_writes_var(
+        return self._insn_reads_var(insn_id, var) or self._insn_writes_var(
             insn_id, var
         )
 
@@ -139,15 +135,15 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
     @cached_property
     def read_relations(self) -> Mapping[str, Mapping[str, nisl.Map]]:
         return constantdict({
-            insn_id: constantdict(self._read_relations[insn_id])
-            for insn_id in self._read_relations
+            insn_id: constantdict(relations)
+            for insn_id, relations in self._read_relations.items()
         })
 
     @cached_property
     def write_relations(self) -> Mapping[str, Mapping[str, nisl.Map]]:
         return constantdict({
-            insn_id: constantdict(self._write_relations[insn_id])
-            for insn_id in self._write_relations
+            insn_id: constantdict(relations)
+            for insn_id, relations in self._write_relations.items()
         })
 
     @override
@@ -196,10 +192,10 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
 
 
 def _suffix_names(
-    obj: NamedIslObjectT, prefix: str, dim_type: DimType
+    obj: NamedIslObjectT, suffix: str, dim_type: DimType
 ) -> NamedIslObjectT:
     return obj.rename_dims(
-        (name, name + prefix) for name in obj.space.dimtype_to_names[dim_type]
+        (name, name + suffix) for name in obj.space.dimtype_to_names[dim_type]
     )
 
 
@@ -219,20 +215,19 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
 
     new_insns: list[InstructionBase] = []
     for i, insn in enumerate(kernel.instructions):
-        new_happens_after = {}
+        new_happens_after: dict[str, HappensAfter] = {}
 
-        preds = (insn,) if i == 0 else (insn, kernel.instructions[i - 1])
+        sources = (insn,) if i == 0 else (insn, kernel.instructions[i - 1])
 
-        # FIXME: yuck
         after_domain = nisl.make_set(
             kernel.get_inames_domain(insn.within_inames).to_set()
         )
 
         after_inames = after_domain.space.dimtype_to_names[DimType.out]
         after_domain = _suffix_names(after_domain, "_after", DimType.out)
-        for pred in preds:
+        for source in sources:
             before_domain = nisl.make_set(
-                kernel.get_inames_domain(pred.within_inames).to_set()
+                kernel.get_inames_domain(source.within_inames).to_set()
             )
 
             before_inames = before_domain.space.dimtype_to_names[DimType.out]
@@ -265,7 +260,7 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
                 )
                 equal_prefix = equal_prefix & after_aff.eq_set(before_aff)
 
-            if pred.id == insn.id:
+            if source.id == insn.id:
                 ordered_instances = strict_lex
             else:
                 ordered_instances = strict_lex | equal_prefix
@@ -274,7 +269,7 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
                 in_names=tuple(f"{name}_after" for name in after_inames)
             )
 
-            new_happens_after[pred.id] = HappensAfter(
+            new_happens_after[source.id] = HappensAfter(
                 instances_rel=instances_rel
             )
 
@@ -303,7 +298,7 @@ def _relax_strict_happens_after_inner(
     of the resulting :class:`namedisl.Map`.
 
     :arg source_id: The ID of the statement whose instances will be in the range
-    of the resuling :class:`namedisl.Map`.
+    of the resulting :class:`namedisl.Map`.
 
     :arg var: The variable for which we are performing data dependence analysis.
 
@@ -325,56 +320,61 @@ def _relax_strict_happens_after_inner(
     :class:`loopy.HappensAfter` recording the dependencies from *sink* to all
     statements in *happens_after*.
 
-    :returns: The updated precise dependencies for *source*.
+    :returns: The updated precise dependencies for *sink_id*.
     """
 
     def record_conflicts(source_relation: nisl.Map) -> nisl.Map:
         source_relation = _suffix_names(source_relation, "_before", DimType.in_)
+
+        # live_access_rel; source_relation^-1
         conflicts = live_access_rel.apply_range(source_relation.reverse())
 
-        req_order = incoming_instances_rel & conflicts
+        # Only conflicts ordered along this graph path are required.
+        required_order = incoming_instances_rel & conflicts
         previous = happens_after.get(source_id)
-        if not req_order.is_empty():
-            happens_after[source_id] = (
-                HappensAfter(req_order)
-                if previous is None
-                else HappensAfter(req_order | previous.instances_rel)  # pyright: ignore[reportOperatorIssue]
-            )
+        if not required_order.is_empty():
+            if previous is None:
+                combined_order = required_order
+            else:
+                assert previous.instances_rel is not None
+                combined_order = required_order | previous.instances_rel
 
-        return live_access_rel & req_order.apply_range(source_relation)
+            happens_after[source_id] = HappensAfter(combined_order)
+
+        # Retire only live accesses supplied by an ordered source instance.
+        return live_access_rel & required_order.apply_range(source_relation)
 
     def normalize_interface_and_compose(
-        sink_map: nisl.Map, source_map: nisl.Map
+        incoming_relation: nisl.Map, next_edge_relation: nisl.Map
     ) -> nisl.Map:
-
-        sink_map = sink_map.rename_dims(
+        incoming_relation = incoming_relation.rename_dims(
             (name, name[: len(name) - len("_before")])
-            for name in sink_map.space.out_names
+            for name in incoming_relation.space.out_names
         )
 
-        source_map = source_map.rename_dims(
+        next_edge_relation = next_edge_relation.rename_dims(
             (name, name[: len(name) - len("_after")])
-            for name in source_map.space.in_names
+            for name in next_edge_relation.space.in_names
         )
 
-        return sink_map.apply_range(source_map)
+        return incoming_relation.apply_range(next_edge_relation)
 
     match sink_access_type:
-        # compute raw
+        # Read-after-write
         case AccessType.read:
             if var in rel_finder.write_relations[source_id]:
                 source_relation = rel_finder.write_relations[source_id][var]
 
-                caught_instances = record_conflicts(source_relation)
-                live_access_rel = live_access_rel - caught_instances
+                caught_accesses = record_conflicts(source_relation)
+                live_access_rel = live_access_rel - caught_accesses
 
-        # compute waw, war
+        # Write-after-write and write-after-read
         case AccessType.write:
             if var in rel_finder.write_relations[source_id]:
                 source_relation = rel_finder.write_relations[source_id][var]
 
-                caught_instances = record_conflicts(source_relation)
-                live_access_rel = live_access_rel - caught_instances
+                caught_accesses = record_conflicts(source_relation)
+                live_access_rel = live_access_rel - caught_accesses
 
             # don't update live_access_rel; does not find a "most recent writer"
             if var in rel_finder.read_relations[source_id]:
@@ -384,7 +384,7 @@ def _relax_strict_happens_after_inner(
         case _:
             raise ValueError("unknown access type")
 
-    # recurse
+    # Continue backward through the strict-order graph.
     if not live_access_rel.is_empty() and (sink_id != source_id):
         source_insn = kernel.id_to_insn[source_id]
         for src_dep_id, src_happens_after in source_insn.happens_after.items():
@@ -432,7 +432,7 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
             dep for dep in insn.happens_after if dep != insn.id
         })
 
-    topo_sort = compute_topological_order(coarse_dependency_graph)
+    topological_order = compute_topological_order(coarse_dependency_graph)
 
     rel_finder = AccessRelationFinder(kernel)
     for insn in kernel.instructions:
@@ -443,52 +443,36 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
             for pred in insn.predicates:
                 rel_finder(pred, insn.id, AccessType.read)
 
-    # FIXME: clean up. kind of gross
     new_insns: list[InstructionBase] = []
-    for sink_id in topo_sort:
+    for sink_id in topological_order:
         new_happens_after: dict[str, HappensAfter] = {}
         old_happens_after = kernel.id_to_insn[sink_id].happens_after
-        for var, read_rel in rel_finder.read_relations[sink_id].items():
-            read_rel = _suffix_names(read_rel, "_after", DimType.in_)
-            for source_id, happens_after in old_happens_after.items():
-                if happens_after.instances_rel is None:
-                    raise ValueError(
-                        "All `HappensAfter`s must have precise dependencies "
-                        "defined to use precise dependency finding machinery."
-                    )
-
-                _relax_strict_happens_after_inner(
-                    kernel,
-                    sink_id,
-                    source_id,
-                    var,
-                    AccessType.read,
-                    happens_after.instances_rel,
-                    read_rel,
-                    rel_finder,
-                    new_happens_after,
+        for sink_access_type, access_relations in (
+            (AccessType.read, rel_finder.read_relations[sink_id]),
+            (AccessType.write, rel_finder.write_relations[sink_id]),
+        ):
+            for var, access_relation in access_relations.items():
+                access_relation = _suffix_names(
+                    access_relation, "_after", DimType.in_
                 )
+                for source_id, happens_after in old_happens_after.items():
+                    if happens_after.instances_rel is None:
+                        raise ValueError(
+                            "All `HappensAfter`s must have precise dependencies "
+                            "defined to use precise dependency finding machinery."
+                        )
 
-        for var, write_rel in rel_finder.write_relations[sink_id].items():
-            write_rel = _suffix_names(write_rel, "_after", DimType.in_)
-            for source_id, happens_after in old_happens_after.items():
-                if happens_after.instances_rel is None:
-                    raise ValueError(
-                        "All `HappensAfter`s must have precise dependencies "
-                        "defined to use precise dependency finding machinery."
+                    _relax_strict_happens_after_inner(
+                        kernel,
+                        sink_id,
+                        source_id,
+                        var,
+                        sink_access_type,
+                        happens_after.instances_rel,
+                        access_relation,
+                        rel_finder,
+                        new_happens_after,
                     )
-
-                _relax_strict_happens_after_inner(
-                    kernel,
-                    sink_id,
-                    source_id,
-                    var,
-                    AccessType.write,
-                    happens_after.instances_rel,
-                    write_rel,
-                    rel_finder,
-                    new_happens_after,
-                )
 
         new_insns.append(
             kernel.id_to_insn[sink_id].copy(

@@ -5,6 +5,9 @@ from pymbolic import var
 import loopy as lp
 import loopy.kernel.dependency as dep
 from loopy.symbolic import SubArrayRef
+from loopy.version import (
+    LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
+)
 
 
 def test_add_lexicographic_happens_after_is_strict_for_self() -> None:
@@ -233,6 +236,8 @@ def test_access_relation_finder_handles_sub_array_ref() -> None:
 
     kernel = t_unit.default_entrypoint
     rel_find = dep.AccessRelationFinder(kernel)
+    # Build the swept access directly so this remains a mapper unit test and
+    # does not require setting up an array-valued callable.
     sub_array_ref = SubArrayRef(
         (var("k"),),
         var("a")[var("i"), var("j"), var("k")],
