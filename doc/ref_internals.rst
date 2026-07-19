@@ -60,3 +60,7 @@ Schedule
 .. automodule:: loopy.schedule
 .. automodule:: loopy.schedule.tools
 .. automodule:: loopy.schedule.tree
+
+Dependence Analysis
+-------------------
+.. automodule:: loopy.kernel.dependency
