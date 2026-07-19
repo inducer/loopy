@@ -26,6 +26,10 @@ def test_add_lexicographic_happens_after_is_strict_for_self() -> None:
 
     assert self_relation is not None
     assert previous_relation is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    self_relation = nisl.make_map(self_relation)
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    previous_relation = nisl.make_map(previous_relation)
     assert self_relation.equals(
         nisl.make_map("""
         [N] -> {
@@ -54,6 +58,8 @@ def test_add_lexicographic_happens_after_uses_domain_dimension_order() -> None:
     self_relation = kernel.id_to_insn["S"].happens_after["S"].instances_rel
 
     assert self_relation is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    self_relation = nisl.make_map(self_relation)
     assert self_relation.equals(
         nisl.make_map("""
         [NZ, NA] -> {
@@ -85,6 +91,8 @@ def test_add_lexicographic_happens_after_orders_distinct_loop_nests() -> None:
     cross_relation = kernel.id_to_insn["T"].happens_after["S"].instances_rel
 
     assert cross_relation is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    cross_relation = nisl.make_map(cross_relation)
     assert cross_relation.equals(
         nisl.make_map("""
         [N, M] -> {
@@ -114,6 +122,8 @@ def test_add_lexicographic_happens_after_with_five_inames() -> None:
     self_relation = kernel.id_to_insn["S"].happens_after["S"].instances_rel
 
     assert self_relation is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    self_relation = nisl.make_map(self_relation)
     assert self_relation.equals(
         nisl.make_map("""
         {
@@ -276,6 +286,8 @@ def test_relax_strict_happens_after_finds_direct_raw() -> None:
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -298,6 +310,8 @@ def test_relax_strict_happens_after_finds_direct_waw() -> None:
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -320,6 +334,8 @@ def test_relax_strict_happens_after_finds_direct_war() -> None:
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -339,6 +355,8 @@ def test_relax_strict_happens_after_finds_self_raw() -> None:
 
     required_order = kernel.id_to_insn["S"].happens_after["S"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
@@ -369,6 +387,8 @@ def test_relax_strict_happens_after_finds_recursive_raw() -> None:
 
     required_order = kernel.id_to_insn["U"].happens_after["S"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -393,6 +413,8 @@ def test_relax_strict_happens_after_stops_at_most_recent_writer() -> None:
 
     required_order = kernel.id_to_insn["U"].happens_after["T"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -405,7 +427,9 @@ def test_relax_strict_happens_after_stops_at_most_recent_writer() -> None:
     assert "S" not in kernel.id_to_insn["U"].happens_after
 
 
-def test_relax_strict_happens_after_partitions_partial_writer_footprint() -> None:
+def test_relax_strict_happens_after_partitions_partial_writer_footprint() -> (
+    None
+):
     kernel = _relax_strict_happens_after(
         """
         a[i, j] = 1 {id=S}
@@ -419,6 +443,10 @@ def test_relax_strict_happens_after_partitions_partial_writer_footprint() -> Non
     fallback_order = kernel.id_to_insn["U"].happens_after["S"].instances_rel
     assert recent_order is not None
     assert fallback_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    recent_order = nisl.make_map(recent_order)
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    fallback_order = nisl.make_map(fallback_order)
     assert recent_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -462,6 +490,8 @@ def test_relax_strict_happens_after_composes_distinct_loop_nests() -> None:
 
     required_order = kernel.id_to_insn["U"].happens_after["S"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             {
@@ -489,18 +519,24 @@ def test_relax_strict_happens_after_unions_branched_paths() -> None:
         "C": ("A",),
         "D": ("B", "C"),
     }
-    kernel = kernel.copy(instructions=[
-        insn.copy(happens_after={
-            insn.id: insn.happens_after[insn.id],
-            **dict.fromkeys(predecessors[insn.id], cross_order),
-        })
-        for insn in kernel.instructions
-    ])
+    kernel = kernel.copy(
+        instructions=[
+            insn.copy(
+                happens_after={
+                    insn.id: insn.happens_after[insn.id],
+                    **dict.fromkeys(predecessors[insn.id], cross_order),
+                }
+            )
+            for insn in kernel.instructions
+        ]
+    )
 
     kernel = dep.relax_strict_happens_after(kernel)
 
     required_order = kernel.id_to_insn["D"].happens_after["A"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
@@ -537,6 +573,8 @@ def test_relax_strict_happens_after_inner_uses_live_sink_accesses() -> None:
 
     incoming_relation = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert incoming_relation is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    incoming_relation = nisl.make_map(incoming_relation)
 
     live_access_relation = rel_finder.read_relations["T"]["a"].rename_dims((
         ("i", "i_after"),
@@ -561,6 +599,8 @@ def test_relax_strict_happens_after_inner_uses_live_sink_accesses() -> None:
 
     required_order = happens_after["S"].instances_rel
     assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {

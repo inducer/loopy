@@ -270,7 +270,7 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
             )
 
             new_happens_after[source.id] = HappensAfter(
-                instances_rel=instances_rel
+                instances_rel=instances_rel.as_isl()
             )
 
         new_insns.append(insn.copy(happens_after=new_happens_after))
@@ -337,9 +337,12 @@ def _relax_strict_happens_after_inner(
                 combined_order = required_order
             else:
                 assert previous.instances_rel is not None
-                combined_order = required_order | previous.instances_rel
+                # FIXME: remove named conversion
+                previous_instances_rel = nisl.make_map(previous.instances_rel)
+                combined_order = required_order | previous_instances_rel
 
-            happens_after[source_id] = HappensAfter(combined_order)
+            # FIXME: remove unnamed conversion
+            happens_after[source_id] = HappensAfter(combined_order.as_isl())
 
         # Retire only live accesses supplied by an ordered source instance.
         return live_access_rel & required_order.apply_range(source_relation)
@@ -397,8 +400,10 @@ def _relax_strict_happens_after_inner(
                     "defined to use precise dependency finding machinery."
                 )
 
+            # FIXME: removed named conversion
+            src_instances_rel = nisl.make_map(src_happens_after.instances_rel)
             outgoing_instances_rel = normalize_interface_and_compose(
-                incoming_instances_rel, src_happens_after.instances_rel
+                incoming_instances_rel, src_instances_rel
             ).coalesce()
 
             _relax_strict_happens_after_inner(
@@ -468,7 +473,7 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
                         source_id,
                         var,
                         sink_access_type,
-                        happens_after.instances_rel,
+                        nisl.make_map(happens_after.instances_rel),
                         access_relation,
                         rel_finder,
                         new_happens_after,
