@@ -47,7 +47,6 @@ from warnings import warn
 from typing_extensions import Self, override
 
 import islpy as isl
-import namedisl as nisl
 import pymbolic.primitives as p
 from pytools import ImmutableRecord, memoize_method
 from pytools.tag import Tag, Taggable, tag_dataclass
@@ -59,6 +58,8 @@ from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
 
 
 if TYPE_CHECKING:
+    import namedisl as nisl
+
     from pymbolic import Expression
 
     from loopy.kernel import LoopKernel
@@ -120,8 +121,8 @@ class UseStreamingStoreTag(Tag):
 @dataclass(frozen=True)
 class HappensAfter:
     """A class representing a "happens-after" relationship between two
-     statements found in a :class:`loopy.LoopKernel`. Used to analyze and verify 
-     data dependencies are respected after a :class:`loopy.LoopKernel` has been 
+     statements found in a :class:`loopy.LoopKernel`. Used to analyze and verify
+     data dependencies are respected after a :class:`loopy.LoopKernel` has been
      scheduled.
 
     .. attribute:: instances_rel
@@ -132,8 +133,8 @@ class HappensAfter:
         the range.
 
         Map dimensions are named according to the order of appearance of the
-        inames in a :mod:`loopy` program. The names in the domain are suffixed 
-        with "_after" and the names in the range are suffixed with "_before" to 
+        inames in a :mod:`loopy` program. The names in the domain are suffixed
+        with "_after" and the names in the range are suffixed with "_before" to
         signify that the instances are distinct.
 
         As a (deprecated) matter of backward compatibility, this may be *None*,
@@ -141,7 +142,7 @@ class HappensAfter:
         statement-level dependencies of prior versions of :mod:`loopy`.
     """
 
-    instances_rel: nisl.Map | nisl.BasicMap | None
+    instances_rel: nisl.Map | None
 
 # }}}
 
