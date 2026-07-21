@@ -71,25 +71,6 @@ class AccessType(Enum):
     write = 1
 
 
-def has_precise_dependencies(kernel: LoopKernel) -> bool:
-    has_precise = False
-    has_legacy = False
-    for stmt in kernel.instructions:
-        for happens_after in stmt.happens_after.values():
-            if happens_after.instances_rel is None:
-                has_legacy = True
-            else:
-                has_precise = True
-
-    if has_precise and has_legacy:
-        raise LoopyError(
-            f"kernel '{kernel.name}' mixes precise and legacy "
-            "happens-after dependencies"
-        )
-
-    return has_precise
-
-
 class AccessRelationFinder(WalkMapper[[str, AccessType]]):
     """Collect per-instruction statement-instance-to-cell access relations."""
 
@@ -130,7 +111,7 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
             axis = len(self._cell_names)
             self._cell_names.append(self._name_generator(f"ax_{axis}"))
 
-        cell_names = tuple(self._cell_names[:len(subscript)])
+        cell_names = tuple(self._cell_names[: len(subscript)])
 
         access_set = domain.add_dims(DimType.out, cell_names)
         coordinates = access_set.var_pw_affs
@@ -244,6 +225,25 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
             self.rec(expr.subscript, stmt_id, access_type)
         finally:
             self._additional_inames = previous_inames
+
+
+def has_precise_dependencies(kernel: LoopKernel) -> bool:
+    has_precise = False
+    has_legacy = False
+    for stmt in kernel.instructions:
+        for happens_after in stmt.happens_after.values():
+            if happens_after.instances_rel is None:
+                has_legacy = True
+            else:
+                has_precise = True
+
+    if has_precise and has_legacy:
+        raise LoopyError(
+            f"kernel '{kernel.name}' mixes precise and legacy "
+            "happens-after dependencies"
+        )
+
+    return has_precise
 
 
 def _suffix_names(
