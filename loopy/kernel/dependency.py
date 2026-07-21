@@ -234,6 +234,7 @@ def apply_affine_transform_to_happens_afters(
     Applies an affine transformation to all relevant happens-after relations.
     """
 
+    affine_reln = affine_reln.coalesce()
     transformed_inames = frozenset(affine_reln.space.in_names)
     name_generator = kernel.get_var_name_generator()
     for names in affine_reln.space.dimtype_to_names.values():
@@ -277,7 +278,7 @@ def apply_affine_transform_to_happens_afters(
                 nonxformed_names, output_proxy_names, strict=True
             )
         )
-        return xform_reln, proxy_renames
+        return xform_reln.coalesce(), proxy_renames
 
     new_stmts: list[InstructionBase] = []
     for sink_stmt in kernel.instructions:
@@ -297,14 +298,16 @@ def apply_affine_transform_to_happens_afters(
                 continue
 
             # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-            instances_rel = nisl.make_map(happens_after.instances_rel)
+            instances_rel = nisl.make_map(
+                happens_after.instances_rel
+            ).coalesce()
             proxy_renames: list[tuple[str, str]] = []
 
             if sink_xform is not None:
                 sink_xform_reln, sink_proxy_renames = sink_xform
                 instances_rel = sink_xform_reln.reverse().apply_range(
                     instances_rel
-                )
+                ).coalesce()
                 proxy_renames.extend(sink_proxy_renames)
 
             if src_xform is not None:
@@ -317,7 +320,9 @@ def apply_affine_transform_to_happens_afters(
                     )
 
                 src_xform_reln, src_proxy_renames = src_xform
-                instances_rel = instances_rel.apply_range(src_xform_reln)
+                instances_rel = instances_rel.apply_range(
+                    src_xform_reln
+                ).coalesce()
                 proxy_renames.extend(src_proxy_renames)
 
             instances_rel = instances_rel.rename_dims(proxy_renames).coalesce()
@@ -355,6 +360,320 @@ def _suffix_names(
 ) -> NamedIslObjectT:
     return obj.rename_dims(
         (name, name + suffix) for name in obj.space.dimtype_to_names[dim_type]
+    )
+
+
+def _statement_instance_set(
+    kernel: LoopKernel, stmt: InstructionBase, suffix: str
+) -> nisl.Set:
+    # FIXME: Remove conversion once LoopKernel domains use namedisl.Set.
+    instance_set = nisl.make_set(
+        kernel.get_inames_domain(stmt.within_inames).to_set()
+    )
+    unused_inames = instance_set.space.out_names - stmt.within_inames
+    if unused_inames:
+        instance_set = instance_set.project_out(unused_inames)
+
+    return _suffix_names(instance_set, suffix, DimType.out).coalesce()
+
+
+def _compose_happens_after_relations(
+    first: nisl.Map, second: nisl.Map
+) -> nisl.Map:
+    first = first.coalesce()
+    second = second.coalesce()
+    first_interface = tuple(
+        name.removesuffix("_before")
+        for name in first.space.dimtype_to_names[DimType.out]
+    )
+    second_interface = tuple(
+        name.removesuffix("_after")
+        for name in second.space.dimtype_to_names[DimType.in_]
+    )
+    if frozenset(first_interface) != frozenset(second_interface):
+        raise LoopyError(
+            "cannot compose happens-after relations with different "
+            "intermediate instance spaces"
+        )
+
+    first = first.rename_dims(zip(
+        first.space.dimtype_to_names[DimType.out], first_interface, strict=True
+    ))
+    second = second.rename_dims(zip(
+        second.space.dimtype_to_names[DimType.in_], second_interface, strict=True
+    ))
+    return first.apply_range(second).coalesce()
+
+
+def _validate_instance_mapping(
+    relation: nisl.Map,
+    domain_instances: nisl.Set,
+    range_instances: nisl.Set,
+    *,
+    relation_name: str,
+    domain_name: str,
+    range_name: str,
+) -> nisl.Map:
+    relation = relation.coalesce()
+    if (
+        relation.space.dimtype_to_names[DimType.in_]
+        != domain_instances.space.dimtype_to_names[DimType.out]
+    ):
+        raise LoopyError(
+            f"{relation_name} relation has the wrong {domain_name} "
+            "instance space"
+        )
+    if (
+        relation.space.dimtype_to_names[DimType.out]
+        != range_instances.space.dimtype_to_names[DimType.out]
+    ):
+        raise LoopyError(
+            f"{relation_name} relation has the wrong {range_name} "
+            "instance space"
+        )
+    if not (relation.domain() - domain_instances).is_empty():
+        raise LoopyError(
+            f"{relation_name} relation contains instances outside the "
+            f"{domain_name} domain"
+        )
+    if not (relation.range() - range_instances).is_empty():
+        raise LoopyError(
+            f"{relation_name} relation contains instances outside the "
+            f"{range_name} domain"
+        )
+
+    return relation
+
+
+def _add_or_union_happens_after(
+    happens_after: dict[str, HappensAfter],
+    sink_id: str,
+    source_id: str,
+    instances_rel: nisl.Map,
+) -> None:
+    instances_rel = instances_rel.coalesce()
+    if instances_rel.is_empty():
+        return
+
+    previous = happens_after.get(source_id)
+    if previous is not None:
+        if previous.instances_rel is None:
+            raise LoopyError(
+                "cannot combine precise and imprecise happens-after "
+                f"relations for '{sink_id}' and '{source_id}'"
+            )
+
+        # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+        previous_rel = nisl.make_map(previous.instances_rel)
+        if (
+            previous_rel.space.dimtype_to_names[DimType.in_]
+            != instances_rel.space.dimtype_to_names[DimType.in_]
+            or previous_rel.space.dimtype_to_names[DimType.out]
+            != instances_rel.space.dimtype_to_names[DimType.out]
+        ):
+            raise LoopyError(
+                "cannot union happens-after relations with different "
+                "statement instance spaces"
+            )
+        instances_rel = (previous_rel | instances_rel).coalesce()
+
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    happens_after[source_id] = HappensAfter(instances_rel.as_isl())
+
+
+def splice_happens_after_as_consumer(
+    kernel: LoopKernel,
+    consumer_id: str,
+    anchor_id: str,
+    consumer_to_anchor: nisl.Map,
+) -> LoopKernel:
+    """Give *consumer_id* the incoming dependencies of *anchor_id*.
+
+    *consumer_to_anchor* maps consumer instances to the anchor instances whose
+    incoming dependencies they inherit. Its input dimensions use the consumer
+    inames suffixed with ``"_after"`` and its output dimensions use the anchor
+    inames suffixed with ``"_before"``.
+
+    The anchor's self-edge is not inherited. Existing dependencies of the
+    consumer are preserved and unioned with inherited dependencies to the same
+    source.
+    """
+
+    if consumer_id == anchor_id:
+        raise LoopyError("consumer and anchor instructions must be distinct")
+    if not has_precise_dependencies(kernel):
+        raise LoopyError("consumer splicing requires precise dependencies")
+
+    try:
+        consumer = kernel.id_to_insn[consumer_id]
+        anchor = kernel.id_to_insn[anchor_id]
+    except KeyError as err:
+        raise LoopyError(f"unknown instruction ID '{err.args[0]}'") from err
+
+    consumer_instances = _statement_instance_set(kernel, consumer, "_after")
+    anchor_instances = _statement_instance_set(kernel, anchor, "_before")
+    consumer_to_anchor = _validate_instance_mapping(
+        consumer_to_anchor,
+        consumer_instances,
+        anchor_instances,
+        relation_name="consumer-to-anchor",
+        domain_name="consumer",
+        range_name="anchor",
+    )
+
+    new_happens_after = dict(consumer.happens_after)
+    for source_id, happens_after in anchor.happens_after.items():
+        if source_id == anchor_id:
+            continue
+        if happens_after.instances_rel is None:
+            raise LoopyError(
+                "cannot inherit an imprecise happens-after relation from "
+                f"'{anchor_id}' to '{source_id}'"
+            )
+
+        # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+        inherited = _compose_happens_after_relations(
+            consumer_to_anchor,
+            nisl.make_map(happens_after.instances_rel),
+        )
+        _add_or_union_happens_after(
+            new_happens_after, consumer_id, source_id, inherited
+        )
+
+    return kernel.copy(instructions=tuple(
+        stmt.copy(happens_after=constantdict(new_happens_after))
+        if stmt.id == consumer_id else stmt
+        for stmt in kernel.instructions
+    ))
+
+
+def splice_happens_after_as_producer(
+    kernel: LoopKernel,
+    producer_id: str,
+    anchor_id: str,
+    anchor_to_producer: nisl.Map,
+) -> LoopKernel:
+    """Redirect consumers of *anchor_id* to *producer_id*.
+
+    *anchor_to_producer* maps the anchor instances being replaced to the
+    producer instances that replace them. Its input dimensions use the anchor
+    inames suffixed with ``"_after"`` and its output dimensions use the producer
+    inames suffixed with ``"_before"``.
+
+    If the map covers only part of the anchor instance space, dependencies on
+    the remaining anchor instances are preserved. Existing dependencies on the
+    producer are unioned with the redirected dependencies.
+    """
+
+    if producer_id == anchor_id:
+        raise LoopyError("producer and anchor instructions must be distinct")
+    if not has_precise_dependencies(kernel):
+        raise LoopyError("producer splicing requires precise dependencies")
+
+    try:
+        producer = kernel.id_to_insn[producer_id]
+        anchor = kernel.id_to_insn[anchor_id]
+    except KeyError as err:
+        raise LoopyError(f"unknown instruction ID '{err.args[0]}'") from err
+
+    anchor_instances = _statement_instance_set(kernel, anchor, "_after")
+    producer_instances = _statement_instance_set(kernel, producer, "_before")
+    anchor_to_producer = _validate_instance_mapping(
+        anchor_to_producer,
+        anchor_instances,
+        producer_instances,
+        relation_name="anchor-to-producer",
+        domain_name="anchor",
+        range_name="producer",
+    )
+
+    mapped_anchor_instances = (
+        anchor_to_producer.domain()
+        .coalesce()
+        .rename_dims(zip(
+            anchor_to_producer.space.dimtype_to_names[DimType.in_],
+            tuple(
+                name.removesuffix("_after") + "_before"
+                for name in anchor_to_producer.space.dimtype_to_names[DimType.in_]
+            ),
+            strict=True,
+        ))
+    )
+
+    new_stmts: list[InstructionBase] = []
+    for sink in kernel.instructions:
+        if sink.id in {anchor_id, producer_id}:
+            new_stmts.append(sink)
+            continue
+
+        happens_after = sink.happens_after.get(anchor_id)
+        if happens_after is None:
+            new_stmts.append(sink)
+            continue
+        if happens_after.instances_rel is None:
+            raise LoopyError(
+                "cannot redirect an imprecise happens-after relation from "
+                f"'{sink.id}' to '{anchor_id}'"
+            )
+
+        # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+        anchor_order = nisl.make_map(happens_after.instances_rel).coalesce()
+        redirected_anchor_order = anchor_order.intersect_range(
+            mapped_anchor_instances
+        ).coalesce()
+        remaining_anchor_order = (
+            anchor_order - redirected_anchor_order
+        ).coalesce()
+        redirected_order = _compose_happens_after_relations(
+            redirected_anchor_order, anchor_to_producer
+        )
+
+        new_happens_after = dict(sink.happens_after)
+        if remaining_anchor_order.is_empty():
+            del new_happens_after[anchor_id]
+        else:
+            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+            new_happens_after[anchor_id] = HappensAfter(
+                remaining_anchor_order.as_isl()
+            )
+
+        _add_or_union_happens_after(
+            new_happens_after, sink.id, producer_id, redirected_order
+        )
+
+        new_stmts.append(
+            sink.copy(happens_after=constantdict(new_happens_after))
+        )
+
+    return kernel.copy(instructions=tuple(new_stmts))
+
+
+def splice_happens_after_as_consumer_and_producer(
+    kernel: LoopKernel,
+    instruction_id: str,
+    anchor_id: str,
+    instruction_to_anchor: nisl.Map,
+    anchor_to_instruction: nisl.Map,
+) -> LoopKernel:
+    """Splice *instruction_id* across both sides of *anchor_id*.
+
+    The new instruction inherits the anchor's incoming dependencies according
+    to *instruction_to_anchor*. Dependencies on the mapped anchor instances are
+    redirected to the new instruction according to *anchor_to_instruction*.
+    The two relations are supplied independently and need not be inverses.
+    """
+
+    kernel = splice_happens_after_as_consumer(
+        kernel,
+        instruction_id,
+        anchor_id,
+        instruction_to_anchor,
+    )
+    return splice_happens_after_as_producer(
+        kernel,
+        instruction_id,
+        anchor_id,
+        anchor_to_instruction,
     )
 
 

@@ -463,6 +463,624 @@ def test_map_domain_transforms_precise_happens_after() -> None:
         )
 
 
+def test_split_iname_transforms_precise_happens_after() -> None:
+    t_unit = lp.make_kernel(
+        "[NI, NJ] -> { [i, j] : 0 <= i < NI and 0 <= j < NJ }",
+        """
+        a[i, j] = i + j {id=A}
+        b[i, j] = a[i, j] {id=B}
+        """,
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    split_reln = nisl.make_map("""
+        { [i] -> [io, ii] :
+            i = 4*io + ii and 0 <= ii < 4
+        }
+        """)
+
+    expected = dep.apply_affine_transform_to_happens_afters(
+        t_unit.default_entrypoint, split_reln
+    )
+    kernel = lp.split_iname(
+        t_unit, "i", 4, outer_iname="io", inner_iname="ii"
+    ).default_entrypoint
+
+    assert kernel.id_to_insn["A"].within_inames == frozenset({"io", "ii", "j"})
+    assert kernel.id_to_insn["B"].within_inames == frozenset({"io", "ii", "j"})
+    for sink_id, source_id in [("A", "A"), ("B", "A"), ("B", "B")]:
+        assert _get_precise_relation(kernel, sink_id, source_id).equals(
+            _get_precise_relation(expected, sink_id, source_id)
+        )
+
+
+def test_split_iname_rejects_within_for_precise_happens_after() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < 16 }",
+        """
+        a[i] = i {id=A}
+        b[i] = a[i] {id=B}
+        """,
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+
+    with pytest.raises(LoopyError, match="does not support 'within'"):
+        lp.split_iname(t_unit, "i", 4, within="id:A")
+
+
+def test_splice_happens_after_as_consumer_inherits_branched_order() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "[NI, NJ] -> { [i, j] : 0 <= i < NI and 0 <= j < NJ }",
+            """
+            [NI, NJ] -> {
+                [tile, lane, jc] :
+                    0 <= 2*tile + lane < NI and
+                    0 <= lane < 2 and 0 <= jc < NJ
+            }
+            """,
+        ],
+        """
+        p[i, j] = i + j {id=P}
+        q[i] = i {id=Q}
+        a[i, j] = p[i, j] + q[i] {id=A}
+        c[tile, lane, jc] = 0 {id=C}
+        s[i, j] = a[i, j] {id=S}
+        """,
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+
+    a_after_p = HappensAfter(nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [i_before, j_before] :
+                i_before = i_after and j_before = j_after and
+                0 <= i_after < NI and 0 <= j_after < NJ
+        }
+        """).as_isl())
+    a_after_q = HappensAfter(nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [i_before] :
+                i_before = i_after and
+                0 <= i_after < NI and 0 <= j_after < NJ
+        }
+        """).as_isl())
+    s_after_a = HappensAfter(nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [i_before, j_before] :
+                i_before = i_after and j_before = j_after and
+                0 <= i_after < NI and 0 <= j_after < NJ
+        }
+        """).as_isl())
+
+    new_happens_after = {
+        "P": {"P": kernel.id_to_insn["P"].happens_after["P"]},
+        "Q": {"Q": kernel.id_to_insn["Q"].happens_after["Q"]},
+        "A": {
+            "A": kernel.id_to_insn["A"].happens_after["A"],
+            "P": a_after_p,
+            "Q": a_after_q,
+        },
+        "C": {"C": kernel.id_to_insn["C"].happens_after["C"]},
+        "S": {
+            "S": kernel.id_to_insn["S"].happens_after["S"],
+            "A": s_after_a,
+        },
+    }
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after=new_happens_after[stmt.id])
+        for stmt in kernel.instructions
+    ))
+    original_anchor_order = kernel.id_to_insn["A"].happens_after
+    original_successor_order = kernel.id_to_insn["S"].happens_after
+    original_consumer_self_order = kernel.id_to_insn["C"].happens_after["C"]
+
+    kernel = dep.splice_happens_after_as_consumer(
+        kernel,
+        "C",
+        "A",
+        nisl.make_map("""
+        [NI, NJ] -> {
+            [tile_after, lane_after, jc_after] -> [i_before, j_before] :
+                i_before = 2*tile_after + lane_after and
+                j_before = jc_after and
+                0 <= 2*tile_after + lane_after < NI and
+                0 <= lane_after < 2 and 0 <= jc_after < NJ
+        }
+        """),
+    )
+
+    assert kernel.id_to_insn["C"].happens_after.keys() == {"C", "P", "Q"}
+    assert kernel.id_to_insn["C"].happens_after["C"] == (
+        original_consumer_self_order
+    )
+    assert kernel.id_to_insn["A"].happens_after == original_anchor_order
+    assert kernel.id_to_insn["S"].happens_after == original_successor_order
+    assert _get_precise_relation(kernel, "C", "P").equals(
+        nisl.make_map("""
+        [NI, NJ] -> {
+            [tile_after, lane_after, jc_after] -> [i_before, j_before] :
+                i_before = 2*tile_after + lane_after and
+                j_before = jc_after and
+                0 <= 2*tile_after + lane_after < NI and
+                0 <= lane_after < 2 and 0 <= jc_after < NJ
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "C", "Q").equals(
+        nisl.make_map("""
+        [NI, NJ] -> {
+            [tile_after, lane_after, jc_after] -> [i_before] :
+                i_before = 2*tile_after + lane_after and
+                0 <= 2*tile_after + lane_after < NI and
+                0 <= lane_after < 2 and 0 <= jc_after < NJ
+        }
+        """)
+    )
+
+
+def test_splice_happens_after_as_consumer_unions_existing_order() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "[N] -> { [i] : 0 <= i < N }",
+            "[N] -> { [ic, lane] : 0 <= ic < N and 0 <= lane < 4 }",
+        ],
+        """
+        p[i] = i {id=P}
+        a[i] = p[i] {id=A}
+        c[ic, lane] = 0 {id=C}
+        """,
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    a_after_p = HappensAfter(nisl.make_map("""
+        [N] -> {
+            [i_after] -> [i_before = i_after] : 0 <= i_after < N
+        }
+        """).as_isl())
+    c_after_p = HappensAfter(nisl.make_map("""
+        [N] -> {
+            [ic_after, lane_after] -> [i_before = ic_after] :
+                0 <= ic_after < N and lane_after = 0
+        }
+        """).as_isl())
+    new_happens_after = {
+        "P": {"P": kernel.id_to_insn["P"].happens_after["P"]},
+        "A": {
+            "A": kernel.id_to_insn["A"].happens_after["A"],
+            "P": a_after_p,
+        },
+        "C": {
+            "C": kernel.id_to_insn["C"].happens_after["C"],
+            "P": c_after_p,
+        },
+    }
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after=new_happens_after[stmt.id])
+        for stmt in kernel.instructions
+    ))
+
+    kernel = dep.splice_happens_after_as_consumer(
+        kernel,
+        "C",
+        "A",
+        nisl.make_map("""
+        [N] -> {
+            [ic_after, lane_after] -> [i_before = ic_after] :
+                0 <= ic_after < N and 1 <= lane_after < 4
+        }
+        """),
+    )
+
+    assert _get_precise_relation(kernel, "C", "P").equals(
+        nisl.make_map("""
+        [N] -> {
+            [ic_after, lane_after] -> [i_before = ic_after] :
+                0 <= ic_after < N and 0 <= lane_after < 4
+        }
+        """)
+    )
+
+
+def test_splice_happens_after_as_consumer_handles_scalar_anchor() -> None:
+    t_unit = lp.make_kernel(
+        "[N] -> { [i] : 0 <= i < N }",
+        """
+        p[0] = 1 {id=P}
+        a[0] = p[0] {id=A}
+        c[i] = 0 {id=C}
+        """,
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after={
+            "P": {"P": kernel.id_to_insn["P"].happens_after["P"]},
+            "A": {
+                "A": kernel.id_to_insn["A"].happens_after["A"],
+                "P": HappensAfter(nisl.make_map("{ [] -> [] }").as_isl()),
+            },
+            "C": {"C": kernel.id_to_insn["C"].happens_after["C"]},
+        }[stmt.id])
+        for stmt in kernel.instructions
+    ))
+
+    kernel = dep.splice_happens_after_as_consumer(
+        kernel,
+        "C",
+        "A",
+        nisl.make_map("[N] -> { [i_after] -> [] : 0 <= i_after < N }"),
+    )
+
+    assert _get_precise_relation(kernel, "C", "P").equals(
+        nisl.make_map("[N] -> { [i_after] -> [] : 0 <= i_after < N }")
+    )
+
+
+def test_splice_happens_after_as_producer_redirects_branched_order() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "[NI, NJ] -> { [i, j] : 0 <= i < NI and 0 <= j < NJ }",
+            """
+            [NI, NJ] -> {
+                [tile, lane, jp] :
+                    0 <= 2*tile + lane < NI and
+                    0 <= lane < 2 and 0 <= jp < NJ
+            }
+            """,
+        ],
+        """
+        q[i, j] = i + j {id=Q}
+        a[i, j] = q[i, j] {id=A}
+        g[tile, lane, jp] = 0 {id=G}
+        s[i, j] = a[i, j] + q[i, j] {id=S}
+        t[i] = sum(j, a[i, j]) {id=T}
+        """,
+    )
+    kernel = t_unit.default_entrypoint
+
+    a_after_q = HappensAfter(nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [i_before, j_before] :
+                i_before = i_after and j_before = j_after and
+                0 <= i_after < NI and 0 <= j_after < NJ
+        }
+        """).as_isl())
+    g_after_q = HappensAfter(nisl.make_map("""
+        [NI, NJ] -> {
+            [tile_after, lane_after, jp_after] -> [i_before, j_before] :
+                i_before = 2*tile_after + lane_after and
+                j_before = jp_after and
+                0 <= 2*tile_after + lane_after < NI and
+                0 <= lane_after < 2 and 0 <= jp_after < NJ
+        }
+        """).as_isl())
+    s_after_a = HappensAfter(nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [i_before, j_before] :
+                i_before = i_after and j_before = j_after and
+                0 <= i_after < NI and 0 <= j_after < NJ
+        }
+        """).as_isl())
+    s_after_q = HappensAfter(nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [i_before, j_before] :
+                i_before = i_after and j_before = j_after and
+                0 <= i_after < NI and 0 <= j_after < NJ
+        }
+        """).as_isl())
+    t_after_a = HappensAfter(nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after] -> [i_before, j_before] :
+                i_before = i_after and
+                0 <= i_after < NI and 0 <= j_before < NJ
+        }
+        """).as_isl())
+    happens_after = {
+        "Q": {},
+        "A": {"Q": a_after_q},
+        "G": {"Q": g_after_q},
+        "S": {"A": s_after_a, "Q": s_after_q},
+        "T": {"A": t_after_a},
+    }
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after=happens_after[stmt.id])
+        for stmt in kernel.instructions
+    ))
+    original_anchor_order = kernel.id_to_insn["A"].happens_after
+    original_producer_order = kernel.id_to_insn["G"].happens_after
+    original_s_after_q = kernel.id_to_insn["S"].happens_after["Q"]
+
+    kernel = dep.splice_happens_after_as_producer(
+        kernel,
+        "G",
+        "A",
+        nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [tile_before, lane_before, jp_before] :
+                i_after = 2*tile_before + lane_before and
+                j_after = jp_before and
+                0 <= i_after < NI and 0 <= j_after < NJ and
+                0 <= lane_before < 2
+        }
+        """),
+    )
+
+    assert kernel.id_to_insn["A"].happens_after == original_anchor_order
+    assert kernel.id_to_insn["G"].happens_after == original_producer_order
+    assert kernel.id_to_insn["S"].happens_after.keys() == {"G", "Q"}
+    assert kernel.id_to_insn["S"].happens_after["Q"] == original_s_after_q
+    assert kernel.id_to_insn["T"].happens_after.keys() == {"G"}
+    assert _get_precise_relation(kernel, "S", "G").equals(
+        nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [tile_before, lane_before, jp_before] :
+                i_after = 2*tile_before + lane_before and
+                j_after = jp_before and
+                0 <= i_after < NI and 0 <= j_after < NJ and
+                0 <= lane_before < 2
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "T", "G").equals(
+        nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after] -> [tile_before, lane_before, jp_before] :
+                i_after = 2*tile_before + lane_before and
+                0 <= i_after < NI and 0 <= lane_before < 2 and
+                0 <= jp_before < NJ
+        }
+        """)
+    )
+
+
+def test_splice_happens_after_as_producer_preserves_unmapped_order() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "[N] -> { [i] : 0 <= i < N }",
+            "[N] -> { [ip] : 0 <= ip < N }",
+        ],
+        """
+        a[i] = i {id=A}
+        g[ip] = 0 {id=G}
+        s[i] = a[i] {id=S}
+        """,
+    )
+    kernel = t_unit.default_entrypoint
+    s_after_a = HappensAfter(nisl.make_map("""
+        [N] -> {
+            [i_after] -> [i_before = i_after] : 0 <= i_after < N
+        }
+        """).as_isl())
+    s_after_g = HappensAfter(nisl.make_map("""
+        [N] -> {
+            [i_after] -> [ip_before = i_after] :
+                0 <= i_after < N and 2*i_after >= N
+        }
+        """).as_isl())
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after={
+            "A": {},
+            "G": {},
+            "S": {"A": s_after_a, "G": s_after_g},
+        }[stmt.id])
+        for stmt in kernel.instructions
+    ))
+
+    kernel = dep.splice_happens_after_as_producer(
+        kernel,
+        "G",
+        "A",
+        nisl.make_map("""
+        [N] -> {
+            [i_after] -> [ip_before = 0] :
+                0 <= i_after < N and 2*i_after < N
+        }
+        """),
+    )
+
+    assert _get_precise_relation(kernel, "S", "A").equals(
+        nisl.make_map("""
+        [N] -> {
+            [i_after] -> [i_before = i_after] :
+                0 <= i_after < N and 2*i_after >= N
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "S", "G").equals(
+        nisl.make_map("""
+        [N] -> {
+            [i_after] -> [ip_before = 0] :
+                0 <= i_after < N and 2*i_after < N;
+            [i_after] -> [ip_before = i_after] :
+                0 <= i_after < N and 2*i_after >= N
+        }
+        """)
+    )
+
+
+def test_splice_happens_after_as_producer_handles_scalar_producer() -> None:
+    t_unit = lp.make_kernel(
+        "[N] -> { [i] : 0 <= i < N }",
+        """
+        a[i] = i {id=A}
+        g[0] = 0 {id=G}
+        s[i] = a[i] {id=S}
+        """,
+    )
+    kernel = t_unit.default_entrypoint
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after={
+            "A": {},
+            "G": {},
+            "S": {
+                "A": HappensAfter(nisl.make_map("""
+                    [N] -> {
+                        [i_after] -> [i_before = i_after] :
+                            0 <= i_after < N
+                    }
+                    """).as_isl()),
+            },
+        }[stmt.id])
+        for stmt in kernel.instructions
+    ))
+
+    kernel = dep.splice_happens_after_as_producer(
+        kernel,
+        "G",
+        "A",
+        nisl.make_map("[N] -> { [i_after] -> [] : 0 <= i_after < N }"),
+    )
+
+    assert kernel.id_to_insn["S"].happens_after.keys() == {"G"}
+    assert _get_precise_relation(kernel, "S", "G").equals(
+        nisl.make_map("[N] -> { [i_after] -> [] : 0 <= i_after < N }")
+    )
+
+
+def test_splice_happens_after_as_consumer_and_producer() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "[NI, NJ] -> { [i, j] : 0 <= i < NI and 0 <= j < NJ }",
+            """
+            [NI, NJ] -> {
+                [tile, lane, jg] :
+                    0 <= 2*tile + lane < NI and
+                    0 <= lane < 2 and 0 <= jg < NJ
+            }
+            """,
+        ],
+        """
+        d[i, j] = i + j {id=D}
+        a[i, j] = d[i, j] {id=A}
+        g[tile, lane, jg] = 0 {id=G}
+        s[i, j] = a[i, j] {id=S}
+        """,
+    )
+    kernel = t_unit.default_entrypoint
+    same_instance = nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [i_before, j_before] :
+                i_before = i_after and j_before = j_after and
+                0 <= i_after < NI and 0 <= j_after < NJ
+        }
+        """)
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after={
+            "D": {},
+            "A": {"D": HappensAfter(same_instance.as_isl())},
+            "G": {},
+            "S": {"A": HappensAfter(same_instance.as_isl())},
+        }[stmt.id])
+        for stmt in kernel.instructions
+    ))
+
+    instruction_to_anchor = nisl.make_map("""
+        [NI, NJ] -> {
+            [tile_after, lane_after, jg_after] -> [i_before, j_before] :
+                i_before = 2*tile_after + lane_after and
+                j_before = jg_after and
+                0 <= 2*tile_after + lane_after < NI and
+                0 <= lane_after < 2 and 0 <= jg_after < NJ
+        }
+        """)
+    anchor_to_instruction = nisl.make_map("""
+        [NI, NJ] -> {
+            [i_after, j_after] -> [tile_before, lane_before, jg_before] :
+                i_after = 2*tile_before + lane_before and
+                j_after = jg_before and
+                0 <= i_after < NI and 0 <= j_after < NJ and
+                0 <= lane_before < 2
+        }
+        """)
+    kernel = dep.splice_happens_after_as_consumer_and_producer(
+        kernel,
+        "G",
+        "A",
+        instruction_to_anchor,
+        anchor_to_instruction,
+    )
+
+    assert kernel.id_to_insn["A"].happens_after.keys() == {"D"}
+    assert kernel.id_to_insn["G"].happens_after.keys() == {"D"}
+    assert kernel.id_to_insn["S"].happens_after.keys() == {"G"}
+    assert _get_precise_relation(kernel, "G", "D").equals(
+        instruction_to_anchor
+    )
+    assert _get_precise_relation(kernel, "S", "G").equals(
+        anchor_to_instruction
+    )
+
+
+def test_combined_splice_accepts_independent_partial_maps() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "[N] -> { [i] : 0 <= i < N }",
+            "[N] -> { [b] : 0 <= b < N }",
+        ],
+        """
+        d[i] = i {id=D}
+        a[i] = d[i] {id=A}
+        g[b] = 0 {id=G}
+        s[i] = a[i] {id=S}
+        """,
+    )
+    kernel = t_unit.default_entrypoint
+    same_instance = HappensAfter(nisl.make_map("""
+        [N] -> {
+            [i_after] -> [i_before = i_after] : 0 <= i_after < N
+        }
+        """).as_isl())
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after={
+            "D": {},
+            "A": {"D": same_instance},
+            "G": {},
+            "S": {"A": same_instance},
+        }[stmt.id])
+        for stmt in kernel.instructions
+    ))
+
+    kernel = dep.splice_happens_after_as_consumer_and_producer(
+        kernel,
+        "G",
+        "A",
+        nisl.make_map("""
+        [N] -> {
+            [b_after] -> [i_before = 2*b_after] :
+                0 <= 2*b_after < N
+        }
+        """),
+        nisl.make_map("""
+        [N] -> {
+            [i_after] -> [b_before = i_after] :
+                0 <= i_after < N and 2*i_after >= N
+        }
+        """),
+    )
+
+    assert _get_precise_relation(kernel, "G", "D").equals(
+        nisl.make_map("""
+        [N] -> {
+            [b_after] -> [i_before = 2*b_after] :
+                0 <= 2*b_after < N
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "S", "A").equals(
+        nisl.make_map("""
+        [N] -> {
+            [i_after] -> [i_before = i_after] :
+                0 <= i_after < N and 2*i_after < N
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "S", "G").equals(
+        nisl.make_map("""
+        [N] -> {
+            [i_after] -> [b_before = i_after] :
+                0 <= i_after < N and 2*i_after >= N
+        }
+        """)
+    )
+
+
 def test_access_relation_finder_tracks_reads_and_writes_per_statement() -> None:
     t_unit = lp.make_kernel(
         "{ [i] : 1 <= i < N }",
@@ -1249,6 +1867,78 @@ def test_global_barrier_orders_all_work_items() -> None:
                 0 <= g_before < 2 and 0 <= l_before < 4
         }
     """)
+    )
+
+
+def test_numerical_affine_and_splicing_integration(
+    ctx_factory: cl.CtxFactory,
+) -> None:
+    args = [
+        lp.GlobalArg("x,out", dtype=np.int32, shape=(64,)),
+        "...",
+    ]
+    ref_t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < 64 }",
+        "out[i] = 2*(x[i] + 1) + 3",
+        args,
+    )
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < 64 }",
+        """
+        out[i] = g[i] + 3 {id=S}
+        <> g[i] = 2*d[i] {id=G}
+        <> a[i] = 2*d[i] {id=A}
+        <> d[i] = x[i] + 1 {id=D}
+        """,
+        args,
+    )
+    same_instance = HappensAfter(nisl.make_map("""
+        {
+            [i_after] -> [i_before = i_after] : 0 <= i_after < 64
+        }
+        """).as_isl())
+    kernel = t_unit.default_entrypoint
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after={
+            "S": {"A": same_instance},
+            "G": {},
+            "A": {"D": same_instance},
+            "D": {},
+        }[stmt.id])
+        for stmt in kernel.instructions
+    ))
+    t_unit = t_unit.with_kernel(kernel)
+
+    t_unit = lp.split_iname(
+        t_unit,
+        "i",
+        4,
+        outer_iname="io",
+        inner_iname="ii",
+    )
+    same_tiled_instance = nisl.make_map("""
+        {
+            [io_after, ii_after] -> [io_before, ii_before] :
+                io_before = io_after and ii_before = ii_after and
+                0 <= 4*io_after + ii_after < 64 and 0 <= ii_after < 4
+        }
+        """)
+    kernel = dep.splice_happens_after_as_consumer_and_producer(
+        t_unit.default_entrypoint,
+        "G",
+        "A",
+        same_tiled_instance,
+        same_tiled_instance,
+    )
+    t_unit = t_unit.with_kernel(kernel)
+    t_unit = lp.prioritize_loops(t_unit, "io,ii")
+
+    lp.auto_test_vs_ref(
+        ref_t_unit,
+        ctx_factory(),
+        t_unit,
+        print_code=False,
+        quiet=True,
     )
 
 
