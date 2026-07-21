@@ -195,7 +195,7 @@ def _build_statement_timestamp_relations(
 
         # FIXME: isl -> named conversion
         domain = nisl.make_set(
-            kernel.get_inames_domain(stmt.within_inames).as_set()
+            kernel.get_inames_domain(stmt.within_inames).to_set()
         ).project_out_except([*stmt.within_inames, *kernel.all_params()])
 
         if stmt.within_inames:
@@ -239,7 +239,7 @@ def _build_barrier_timestamp_relations(
 
         # FIXME: isl -> named conversion
         domain = nisl.make_set(
-            kernel.get_inames_domain(frozenset(inames)).as_set()
+            kernel.get_inames_domain(frozenset(inames)).to_set()
         ).project_out_except([*inames, *kernel.all_params()])
 
         if inames:
@@ -267,7 +267,7 @@ def _build_strict_lexicographic_order(
     joint = nisl.make_set(
         f"{{ [{', '.join([*later_names, *earlier_names])}] }}"
     )
-    affs = joint.pw_affs
+    affs = joint.var_pw_affs
 
     strict_lex = joint - joint
     equal_prefix = joint

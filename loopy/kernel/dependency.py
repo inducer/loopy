@@ -112,7 +112,7 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         cell_names = tuple(f"ax_{axis}" for axis in range(len(subscript)))
 
         access_set = domain.add_dims(DimType.out, cell_names)
-        coordinates = access_set.pw_affs
+        coordinates = access_set.var_pw_affs
         for cell_name, index_expr in zip(cell_names, subscript, strict=True):
             index_aff = nisl.make_aff(
                 aff_from_expr(
@@ -292,7 +292,7 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
             shared_order = after_order
 
             joint_domain = after_domain & before_domain
-            affs = joint_domain.pw_affs
+            affs = joint_domain.var_pw_affs
 
             strict_lex = joint_domain - joint_domain
             equal_prefix = joint_domain
