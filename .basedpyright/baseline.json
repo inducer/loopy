@@ -73992,6 +73992,14 @@
                     "endColumn": 17,
                     "lineCount": 1
                 }
+            },
+            {
+                "code": "reportUnknownMemberType",
+                "range": {
+                    "startColumn": 23,
+                    "endColumn": 32,
+                    "lineCount": 1
+                }
             }
         ],
         "./loopy/transform/instruction.py": [
