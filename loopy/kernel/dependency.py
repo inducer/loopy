@@ -193,6 +193,12 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         })
 
     @override
+    def map_variable(
+        self, expr: prim.Variable, /, stmt_id: str, access_type: AccessType
+    ) -> None:
+        self._record_access(stmt_id, expr.name, (), access_type)
+
+    @override
     def map_subscript(
         self, expr: prim.Subscript, /, stmt_id: str, access_type: AccessType
     ) -> None:
