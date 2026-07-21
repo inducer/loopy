@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from collections import defaultdict
 from collections.abc import (
     Callable,
     Collection,
@@ -1017,14 +1018,37 @@ def duplicate_inames(
 
     # {{{ duplicate the inames
 
+    from collections import defaultdict
+
     from loopy.isl_helpers import duplicate_axes
-    from loopy.kernel.tools import DomainChanger
+    from loopy.kernel.tools import MultiDomainChanger
 
-    for old_iname, new_iname in zip(inames, new_suffixed_inames, strict=True):
-        domch = DomainChanger(kernel, frozenset([old_iname]))
+    domch = MultiDomainChanger(kernel, [frozenset([iname]) for iname in inames])
 
-        dup_iname = duplicate_axes(domch.domain, [old_iname], [new_iname])
-        kernel = kernel.copy(domains=domch.get_domains_with(dup_iname))
+    # Group inames that share a leaf domain so that all of a domain's new axes
+    # are added in a single duplicate_axes call
+    leaf_idx_to_group: dict[int, tuple[list[InameStr], list[InameStr]]] = \
+        defaultdict(lambda: ([], []))
+    for leaf_idx, old_iname, new_iname in zip(
+            domch.leaf_domain_indices, inames, new_suffixed_inames, strict=True):
+        assert isinstance(leaf_idx, int)
+        old_grp, new_grp = leaf_idx_to_group[leaf_idx]
+        old_grp.append(old_iname)
+        new_grp.append(new_iname)
+
+    leaf_idx_to_dup = {
+        leaf_idx: duplicate_axes(kernel.domains[leaf_idx], old_grp, new_grp)
+        for leaf_idx, (old_grp, new_grp) in leaf_idx_to_group.items()}
+
+    def verify_is_int(idx: int | None) -> int:
+        assert isinstance(idx, int)
+        return idx
+
+    dup_inames = [
+        leaf_idx_to_dup[verify_is_int(leaf_idx)]
+        for leaf_idx in domch.leaf_domain_indices]
+
+    kernel = kernel.copy(domains=domch.get_domains_with(dup_inames))
 
     # }}}
 
@@ -2591,6 +2615,215 @@ def rename_inames(
         if ((len(old_inames & insn.within_inames) != 0) and within(kernel, insn, ()))
         else insn
         for insn in kernel.instructions]
+
+    kernel = kernel.copy(instructions=new_instructions)
+
+    return kernel
+
+
+@for_each_kernel
+@remove_any_newly_unused_inames
+def rename_inames_multi(
+            kernel: LoopKernel,
+            old_inames: Sequence[Collection[InameStr]],
+            new_inames: Sequence[InameStr],
+            existing_ok: bool = False,
+            within: ToStackMatchConvertible = None,
+            raise_on_domain_mismatch: bool | None = None
+        ) -> LoopKernel:
+    r"""
+    Multiple new iname version of :func:`loopy.rename_inames`.
+
+    :arg old_inames: a sequence of (disjoint) collections of inames that must be
+        renamed.
+    :arg new_inames: a sequence of new inames corresponding to the entries in
+        *old_inames*.
+    :arg within: a stack match, as understood by :func:`loopy.match.parse_stack_match`.
+    :arg existing_ok: execute even if *new_iname* already exists.
+    :arg raise_on_domain_mismatch: if *True*, raises an error if
+        :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
+        \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
+    """
+    if len(new_inames) != len(old_inames):
+        raise LoopyError("'new_inames' and 'old_inames' must have the same length.")
+
+    old_inames = list(old_inames)
+
+    kinames = kernel.all_variable_names() - kernel.all_inames()
+
+    for i in range(len(old_inames)):
+        if isinstance(old_inames[i], str) or not isinstance(old_inames[i], Collection):
+            raise LoopyError("'old_inames[i]' must be a collection of strings: "
+                             f"{type(old_inames[i])}")
+        old_inames[i] = _to_inames_tuple(old_inames[i])
+
+        old_inames_i_set = frozenset(old_inames[i])
+
+        if new_inames[i] in old_inames_i_set:
+            raise LoopyError("'new_iname' is part of inames being renamed: "
+                             f"'{new_inames[i]}' in {_to_inames_str(old_inames[i])}")
+
+        if new_inames[i] in kinames:
+            raise LoopyError(f"new iname '{new_inames[i]}' is already a variable in "
+                             f"the kernel: {kinames}")
+
+        if any(
+                (len(insn.within_inames & old_inames_i_set) > 1)
+                for insn in kernel.instructions):
+            raise LoopyError(
+                "'old_inames' contains nested inames -- renaming is illegal")
+
+        if not (old_inames_i_set <= kernel.all_inames()):
+            raise LoopyError(
+                f"old inames {_to_inames_str(old_inames_i_set - kernel.all_inames())}"
+                " do not exist.")
+
+    old_iname_to_count = defaultdict(int)
+    for i in range(len(old_inames)):
+        for iname in old_inames[i]:
+            old_iname_to_count[iname] += 1
+    for iname, count in old_iname_to_count.items():
+        if count > 1:
+            raise LoopyError(f"old iname {iname} occurs in multiple entries.")
+
+    does_not_exist_indices: list[int] = []
+    for i in range(len(new_inames)):
+        # FIXME: distinguish existing iname vs. existing other variable
+        does_exist = new_inames[i] in kernel.all_inames()
+        if does_exist and not existing_ok:
+            raise LoopyError(f"iname '{new_inames[i]}' conflicts with an existing "
+                             "identifier -- cannot rename")
+        else:
+            does_not_exist_indices.append(i)
+
+    if raise_on_domain_mismatch is None:
+        raise_on_domain_mismatch = __debug__
+
+    # sort to have deterministic implementation.
+    sorted_old_inames = [
+        sorted(inames)
+        for inames in old_inames]
+
+    if does_not_exist_indices:
+        # {{{ rename sorted_old_inames[i][0] -> new_iname
+        # so that the code below can focus on "merging" inames that already exist
+
+        duplicate_from_inames = [
+            sorted_old_inames[i][0] for i in does_not_exist_indices]
+        duplicate_to_inames = [new_inames[i] for i in does_not_exist_indices]
+
+        kernel = duplicate_inames(
+                kernel, duplicate_from_inames, within=within,
+                new_inames=duplicate_to_inames)
+
+        # sorted_old_inames[i][0] is already renamed to new_iname => do not rename
+        # again.
+        sorted_old_inames = [
+            inames[1:]
+            for inames in sorted_old_inames]
+
+        # }}}
+
+    del does_not_exist_indices
+    for iname in new_inames:
+        assert iname in kernel.all_inames()
+
+    if raise_on_domain_mismatch:
+        for i in range(len(old_inames)):
+            new_iname = new_inames[i]
+            for old_iname in sorted_old_inames[i]:
+                # {{{ check that the domains match up
+
+                dom = kernel.get_inames_domain(frozenset((old_iname, new_iname)))
+
+                var_dict = dom.get_var_dict()
+                _, old_idx = var_dict[old_iname]
+                _, new_idx = var_dict[new_iname]
+
+                par_idx = dom.dim(dim_type.param)
+                dom_old = dom.move_dims(
+                        dim_type.param, par_idx, dim_type.set, old_idx, 1)
+                dom_old = dom_old.move_dims(dim_type.set,
+                                            dom_old.dim(dim_type.set),
+                                            dim_type.param, par_idx, 1)
+                dom_old = dom_old.project_out(dim_type.set,
+                                              new_idx
+                                              if new_idx < old_idx
+                                              else new_idx - 1,
+                                              1)
+
+                par_idx = dom.dim(dim_type.param)
+                dom_new = dom.move_dims(dim_type.param, par_idx,
+                                        dim_type.set, new_idx, 1)
+                dom_new = dom_new.move_dims(dim_type.set, dom_new.dim(dim_type.set),
+                                            dim_type.param, par_idx, 1)
+                dom_new = dom_new.project_out(dim_type.set,
+                                              old_idx
+                                              if old_idx < new_idx
+                                              else old_idx - 1, 1)
+
+                if not (dom_old <= dom_new <= dom_old):
+                    raise LoopyError(
+                            f"inames {old_iname} and {new_iname} do not iterate over "
+                            "the same domain")
+
+            # }}}
+
+    all_old_inames = frozenset([
+        iname
+        for inames in sorted_old_inames
+        for iname in inames])
+
+    old_iname_to_new_iname = {
+        old_iname: new_iname
+        for old_inms, new_iname in zip(sorted_old_inames, new_inames, strict=True)
+        for old_iname in old_inms}
+
+    subst_dict = {old_iname: prim.Variable(new_iname)
+                  for old_iname, new_iname in old_iname_to_new_iname.items()}
+
+    from loopy.match import parse_stack_match
+    within = parse_stack_match(within)
+
+    from pymbolic.mapper.substitutor import make_subst_func
+    var_name_gen = kernel.get_var_name_generator()
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, var_name_gen)
+    smap = RuleAwareSubstitutionMapper(rule_mapping_context,
+                    make_subst_func(subst_dict), within)
+
+    from loopy.kernel.instruction import MultiAssignmentBase
+
+    def does_insn_involve_iname(
+            kernel: LoopKernel,
+            insn: InstructionBase,
+            stack: RuleStack) -> bool:
+        return bool(not isinstance(insn, MultiAssignmentBase)
+                or all_old_inames & insn.dependency_names()
+                or all_old_inames & insn.reduction_inames())
+
+    kernel = rule_mapping_context.finish_kernel(
+            smap.map_kernel(kernel, within=does_insn_involve_iname,
+                            map_tvs=False, map_args=False))
+
+    new_instructions: list[InstructionBase] = []
+    for insn in kernel.instructions:
+        if not within(kernel, insn, ()):
+            new_instructions.append(insn)
+            continue
+        new_within_inames_list: list[InameStr] = []
+        for iname in insn.within_inames:
+            try:
+                new_iname = old_iname_to_new_iname[iname]
+            except KeyError:
+                new_iname = iname
+            new_within_inames_list.append(new_iname)
+        new_within_inames = frozenset(new_within_inames_list)
+        if new_within_inames != insn.within_inames:
+            new_insn = insn.copy(within_inames=new_within_inames)
+        else:
+            new_insn = insn
+        new_instructions.append(new_insn)
 
     kernel = kernel.copy(instructions=new_instructions)
 
