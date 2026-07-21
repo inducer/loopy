@@ -28,11 +28,10 @@ import numpy as np
 import pytest
 
 import pyopencl as cl
+from pymbolic import var
 from pyopencl.tools import (  # ruff:ignore[unused-import]
     pytest_generate_tests_for_pyopencl as pytest_generate_tests,
 )
-
-from pymbolic import var
 
 import loopy as lp
 import loopy.kernel.dependency as dep
