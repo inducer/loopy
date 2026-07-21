@@ -17,6 +17,7 @@ intersphinx_mapping = {
     "constantdict": ("https://matthiasdiener.github.io/constantdict/", None),
     "genpy": ("https://documen.tician.de/genpy", None),
     "islpy": ("https://documen.tician.de/islpy", None),
+    "namedisl": ("https://documen.tician.de/namedisl", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pymbolic": ("https://documen.tician.de/pymbolic", None),
     "pyopencl": ("https://documen.tician.de/pyopencl", None),

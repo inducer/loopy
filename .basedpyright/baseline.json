@@ -26144,6 +26144,24 @@
                 }
             }
         ],
+        "./loopy/kernel/dependency.py": [
+            {
+                "code": "reportUnknownMemberType",
+                "range": {
+                    "startColumn": 25,
+                    "endColumn": 34,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownMemberType",
+                "range": {
+                    "startColumn": 12,
+                    "endColumn": 43,
+                    "lineCount": 1
+                }
+            }
+        ],
         "./loopy/kernel/function_interface.py": [
             {
                 "code": "reportAny",

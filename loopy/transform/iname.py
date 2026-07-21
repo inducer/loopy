@@ -305,6 +305,8 @@ def _split_iname_backend(
         matching contexts. See :func:`loopy.match.parse_match` for syntax.
     """
 
+    within_was_specified = within is not None
+
     from loopy.match import parse_match
     within = parse_match(within)
 
@@ -338,6 +340,31 @@ def _split_iname_backend(
         outer_iname = vng(f"{iname_to_split}_outer")
     if inner_iname is None:
         inner_iname = vng(f"{iname_to_split}_inner")
+
+    if fixed_length_is_inner:
+        from loopy.kernel.dependency import (
+            apply_affine_transform_to_happens_afters,
+            has_precise_dependencies,
+        )
+        if has_precise_dependencies(kernel):
+            # FIXME: Support statement-filtered affine happens-after updates.
+            if within_was_specified:
+                raise LoopyError(
+                    "split_iname does not support 'within' when the kernel "
+                    "has precise dependencies"
+                )
+
+            import namedisl as nisl
+            split_reln = nisl.make_map(f"""
+                {{ [{iname_to_split}] -> [{outer_iname}, {inner_iname}] :
+                    {iname_to_split} = (
+                        {fixed_length}*{outer_iname} + {inner_iname}) and
+                    0 <= {inner_iname} < {fixed_length}
+                }}
+                """)
+            kernel = apply_affine_transform_to_happens_afters(
+                kernel, split_reln
+            )
 
     new_domains = [
             _split_iname_in_set(dom, iname_to_split, inner_iname, outer_iname,
@@ -2289,6 +2316,17 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
             f"{transform_map_rules}")
 
     # }}}
+
+    from loopy.kernel.dependency import (
+        apply_affine_transform_to_happens_afters,
+        has_precise_dependencies,
+    )
+    if has_precise_dependencies(kernel):
+        import namedisl as nisl
+        # FIXME: Remove conversion once map_domain accepts namedisl.Map.
+        kernel = apply_affine_transform_to_happens_afters(
+            kernel, nisl.make_map(transform_map.to_map())
+        )
 
     # {{{ Update within_inames for each statement
 
