@@ -24,7 +24,13 @@ THE SOFTWARE.
 
 
 import namedisl as nisl
+import numpy as np
 import pytest
+
+import pyopencl as cl
+from pyopencl.tools import (  # ruff:ignore[unused-import]
+    pytest_generate_tests_for_pyopencl as pytest_generate_tests,
+)
 
 from pymbolic import var
 
@@ -121,135 +127,85 @@ def test_add_lexicographic_happens_after_uses_domain_dimension_order() -> None:
     )
 
 
-def test_add_lexicographic_happens_after_orders_distinct_loop_nests() -> None:
+def test_add_lexicographic_happens_after_orders_mixed_loop_nests() -> None:
     t_unit = lp.make_kernel(
         [
-            "{ [i] : 0 <= i < N }",
-            "{ [j] : 0 <= j < M }",
+            "[NI] -> { [i] : 0 <= i < NI }",
+            "[i, NJ] -> { [j] : 0 <= j < NJ }",
+            "[i, NK] -> { [k] : 0 <= k < NK }",
+            "[NQ] -> { [q] : 0 <= q < NQ }",
         ],
         """
-        a[i] = 2 * a[i] {id=S}
-        b[j] = 2 * b[j] {id=T}
+        a[i, j] = i + j {id=S}
+        b[i, k] = i + k {id=T}
+        c[q] = q {id=U}
         """,
     )
 
     kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
-    cross_relation = kernel.id_to_insn["T"].happens_after["S"].instances_rel
+    shared_nest_relation = (
+        kernel.id_to_insn["T"].happens_after["S"].instances_rel
+    )
+    disjoint_nest_relation = (
+        kernel.id_to_insn["U"].happens_after["T"].instances_rel
+    )
 
-    assert cross_relation is not None
+    assert kernel.id_to_insn["T"].happens_after.keys() == {"S", "T"}
+    assert kernel.id_to_insn["U"].happens_after.keys() == {"T", "U"}
+    assert shared_nest_relation is not None
+    assert disjoint_nest_relation is not None
     # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    cross_relation = nisl.make_map(cross_relation)
-    assert cross_relation.equals(
+    shared_nest_relation = nisl.make_map(shared_nest_relation)
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    disjoint_nest_relation = nisl.make_map(disjoint_nest_relation)
+    assert shared_nest_relation.equals(
         nisl.make_map("""
-        [N, M] -> {
-            [j_after] -> [i_before] :
-                0 <= j_after < M and
-                0 <= i_before < N
+        [NI, NJ, NK] -> {
+            [i_after, k_after] -> [i_before, j_before] :
+                0 <= i_before <= i_after < NI and
+                0 <= j_before < NJ and
+                0 <= k_after < NK
+        }
+        """)
+    )
+    assert disjoint_nest_relation.equals(
+        nisl.make_map("""
+        [NI, NK, NQ] -> {
+            [q_after] -> [i_before, k_before] :
+                0 <= q_after < NQ and
+                0 <= i_before < NI and
+                0 <= k_before < NK
         }
         """)
     )
 
 
-def test_add_lexicographic_happens_after_with_five_inames() -> None:
-    t_unit = lp.make_kernel(
-        """
-        { [q, z, a, m, b] :
-            0 <= q < 2 and
-            0 <= z < 2 and
-            0 <= a < 2 and
-            0 <= m < 2 and
-            0 <= b < 2
-        }
-        """,
-        "out[q, z, a, m, b] = q + z + a + m + b {id=S}",
-    )
-
-    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
-    self_relation = kernel.id_to_insn["S"].happens_after["S"].instances_rel
-
-    assert self_relation is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    self_relation = nisl.make_map(self_relation)
-    assert self_relation.equals(
-        nisl.make_map("""
-        {
-            [q_after, z_after, a_after, m_after, b_after] ->
-                    [q_before, z_before, a_before, m_before, b_before] :
-                0 <= q_after, q_before < 2 and
-                0 <= z_after, z_before < 2 and
-                0 <= a_after, a_before < 2 and
-                0 <= m_after, m_before < 2 and
-                0 <= b_after, b_before < 2 and
-                (q_before < q_after or
-                 (q_before = q_after and z_before < z_after) or
-                 (q_before = q_after and z_before = z_after and
-                  a_before < a_after) or
-                 (q_before = q_after and z_before = z_after and
-                  a_before = a_after and m_before < m_after) or
-                 (q_before = q_after and z_before = z_after and
-                  a_before = a_after and m_before = m_after and
-                  b_before < b_after))
-        }
-        """)
-    )
-
-
-def test_access_relation_finder_keeps_instruction_maps_separate() -> None:
-    t_unit = lp.make_kernel(
-        "{ [i] : 0 <= i < N }",
-        """
-        a[i] = 1 {id=S}
-        b[i] = 2 {id=T}
-        """,
-    )
-
-    kernel = t_unit.default_entrypoint
-    rel_find = dep.AccessRelationFinder(kernel)
-    rel_find(kernel.id_to_insn["S"].assignee, "S", dep.AccessType.write)
-    rel_find(kernel.id_to_insn["T"].assignee, "T", dep.AccessType.write)
-
-    assert rel_find.write_relations["S"].keys() == {"a"}
-    assert rel_find.write_relations["T"].keys() == {"b"}
-
-
-def test_access_relation_finder_distinguishes_reads_and_writes() -> None:
+def test_access_relation_finder_tracks_reads_and_writes_per_statement() -> None:
     t_unit = lp.make_kernel(
         "{ [i] : 1 <= i < N }",
-        "a[i] = a[i - 1] {id=S}",
+        """
+        a[i] = b[i - 1] + c[i] {id=S}
+        b[i] = a[i] {id=T}
+        """,
     )
 
     kernel = t_unit.default_entrypoint
-    insn = kernel.id_to_insn["S"]
     rel_find = dep.AccessRelationFinder(kernel)
-    rel_find(insn.assignee, insn.id, dep.AccessType.write)
-    rel_find(insn.expression, insn.id, dep.AccessType.read)
+    for stmt in kernel.instructions:
+        assert isinstance(stmt, lp.MultiAssignmentBase)
+        for assignee in stmt.assignees:
+            rel_find(assignee, stmt.id, dep.AccessType.write)
+        rel_find(stmt.expression, stmt.id, dep.AccessType.read)
 
-    assert rel_find.read_relations["S"]["a"].equals(
+    assert rel_find.read_relations["S"].keys() == {"b", "c"}
+    assert rel_find.write_relations["S"].keys() == {"a"}
+    assert rel_find.read_relations["T"].keys() == {"a"}
+    assert rel_find.write_relations["T"].keys() == {"b"}
+    assert rel_find.read_relations["S"]["b"].equals(
         nisl.make_map("[N] -> { [i] -> [ax_0 = i - 1] : 1 <= i < N }")
     )
     assert rel_find.write_relations["S"]["a"].equals(
         nisl.make_map("[N] -> { [i] -> [ax_0 = i] : 1 <= i < N }")
-    )
-
-
-def test_access_relation_finder_handles_linear_subscript() -> None:
-    t_unit = lp.make_kernel(
-        "{ [i, j] : 0 <= i < NI and 0 <= j < NJ }",
-        "out[i, j] = a[[2*i + j]] {id=S}",
-    )
-
-    kernel = t_unit.default_entrypoint
-    insn = kernel.id_to_insn["S"]
-    rel_find = dep.AccessRelationFinder(kernel)
-    rel_find(insn.expression, insn.id, dep.AccessType.read)
-
-    assert rel_find.read_relations["S"]["a"].equals(
-        nisl.make_map("""
-            [NI, NJ] -> {
-                [i, j] -> [ax_0 = 2*i + j] :
-                    0 <= i < NI and 0 <= j < NJ
-            }
-            """)
     )
 
 
@@ -321,11 +277,22 @@ def _relax_strict_happens_after(
     return dep.relax_strict_happens_after(t_unit).default_entrypoint
 
 
-def test_relax_strict_happens_after_finds_direct_raw() -> None:
+@pytest.mark.parametrize(
+    ("source", "sink"),
+    (
+        ("a[i, j] = 1", "b[i, j] = a[i, j]"),
+        ("a[i, j] = 1", "a[i, j] = 2"),
+        ("b[i, j] = a[i, j]", "a[i, j] = 2"),
+    ),
+    ids=("read-after-write", "write-after-write", "write-after-read"),
+)
+def test_relax_strict_happens_after_finds_direct_hazards(
+    source: str, sink: str
+) -> None:
     kernel = _relax_strict_happens_after(
-        """
-        a[i, j] = 1 {id=S}
-        b[i, j] = a[i, j] {id=T}
+        f"""
+        {source} {{id=S}}
+        {sink} {{id=T}}
         """,
         "{ [i, j] : 0 <= i < NI and 0 <= j < NJ }",
     )
@@ -374,148 +341,66 @@ def test_has_precise_dependencies() -> None:
         dep.has_precise_dependencies(mixed_kernel)
 
 
-def test_relax_strict_happens_after_finds_direct_waw() -> None:
+def test_relax_strict_happens_after_tracks_scalar_accesses() -> None:
     kernel = _relax_strict_happens_after(
         """
-        a[i, j] = 1 {id=S}
-        a[i, j] = 2 {id=T}
+        <> tmp = i {id=S}
+        out[i] = tmp {id=T}
         """,
-        "{ [i, j] : 0 <= i < NI and 0 <= j < NJ }",
+        "{ [i] : 0 <= i < N }",
     )
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
-    assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
-    assert required_order.equals(
-        nisl.make_map("""
-            [NI, NJ] -> {
-                [i_after, j_after] ->
-                [i_before = i_after, j_before = j_after] :
-                    0 <= i_after < NI and 0 <= j_after < NJ
-            }
-            """)
-    )
-
-
-def test_relax_strict_happens_after_finds_direct_war() -> None:
-    kernel = _relax_strict_happens_after(
-        """
-        b[i, j] = a[i, j] {id=S}
-        a[i, j] = 2 {id=T}
-        """,
-        "{ [i, j] : 0 <= i < NI and 0 <= j < NJ }",
-    )
-
-    required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
-    assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
-    assert required_order.equals(
-        nisl.make_map("""
-            [NI, NJ] -> {
-                [i_after, j_after] ->
-                [i_before = i_after, j_before = j_after] :
-                    0 <= i_after < NI and 0 <= j_after < NJ
-            }
-            """)
-    )
-
-
-def test_relax_strict_happens_after_finds_self_raw() -> None:
-    kernel = _relax_strict_happens_after(
-        "a[i] = a[i - 1] {id=S}",
-        "{ [i] : 1 <= i < N }",
-    )
-
-    required_order = kernel.id_to_insn["S"].happens_after["S"].instances_rel
     assert required_order is not None
     # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
     required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
-                [i_after] -> [i_before = i_after - 1] : 2 <= i_after < N
+                [i_after] -> [i_before] :
+                    0 <= i_before <= i_after < N
             }
             """)
     )
 
 
-def test_relax_strict_happens_after_drops_conflict_free_edge() -> None:
-    kernel = _relax_strict_happens_after("""
+@pytest.mark.parametrize(
+    "instructions",
+    (
+        """
         a[i] = 1 {id=S}
         b[i] = 2 {id=T}
-        """)
+        """,
+        """
+        a[i] = 1 {id=S}
+        b[i] = a[i + N] {id=T}
+        """,
+    ),
+    ids=("different-variables", "disjoint-footprints"),
+)
+def test_relax_strict_happens_after_drops_nonconflicting_edges(
+    instructions: str,
+) -> None:
+    kernel = _relax_strict_happens_after(instructions)
 
     assert "S" not in kernel.id_to_insn["T"].happens_after
 
 
-def test_relax_strict_happens_after_finds_recursive_raw() -> None:
-    kernel = _relax_strict_happens_after(
-        """
-        a[i, j] = 1 {id=S}
-        b[i, j] = 2 {id=T}
-        c[i, j] = a[i, j] {id=U}
-        """,
-        "{ [i, j] : 0 <= i < NI and 0 <= j < NJ }",
-    )
-
-    required_order = kernel.id_to_insn["U"].happens_after["S"].instances_rel
-    assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
-    assert required_order.equals(
-        nisl.make_map("""
-            [NI, NJ] -> {
-                [i_after, j_after] ->
-                [i_before = i_after, j_before = j_after] :
-                    0 <= i_after < NI and 0 <= j_after < NJ
-            }
-            """)
-    )
-    assert "T" not in kernel.id_to_insn["U"].happens_after
-
-
-def test_relax_strict_happens_after_stops_at_most_recent_writer() -> None:
-    kernel = _relax_strict_happens_after(
-        """
-        a[i, j] = 1 {id=S}
-        a[i, j] = 2 {id=T}
-        c[i, j] = a[i, j] {id=U}
-        """,
-        "{ [i, j] : 0 <= i < NI and 0 <= j < NJ }",
-    )
-
-    required_order = kernel.id_to_insn["U"].happens_after["T"].instances_rel
-    assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
-    assert required_order.equals(
-        nisl.make_map("""
-            [NI, NJ] -> {
-                [i_after, j_after] ->
-                [i_before = i_after, j_before = j_after] :
-                    0 <= i_after < NI and 0 <= j_after < NJ
-            }
-            """)
-    )
-    assert "S" not in kernel.id_to_insn["U"].happens_after
-
-
-def test_relax_strict_happens_after_partitions_partial_writer_footprint() -> (
+def test_relax_strict_happens_after_tracks_live_footprints_through_a_chain() -> (
     None
 ):
     kernel = _relax_strict_happens_after(
         """
-        a[i, j] = 1 {id=S}
-        a[2*i, j] = 2 {id=T}
-        c[i, j] = a[i, j] {id=U}
+        a[i, j] = 1 {id=A}
+        b[i, j] = 2 {id=B}
+        a[2*i, j] = 3 {id=C}
+        out[i, j] = a[i, j] {id=D}
         """,
         "{ [i, j] : 0 <= i < NI and 0 <= j < NJ }",
     )
 
-    recent_order = kernel.id_to_insn["U"].happens_after["T"].instances_rel
-    fallback_order = kernel.id_to_insn["U"].happens_after["S"].instances_rel
+    recent_order = kernel.id_to_insn["D"].happens_after["C"].instances_rel
+    fallback_order = kernel.id_to_insn["D"].happens_after["A"].instances_rel
     assert recent_order is not None
     assert fallback_order is not None
     # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
@@ -534,6 +419,7 @@ def test_relax_strict_happens_after_partitions_partial_writer_footprint() -> (
             }
             """)
     )
+    assert "B" not in kernel.id_to_insn["D"].happens_after
     assert fallback_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -547,21 +433,49 @@ def test_relax_strict_happens_after_partitions_partial_writer_footprint() -> (
     )
 
 
-def test_relax_strict_happens_after_composes_distinct_loop_nests() -> None:
+def test_relax_strict_happens_after_composes_user_supplied_relations() -> None:
     t_unit = lp.make_kernel(
         [
-            "{ [i] : 0 <= i < 4 }",
-            "{ [j] : 0 <= j < 3 }",
-            "{ [k] : 0 <= k < 4 }",
+            "[N] -> { [i] : 0 <= i < 2*N }",
+            "[N] -> { [j] : 0 <= j < N }",
+            "[N] -> { [k] : 1 <= k < N }",
         ],
         """
         a[i] = 1 {id=S}
-        b[j] = 2 {id=T}
-        c[k] = a[k] {id=U}
+        tmp[j] = 0 {id=T}
+        out[k] = a[2*k - 2] {id=U}
         """,
     )
-    t_unit = dep.add_lexicographic_happens_after(t_unit)
-    kernel = dep.relax_strict_happens_after(t_unit).default_entrypoint
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    t_after_s = HappensAfter(
+        instances_rel=nisl.make_map("""
+            [N] -> {
+                [j_after] -> [i_before = 2*j_after] :
+                    0 <= j_after < N
+            }
+            """).as_isl()
+    )
+    u_after_t = HappensAfter(
+        instances_rel=nisl.make_map("""
+            [N] -> {
+                [k_after] -> [j_before = k_after - 1] :
+                    1 <= k_after < N
+            }
+            """).as_isl()
+    )
+    kernel = kernel.copy(
+        instructions=tuple(
+            stmt.copy(
+                happens_after={
+                    stmt.id: stmt.happens_after[stmt.id],
+                    **({"S": t_after_s} if stmt.id == "T" else {}),
+                    **({"T": u_after_t} if stmt.id == "U" else {}),
+                }
+            )
+            for stmt in kernel.instructions
+        )
+    )
+    kernel = dep.relax_strict_happens_after(kernel)
 
     required_order = kernel.id_to_insn["U"].happens_after["S"].instances_rel
     assert required_order is not None
@@ -569,8 +483,9 @@ def test_relax_strict_happens_after_composes_distinct_loop_nests() -> None:
     required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
-            {
-                [k_after] -> [i_before = k_after] : 0 <= k_after < 4
+            [N] -> {
+                [k_after] -> [i_before = 2*k_after - 2] :
+                    1 <= k_after < N
             }
             """)
     )
@@ -616,70 +531,6 @@ def test_relax_strict_happens_after_unions_branched_paths() -> None:
         nisl.make_map("""
             [N] -> {
                 [i_after] -> [i_before = i_after] : 0 <= i_after < N
-            }
-            """)
-    )
-
-
-def test_relax_strict_happens_after_drops_empty_same_variable_edge() -> None:
-    kernel = _relax_strict_happens_after("""
-        a[i] = 1 {id=S}
-        b[i] = a[i + N] {id=T}
-        """)
-
-    assert "S" not in kernel.id_to_insn["T"].happens_after
-
-
-def test_relax_strict_happens_after_inner_uses_live_sink_accesses() -> None:
-    t_unit = lp.make_kernel(
-        "{ [i] : 0 <= i < N }",
-        """
-        a[i] = 1 {id=S}
-        b[i] = a[i] {id=T}
-        """,
-    )
-    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
-
-    rel_finder = dep.AccessRelationFinder(kernel)
-    for insn in kernel.instructions:
-        assert isinstance(insn, lp.MultiAssignmentBase)
-        rel_finder(insn.assignee, insn.id, dep.AccessType.write)
-        rel_finder(insn.expression, insn.id, dep.AccessType.read)
-
-    incoming_relation = kernel.id_to_insn["T"].happens_after["S"].instances_rel
-    assert incoming_relation is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    incoming_relation = nisl.make_map(incoming_relation)
-
-    live_access_relation = rel_finder.read_relations["T"]["a"].rename_dims((
-        ("i", "i_after"),
-    ))
-    live_access_relation = live_access_relation & nisl.make_map("""
-        [N] -> {
-            [i_after] -> [ax_0] : i_after = 0
-        }
-        """)
-
-    happens_after = dep._relax_strict_happens_after_inner(
-        kernel,
-        "T",
-        "S",
-        "a",
-        dep.AccessType.read,
-        incoming_relation,
-        live_access_relation,
-        rel_finder,
-        {},
-    )
-
-    required_order = happens_after["S"].instances_rel
-    assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
-    assert required_order.equals(
-        nisl.make_map("""
-            [N] -> {
-                [i_after = 0] -> [i_before = 0] : N > 0
             }
             """)
     )
@@ -738,7 +589,7 @@ def test_statement_timestamps_with_calls_inside_outer_loop() -> None:
 
 
 def test_statement_timestamps_with_imperfect_loop_nesting() -> None:
-    kernel = lp.make_kernel(
+    t_unit = lp.make_kernel(
         "{ [i, j, k] : 0 <= i, j, k < 8 }",
         """
         <> before = 0 {id=before}
@@ -747,24 +598,10 @@ def test_statement_timestamps_with_imperfect_loop_nesting() -> None:
         <> after_inner = i {id=after_inner}
         <> after = 0 {id=after}
         """,
-    ).default_entrypoint.copy(
-        state=lp.KernelState.LINEARIZED,
-        linearization=(
-            CallKernel("device_program"),
-            RunInstruction("before"),
-            EnterLoop("i"),
-            RunInstruction("outer"),
-            EnterLoop("j"),
-            EnterLoop("k"),
-            RunInstruction("deep"),
-            LeaveLoop("k"),
-            LeaveLoop("j"),
-            RunInstruction("after_inner"),
-            LeaveLoop("i"),
-            RunInstruction("after"),
-            ReturnFromKernel("device_program"),
-        ),
     )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    t_unit = lp.preprocess_program(t_unit)
+    kernel = lp.linearize(t_unit).default_entrypoint
 
     assert _get_timestamp_points_from_linearization(kernel) == _PreciseSchedule(
         statements={
@@ -791,16 +628,8 @@ def test_timestamp_relation_keeps_parallel_inames_in_instance_domain() -> None:
         "out[g, l, i] = g + l + i {id=S}",
     )
     t_unit = lp.tag_inames(t_unit, {"g": "g.0", "l": "l.0"})
-    kernel = t_unit.default_entrypoint.copy(
-        state=lp.KernelState.LINEARIZED,
-        linearization=(
-            CallKernel("device_program"),
-            EnterLoop("i"),
-            RunInstruction("S"),
-            LeaveLoop("i"),
-            ReturnFromKernel("device_program"),
-        ),
-    )
+    t_unit = lp.preprocess_program(t_unit)
+    kernel = lp.linearize(t_unit).default_entrypoint
 
     precise_schedule = _get_timestamp_points_from_linearization(kernel)
     assert precise_schedule.statements["S"] == _StatementRecord(
@@ -949,12 +778,6 @@ def test_statement_timestamps_record_local_and_global_barriers() -> None:
 
 
 def test_local_barrier_orders_work_items_in_the_same_group() -> None:
-    local_barrier = Barrier(
-        comment="local synchronization",
-        synchronization_kind="local",
-        mem_kind="local",
-        originating_insn_id=None,
-    )
     t_unit = lp.make_kernel(
         """
         {
@@ -963,23 +786,18 @@ def test_local_barrier_orders_work_items_in_the_same_group() -> None:
         }
         """,
         """
-        a[g, l, i] = g + l + i {id=source}
-        b[g, l, i] = a[g, l, i] {id=sink}
+        <> tmp[g, l, i] = g + l + i {id=source}
+        out[g, l, i] = tmp[g, (l + 1) % 4, i] {id=sink}
         """,
     )
-    t_unit = lp.tag_inames(t_unit, {"g": "g.0", "l": "l.0"})
-    kernel = t_unit.default_entrypoint.copy(
-        state=lp.KernelState.LINEARIZED,
-        linearization=(
-            CallKernel("device_program"),
-            EnterLoop("i"),
-            RunInstruction("source"),
-            local_barrier,
-            RunInstruction("sink"),
-            LeaveLoop("i"),
-            ReturnFromKernel("device_program"),
-        ),
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    t_unit = dep.relax_strict_happens_after(t_unit)
+    t_unit = lp.set_temporary_address_space(
+        t_unit, "tmp", lp.AddressSpace.LOCAL
     )
+    t_unit = lp.tag_inames(t_unit, {"g": "g.0", "l": "l.0"})
+    t_unit = lp.preprocess_program(t_unit)
+    kernel = lp.linearize(t_unit).default_entrypoint
 
     precise_schedule = _get_timestamp_points_from_linearization(kernel)
     stmt_relations, barrier_relations, timestamp_order = (
@@ -1011,32 +829,19 @@ def test_local_barrier_orders_work_items_in_the_same_group() -> None:
 
 
 def test_global_barrier_orders_all_work_items() -> None:
-    global_barrier = Barrier(
-        comment="global synchronization",
-        synchronization_kind="global",
-        mem_kind="global",
-        originating_insn_id=None,
-    )
     t_unit = lp.make_kernel(
         "{ [g, l] : 0 <= g < 2 and 0 <= l < 4 }",
         """
         a[g, l] = g + l {id=source}
-        b[g, l] = a[g, l] {id=sink}
+        out[g, l] = a[(g + 1) % 2, l] {id=sink}
         """,
     )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    t_unit = dep.relax_strict_happens_after(t_unit)
     t_unit = lp.tag_inames(t_unit, {"g": "g.0", "l": "l.0"})
-    kernel = t_unit.default_entrypoint.copy(
-        state=lp.KernelState.LINEARIZED,
-        linearization=(
-            CallKernel("phase0"),
-            RunInstruction("source"),
-            ReturnFromKernel("phase0"),
-            global_barrier,
-            CallKernel("phase1"),
-            RunInstruction("sink"),
-            ReturnFromKernel("phase1"),
-        ),
-    )
+    t_unit = lp.set_options(t_unit, insert_gbarriers=True)
+    t_unit = lp.preprocess_program(t_unit)
+    kernel = lp.linearize(t_unit).default_entrypoint
 
     precise_schedule = _get_timestamp_points_from_linearization(kernel)
     stmt_relations, barrier_relations, timestamp_order = (
@@ -1063,22 +868,60 @@ def test_global_barrier_orders_all_work_items() -> None:
     )
 
 
-def test_verification() -> None:
-    t_unit = lp.make_kernel(
-        "{ [i] : 0 <= i < N }",
-        """
-        a[i] = 2 * a[i] {id=S}
-        b[i] = 2 * b[i] {id=T}
-        c[i] = a[i] + b[i] {id=U}
-        """,
+def test_verification_enforces_self_recurrence(
+    ctx_factory: cl.CtxFactory,
+) -> None:
+    ref_t_unit = lp.make_kernel(
+        "{ [i] : 1 <= i < N }",
+        "a[i] = a[i - 1] + x[i] {id=S}",
+        [lp.GlobalArg("a,x", dtype=np.int32, shape=lp.auto), "..."],
     )
-
+    t_unit = ref_t_unit
     t_unit = dep.add_lexicographic_happens_after(t_unit)
     t_unit = dep.relax_strict_happens_after(t_unit)
-    t_unit = lp.preprocess_program(t_unit)
-    t_unit = lp.linearize(t_unit)
-    t_unit = verify_happens_after_is_enforced(t_unit)
-    lp.generate_code_v2(t_unit)
+
+    required_order = (
+        t_unit.default_entrypoint
+        .id_to_insn["S"]
+        .happens_after["S"]
+        .instances_rel
+    )
+    assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    assert nisl.make_map(required_order).equals(
+        nisl.make_map("""
+            [N] -> {
+                [i_after] -> [i_before = i_after - 1] :
+                    2 <= i_after < N
+            }
+            """)
+    )
+
+    lp.auto_test_vs_ref(
+        ref_t_unit,
+        ctx_factory(),
+        t_unit,
+        parameters={"N": 64},
+        print_code=False,
+        quiet=True,
+    )
+
+    parallel_t_unit = lp.tag_inames(t_unit, {"i": "l.0"})
+    parallel_kernel = parallel_t_unit.default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            CallKernel("device_program"),
+            RunInstruction("S"),
+            ReturnFromKernel("device_program"),
+        ),
+    )
+    with pytest.raises(
+        LoopyError,
+        match="schedule does not enforce 'S' after 'S'",
+    ):
+        verify_happens_after_is_enforced(
+            parallel_t_unit.with_kernel(parallel_kernel)
+        )
 
 
 def test_verification_rejects_unenforced_order() -> None:
@@ -1119,40 +962,17 @@ def test_verification_rejects_unenforced_order() -> None:
 
 def test_verification_handles_explicit_barrier_instruction() -> None:
     t_unit = lp.make_kernel(
-        "{ [i] : 0 <= i < N }",
+        "{ : }",
         """
-        a[i] = i {id=S}
+        a[0] = 1 {id=S}
         ... gbarrier {id=B}
-        b[i] = a[i] {id=T}
+        b[0] = a[0] {id=T}
         """,
+        seq_dependencies=True,
     )
     t_unit = dep.add_lexicographic_happens_after(t_unit)
-
-    kernel = t_unit.default_entrypoint
-    barrier_insn = kernel.id_to_insn["B"]
-    barrier = Barrier(
-        comment="explicit global barrier",
-        synchronization_kind=barrier_insn.synchronization_kind,
-        mem_kind=barrier_insn.mem_kind,
-        originating_insn_id="B",
-    )
-    kernel = kernel.copy(
-        state=lp.KernelState.LINEARIZED,
-        linearization=(
-            CallKernel("phase0"),
-            EnterLoop("i"),
-            RunInstruction("S"),
-            LeaveLoop("i"),
-            ReturnFromKernel("phase0"),
-            barrier,
-            CallKernel("phase1"),
-            EnterLoop("i"),
-            RunInstruction("T"),
-            LeaveLoop("i"),
-            ReturnFromKernel("phase1"),
-        ),
-    )
-    t_unit = t_unit.with_kernel(kernel)
+    t_unit = lp.preprocess_program(t_unit)
+    t_unit = lp.linearize(t_unit)
 
     verify_happens_after_is_enforced(t_unit)
 
