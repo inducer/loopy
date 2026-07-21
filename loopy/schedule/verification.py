@@ -174,19 +174,14 @@ def _build_statement_timestamp_relations(
         ).project_out_except([*stmt.within_inames, *kernel.all_params()])
 
         if stmt.within_inames:
-            reln = nisl.make_set(f"{{[{full_str}]}}").as_map(
-                stmt.within_inames
-            )
+            reln = nisl.make_set(f"{{[{full_str}]}}").as_map(stmt.within_inames)
         else:
             constraints = " and ".join(
                 f"{name} = {pos}"
-                for name, pos in zip(
-                    timestamp_names, timestamp, strict=True
-                )
+                for name, pos in zip(timestamp_names, timestamp, strict=True)
             )
             reln = nisl.make_map(
-                f"{{ [] -> [{', '.join(timestamp_names)}] : "
-                f"{constraints} }}"
+                f"{{ [] -> [{', '.join(timestamp_names)}] : {constraints} }}"
             )
 
         reln = reln.intersect_domain(domain)
@@ -501,9 +496,9 @@ def verify_happens_after_is_enforced(kernel: LoopKernel) -> LoopKernel:
                 )
 
             required = nisl.make_map(
-                happens_after.instances_rel
-                .reset_tuple_id(isl.dim_type.in_)
-                .reset_tuple_id(isl.dim_type.out)
+                happens_after.instances_rel.reset_tuple_id(
+                    isl.dim_type.in_
+                ).reset_tuple_id(isl.dim_type.out)
             )
             enforced = _build_enforced_order(
                 kernel,

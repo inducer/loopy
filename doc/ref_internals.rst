@@ -64,3 +64,4 @@ Schedule
 Dependence Analysis
 -------------------
 .. automodule:: loopy.kernel.dependency
+.. automodule:: loopy.schedule.verification
