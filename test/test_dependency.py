@@ -1,3 +1,28 @@
+__copyright__ = """
+Copyright (C) 2026 Addison Alvey-Blanco
+"""
+
+__license__ = """
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
+
+
 import namedisl as nisl
 import pytest
 
@@ -330,9 +355,7 @@ def test_has_precise_dependencies() -> None:
     ).default_entrypoint
     assert not dep.has_precise_dependencies(legacy_kernel)
 
-    precise_kernel = dep.add_lexicographic_happens_after(
-        legacy_kernel
-    )
+    precise_kernel = dep.add_lexicographic_happens_after(legacy_kernel)
     assert dep.has_precise_dependencies(precise_kernel)
 
     t_insn = precise_kernel.id_to_insn["T"]
@@ -746,7 +769,9 @@ def test_statement_timestamps_with_imperfect_loop_nesting() -> None:
     assert _get_timestamp_points_from_linearization(kernel) == _PreciseSchedule(
         statements={
             "before": _StatementRecord(timestamp=(0, 1), subkernel_idx=0),
-            "outer": _StatementRecord(timestamp=(0, 2, "i", 3), subkernel_idx=0),
+            "outer": _StatementRecord(
+                timestamp=(0, 2, "i", 3), subkernel_idx=0
+            ),
             "deep": _StatementRecord(
                 timestamp=(0, 2, "i", 4, "j", 5, "k", 6),
                 subkernel_idx=0,
@@ -802,7 +827,8 @@ def test_timestamp_relation_keeps_parallel_inames_in_instance_domain() -> None:
 def test_strict_lexicographic_timestamp_order() -> None:
     order = _build_strict_lexicographic_order(("t0", "t1", "t2"))
 
-    assert order.equals(nisl.make_map("""
+    assert order.equals(
+        nisl.make_map("""
         {
             [t0_later, t1_later, t2_later] ->
                 [t0_earlier, t1_earlier, t2_earlier] :
@@ -817,7 +843,8 @@ def test_strict_lexicographic_timestamp_order() -> None:
                     t1_later = t1_earlier and
                     t2_later > t2_earlier
         }
-    """))
+    """)
+    )
 
 
 def test_statement_timestamps_record_local_and_global_barriers() -> None:
@@ -895,7 +922,8 @@ def test_statement_timestamps_record_local_and_global_barriers() -> None:
         kernel, precise_schedule
     )
     assert len(barrier_relations) == 2
-    assert barrier_relations[0].equals(nisl.make_map("""
+    assert barrier_relations[0].equals(
+        nisl.make_map("""
         {
             [batch, i] ->
                 [__ts_0, __ts_1, __ts_2, __ts_3, __ts_4, __ts_5] :
@@ -904,8 +932,10 @@ def test_statement_timestamps_record_local_and_global_barriers() -> None:
                     __ts_2 = 1 and __ts_3 = 2 and
                     __ts_4 = i and __ts_5 = 4
         }
-    """))
-    assert barrier_relations[1].equals(nisl.make_map("""
+    """)
+    )
+    assert barrier_relations[1].equals(
+        nisl.make_map("""
         {
             [batch] ->
                 [__ts_0, __ts_1, __ts_2, __ts_3, __ts_4, __ts_5] :
@@ -914,7 +944,8 @@ def test_statement_timestamps_record_local_and_global_barriers() -> None:
                     __ts_2 = 8 and __ts_3 = 0 and
                     __ts_4 = 0 and __ts_5 = 0
         }
-    """))
+    """)
+    )
 
 
 def test_local_barrier_orders_work_items_in_the_same_group() -> None:
@@ -964,7 +995,8 @@ def test_local_barrier_orders_work_items_in_the_same_group() -> None:
         timestamp_order,
     )
 
-    assert enforced.equals(nisl.make_map("""
+    assert enforced.equals(
+        nisl.make_map("""
         {
             [g_after, l_after, i_after] ->
                 [g_before, l_before, i_before] :
@@ -974,7 +1006,8 @@ def test_local_barrier_orders_work_items_in_the_same_group() -> None:
                     0 <= l_before < 4 and
                     0 <= i_before <= i_after
         }
-    """))
+    """)
+    )
 
 
 def test_global_barrier_orders_all_work_items() -> None:
@@ -1019,13 +1052,15 @@ def test_global_barrier_orders_all_work_items() -> None:
         timestamp_order,
     )
 
-    assert enforced.equals(nisl.make_map("""
+    assert enforced.equals(
+        nisl.make_map("""
         {
             [g_after, l_after] -> [g_before, l_before] :
                 0 <= g_after < 2 and 0 <= l_after < 4 and
                 0 <= g_before < 2 and 0 <= l_before < 4
         }
-    """))
+    """)
+    )
 
 
 def test_verification() -> None:
