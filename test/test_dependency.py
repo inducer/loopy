@@ -301,6 +301,38 @@ def _relax_strict_happens_after(
     return dep.relax_strict_happens_after(t_unit).default_entrypoint
 
 
+def test_relax_strict_happens_after_expands_substitution_rules() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        """
+        a[2*i + 3] = i {id=S}
+        out[i] = outer(i) {id=T}
+        """,
+        substitutions={
+            "inner": lp.SubstitutionRule(
+                "inner", ("j",), var("a")[2*var("j") + 1]
+            ),
+            "outer": lp.SubstitutionRule(
+                "outer", ("k",), var("inner")(var("k") + 1)
+            ),
+        },
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    kernel = dep.relax_strict_happens_after(t_unit).default_entrypoint
+
+    required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
+    assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
+    assert required_order.equals(
+        nisl.make_map("""
+            [N] -> {
+                [i_after] -> [i_before = i_after] : 0 <= i_after < N
+            }
+            """)
+    )
+
+
 @pytest.mark.parametrize(
     ("source", "sink"),
     (

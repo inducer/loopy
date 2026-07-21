@@ -48,6 +48,7 @@ from loopy.symbolic import (
     LinearSubscript,
     Reduction,
     SubArrayRef,
+    SubstitutionRuleExpander,
     WalkMapper,
     aff_from_expr,
 )
@@ -98,6 +99,8 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
     _write_relations: dict[str, dict[str, nisl.Map]]
     _name_generator: UniqueNameGenerator
     _cell_names: list[str]
+    _storage_variables: frozenset[str]
+    _subst_expander: SubstitutionRuleExpander
 
     def __init__(self, kernel: LoopKernel):
         self.kernel = kernel
@@ -106,8 +109,16 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         self._write_relations = {stmt.id: {} for stmt in kernel.instructions}
         self._name_generator = kernel.get_var_name_generator()
         self._cell_names = []
+        self._storage_variables = frozenset(kernel.non_iname_variable_names())
+        self._subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
         super().__init__()
+
+    @override
+    def __call__(
+        self, expr: Expression, stmt_id: str, access_type: AccessType
+    ) -> None:
+        self.rec(self._subst_expander(expr), stmt_id, access_type)
 
     def _get_access_relation(
         self,
@@ -135,23 +146,6 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
 
         return access_set.as_map(in_names=instance_names)
 
-    def _stmt_writes_var(self, stmt_id: str, var: str) -> bool:
-        return (
-            var in self.kernel.writer_map()
-            and stmt_id in self.kernel.writer_map()[var]
-        )
-
-    def _stmt_reads_var(self, stmt_id: str, var: str) -> bool:
-        return (
-            var in self.kernel.reader_map()
-            and stmt_id in self.kernel.reader_map()[var]
-        )
-
-    def _stmt_accesses_var(self, stmt_id: str, var: str) -> bool:
-        return self._stmt_reads_var(stmt_id, var) or self._stmt_writes_var(
-            stmt_id, var
-        )
-
     def _record_access(
         self,
         stmt_id: str,
@@ -159,7 +153,7 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         subscript: tuple[Expression, ...],
         access_type: AccessType,
     ) -> None:
-        if not self._stmt_accesses_var(stmt_id, var):
+        if var not in self._storage_variables:
             return
 
         stmt = self.kernel.id_to_insn[stmt_id]
