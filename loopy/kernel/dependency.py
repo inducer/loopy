@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from namedisl.core import NamedIslObjectT
 
     from pymbolic.typing import Expression
+    from pytools import UniqueNameGenerator
 
     from loopy.kernel import LoopKernel
 
@@ -95,12 +96,16 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
     _additional_inames: frozenset[str]
     _read_relations: dict[str, dict[str, nisl.Map]]
     _write_relations: dict[str, dict[str, nisl.Map]]
+    _name_generator: UniqueNameGenerator
+    _cell_names: list[str]
 
     def __init__(self, kernel: LoopKernel):
         self.kernel = kernel
         self._additional_inames = frozenset()
         self._read_relations = {stmt.id: {} for stmt in kernel.instructions}
         self._write_relations = {stmt.id: {} for stmt in kernel.instructions}
+        self._name_generator = kernel.get_var_name_generator()
+        self._cell_names = []
 
         super().__init__()
 
@@ -110,7 +115,11 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         subscript: tuple[Expression, ...],
     ) -> nisl.Map:
         instance_names = domain.space.dimtype_to_names[DimType.out]
-        cell_names = tuple(f"ax_{axis}" for axis in range(len(subscript)))
+        while len(self._cell_names) < len(subscript):
+            axis = len(self._cell_names)
+            self._cell_names.append(self._name_generator(f"ax_{axis}"))
+
+        cell_names = tuple(self._cell_names[:len(subscript)])
 
         access_set = domain.add_dims(DimType.out, cell_names)
         coordinates = access_set.var_pw_affs

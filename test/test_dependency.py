@@ -209,6 +209,31 @@ def test_access_relation_finder_tracks_reads_and_writes_per_statement() -> None:
     )
 
 
+def test_access_relation_names_do_not_clash_with_inames() -> None:
+    t_unit = lp.make_kernel(
+        """
+        { [ax_0, ax_1] :
+            0 <= ax_0 < N and 0 <= ax_1 < M
+        }
+        """,
+        "out[ax_0, ax_1] = a[ax_0] + b[ax_1] {id=S}",
+    )
+
+    kernel = t_unit.default_entrypoint
+    insn = kernel.id_to_insn["S"]
+    rel_find = dep.AccessRelationFinder(kernel)
+    rel_find(insn.expression, insn.id, dep.AccessType.read)
+
+    a_cell_names = rel_find.read_relations["S"]["a"].space.dimtype_to_names[
+        nisl.DimType.out
+    ]
+    b_cell_names = rel_find.read_relations["S"]["b"].space.dimtype_to_names[
+        nisl.DimType.out
+    ]
+    assert a_cell_names == b_cell_names
+    assert set(a_cell_names).isdisjoint(kernel.all_variable_names())
+
+
 def test_access_relation_finder_handles_reduction() -> None:
     t_unit = lp.make_kernel(
         """
@@ -638,7 +663,7 @@ def test_timestamp_relation_keeps_parallel_inames_in_instance_domain() -> None:
     )
 
     timestamp_relations, _, _ = _build_timestamp_relations(
-        kernel, precise_schedule
+        kernel, precise_schedule, kernel.get_var_name_generator()
     )
     timestamp_relation = timestamp_relations["S"]
     assert timestamp_relation.equals(
@@ -653,8 +678,48 @@ def test_timestamp_relation_keeps_parallel_inames_in_instance_domain() -> None:
     )
 
 
+def test_analysis_names_do_not_clash_with_kernel_names() -> None:
+    t_unit = lp.make_kernel(
+        """
+        [__group_0] -> {
+            [g, __ts_0, __ts_0_later] :
+                0 <= g < __group_0 and
+                0 <= __ts_0, __ts_0_later < 2
+        }
+        """,
+        """
+        a[g, __ts_0, __ts_0_later] = g {id=S}
+        out[g, __ts_0, __ts_0_later] = a[g, __ts_0, __ts_0_later] {id=T}
+        """,
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    t_unit = dep.relax_strict_happens_after(t_unit)
+    t_unit = lp.tag_inames(t_unit, {"g": "g.0"})
+    t_unit = lp.preprocess_program(t_unit)
+    kernel = lp.linearize(t_unit).default_entrypoint
+
+    precise_schedule = _get_timestamp_points_from_linearization(kernel)
+    stmt_relations, _, timestamp_order = _build_timestamp_relations(
+        kernel, precise_schedule, kernel.get_var_name_generator()
+    )
+
+    timestamp_names = stmt_relations["S"].space.dimtype_to_names[
+        nisl.DimType.out
+    ]
+    later_names = timestamp_order.space.dimtype_to_names[nisl.DimType.in_]
+    earlier_names = timestamp_order.space.dimtype_to_names[nisl.DimType.out]
+    analysis_names = {*timestamp_names, *later_names, *earlier_names}
+
+    assert len(analysis_names) == 3 * len(timestamp_names)
+    assert analysis_names.isdisjoint(kernel.all_variable_names())
+    verify_happens_after_is_enforced(kernel)
+
+
 def test_strict_lexicographic_timestamp_order() -> None:
-    order = _build_strict_lexicographic_order(("t0", "t1", "t2"))
+    order = _build_strict_lexicographic_order(
+        ("t0_later", "t1_later", "t2_later"),
+        ("t0_earlier", "t1_earlier", "t2_earlier"),
+    )
 
     assert order.equals(
         nisl.make_map("""
@@ -748,7 +813,7 @@ def test_statement_timestamps_record_local_and_global_barriers() -> None:
     )
 
     _, barrier_relations, _ = _build_timestamp_relations(
-        kernel, precise_schedule
+        kernel, precise_schedule, kernel.get_var_name_generator()
     )
     assert len(barrier_relations) == 2
     assert barrier_relations[0].equals(
@@ -800,8 +865,11 @@ def test_local_barrier_orders_work_items_in_the_same_group() -> None:
     kernel = lp.linearize(t_unit).default_entrypoint
 
     precise_schedule = _get_timestamp_points_from_linearization(kernel)
+    name_generator = kernel.get_var_name_generator()
     stmt_relations, barrier_relations, timestamp_order = (
-        _build_timestamp_relations(kernel, precise_schedule)
+        _build_timestamp_relations(
+            kernel, precise_schedule, name_generator
+        )
     )
     enforced = _build_enforced_order(
         kernel,
@@ -811,6 +879,7 @@ def test_local_barrier_orders_work_items_in_the_same_group() -> None:
         stmt_relations,
         barrier_relations,
         timestamp_order,
+        name_generator,
     )
 
     assert enforced.equals(
@@ -844,8 +913,11 @@ def test_global_barrier_orders_all_work_items() -> None:
     kernel = lp.linearize(t_unit).default_entrypoint
 
     precise_schedule = _get_timestamp_points_from_linearization(kernel)
+    name_generator = kernel.get_var_name_generator()
     stmt_relations, barrier_relations, timestamp_order = (
-        _build_timestamp_relations(kernel, precise_schedule)
+        _build_timestamp_relations(
+            kernel, precise_schedule, name_generator
+        )
     )
     enforced = _build_enforced_order(
         kernel,
@@ -855,6 +927,7 @@ def test_global_barrier_orders_all_work_items() -> None:
         stmt_relations,
         barrier_relations,
         timestamp_order,
+        name_generator,
     )
 
     assert enforced.equals(

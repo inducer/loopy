@@ -51,6 +51,8 @@ from loopy.schedule import (
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from pytools import UniqueNameGenerator
+
 
 @dataclass(frozen=True)
 class _PreciseScheduleRecord:
@@ -260,11 +262,9 @@ def _build_barrier_timestamp_relations(
 
 
 def _build_strict_lexicographic_order(
-    timestamp_names: Sequence[str],
+    later_names: Sequence[str],
+    earlier_names: Sequence[str],
 ) -> nisl.Map:
-    later_names = tuple(f"{name}_later" for name in timestamp_names)
-    earlier_names = tuple(f"{name}_earlier" for name in timestamp_names)
-
     joint = nisl.make_set(
         f"{{ [{', '.join([*later_names, *earlier_names])}] }}"
     )
@@ -289,6 +289,7 @@ def _build_strict_lexicographic_order(
 def _build_timestamp_relations(
     kernel: LoopKernel,
     prec_sched: _PreciseSchedule,
+    name_generator: UniqueNameGenerator,
 ) -> tuple[Mapping[str, nisl.Map], Sequence[nisl.Map], nisl.Map]:
     max_stmt_tstamp_len = max(
         len(record.timestamp) for record in prec_sched.statements.values()
@@ -301,7 +302,15 @@ def _build_timestamp_relations(
         )
 
     max_tstamp_len = max(max_stmt_tstamp_len, max_bar_tstamp_len)
-    timestamp_names = [f"__ts_{i}" for i in range(max_tstamp_len)]
+    timestamp_names = tuple(
+        name_generator(f"__ts_{i}") for i in range(max_tstamp_len)
+    )
+    later_names = tuple(
+        name_generator(f"{name}_later") for name in timestamp_names
+    )
+    earlier_names = tuple(
+        name_generator(f"{name}_earlier") for name in timestamp_names
+    )
 
     stmt_relns = _build_statement_timestamp_relations(
         kernel, prec_sched.statements, timestamp_names
@@ -311,7 +320,9 @@ def _build_timestamp_relations(
         kernel, prec_sched.barriers, timestamp_names
     )
 
-    timestamp_lex = _build_strict_lexicographic_order(timestamp_names)
+    timestamp_lex = _build_strict_lexicographic_order(
+        later_names, earlier_names
+    )
 
     return constantdict(stmt_relns), bar_relns, timestamp_lex
 
@@ -329,9 +340,15 @@ def _suffix_dim_names(
 
 def _timestamp_relation_for_role(
     relation: nisl.Map,
-    role: str,
+    role_names: Sequence[str],
 ) -> nisl.Map:
-    return _suffix_dim_names(relation, DimType.out, f"_{role}")
+    return relation.rename_dims(
+        zip(
+            relation.space.dimtype_to_names[DimType.out],
+            role_names,
+            strict=True,
+        )
+    )
 
 
 def _hardware_axis_inames(
@@ -373,14 +390,13 @@ def _build_hardware_id_relation(
     instance_domain: nisl.Set,
     instance_suffix: str,
     include_local_axes: bool,
+    hardware_names: Mapping[tuple[str, int], str],
 ) -> nisl.Map:
     axis_inames = _hardware_axis_inames(kernel, stmt_id, include_local_axes)
     input_names = instance_domain.space.dimtype_to_names[DimType.out]
-    hardware_names = tuple(
-        f"__{kind}_{axis}" for kind, axis in sorted(axis_inames)
-    )
     constraints = " and ".join(
-        f"__{kind}_{axis} = {axis_inames[kind, axis]}{instance_suffix}"
+        f"{hardware_names[kind, axis]} = "
+        f"{axis_inames[kind, axis]}{instance_suffix}"
         for kind, axis in sorted(axis_inames)
     )
     constraint_str = f" : {constraints}" if constraints else ""
@@ -388,7 +404,7 @@ def _build_hardware_id_relation(
     relation = nisl.make_map(
         "{ "
         f"[{', '.join(input_names)}] -> "
-        f"[{', '.join(hardware_names)}]"
+        f"[{', '.join(hardware_names[key] for key in sorted(axis_inames))}]"
         f"{constraint_str} "
         "}"
     )
@@ -402,6 +418,7 @@ def _build_same_hardware_scope_relation(
     sink_domain: nisl.Set,
     source_domain: nisl.Set,
     include_local_axes: bool,
+    name_generator: UniqueNameGenerator,
 ) -> nisl.Map:
     sink_axes = _hardware_axis_inames(kernel, sink_id, include_local_axes)
     source_axes = _hardware_axis_inames(kernel, source_id, include_local_axes)
@@ -412,11 +429,26 @@ def _build_same_hardware_scope_relation(
             f"'{source_id}': their hardware axes differ"
         )
 
+    hardware_names = {
+        key: name_generator(f"__{key[0]}_{key[1]}")
+        for key in sorted(sink_axes)
+    }
+
     sink_hardware = _build_hardware_id_relation(
-        kernel, sink_id, sink_domain, "_after", include_local_axes
+        kernel,
+        sink_id,
+        sink_domain,
+        "_after",
+        include_local_axes,
+        hardware_names,
     )
     source_hardware = _build_hardware_id_relation(
-        kernel, source_id, source_domain, "_before", include_local_axes
+        kernel,
+        source_id,
+        source_domain,
+        "_before",
+        include_local_axes,
+        hardware_names,
     )
     return sink_hardware.apply_range(source_hardware.reverse())
 
@@ -429,14 +461,19 @@ def _build_enforced_order(
     stmt_relns: Mapping[str, nisl.Map],
     barrier_relns: Sequence[nisl.Map],
     timestamp_lex: nisl.Map,
+    name_generator: UniqueNameGenerator,
 ) -> nisl.Map:
     sink = _suffix_dim_names(stmt_relns[sink_id], DimType.in_, "_after")
     source = _suffix_dim_names(stmt_relns[source_id], DimType.in_, "_before")
+    later_names = timestamp_lex.space.dimtype_to_names[DimType.in_]
+    earlier_names = timestamp_lex.space.dimtype_to_names[DimType.out]
 
     enforced = (
-        _timestamp_relation_for_role(sink, "later")
+        _timestamp_relation_for_role(sink, later_names)
         .apply_range(timestamp_lex)
-        .apply_range(_timestamp_relation_for_role(source, "earlier").reverse())
+        .apply_range(
+            _timestamp_relation_for_role(source, earlier_names).reverse()
+        )
     )
     enforced = enforced & _build_same_hardware_scope_relation(
         kernel,
@@ -445,6 +482,7 @@ def _build_enforced_order(
         sink.domain(),
         source.domain(),
         include_local_axes=True,
+        name_generator=name_generator,
     )
 
     sink_record = prec_sched.statements[sink_id]
@@ -462,17 +500,17 @@ def _build_enforced_order(
             barrier_reln, DimType.in_, f"_barrier_{barrier_idx}"
         )
         sink_to_barrier = (
-            _timestamp_relation_for_role(sink, "later")
+            _timestamp_relation_for_role(sink, later_names)
             .apply_range(timestamp_lex)
             .apply_range(
-                _timestamp_relation_for_role(barrier, "earlier").reverse()
+                _timestamp_relation_for_role(barrier, earlier_names).reverse()
             )
         )
         barrier_to_source = (
-            _timestamp_relation_for_role(barrier, "later")
+            _timestamp_relation_for_role(barrier, later_names)
             .apply_range(timestamp_lex)
             .apply_range(
-                _timestamp_relation_for_role(source, "earlier").reverse()
+                _timestamp_relation_for_role(source, earlier_names).reverse()
             )
         )
         through_barrier = sink_to_barrier.apply_range(barrier_to_source)
@@ -487,6 +525,7 @@ def _build_enforced_order(
                     sink.domain(),
                     source.domain(),
                     include_local_axes=False,
+                    name_generator=name_generator,
                 )
             )
 
@@ -508,8 +547,9 @@ def verify_happens_after_is_enforced(kernel: LoopKernel) -> LoopKernel:
         raise LoopyError("Kernel must be linearized before verification.")
 
     prec_sched = _get_timestamp_points_from_linearization(kernel)
+    name_generator = kernel.get_var_name_generator()
     stmt_relns, barrier_relns, timestamp_lex = _build_timestamp_relations(
-        kernel, prec_sched
+        kernel, prec_sched, name_generator
     )
 
     for sink in kernel.instructions:
@@ -534,6 +574,7 @@ def verify_happens_after_is_enforced(kernel: LoopKernel) -> LoopKernel:
                 stmt_relns,
                 barrier_relns,
                 timestamp_lex,
+                name_generator,
             )
             missing = required - enforced
             if not missing.is_empty():
