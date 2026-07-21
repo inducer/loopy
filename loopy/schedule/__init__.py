@@ -981,6 +981,8 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
 
         insn_loop_inames = insn.within_inames & loop_inames
         for dep_id in insn.depends_on:
+            if dep_id == insn.id:
+                continue
             dep = kernel.id_to_insn[dep_id]
             dep_loop_inames = dep.within_inames & loop_inames
             # Enforce instruction dep:

@@ -332,6 +332,13 @@ def generate_code_for_a_single_kernel(
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
+    from loopy.kernel.dependency import has_precise_dependencies
+    if has_precise_dependencies(kernel):
+        from loopy.schedule.verification import (
+            verify_happens_after_is_enforced,
+        )
+        kernel = verify_happens_after_is_enforced(kernel)
+
     codegen_plog = ProcessLogger(logger, f"{kernel.name}: generate code")
 
     # {{{ examine arg list
