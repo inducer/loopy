@@ -12,6 +12,7 @@ from pymbolic import primitives as prim
 from pytools.graph import compute_topological_order
 
 from loopy import for_each_kernel
+from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (
     HappensAfter,
     InstructionBase,
@@ -40,6 +41,25 @@ if TYPE_CHECKING:
 class AccessType(Enum):
     read = 0
     write = 1
+
+
+def has_precise_dependencies(kernel: LoopKernel) -> bool:
+    has_precise = False
+    has_legacy = False
+    for insn in kernel.instructions:
+        for happens_after in insn.happens_after.values():
+            if happens_after.instances_rel is None:
+                has_legacy = True
+            else:
+                has_precise = True
+
+    if has_precise and has_legacy:
+        raise LoopyError(
+            f"kernel '{kernel.name}' mixes precise and legacy "
+            "happens-after dependencies"
+        )
+
+    return has_precise
 
 
 class AccessRelationFinder(WalkMapper[[str, AccessType]]):

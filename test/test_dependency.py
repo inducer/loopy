@@ -1,9 +1,31 @@
 import namedisl as nisl
+import pytest
 
 from pymbolic import var
 
 import loopy as lp
 import loopy.kernel.dependency as dep
+from loopy.diagnostic import LoopyError
+from loopy.kernel.instruction import HappensAfter
+
+from loopy.schedule.verification import (
+    _BarrierRecord,
+    _PreciseSchedule,
+    _StatementRecord,
+    _build_enforced_order,
+    _build_strict_lexicographic_order,
+    _build_timestamp_relations,
+    _get_timestamp_points_from_linearization,
+    verify_happens_after_is_enforced,
+)
+from loopy.schedule import (
+    Barrier,
+    CallKernel,
+    EnterLoop,
+    LeaveLoop,
+    ReturnFromKernel,
+    RunInstruction,
+)
 from loopy.symbolic import SubArrayRef
 from loopy.version import (
     LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
@@ -297,6 +319,37 @@ def test_relax_strict_happens_after_finds_direct_raw() -> None:
             }
             """)
     )
+
+
+def test_has_precise_dependencies() -> None:
+    legacy_kernel = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        """
+        a[i] = i {id=S}
+        b[i] = a[i] {id=T, dep=S}
+        """,
+    ).default_entrypoint
+    assert not dep.has_precise_dependencies(legacy_kernel)
+
+    precise_kernel = dep.add_lexicographic_happens_after(
+        legacy_kernel
+    )
+    assert dep.has_precise_dependencies(precise_kernel)
+
+    t_insn = precise_kernel.id_to_insn["T"]
+    mixed_happens_after = dict(t_insn.happens_after)
+    mixed_happens_after["S"] = HappensAfter(instances_rel=None)
+    mixed_kernel = precise_kernel.copy(
+        instructions=tuple(
+            insn.copy(happens_after=mixed_happens_after)
+            if insn.id == "T"
+            else insn
+            for insn in precise_kernel.instructions
+        )
+    )
+
+    with pytest.raises(LoopyError, match="mixes precise and legacy"):
+        dep.has_precise_dependencies(mixed_kernel)
 
 
 def test_relax_strict_happens_after_finds_direct_waw() -> None:
@@ -608,6 +661,466 @@ def test_relax_strict_happens_after_inner_uses_live_sink_accesses() -> None:
             }
             """)
     )
+
+
+def test_statement_timestamps_with_calls_inside_outer_loop() -> None:
+    kernel = lp.make_kernel(
+        """{
+            [batch, i, j, k] :
+                0 <= batch < 4 and 0 <= i < 8 and
+                0 <= j < 16 and 0 <= k < 32
+        }""",
+        """
+        a[batch, i, j] = i + j {id=A}
+        b[batch, i] = i {id=B}
+        c[batch, k] = k {id=C}
+        """,
+    ).default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            EnterLoop("batch"),
+            CallKernel("phase0"),
+            EnterLoop("i"),
+            EnterLoop("j"),
+            RunInstruction("A"),
+            LeaveLoop("j"),
+            RunInstruction("B"),
+            LeaveLoop("i"),
+            ReturnFromKernel("phase0"),
+            CallKernel("phase1"),
+            EnterLoop("k"),
+            RunInstruction("C"),
+            LeaveLoop("k"),
+            ReturnFromKernel("phase1"),
+            LeaveLoop("batch"),
+        ),
+    )
+
+    assert _get_timestamp_points_from_linearization(kernel) == _PreciseSchedule(
+        statements={
+            "A": _StatementRecord(
+                timestamp=(0, "batch", 1, 2, "i", 3, "j", 4),
+                subkernel_idx=1,
+            ),
+            "B": _StatementRecord(
+                timestamp=(0, "batch", 1, 2, "i", 6),
+                subkernel_idx=1,
+            ),
+            "C": _StatementRecord(
+                timestamp=(0, "batch", 9, 10, "k", 11),
+                subkernel_idx=9,
+            ),
+        },
+        barriers=(),
+    )
+
+
+def test_statement_timestamps_with_imperfect_loop_nesting() -> None:
+    kernel = lp.make_kernel(
+        "{ [i, j, k] : 0 <= i, j, k < 8 }",
+        """
+        <> before = 0 {id=before}
+        <> outer = i {id=outer}
+        <> deep = i + j + k {id=deep}
+        <> after_inner = i {id=after_inner}
+        <> after = 0 {id=after}
+        """,
+    ).default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            CallKernel("device_program"),
+            RunInstruction("before"),
+            EnterLoop("i"),
+            RunInstruction("outer"),
+            EnterLoop("j"),
+            EnterLoop("k"),
+            RunInstruction("deep"),
+            LeaveLoop("k"),
+            LeaveLoop("j"),
+            RunInstruction("after_inner"),
+            LeaveLoop("i"),
+            RunInstruction("after"),
+            ReturnFromKernel("device_program"),
+        ),
+    )
+
+    assert _get_timestamp_points_from_linearization(kernel) == _PreciseSchedule(
+        statements={
+            "before": _StatementRecord(timestamp=(0, 1), subkernel_idx=0),
+            "outer": _StatementRecord(timestamp=(0, 2, "i", 3), subkernel_idx=0),
+            "deep": _StatementRecord(
+                timestamp=(0, 2, "i", 4, "j", 5, "k", 6),
+                subkernel_idx=0,
+            ),
+            "after_inner": _StatementRecord(
+                timestamp=(0, 2, "i", 9), subkernel_idx=0
+            ),
+            "after": _StatementRecord(timestamp=(0, 11), subkernel_idx=0),
+        },
+        barriers=(),
+    )
+
+
+def test_timestamp_relation_keeps_parallel_inames_in_instance_domain() -> None:
+    t_unit = lp.make_kernel(
+        "{ [g, l, i] : 0 <= g < 4 and 0 <= l < 8 and 0 <= i < 16 }",
+        "out[g, l, i] = g + l + i {id=S}",
+    )
+    t_unit = lp.tag_inames(t_unit, {"g": "g.0", "l": "l.0"})
+    kernel = t_unit.default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            CallKernel("device_program"),
+            EnterLoop("i"),
+            RunInstruction("S"),
+            LeaveLoop("i"),
+            ReturnFromKernel("device_program"),
+        ),
+    )
+
+    precise_schedule = _get_timestamp_points_from_linearization(kernel)
+    assert precise_schedule.statements["S"] == _StatementRecord(
+        timestamp=(0, 1, "i", 2),
+        subkernel_idx=0,
+    )
+
+    timestamp_relations, _, _ = _build_timestamp_relations(
+        kernel, precise_schedule
+    )
+    timestamp_relation = timestamp_relations["S"]
+    assert timestamp_relation.equals(
+        nisl.make_map("""
+        {
+            [g, l, i] -> [__ts_0, __ts_1, __ts_2, __ts_3] :
+                0 <= g < 4 and 0 <= l < 8 and 0 <= i < 16 and
+                __ts_0 = 0 and __ts_1 = 1 and
+                __ts_2 = i and __ts_3 = 2
+        }
+        """)
+    )
+
+
+def test_strict_lexicographic_timestamp_order() -> None:
+    order = _build_strict_lexicographic_order(("t0", "t1", "t2"))
+
+    assert order.equals(nisl.make_map("""
+        {
+            [t0_later, t1_later, t2_later] ->
+                [t0_earlier, t1_earlier, t2_earlier] :
+                    t0_later > t0_earlier;
+            [t0_later, t1_later, t2_later] ->
+                [t0_earlier, t1_earlier, t2_earlier] :
+                    t0_later = t0_earlier and
+                    t1_later > t1_earlier;
+            [t0_later, t1_later, t2_later] ->
+                [t0_earlier, t1_earlier, t2_earlier] :
+                    t0_later = t0_earlier and
+                    t1_later = t1_earlier and
+                    t2_later > t2_earlier
+        }
+    """))
+
+
+def test_statement_timestamps_record_local_and_global_barriers() -> None:
+    local_barrier = Barrier(
+        comment="local synchronization",
+        synchronization_kind="local",
+        mem_kind="local",
+        originating_insn_id=None,
+    )
+    global_barrier = Barrier(
+        comment="global synchronization",
+        synchronization_kind="global",
+        mem_kind="global",
+        originating_insn_id=None,
+    )
+    kernel = lp.make_kernel(
+        "{ [batch, i, j] : 0 <= batch, i, j < 8 }",
+        """
+        a[batch, i] = i {id=producer}
+        b[batch, i] = a[batch, i] {id=after_local}
+        c[batch, j] = j {id=consumer}
+        """,
+    ).default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            EnterLoop("batch"),
+            CallKernel("phase0"),
+            EnterLoop("i"),
+            RunInstruction("producer"),
+            local_barrier,
+            RunInstruction("after_local"),
+            LeaveLoop("i"),
+            ReturnFromKernel("phase0"),
+            global_barrier,
+            CallKernel("phase1"),
+            EnterLoop("j"),
+            RunInstruction("consumer"),
+            LeaveLoop("j"),
+            ReturnFromKernel("phase1"),
+            LeaveLoop("batch"),
+        ),
+    )
+
+    precise_schedule = _get_timestamp_points_from_linearization(kernel)
+    assert precise_schedule == _PreciseSchedule(
+        statements={
+            "producer": _StatementRecord(
+                timestamp=(0, "batch", 1, 2, "i", 3),
+                subkernel_idx=1,
+            ),
+            "after_local": _StatementRecord(
+                timestamp=(0, "batch", 1, 2, "i", 5),
+                subkernel_idx=1,
+            ),
+            "consumer": _StatementRecord(
+                timestamp=(0, "batch", 9, 10, "j", 11),
+                subkernel_idx=9,
+            ),
+        },
+        barriers=(
+            _BarrierRecord(
+                timestamp=(0, "batch", 1, 2, "i", 4),
+                barrier=local_barrier,
+                subkernel_idx=1,
+            ),
+            _BarrierRecord(
+                timestamp=(0, "batch", 8),
+                barrier=global_barrier,
+                subkernel_idx=None,
+            ),
+        ),
+    )
+
+    _, barrier_relations, _ = _build_timestamp_relations(
+        kernel, precise_schedule
+    )
+    assert len(barrier_relations) == 2
+    assert barrier_relations[0].equals(nisl.make_map("""
+        {
+            [batch, i] ->
+                [__ts_0, __ts_1, __ts_2, __ts_3, __ts_4, __ts_5] :
+                    0 <= batch < 8 and 0 <= i < 8 and
+                    __ts_0 = 0 and __ts_1 = batch and
+                    __ts_2 = 1 and __ts_3 = 2 and
+                    __ts_4 = i and __ts_5 = 4
+        }
+    """))
+    assert barrier_relations[1].equals(nisl.make_map("""
+        {
+            [batch] ->
+                [__ts_0, __ts_1, __ts_2, __ts_3, __ts_4, __ts_5] :
+                    0 <= batch < 8 and
+                    __ts_0 = 0 and __ts_1 = batch and
+                    __ts_2 = 8 and __ts_3 = 0 and
+                    __ts_4 = 0 and __ts_5 = 0
+        }
+    """))
+
+
+def test_local_barrier_orders_work_items_in_the_same_group() -> None:
+    local_barrier = Barrier(
+        comment="local synchronization",
+        synchronization_kind="local",
+        mem_kind="local",
+        originating_insn_id=None,
+    )
+    t_unit = lp.make_kernel(
+        """
+        {
+            [g, l, i] :
+                0 <= g < 2 and 0 <= l < 4 and 0 <= i < 2
+        }
+        """,
+        """
+        a[g, l, i] = g + l + i {id=source}
+        b[g, l, i] = a[g, l, i] {id=sink}
+        """,
+    )
+    t_unit = lp.tag_inames(t_unit, {"g": "g.0", "l": "l.0"})
+    kernel = t_unit.default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            CallKernel("device_program"),
+            EnterLoop("i"),
+            RunInstruction("source"),
+            local_barrier,
+            RunInstruction("sink"),
+            LeaveLoop("i"),
+            ReturnFromKernel("device_program"),
+        ),
+    )
+
+    precise_schedule = _get_timestamp_points_from_linearization(kernel)
+    stmt_relations, barrier_relations, timestamp_order = (
+        _build_timestamp_relations(kernel, precise_schedule)
+    )
+    enforced = _build_enforced_order(
+        kernel,
+        "sink",
+        "source",
+        precise_schedule,
+        stmt_relations,
+        barrier_relations,
+        timestamp_order,
+    )
+
+    assert enforced.equals(nisl.make_map("""
+        {
+            [g_after, l_after, i_after] ->
+                [g_before, l_before, i_before] :
+                    0 <= g_after < 2 and 0 <= l_after < 4 and
+                    0 <= i_after < 2 and
+                    g_before = g_after and
+                    0 <= l_before < 4 and
+                    0 <= i_before <= i_after
+        }
+    """))
+
+
+def test_global_barrier_orders_all_work_items() -> None:
+    global_barrier = Barrier(
+        comment="global synchronization",
+        synchronization_kind="global",
+        mem_kind="global",
+        originating_insn_id=None,
+    )
+    t_unit = lp.make_kernel(
+        "{ [g, l] : 0 <= g < 2 and 0 <= l < 4 }",
+        """
+        a[g, l] = g + l {id=source}
+        b[g, l] = a[g, l] {id=sink}
+        """,
+    )
+    t_unit = lp.tag_inames(t_unit, {"g": "g.0", "l": "l.0"})
+    kernel = t_unit.default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            CallKernel("phase0"),
+            RunInstruction("source"),
+            ReturnFromKernel("phase0"),
+            global_barrier,
+            CallKernel("phase1"),
+            RunInstruction("sink"),
+            ReturnFromKernel("phase1"),
+        ),
+    )
+
+    precise_schedule = _get_timestamp_points_from_linearization(kernel)
+    stmt_relations, barrier_relations, timestamp_order = (
+        _build_timestamp_relations(kernel, precise_schedule)
+    )
+    enforced = _build_enforced_order(
+        kernel,
+        "sink",
+        "source",
+        precise_schedule,
+        stmt_relations,
+        barrier_relations,
+        timestamp_order,
+    )
+
+    assert enforced.equals(nisl.make_map("""
+        {
+            [g_after, l_after] -> [g_before, l_before] :
+                0 <= g_after < 2 and 0 <= l_after < 4 and
+                0 <= g_before < 2 and 0 <= l_before < 4
+        }
+    """))
+
+
+def test_verification() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        """
+        a[i] = 2 * a[i] {id=S}
+        b[i] = 2 * b[i] {id=T}
+        c[i] = a[i] + b[i] {id=U}
+        """,
+    )
+
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    t_unit = dep.relax_strict_happens_after(t_unit)
+    t_unit = lp.preprocess_program(t_unit)
+    t_unit = lp.linearize(t_unit)
+    t_unit = verify_happens_after_is_enforced(t_unit)
+    lp.generate_code_v2(t_unit)
+
+
+def test_verification_rejects_unenforced_order() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        """
+        a[i] = i {id=S}
+        b[i] = a[i] {id=T}
+        """,
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+
+    kernel = t_unit.default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            CallKernel("device_program"),
+            EnterLoop("i"),
+            RunInstruction("T"),
+            RunInstruction("S"),
+            LeaveLoop("i"),
+            ReturnFromKernel("device_program"),
+        ),
+    )
+    t_unit = t_unit.with_kernel(kernel)
+
+    with pytest.raises(
+        LoopyError,
+        match="schedule does not enforce 'T' after 'S'",
+    ):
+        verify_happens_after_is_enforced(t_unit)
+
+    with pytest.raises(
+        LoopyError,
+        match="schedule does not enforce 'T' after 'S'",
+    ):
+        lp.generate_code_v2(t_unit)
+
+
+def test_verification_handles_explicit_barrier_instruction() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        """
+        a[i] = i {id=S}
+        ... gbarrier {id=B}
+        b[i] = a[i] {id=T}
+        """,
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+
+    kernel = t_unit.default_entrypoint
+    barrier_insn = kernel.id_to_insn["B"]
+    barrier = Barrier(
+        comment="explicit global barrier",
+        synchronization_kind=barrier_insn.synchronization_kind,
+        mem_kind=barrier_insn.mem_kind,
+        originating_insn_id="B",
+    )
+    kernel = kernel.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            CallKernel("phase0"),
+            EnterLoop("i"),
+            RunInstruction("S"),
+            LeaveLoop("i"),
+            ReturnFromKernel("phase0"),
+            barrier,
+            CallKernel("phase1"),
+            EnterLoop("i"),
+            RunInstruction("T"),
+            LeaveLoop("i"),
+            ReturnFromKernel("phase1"),
+        ),
+    )
+    t_unit = t_unit.with_kernel(kernel)
+
+    verify_happens_after_is_enforced(t_unit)
 
 
 if __name__ == "__main__":
