@@ -227,6 +227,110 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
             self._additional_inames = previous_inames
 
 
+def apply_affine_transform_to_happens_afters(
+    kernel: LoopKernel, affine_reln: nisl.Map
+) -> LoopKernel:
+    """
+    Applies an affine transformation to all relevant happens-after relations.
+    """
+
+    transformed_inames = frozenset(affine_reln.space.in_names)
+    name_generator = kernel.get_var_name_generator()
+    for names in affine_reln.space.dimtype_to_names.values():
+        name_generator.add_names(names, conflicting_ok=True)
+
+    def build_xform_reln(
+        stmt: InstructionBase, suffix: str
+    ) -> tuple[nisl.Map, tuple[tuple[str, str], ...]] | None:
+        overlap = stmt.within_inames & transformed_inames
+        if not overlap:
+            return None
+        if overlap != transformed_inames:
+            raise LoopyError(
+                f"statement '{stmt.id}' is within only part of the affine "
+                "transformation's input inames"
+            )
+
+        # FIXME: Remove conversion once LoopKernel domains use namedisl.Set.
+        stmt_domain = nisl.make_set(
+            kernel.get_inames_domain(stmt.within_inames).to_set()
+        )
+        stmt_inames = stmt_domain.space.dimtype_to_names[DimType.out]
+        nonxformed_names = tuple(
+            name for name in stmt_inames if name not in transformed_inames
+        )
+        output_proxy_names = tuple(
+            name_generator(f"{name}_new_") for name in nonxformed_names
+        )
+
+        xform_reln = affine_reln.add_dims(DimType.in_, nonxformed_names)
+        xform_reln = xform_reln.add_dims(DimType.out, output_proxy_names)
+        xform_reln = xform_reln.equate_dims(tuple(zip(
+            nonxformed_names, output_proxy_names, strict=True
+        )))
+        xform_reln = _suffix_names(xform_reln, suffix, DimType.in_)
+        xform_reln = _suffix_names(xform_reln, suffix, DimType.out)
+
+        proxy_renames = tuple(
+            (f"{proxy}{suffix}", f"{name}{suffix}")
+            for name, proxy in zip(
+                nonxformed_names, output_proxy_names, strict=True
+            )
+        )
+        return xform_reln, proxy_renames
+
+    new_stmts: list[InstructionBase] = []
+    for sink_stmt in kernel.instructions:
+        sink_xform = build_xform_reln(sink_stmt, "_after")
+        new_happens_after: dict[str, HappensAfter] = {}
+
+        for src_id, happens_after in sink_stmt.happens_after.items():
+            if happens_after.instances_rel is None:
+                raise LoopyError(
+                    "cannot determine precise happens-after information"
+                )
+
+            src_stmt = kernel.id_to_insn[src_id]
+            src_xform = build_xform_reln(src_stmt, "_before")
+            if sink_xform is None and src_xform is None:
+                new_happens_after[src_id] = happens_after
+                continue
+
+            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+            instances_rel = nisl.make_map(happens_after.instances_rel)
+            proxy_renames: list[tuple[str, str]] = []
+
+            if sink_xform is not None:
+                sink_xform_reln, sink_proxy_renames = sink_xform
+                instances_rel = sink_xform_reln.reverse().apply_range(
+                    instances_rel
+                )
+                proxy_renames.extend(sink_proxy_renames)
+
+            if src_xform is not None:
+                if instances_rel.space.dim(DimType.in_) == 0:
+                    dummy_name = name_generator("happens_after_dummy")
+                    instances_rel = (
+                        instances_rel
+                        .add_dims(DimType.in_, (dummy_name,))
+                        .project_out((dummy_name,))
+                    )
+
+                src_xform_reln, src_proxy_renames = src_xform
+                instances_rel = instances_rel.apply_range(src_xform_reln)
+                proxy_renames.extend(src_proxy_renames)
+
+            instances_rel = instances_rel.rename_dims(proxy_renames).coalesce()
+            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+            new_happens_after[src_id] = HappensAfter(instances_rel.as_isl())
+
+        new_stmts.append(
+            sink_stmt.copy(happens_after=constantdict(new_happens_after))
+        )
+
+    return kernel.copy(instructions=new_stmts)
+
+
 def has_precise_dependencies(kernel: LoopKernel) -> bool:
     has_precise = False
     has_legacy = False

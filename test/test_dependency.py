@@ -27,6 +27,7 @@ import namedisl as nisl
 import numpy as np
 import pytest
 
+import islpy as isl
 import pyopencl as cl
 from pymbolic import var
 from pyopencl.tools import (  # ruff:ignore[unused-import]
@@ -179,6 +180,289 @@ def test_add_lexicographic_happens_after_orders_mixed_loop_nests() -> None:
     )
 
 
+def _get_precise_relation(
+    kernel: lp.LoopKernel, sink_id: str, source_id: str
+) -> nisl.Map:
+    relation = kernel.id_to_insn[sink_id].happens_after[source_id].instances_rel
+    assert relation is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    return nisl.make_map(relation)
+
+
+def test_affine_happens_after_transform_tiling() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "[N] -> { [i] : 0 <= i < N }",
+            "[M] -> { [j] : 0 <= j < M }",
+        ],
+        """
+        a[j] = 1 {id=A}
+        b[i, j] = 2 {id=B}
+        c[i, j] = 3 {id=C}
+        d[j] = 4 {id=D}
+        """,
+        [
+            lp.GlobalArg("a,d", shape=(var("M"),)),
+            lp.GlobalArg("b,c", shape=(var("N"), var("M"))),
+            "...",
+        ],
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    a_self = _get_precise_relation(kernel, "A", "A")
+    d_self = _get_precise_relation(kernel, "D", "D")
+
+    kernel = dep.apply_affine_transform_to_happens_afters(
+        kernel,
+        nisl.make_map("""
+            [N] -> {
+                [i] -> [io, ii] :
+                    i = 4*io + ii and 0 <= ii < 4
+            }
+            """),
+    )
+
+    assert _get_precise_relation(kernel, "B", "B").equals(
+        nisl.make_map("""
+        [N, M] -> {
+            [io_after, ii_after, j_after] ->
+            [io_before, ii_before, j_before] :
+                0 <= 4*io_after + ii_after < N and
+                0 <= ii_after < 4 and
+                0 <= j_after < M and
+                0 <= 4*io_before + ii_before < N and
+                0 <= ii_before < 4 and
+                0 <= j_before < M and
+                (4*io_before + ii_before < 4*io_after + ii_after or
+                 (4*io_before + ii_before = 4*io_after + ii_after and
+                  j_before < j_after))
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "B", "A").equals(
+        nisl.make_map("""
+        [N, M] -> {
+            [io_after, ii_after, j_after] -> [j_before] :
+                0 <= 4*io_after + ii_after < N and
+                0 <= ii_after < 4 and
+                0 <= j_before <= j_after < M
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "C", "B").equals(
+        nisl.make_map("""
+        [N, M] -> {
+            [io_after, ii_after, j_after] ->
+            [io_before, ii_before, j_before] :
+                0 <= 4*io_after + ii_after < N and
+                0 <= ii_after < 4 and
+                0 <= j_after < M and
+                0 <= 4*io_before + ii_before < N and
+                0 <= ii_before < 4 and
+                0 <= j_before < M and
+                (4*io_before + ii_before < 4*io_after + ii_after or
+                 (4*io_before + ii_before = 4*io_after + ii_after and
+                  j_before <= j_after))
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "D", "C").equals(
+        nisl.make_map("""
+        [N, M] -> {
+            [j_after] -> [io_before, ii_before, j_before] :
+                0 <= 4*io_before + ii_before < N and
+                0 <= ii_before < 4 and
+                0 <= j_before <= j_after < M
+        }
+        """)
+    )
+    assert _get_precise_relation(kernel, "A", "A").equals(a_self)
+    assert _get_precise_relation(kernel, "D", "D").equals(d_self)
+
+
+def test_affine_happens_after_transform_skew() -> None:
+    t_unit = lp.make_kernel(
+        """
+        [NI, NJ] -> {
+            [i, j] : 0 <= i < NI and 0 <= j < NJ
+        }
+        """,
+        "out[i, j] = i + j {id=S}",
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    kernel = dep.apply_affine_transform_to_happens_afters(
+        kernel,
+        nisl.make_map("""
+            { [i, j] -> [is, js] : is = i and js = i + j }
+            """),
+    )
+
+    assert _get_precise_relation(kernel, "S", "S").equals(
+        nisl.make_map("""
+        [NI, NJ] -> {
+            [is_after, js_after] -> [is_before, js_before] :
+                0 <= is_after < NI and
+                0 <= js_after - is_after < NJ and
+                0 <= is_before < NI and
+                0 <= js_before - is_before < NJ and
+                (is_before < is_after or
+                 (is_before = is_after and
+                  js_before - is_before < js_after - is_after))
+        }
+        """)
+    )
+
+
+def test_affine_happens_after_transform_permuted_axes() -> None:
+    t_unit = lp.make_kernel(
+        """
+        [NI, NJ, NK] -> {
+            [i, j, k] :
+                0 <= i < NI and 0 <= j < NJ and 0 <= k < NK
+        }
+        """,
+        "out[i, j, k] = i + j + k {id=S}",
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    kernel = dep.apply_affine_transform_to_happens_afters(
+        kernel,
+        nisl.make_map("""
+            {
+                [i, j, k] -> [j_new, i_new, k_new] :
+                    j_new = j and i_new = i and k_new = k
+            }
+            """),
+    )
+
+    assert _get_precise_relation(kernel, "S", "S").equals(
+        nisl.make_map("""
+        [NI, NJ, NK] -> {
+            [j_new_after, i_new_after, k_new_after] ->
+            [j_new_before, i_new_before, k_new_before] :
+                0 <= i_new_after < NI and
+                0 <= j_new_after < NJ and
+                0 <= k_new_after < NK and
+                0 <= i_new_before < NI and
+                0 <= j_new_before < NJ and
+                0 <= k_new_before < NK and
+                (i_new_before < i_new_after or
+                 (i_new_before = i_new_after and
+                  j_new_before < j_new_after) or
+                 (i_new_before = i_new_after and
+                  j_new_before = j_new_after and
+                  k_new_before < k_new_after))
+        }
+        """)
+    )
+
+
+def test_affine_happens_after_transform_scalar_endpoints() -> None:
+    t_unit = lp.make_kernel(
+        "[N] -> { [i] : 0 <= i < N }",
+        """
+        a[0] = 1 {id=A}
+        b[i] = 2 {id=B}
+        c[0] = 3 {id=C}
+        """,
+        [
+            lp.GlobalArg("a,c", shape=(1,)),
+            lp.GlobalArg("b", shape=(var("N"),)),
+            "...",
+        ],
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    kernel = dep.apply_affine_transform_to_happens_afters(
+        kernel,
+        nisl.make_map("{ [i] -> [ip = i + 2] }"),
+    )
+
+    assert _get_precise_relation(kernel, "B", "A").equals(
+        nisl.make_map("""
+        [N] -> { [ip_after] -> [] : 2 <= ip_after < N + 2 }
+        """)
+    )
+    assert _get_precise_relation(kernel, "C", "B").equals(
+        nisl.make_map("""
+        [N] -> { [] -> [ip_before] : 2 <= ip_before < N + 2 }
+        """)
+    )
+
+
+def test_affine_happens_after_transform_rejects_partial_nest() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "[NI] -> { [i] : 0 <= i < NI }",
+            "[NJ] -> { [j] : 0 <= j < NJ }",
+        ],
+        "out[i] = i {id=S}",
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+
+    with pytest.raises(LoopyError):
+        dep.apply_affine_transform_to_happens_afters(
+            kernel,
+            nisl.make_map("""
+                {
+                    [i, j] -> [i_new, j_new] :
+                        i_new = i and j_new = j
+                }
+                """),
+        )
+
+
+def test_affine_happens_after_transform_avoids_proxy_name_collisions() -> None:
+    t_unit = lp.make_kernel(
+        "[NI, NJ] -> { [i, j] : 0 <= i < NI and 0 <= j < NJ }",
+        "out[i, j] = i + j {id=S}",
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    kernel = dep.apply_affine_transform_to_happens_afters(
+        kernel,
+        nisl.make_map("{ [i] -> [j_new_] : j_new_ = i }"),
+    )
+
+    assert _get_precise_relation(kernel, "S", "S").equals(
+        nisl.make_map("""
+        [NI, NJ] -> {
+            [j_new__after, j_after] -> [j_new__before, j_before] :
+                0 <= j_new__after < NI and 0 <= j_after < NJ and
+                0 <= j_new__before < NI and 0 <= j_before < NJ and
+                (j_new__before < j_new__after or
+                 (j_new__before = j_new__after and j_before < j_after))
+        }
+        """)
+    )
+
+
+def test_map_domain_transforms_precise_happens_after() -> None:
+    t_unit = lp.make_kernel(
+        "[NI, NJ] -> { [i, j] : 0 <= i < NI and 0 <= j < NJ }",
+        """
+        a[i, j] = i + j {id=A}
+        b[i, j] = a[i, j] {id=B}
+        """,
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    transform_map = isl.BasicMap("""
+        [NI] -> {
+            [i] -> [io, ii] :
+                i = 4*io + ii and 0 <= ii < 4
+        }
+        """)
+
+    expected = dep.apply_affine_transform_to_happens_afters(
+        t_unit.default_entrypoint,
+        nisl.make_map(transform_map.to_map()),
+    )
+    kernel = lp.map_domain(t_unit, transform_map).default_entrypoint
+
+    assert kernel.id_to_insn["A"].within_inames == frozenset({"io", "ii", "j"})
+    assert kernel.id_to_insn["B"].within_inames == frozenset({"io", "ii", "j"})
+    for sink_id, source_id in [("A", "A"), ("B", "A"), ("B", "B")]:
+        assert _get_precise_relation(kernel, sink_id, source_id).equals(
+            _get_precise_relation(expected, sink_id, source_id)
+        )
+
+
 def test_access_relation_finder_tracks_reads_and_writes_per_statement() -> None:
     t_unit = lp.make_kernel(
         "{ [i] : 1 <= i < N }",
@@ -310,7 +594,7 @@ def test_relax_strict_happens_after_expands_substitution_rules() -> None:
         """,
         substitutions={
             "inner": lp.SubstitutionRule(
-                "inner", ("j",), var("a")[2*var("j") + 1]
+                "inner", ("j",), var("a")[2 * var("j") + 1]
             ),
             "outer": lp.SubstitutionRule(
                 "outer", ("k",), var("inner")(var("k") + 1)
@@ -898,9 +1182,7 @@ def test_local_barrier_orders_work_items_in_the_same_group() -> None:
     precise_schedule = _get_timestamp_points_from_linearization(kernel)
     name_generator = kernel.get_var_name_generator()
     stmt_relations, barrier_relations, timestamp_order = (
-        _build_timestamp_relations(
-            kernel, precise_schedule, name_generator
-        )
+        _build_timestamp_relations(kernel, precise_schedule, name_generator)
     )
     enforced = _build_enforced_order(
         kernel,
@@ -946,9 +1228,7 @@ def test_global_barrier_orders_all_work_items() -> None:
     precise_schedule = _get_timestamp_points_from_linearization(kernel)
     name_generator = kernel.get_var_name_generator()
     stmt_relations, barrier_relations, timestamp_order = (
-        _build_timestamp_relations(
-            kernel, precise_schedule, name_generator
-        )
+        _build_timestamp_relations(kernel, precise_schedule, name_generator)
     )
     enforced = _build_enforced_order(
         kernel,

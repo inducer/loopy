@@ -2290,6 +2290,17 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
 
     # }}}
 
+    from loopy.kernel.dependency import (
+        apply_affine_transform_to_happens_afters,
+        has_precise_dependencies,
+    )
+    if has_precise_dependencies(kernel):
+        import namedisl as nisl
+        # FIXME: Remove conversion once map_domain accepts namedisl.Map.
+        kernel = apply_affine_transform_to_happens_afters(
+            kernel, nisl.make_map(transform_map.to_map())
+        )
+
     # {{{ Update within_inames for each statement
 
     # If we get this far, we know that the map was applied to exactly one domain,
