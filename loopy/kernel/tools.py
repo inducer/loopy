@@ -527,7 +527,7 @@ class SetOperationCacheManager:
 # }}}
 
 
-# {{{ domain change helper
+# {{{ domain change helpers
 
 class DomainChanger:
     """Helps change the domain responsible for *inames* within a kernel.
@@ -582,6 +582,90 @@ class DomainChanger:
         else:
             return self.kernel.copy(
                 domains=self.get_domains_with(replacement),
+
+                # Changing the domain might look like it wants to change grid
+                # sizes. Not true.
+                # (Relevant for 'slab decomposition')
+                overridden_get_grid_sizes_for_insn_ids=(
+                    self.kernel.get_grid_sizes_for_insn_ids))
+
+
+class MultiDomainChanger:
+    """
+    Like :class:`DomainChanger`, but operates on multiple collections of inames.
+    """
+
+    kernel: LoopKernel
+    leaf_domain_indices: list[int | None]
+
+    def __init__(self, kernel: LoopKernel, inames: Sequence[Collection[InameStr]]):
+        """
+        :arg inames: a sequence of non-mutable iterable
+        """
+
+        self.kernel = kernel
+        self.leaf_domain_indices = []
+        for inms in inames:
+            if inms:
+                ldi = kernel.get_leaf_domain_indices(inms)
+                if len(ldi) > 1:
+                    raise RuntimeError("Inames '%s' require more than one leaf "
+                            "domain, which makes the domain change that is part "
+                            "of your current operation ambiguous." % ", ".join(inms))
+
+                self.leaf_domain_indices.append(ldi[0])
+            else:
+                self.leaf_domain_indices.append(None)
+
+    @property
+    def domains(self) -> Sequence[isl.BasicSet]:
+        trivial_domain = self.kernel.combine_domains(())
+
+        result: list[isl.BasicSet] = []
+        for idx in self.leaf_domain_indices:
+            if idx is None:
+                result.append(trivial_domain)
+            else:
+                result.append(self.kernel.domains[idx])
+
+        return result
+
+    def get_domains_with(
+            self, replacements: Sequence[isl.BasicSet]) -> Sequence[isl.BasicSet]:
+        if len(replacements) != len(self.leaf_domain_indices):
+            raise LoopyError("replacements has incorrect length.")
+
+        index_to_replacements: dict[int | None, isl.BasicSet] = {}
+        for idx, repl in zip(self.leaf_domain_indices, replacements, strict=True):
+            try:
+                existing_repl = index_to_replacements[idx]
+            except KeyError:
+                index_to_replacements[idx] = repl
+            else:
+                if repl != existing_repl:
+                    raise LoopyError(
+                        "found multiple inconsistent replacements for the same "
+                        "domain.")
+
+        result = list(self.kernel.domains)
+        for idx, replacement in zip(
+                self.leaf_domain_indices, replacements, strict=True):
+            if idx is not None:
+                result[idx] = replacement
+            else:
+                result.append(replacement)
+
+        return result
+
+    def get_kernel_with(self, replacements: Sequence[isl.BasicSet]):
+        if all(
+                replacement == domain
+                for domain, replacement in zip(
+                    self.domains, replacements, strict=True)):
+            return self.kernel
+        else:
+            return self.kernel.copy(
+                domains=self.get_domains_with(replacements),
 
                 # Changing the domain might look like it wants to change grid
                 # sizes. Not true.
