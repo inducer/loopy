@@ -1017,14 +1017,37 @@ def duplicate_inames(
 
     # {{{ duplicate the inames
 
+    from collections import defaultdict
+
     from loopy.isl_helpers import duplicate_axes
-    from loopy.kernel.tools import DomainChanger
+    from loopy.kernel.tools import MultiDomainChanger
 
-    for old_iname, new_iname in zip(inames, new_suffixed_inames, strict=True):
-        domch = DomainChanger(kernel, frozenset([old_iname]))
+    domch = MultiDomainChanger(kernel, [frozenset([iname]) for iname in inames])
 
-        dup_iname = duplicate_axes(domch.domain, [old_iname], [new_iname])
-        kernel = kernel.copy(domains=domch.get_domains_with(dup_iname))
+    # Group inames that share a leaf domain so that all of a domain's new axes
+    # are added in a single duplicate_axes call
+    leaf_idx_to_group: dict[int, tuple[list[InameStr], list[InameStr]]] = \
+        defaultdict(lambda: ([], []))
+    for leaf_idx, old_iname, new_iname in zip(
+            domch.leaf_domain_indices, inames, new_suffixed_inames, strict=True):
+        assert isinstance(leaf_idx, int)
+        old_grp, new_grp = leaf_idx_to_group[leaf_idx]
+        old_grp.append(old_iname)
+        new_grp.append(new_iname)
+
+    leaf_idx_to_dup = {
+        leaf_idx: duplicate_axes(kernel.domains[leaf_idx], old_grp, new_grp)
+        for leaf_idx, (old_grp, new_grp) in leaf_idx_to_group.items()}
+
+    def verify_is_int(idx: int | None) -> int:
+        assert isinstance(idx, int)
+        return idx
+
+    dup_inames = [
+        leaf_idx_to_dup[verify_is_int(leaf_idx)]
+        for leaf_idx in domch.leaf_domain_indices]
+
+    kernel = kernel.copy(domains=domch.get_domains_with(dup_inames))
 
     # }}}
 
