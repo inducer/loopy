@@ -7,17 +7,6 @@ import loopy as lp
 import loopy.kernel.dependency as dep
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import HappensAfter
-
-from loopy.schedule.verification import (
-    _BarrierRecord,
-    _PreciseSchedule,
-    _StatementRecord,
-    _build_enforced_order,
-    _build_strict_lexicographic_order,
-    _build_timestamp_relations,
-    _get_timestamp_points_from_linearization,
-    verify_happens_after_is_enforced,
-)
 from loopy.schedule import (
     Barrier,
     CallKernel,
@@ -25,6 +14,16 @@ from loopy.schedule import (
     LeaveLoop,
     ReturnFromKernel,
     RunInstruction,
+)
+from loopy.schedule.verification import (
+    _BarrierRecord,
+    _build_enforced_order,
+    _build_strict_lexicographic_order,
+    _build_timestamp_relations,
+    _get_timestamp_points_from_linearization,
+    _PreciseSchedule,
+    _StatementRecord,
+    verify_happens_after_is_enforced,
 )
 from loopy.symbolic import SubArrayRef
 from loopy.version import (

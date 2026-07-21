@@ -1,16 +1,16 @@
-from constantdict import constantdict
-import islpy as isl
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
 import namedisl as nisl
+from constantdict import constantdict
 from namedisl import DimType
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
-
-from typing_extensions import override
+import islpy as isl
 
 from loopy import KernelState, LoopKernel, for_each_kernel
 from loopy.diagnostic import LoopyError
-from loopy.kernel.instruction import BarrierKind, HappensAfter
 from loopy.schedule import (
     Barrier,
     CallKernel,
@@ -20,6 +20,10 @@ from loopy.schedule import (
     RunInstruction,
     ScheduleItem,
 )
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 
 @dataclass(frozen=True)
@@ -162,10 +166,7 @@ def _build_statement_timestamp_relations(
 
         dom_str = ", ".join(name for name in stmt.within_inames)
 
-        if dom_str:
-            full_str = dom_str + ", " + ran_str
-        else:
-            full_str = ran_str
+        full_str = dom_str + ", " + ran_str if dom_str else ran_str
 
         # FIXME: isl -> named conversion
         domain = nisl.make_set(
@@ -269,7 +270,7 @@ def _build_timestamp_relations(
     prec_sched: _PreciseSchedule,
 ) -> tuple[Mapping[str, nisl.Map], Sequence[nisl.Map], nisl.Map]:
     max_stmt_tstamp_len = max(
-        len(record.timestamp) for _, record in prec_sched.statements.items()
+        len(record.timestamp) for record in prec_sched.statements.values()
     )
 
     max_bar_tstamp_len = -1

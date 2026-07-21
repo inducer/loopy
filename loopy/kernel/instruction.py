@@ -58,7 +58,6 @@ from loopy.types import LoopyType, ToLoopyTypeConvertible, to_loopy_type
 
 
 if TYPE_CHECKING:
-    import namedisl as nisl
 
     from pymbolic import Expression
 
