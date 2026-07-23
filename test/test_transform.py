@@ -481,9 +481,7 @@ def test_affine_map_inames():
         "{[e, i,j,n]: 0<=e<E and 0<=i,j,n<N}",
         "rhsQ[e, n+i, j] = rhsQ[e, n+i, j] - D[i, n]*x[i,j]")
 
-    knl = lp.affine_map_inames(knl,
-            "i", "i0",
-            "i0 = n+i")
+    knl = lp.map_domain(knl, "{[i,n] -> [i0,n0]: i0 = n+i and n0=n}")
 
     print(knl)
 

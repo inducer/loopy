@@ -273,7 +273,7 @@ This list is always growing, but here are a few pointers:
 
 * Affinely map loop domains
 
-  Use :func:`loopy.affine_map_inames`.
+  Use :func:`loopy.map_domain`.
 
 * Texture-based data access
 
