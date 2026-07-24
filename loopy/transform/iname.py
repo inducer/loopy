@@ -2476,153 +2476,6 @@ def add_inames_for_unused_hw_axes(kernel: LoopKernel,
 
 @for_each_kernel
 @remove_any_newly_unused_inames
-def rename_inames(
-            kernel: LoopKernel,
-            old_inames: Collection[InameStr],
-            new_iname: InameStr,
-            existing_ok: bool = False,
-            within: ToStackMatchConvertible = None,
-            raise_on_domain_mismatch: bool | None = None
-        ) -> LoopKernel:
-    r"""
-    :arg old_inames: a collection of inames that must be renamed to *new_iname*.
-    :arg within: a stack match, as understood by :func:`loopy.match.parse_stack_match`.
-    :arg existing_ok: execute even if *new_iname* already exists.
-    :arg raise_on_domain_mismatch: if *True*, raises an error if
-        :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
-        \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
-    """
-
-    if isinstance(old_inames, str) or not isinstance(old_inames, Collection):
-        raise LoopyError("'old_inames' must be a collection of strings: "
-                         f"{type(old_inames)}")
-    old_inames = frozenset(_to_inames_tuple(old_inames))
-
-    if new_iname in old_inames:
-        raise LoopyError("'new_iname' is part of inames being renamed: "
-                         f"'{new_iname}' in {_to_inames_str(old_inames)}")
-
-    if new_iname in (kinames := (kernel.all_variable_names() - kernel.all_inames())):
-        raise LoopyError(f"new iname '{new_iname}' is already a variable in the"
-                         f"kernel: {kinames}")
-
-    if any((len(insn.within_inames & old_inames) > 1) for insn in kernel.instructions):
-        raise LoopyError("'old_inames' contains nested inames -- renaming is illegal")
-
-    if raise_on_domain_mismatch is None:
-        raise_on_domain_mismatch = __debug__
-
-    var_name_gen = kernel.get_var_name_generator()
-
-    # sort to have deterministic implementation.
-    sorted_old_inames = sorted(old_inames)
-
-    # FIXME: distinguish existing iname vs. existing other variable
-    does_exist = new_iname in kernel.all_inames()
-
-    if not (old_inames <= kernel.all_inames()):
-        raise LoopyError(
-                f"old inames {_to_inames_str(old_inames - kernel.all_inames())}"
-                " do not exist.")
-
-    if does_exist and not existing_ok:
-        raise LoopyError(f"iname '{new_iname}' conflicts with an existing identifier"
-                         " --cannot rename")
-
-    if not does_exist:
-        # {{{ rename old_inames[0] -> new_iname
-        # so that the code below can focus on "merging" inames that already exist
-
-        kernel = duplicate_inames(
-                kernel, sorted_old_inames[0], within=within, new_inames=[new_iname])
-
-        # old_iname[0] is already renamed to new_iname => do not rename again.
-        sorted_old_inames = sorted_old_inames[1:]
-
-        # }}}
-
-    del does_exist
-    assert new_iname in kernel.all_inames()
-
-    if raise_on_domain_mismatch:
-        for old_iname in sorted_old_inames:
-            # {{{ check that the domains match up
-
-            dom = kernel.get_inames_domain(frozenset((old_iname, new_iname)))
-
-            var_dict = dom.get_var_dict()
-            _, old_idx = var_dict[old_iname]
-            _, new_idx = var_dict[new_iname]
-
-            par_idx = dom.dim(dim_type.param)
-            dom_old = dom.move_dims(
-                    dim_type.param, par_idx, dim_type.set, old_idx, 1)
-            dom_old = dom_old.move_dims(dim_type.set,
-                                        dom_old.dim(dim_type.set),
-                                        dim_type.param, par_idx, 1)
-            dom_old = dom_old.project_out(dim_type.set,
-                                          new_idx
-                                          if new_idx < old_idx
-                                          else new_idx - 1,
-                                          1)
-
-            par_idx = dom.dim(dim_type.param)
-            dom_new = dom.move_dims(dim_type.param, par_idx,
-                                    dim_type.set, new_idx, 1)
-            dom_new = dom_new.move_dims(dim_type.set, dom_new.dim(dim_type.set),
-                                        dim_type.param, par_idx, 1)
-            dom_new = dom_new.project_out(dim_type.set,
-                                          old_idx
-                                          if old_idx < new_idx
-                                          else old_idx - 1, 1)
-
-            if not (dom_old <= dom_new <= dom_old):
-                raise LoopyError(
-                        f"inames {old_iname} and {new_iname} do not iterate over "
-                        "the same domain")
-
-            # }}}
-
-    subst_dict = {old_iname: prim.Variable(new_iname)
-                  for old_iname in sorted_old_inames}
-
-    from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
-
-    from pymbolic.mapper.substitutor import make_subst_func
-    rule_mapping_context = SubstitutionRuleMappingContext(
-            kernel.substitutions, var_name_gen)
-    smap = RuleAwareSubstitutionMapper(rule_mapping_context,
-                    make_subst_func(subst_dict), within)
-
-    from loopy.kernel.instruction import MultiAssignmentBase
-
-    def does_insn_involve_iname(
-            kernel: LoopKernel,
-            insn: InstructionBase,
-            stack: RuleStack) -> bool:
-        return bool(not isinstance(insn, MultiAssignmentBase)
-                or old_inames & insn.dependency_names()
-                or old_inames & insn.reduction_inames())
-
-    kernel = rule_mapping_context.finish_kernel(
-            smap.map_kernel(kernel, within=does_insn_involve_iname,
-                            map_tvs=False, map_args=False))
-
-    new_instructions = [
-        insn.copy(within_inames=(
-            (insn.within_inames - old_inames) | frozenset([new_iname])))
-        if ((len(old_inames & insn.within_inames) != 0) and within(kernel, insn, ()))
-        else insn
-        for insn in kernel.instructions]
-
-    kernel = kernel.copy(instructions=new_instructions)
-
-    return kernel
-
-
-@for_each_kernel
-@remove_any_newly_unused_inames
 def rename_inames_multi(
             kernel: LoopKernel,
             old_inames: Sequence[Collection[InameStr]],
@@ -2829,6 +2682,29 @@ def rename_inames_multi(
     kernel = kernel.copy(instructions=new_instructions)
 
     return kernel
+
+
+@for_each_kernel
+@remove_any_newly_unused_inames
+def rename_inames(
+            kernel: LoopKernel,
+            old_inames: Collection[InameStr],
+            new_iname: InameStr,
+            existing_ok: bool = False,
+            within: ToStackMatchConvertible = None,
+            raise_on_domain_mismatch: bool | None = None
+        ) -> LoopKernel:
+    r"""
+    :arg old_inames: a collection of inames that must be renamed to *new_iname*.
+    :arg within: a stack match, as understood by :func:`loopy.match.parse_stack_match`.
+    :arg existing_ok: execute even if *new_iname* already exists.
+    :arg raise_on_domain_mismatch: if *True*, raises an error if
+        :math:`\exists (i_1,i_2) \in \{\text{old\_inames}\}^2 |
+        \mathcal{D}_{i_1} \neq \mathcal{D}_{i_2}`.
+    """
+    return rename_inames_multi(
+        kernel, [old_inames], [new_iname], existing_ok, within,
+        raise_on_domain_mismatch)
 
 
 @for_each_kernel
