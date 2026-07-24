@@ -41,7 +41,7 @@ from typing import (
 )
 
 import numpy as np
-from typing_extensions import deprecated, override
+from typing_extensions import override
 
 import islpy as isl
 import pymbolic.primitives as p
@@ -529,67 +529,6 @@ class SetOperationCacheManager:
 
 # {{{ domain change helpers
 
-class DomainChanger:
-    """Helps change the domain responsible for *inames* within a kernel.
-
-    .. note: Does not perform an in-place change!
-    """
-
-    kernel: LoopKernel
-    leaf_domain_index: int | None
-
-    def __init__(self, kernel: LoopKernel, inames: Collection[InameStr]):
-        """
-        :arg inames: a non-mutable iterable
-        """
-
-        self.kernel = kernel
-        if inames:
-            ldi = kernel.get_leaf_domain_indices(inames)
-            if len(ldi) > 1:
-                raise RuntimeError("Inames '%s' require more than one leaf "
-                        "domain, which makes the domain change that is part "
-                        "of your current operation ambiguous." % ", ".join(inames))
-
-            self.leaf_domain_index, = ldi
-
-        else:
-            self.leaf_domain_index = None
-
-    @property
-    def domain(self):
-        if self.leaf_domain_index is None:
-            return self.kernel.combine_domains(())
-        else:
-            return self.kernel.domains[self.leaf_domain_index]
-
-    @deprecated("use .domain instead")
-    def get_original_domain(self):
-        return self.domain
-
-    def get_domains_with(self, replacement: isl.BasicSet):
-        result = list(self.kernel.domains)
-        if self.leaf_domain_index is not None:
-            result[self.leaf_domain_index] = replacement
-        else:
-            result.append(replacement)
-
-        return result
-
-    def get_kernel_with(self, replacement: isl.BasicSet):
-        if replacement == self.domain:
-            return self.kernel
-        else:
-            return self.kernel.copy(
-                domains=self.get_domains_with(replacement),
-
-                # Changing the domain might look like it wants to change grid
-                # sizes. Not true.
-                # (Relevant for 'slab decomposition')
-                overridden_get_grid_sizes_for_insn_ids=(
-                    self.kernel.get_grid_sizes_for_insn_ids))
-
-
 class MultiDomainChanger:
     """
     Like :class:`DomainChanger`, but operates on multiple collections of inames.
@@ -672,6 +611,39 @@ class MultiDomainChanger:
                 # (Relevant for 'slab decomposition')
                 overridden_get_grid_sizes_for_insn_ids=(
                     self.kernel.get_grid_sizes_for_insn_ids))
+
+
+class DomainChanger:
+    """Helps change the domain responsible for *inames* within a kernel.
+
+    .. note: Does not perform an in-place change!
+    """
+
+    kernel: LoopKernel
+
+    _multi_changer: MultiDomainChanger
+
+    def __init__(self, kernel: LoopKernel, inames: Collection[InameStr]):
+        """
+        :arg inames: a non-mutable iterable
+        """
+
+        self.kernel = kernel
+        self._multi_changer = MultiDomainChanger(kernel, [inames])
+
+    @property
+    def leaf_domain_index(self) -> int | None:
+        return self._multi_changer.leaf_domain_indices[0]
+
+    @property
+    def domain(self):
+        return self._multi_changer.domains[0]
+
+    def get_domains_with(self, replacement: isl.BasicSet):
+        return self._multi_changer.get_domains_with([replacement])
+
+    def get_kernel_with(self, replacement: isl.BasicSet):
+        return self._multi_changer.get_kernel_with([replacement])
 
 # }}}
 
