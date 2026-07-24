@@ -1185,8 +1185,8 @@ def test_floor_div_coefficient_collector():
             "<> loc[i_inner,j_inner] = 3.14f  {id=loc_init}",
             "loc[i_inner,(j_inner+r+4) %% %d] = loc[i_inner,(j_inner+r) %% %d]"
             "  {id=add,dep=loc_init}" % (bsize, bsize),
-            "out0[i_outer*16+i_inner,j_outer*16+j_inner] = loc[i_inner,j_inner]"
-            "  {id=store,dep=add}",
+            ("out0[i_outer*16+i_inner,j_outer*16+j_inner] = loc[i_inner,j_inner]"
+            "  {id=store,dep=add}"),
             "end",
             "end",
         ],

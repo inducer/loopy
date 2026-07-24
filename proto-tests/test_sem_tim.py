@@ -45,10 +45,10 @@ def test_laplacian(ctx_factory):
                 "CSE: Gv(i,j,k) = G[1,e,i,j,k]*ur(i,j,k) + G[3,e,i,j,k]*us(i,j,k) + G[4,e,i,j,k]*ut(i,j,k)",  # ruff:ignore[line-too-long]
                 "CSE: Gw(i,j,k) = G[2,e,i,j,k]*ur(i,j,k) + G[4,e,i,j,k]*us(i,j,k) + G[5,e,i,j,k]*ut(i,j,k)",  # ruff:ignore[line-too-long]
 
-                "lap[e,i,j,k]  = "
+                ("lap[e,i,j,k]  = "
                 "  sum_float32(m, D[m,i]*Gu(m,j,k))"
                 "+ sum_float32(m, D[m,j]*Gv(i,m,k))"
-                "+ sum_float32(m, D[m,k]*Gw(i,j,m))"
+                "+ sum_float32(m, D[m,k]*Gw(i,j,m))")
                 ],
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
@@ -132,10 +132,10 @@ def test_laplacian_lmem(ctx_factory):
                 "us(a,b,c) := sum_float32(@o, D[b,o]*u[e,a,o,c])",
                 "ut(a,b,c) := sum_float32(@o, D[c,o]*u[e,a,b,o])",
 
-                "lap[e,i,j,k]  = "
+                ("lap[e,i,j,k]  = "
                 "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # ruff:ignore[line-too-long]
                 "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # ruff:ignore[line-too-long]
-                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # ruff:ignore[line-too-long]
+                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))")  # ruff:ignore[line-too-long]
                 ],
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
@@ -222,10 +222,10 @@ def test_laplacian_lmem_ilp(ctx_factory):
                 "us(i,j,k) := sum_float32(@o, D[j,o]*u[e,i,o,k])",
                 "ut(i,j,k) := sum_float32(@o, D[k,o]*u[e,i,j,o])",
 
-                "lap[e,i,j,k]  = "
+                ("lap[e,i,j,k]  = "
                 "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # ruff:ignore[line-too-long]
                 "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # ruff:ignore[line-too-long]
-                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # ruff:ignore[line-too-long]
+                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))")  # ruff:ignore[line-too-long]
                 ],
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),

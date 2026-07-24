@@ -27,10 +27,10 @@ def test_laplacian_stiffness(ctx_factory):
             "and 0<= dx_axis, ax_b < %(dim)d}"
             % {"Nb": Nb, "Nq": Nq, "dim": dim},
             [
-                "dPsi(ij, dxi) := sum_float32(@ax_b,"
-                    "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])",
-                "A[K, i, j] = sum_float32(q, w[q] * jacDet[K,q] * ("
-                    "sum_float32(dx_axis, dPsi$one(i,dx_axis)*dPsi$two(j,dx_axis))))"
+                ("dPsi(ij, dxi) := sum_float32(@ax_b,"
+                    "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])"),
+                ("A[K, i, j] = sum_float32(q, w[q] * jacDet[K,q] * ("
+                    "sum_float32(dx_axis, dPsi$one(i,dx_axis)*dPsi$two(j,dx_axis))))")
                 ],
             [
             lp.GlobalArg("jacInv", dtype, shape=(dim, dim, Nc_sym, Nq), order=order),
