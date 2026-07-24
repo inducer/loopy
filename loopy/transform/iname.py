@@ -1283,6 +1283,8 @@ def remove_unused_inames(
     If these inames pose implicit restrictions on other inames, these
     restrictions will persist as existentially quantified variables.
 
+    Domains with no remaining inames after projection are also removed.
+
     :arg inames: may be an iterable of inames or a string of comma-separated inames.
     """
 
@@ -1311,10 +1313,15 @@ def remove_unused_inames(
             try:
                 dt, idx = dom.get_var_dict()[iname]
             except KeyError:
-                pass
+                new_domains.append(dom)
             else:
                 dom = dom.project_out(dt, idx, 1)
-            new_domains.append(dom)
+
+                # No inames left after projection -> omit
+                if dom.dim(isl.dim_type.set) == 0:
+                    continue
+
+                new_domains.append(dom)
 
         domains = new_domains
 
