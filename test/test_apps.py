@@ -311,11 +311,11 @@ def test_stencil(ctx_factory: cl.CtxFactory):
             "{[i,j]: 0<= i,j < %d}" % n,
             [
                 "a_offset(ii, jj) := a[ii+1, jj+1]",
-                "z[i,j] = -2*a_offset(i,j)"
+                ("z[i,j] = -2*a_offset(i,j)"
                 " + a_offset(i,j-1)"
                 " + a_offset(i,j+1)"
                 " + a_offset(i-1,j)"
-                " + a_offset(i+1,j)"
+                " + a_offset(i+1,j)")
                 ],
             [
                 lp.GlobalArg("a", np.float32, shape=(n+2, n+2,)),
@@ -353,7 +353,7 @@ def test_stencil_with_overfetch(ctx_factory: cl.CtxFactory):
             "{[i,j]: 0<= i,j < n}",
             [
                 "a_offset(ii, jj) := a[ii+2, jj+2]",
-                "z[i,j] = -2*a_offset(i,j)"
+                ("z[i,j] = -2*a_offset(i,j)"
                 " + a_offset(i,j-1)"
                 " + a_offset(i,j+1)"
                 " + a_offset(i-1,j)"
@@ -362,7 +362,7 @@ def test_stencil_with_overfetch(ctx_factory: cl.CtxFactory):
                 " + a_offset(i,j-2)"
                 " + a_offset(i,j+2)"
                 " + a_offset(i-2,j)"
-                " + a_offset(i+2,j)"
+                " + a_offset(i+2,j)")
                 ],
             assumptions="n>=1")
 
