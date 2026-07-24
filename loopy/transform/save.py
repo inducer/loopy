@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from loopy.symbolic import pwaff_from_expr
+
 
 __copyright__ = "Copyright (C) 2016 Matt Wala"
 
@@ -23,14 +25,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from namedisl import DimType
 import contextlib
 import logging
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, cast, final
+from typing import TYPE_CHECKING, Literal, cast, final
 
 from constantdict import constantdict
 
+import namedisl as nisl
 from pytools import memoize_method
 
 from loopy.diagnostic import LoopyError
@@ -289,11 +293,10 @@ class TemporarySaver:
 
         from loopy.kernel.data import ValueArg
         self.new_subdomain = (
-                isl.BasicSet.universe(
-                    isl.Space.create_from_names(
-                        isl.DEFAULT_CONTEXT,
-                        set=[],
-                        params=[
+                nisl.Set.universe(
+                    nisl.Space.from_names(
+                        out=[],
+                        param=[
                             arg.name for arg in kernel.args
                             if isinstance(arg, ValueArg)])))
 
@@ -635,8 +638,7 @@ class TemporarySaver:
         self.updated_temporary_variables.update(self.kernel.temporary_variables)
 
         new_domains = list(self.kernel.domains)
-        import islpy as isl
-        if self.new_subdomain.dim(isl.dim_type.set) > 0:
+        if self.new_subdomain.space.set_names:
             new_domains.append(self.new_subdomain)
 
         kernel = self.kernel.copy(
@@ -671,7 +673,10 @@ class TemporarySaver:
         self.save_or_reload_impl(temporary, subkernel, "reload")
 
     def augment_domain_for_save_or_reload(self,
-            domain, promoted_temporary, mode, subkernel):
+            domain: nisl.Set,
+            promoted_temporary: _PromotedTemporary,
+            mode: Literal["save", "reload"],
+            subkernel: str):
         """
         Add new axes to the domain corresponding to the dimensions of
         `promoted_temporary`. These axes will be used in the save/
@@ -683,26 +688,28 @@ class TemporarySaver:
         orig_temporary = (
                 self.kernel.temporary_variables[
                     promoted_temporary.orig_temporary_name])
-        orig_dim = domain.dim(isl.dim_type.set)
 
         # Tags for newly added inames
         iname_objs = {}
 
-        from loopy.symbolic import aff_from_expr
-
         # FIXME: Restrict size of new inames to access footprint.
 
         # Add dimension-dependent inames.
-        dim_inames = []
-        domain = domain.add_dims(isl.dim_type.set,
-                            len(promoted_temporary.non_hw_dims)
-                            + len(promoted_temporary.hw_dims))
+        dim_inames: list[str] = []
 
-        for dim_idx, dim_size in enumerate(promoted_temporary.non_hw_dims):
-            new_iname = self.insn_name_gen(
+        non_hw_dim_names = [
+            self.insn_name_gen(
                 f"{orig_temporary.name}_{mode}_axis_{dim_idx}_{subkernel}")
-            domain = domain.set_dim_name(
-                isl.dim_type.set, orig_dim + dim_idx, new_iname)
+            for dim_idx in range(len(promoted_temporary.non_hw_dims))
+        ]
+        hw_dim_names = [
+            self.insn_name_gen(
+                f"{orig_temporary.name}_{mode}_hw_dim_{hw_iname_idx}_{subkernel}")
+            for hw_iname_idx in range(len(promoted_temporary.hw_dims))
+        ]
+        domain = domain.add_dims(DimType.out, [*non_hw_dim_names, *hw_dim_names])
+        for new_iname, dim_size in zip(
+                    non_hw_dim_names, promoted_temporary.non_hw_dims, strict=True):
 
             if orig_temporary.address_space == AddressSpace.LOCAL:
                 # If the temporary has local scope, then loads / stores can
@@ -714,38 +721,27 @@ class TemporarySaver:
             dim_inames.append(new_iname)
 
             # Add size information.
-            aff = isl.affs_from_space(domain.space)
-            domain &= aff[0].le_set(aff[new_iname])
-            domain &= aff[new_iname].lt_set(aff_from_expr(domain.space, dim_size))
-
-        dim_offset = orig_dim + len(promoted_temporary.non_hw_dims)
+            v = domain.var_pw_affs
+            domain = domain & (
+                v[new_iname].where(">=", 0)
+                & v[new_iname].where("<", pwaff_from_expr(v, dim_size)))
 
         hw_inames = []
         # Add hardware dims.
-        for hw_iname_idx, (hw_tag, dim) in enumerate(
-                zip(promoted_temporary.hw_tags,
-                    promoted_temporary.hw_dims, strict=True)):
-            new_iname = self.insn_name_gen(
-                f"{orig_temporary.name}_{mode}_hw_dim_{hw_iname_idx}_{subkernel}")
-            domain = domain.set_dim_name(
-                isl.dim_type.set, dim_offset + hw_iname_idx, new_iname)
+        for new_iname, hw_tag, dim in zip(
+                hw_dim_names,
+                promoted_temporary.hw_tags,
+                promoted_temporary.hw_dims, strict=True):
 
-            aff = isl.affs_from_space(domain.space)
-            domain = (domain
-                &
-                aff[0].le_set(aff[new_iname])
-                &
-                aff[new_iname].lt_set(aff_from_expr(domain.space, dim)))
+            v = domain.var_pw_affs
+            domain = domain & (
+                v[0].where("<=", v[new_iname])
+                & v[new_iname].where("<", pwaff_from_expr(v, dim)))
 
             self.updated_iname_objs = self.updated_iname_objs.set(new_iname,
                     Iname(name=new_iname, tags=frozenset([hw_tag])))
             hw_inames.append(new_iname)
 
-        # The operations on the domain above return a Set object, but the
-        # underlying domain should be expressible as a single BasicSet.
-        domain_list = domain.get_basic_set_list()
-        assert domain_list.n_basic_set() == 1
-        domain = domain_list.get_basic_set(0)
         return domain, hw_inames, dim_inames, iname_objs
 
 # }}}

@@ -33,7 +33,7 @@ import numpy as np
 from typing_extensions import override
 
 import islpy as isl
-from islpy import dim_type
+import namedisl as nisl
 from pymbolic.primitives import AlgebraicLeaf, Variable, is_arithmetic_expression
 from pytools import memoize_method, set_union
 
@@ -64,7 +64,15 @@ from loopy.kernel.instruction import (
     NoOpInstruction,
     _DataObliviousInstruction,
 )
-from loopy.symbolic import CombineMapper, ResolvedFunction, SubArrayRef, WalkMapper
+from loopy.symbolic import (
+    CombineMapper,
+    ResolvedFunction,
+    SubArrayRef,
+    WalkMapper,
+    get_access_map_storage_names,
+    guarded_pwaff_from_expr,
+    pwaff_from_expr,
+)
 from loopy.translation_unit import (
     CallableId,
     CallablesTable,
@@ -668,16 +676,14 @@ def check_for_data_dependent_parallel_bounds(kernel: LoopKernel) -> None:
     from loopy.kernel.data import ConcurrentTag
 
     for i, dom in enumerate(kernel.domains):
-        dom_inames = set(dom.get_var_names_not_none(dim_type.set))
         par_inames = {
-                iname for iname in dom_inames
+                iname for iname in dom.space.set_names
                 if kernel.iname_tags_of_type(iname, ConcurrentTag)}
 
         if not par_inames:
             continue
 
-        parameters = set(dom.get_var_names(dim_type.param))
-        for par in parameters:
+        for par in dom.space.param_names:
             if par in kernel.temporary_variables:
                 raise LoopyError("Domain number %d has a data-dependent "
                         "parameter '%s' and contains parallel "
@@ -689,20 +695,15 @@ def check_for_data_dependent_parallel_bounds(kernel: LoopKernel) -> None:
 
 # {{{ helpers for _AccessCheckMapper
 
-def _align_and_intersect(d1, d2):
-    d1, d2 = isl.align_two(d1, d2)
-    return (d1 & d2).params()
+def _align_and_intersect_with_caller_assumption(
+            callee_assumptions: nisl.Set,
+            caller_assumptions: nisl.Set
+        ):
 
-
-def _align_and_intersect_with_caller_assumption(callee_assumptions,
-                                                caller_assumptions):
-
-    for name, (dt, pos) in caller_assumptions.get_var_dict().items():
-        caller_assumptions = caller_assumptions.set_dim_name(
-            dt, pos, f"_lp_caller_{name}")
-
-    return _align_and_intersect(callee_assumptions,
-                                caller_assumptions)
+    return callee_assumptions & caller_assumptions.rename_dims([
+        (name, f"_lp_caller_{name}")
+        for name in caller_assumptions.space.names
+    ])
 
 
 def _mark_variables_from_caller(expr: ArithmeticExpression):
@@ -722,7 +723,7 @@ def _mark_variables_from_caller(expr: ArithmeticExpression):
 
 
 @dataclass
-class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
+class _AccessCheckMapper(WalkMapper[[nisl.Set, str]]):
     kernel: LoopKernel
     callables_table: CallablesTable
 
@@ -730,14 +731,9 @@ class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
         super().__init__()
 
     @memoize_method
-    def _make_slab(self, space, iname, start, stop):
-        from loopy.isl_helpers import make_slab
-        return make_slab(space, iname, start, stop)
-
-    @memoize_method
     def _get_access_range(
                 self,
-                domain: isl.Set,
+                domain: nisl.Set,
                 subscript: tuple[Expression, ...]
             ):
         from loopy.diagnostic import UnableToDetermineAccessRangeError
@@ -748,7 +744,7 @@ class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
             return None
 
     @override
-    def map_subscript(self, expr: p.Subscript, domain: isl.Set, insn_id: str):
+    def map_subscript(self, expr: p.Subscript, domain: nisl.Set, insn_id: str):
         WalkMapper.map_subscript(self, expr, domain, insn_id)
 
         from pymbolic.primitives import Variable
@@ -765,18 +761,14 @@ class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
 
         if shape is not None:
             assert isinstance(shape, tuple)
-            subscript = expr.index
-
-            if not isinstance(subscript, tuple):
-                subscript = (subscript,)
+            subscript = expr.index_tuple
 
             from loopy.symbolic import get_dependencies
 
-            available_vars = set(domain.get_var_dict())
-            shape_deps = set()
+            available_vars = domain.space.names
+            shape_deps: set[str] = set()
             for shape_axis in shape:
-                if shape_axis is not None:
-                    shape_deps.update(get_dependencies(shape_axis))
+                shape_deps.update(get_dependencies(shape_axis))
 
             if not (get_dependencies(subscript) <= available_vars
                     and shape_deps <= available_vars):
@@ -793,31 +785,29 @@ class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
                 # Likely: index was non-affine, nothing we can do.
                 return
 
-            shape_domain = isl.BasicSet.universe(access_range.get_space())
-            for idim in range(len(subscript)):
-                shape_axis = shape[idim]
+            shape_domain = access_range.universe_like_me()
+            v = shape_domain.var_pw_affs
+            stor_ax_names = get_access_map_storage_names(access_range)
+            for idim, shape_axis in enumerate(shape):
+                shape_domain = shape_domain & (
+                    v[stor_ax_names[idim]].where(">=", v[0])
+                    & v[stor_ax_names[idim]].where("<", pwaff_from_expr(v, shape_axis))
+                )
 
-                if shape_axis is not None:
-                    slab = self._make_slab(
-                            shape_domain.get_space(), (dim_type.in_, idim),
-                            0, shape_axis)
-
-                    shape_domain = shape_domain.intersect(slab)
-
-            if not access_range.is_subset(shape_domain):
+            if not access_range <= shape_domain:
                 raise LoopyIndexError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element (could not"
                         " establish '%s' is a subset of '%s')."
                         % (expr, insn_id, access_range, shape_domain))
 
     @override
-    def map_if(self, expr: p. If, domain: isl.Set, insn_id: str):
+    def map_if(self, expr: p. If, domain: nisl.Set, insn_id: str):
         from loopy.symbolic import condition_to_set
         then_set = condition_to_set(domain.space, expr.condition)
         if then_set is None:
             # condition cannot be inferred as ISL expression => ignore
             # for domain contributions enforced by it
-            then_set = else_set = isl.BasicSet.universe(domain.space)
+            then_set = else_set = domain.universe_like_me()
         else:
             else_set = then_set.complement()
 
@@ -825,7 +815,7 @@ class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
         self.rec(expr.else_, domain & else_set, insn_id)
 
     @override
-    def map_call(self, expr: p.Call, domain: isl.Set, insn_id: str):
+    def map_call(self, expr: p.Call, domain: nisl.Set, insn_id: str):
         # perform access checks on the call arguments
         super().map_call(expr, domain, insn_id)
 
@@ -860,25 +850,23 @@ class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
             kwargs = {k: _mark_variables_from_caller(arg_id_to_arg[kw_to_pos[k]])
                       for k in subkernel.get_unwritten_value_args()}
 
-            kw_space = isl.Space.create_from_names(
-                subkernel.isl_context, set=[],
-                params=[*get_dependencies(tuple(kwargs.values())),
+            kw_space = nisl.Space.from_names(
+                out=[], param=[*get_dependencies(tuple(kwargs.values())),
                         *kwargs.keys()])
 
-            extra_assumptions = isl.BasicSet.universe(kw_space).params()
+            extra_assumptions = nisl.Set.universe(kw_space)
+            ea_v = extra_assumptions.var_pw_affs
 
             for kw, arg in kwargs.items():
                 try:
-                    aff = guarded_aff_from_expr(extra_assumptions.space,
-                                                prim.Variable(kw) - arg)
+                    arg_pw_aff = guarded_pwaff_from_expr(
+                        extra_assumptions.var_pw_affs, arg)
                 except ExpressionToAffineConversionError:
                     # arg expression not affine => don't add any constraints
                     # corresponding to it
                     continue
 
-                extra_assumptions = (extra_assumptions
-                                     .add_constraint(isl.Constraint
-                                                     .equality_from_aff(aff)))
+                extra_assumptions = extra_assumptions & ea_v[kw].where("==", arg_pw_aff)
 
             # FIXME: caller inames could be arguments => should take that into
             # account as well
@@ -890,12 +878,10 @@ class _AccessCheckMapper(WalkMapper[[isl.Set, str]]):
             # project out the assumptions on caller's variables as they don't
             # bear any semantic meaning in the callee.
             extra_assumptions = extra_assumptions.project_out_except(
-                types=[isl.dim_type.param],
-                names=subkernel.get_unwritten_value_args())
+                subkernel.get_unwritten_value_args())
 
             subkernel = subkernel.copy(
-                assumptions=_align_and_intersect(subkernel.assumptions,
-                                                 extra_assumptions))
+                assumptions=subkernel.assumptions & extra_assumptions)
 
             # }}}
 
@@ -907,19 +893,14 @@ def _check_bounds_inner(kernel: LoopKernel, callables_table: CallablesTable) -> 
 
     temp_var_names = set(kernel.temporary_variables)
     acm = _AccessCheckMapper(kernel, callables_table)
-    kernel_assumptions_is_universe = kernel.assumptions.is_universe()
     for insn in kernel.instructions:
         domain = get_insn_domain(insn, kernel)
 
         # data-dependent bounds? can't do much
-        if set(domain.get_var_names(dim_type.param)) & temp_var_names:
+        if domain.space.param_names & temp_var_names:
             continue
 
-        if kernel_assumptions_is_universe:
-            domain_with_assumptions = domain
-        else:
-            domain, assumptions = isl.align_two(domain, kernel.assumptions)
-            domain_with_assumptions = domain & assumptions
+        domain_with_assumptions = domain & kernel.assumptions
 
         def run_acm(expr: Expression):
             acm(expr, domain_with_assumptions, insn.id)  # ruff:ignore[function-uses-loop-variable]
@@ -977,7 +958,7 @@ def check_write_destinations(kernel: LoopKernel) -> None:
                 raise LoopyError("iname '%s' may not be written" % wvar)
 
             insn_domain = kernel.get_inames_domain(insn.within_inames)
-            insn_params = set(insn_domain.get_var_names(dim_type.param))
+            insn_params = insn_domain.space.param_names
 
             if wvar in kernel.all_params():
                 if wvar not in kernel.temporary_variables:
@@ -1676,12 +1657,12 @@ def check_that_shapes_and_strides_are_arguments(kernel: LoopKernel) -> None:
 def _get_sub_array_ref_swept_range(
             kernel: LoopKernel,
             sar: SubArrayRef
-        ) -> isl.Set:
+        ) -> nisl.Set:
     from loopy.symbolic import get_access_map
     domain = kernel.get_inames_domain(frozenset({iname_var.name
                                                  for iname_var in sar.swept_inames}))
     return get_access_map(
-                          domain.to_set(),
+                          domain,
                           sar.swept_inames,
                           kernel.assumptions).range()
 
@@ -1899,11 +1880,9 @@ def pre_codegen_checks(t_unit: TranslationUnit) -> None:
 
 def check_implemented_domains(
             kernel: LoopKernel,
-            implemented_domains: Mapping[str, Sequence[isl.Set]],
+            implemented_domains: Mapping[str, Sequence[nisl.Set]],
             code: str | None = None,
         ) -> bool:
-    from islpy import align_two, dim_type
-
     last_idomains = None
     last_insn_inames = None
 
@@ -1928,12 +1907,8 @@ def check_implemented_domains(
         insn_impl_domain = idomains[0]
         for idomain in idomains[1:]:
             insn_impl_domain = insn_impl_domain | idomain
-        assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
-        assumptions, insn_impl_domain = align_two(
-                assumption_non_param, insn_impl_domain)
-        insn_impl_domain = (
-                (insn_impl_domain & assumptions)
-                .project_out_except(insn_inames, [dim_type.set]))
+        insn_impl_domain = \
+                (insn_impl_domain & kernel.assumptions).project_out_except(insn_inames)
 
         from loopy.kernel.data import LocalInameTag
         from loopy.kernel.instruction import BarrierInstruction
@@ -1941,33 +1916,23 @@ def check_implemented_domains(
             # project out local-id-mapped inames, solves #94 on gitlab
             non_lid_inames = frozenset(iname for iname in insn_inames
                 if not kernel.iname_tags_of_type(iname, LocalInameTag))
-            insn_impl_domain = insn_impl_domain.project_out_except(
-                non_lid_inames, [dim_type.set])
+            insn_impl_domain = insn_impl_domain.project_out_except(non_lid_inames)
 
         insn_domain = kernel.get_inames_domain(insn_inames)
-        insn_parameters = frozenset(insn_domain.get_var_names_not_none(dim_type.param))
-        assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
-        desired_domain = ((insn_domain & assumptions)
-            .project_out_except(insn_inames, [dim_type.set])
-            .project_out_except(insn_parameters, [dim_type.param]))
+        desired_domain = ((insn_domain & kernel.assumptions)
+            .project_out_except(insn_inames)
+            .project_out_except(insn_domain.space.param_names))
 
         if isinstance(insn, BarrierInstruction):
             # project out local-id-mapped inames, solves #94 on gitlab
-            desired_domain = desired_domain.project_out_except(
-                non_lid_inames, [dim_type.set])
+            desired_domain = desired_domain.project_out_except(non_lid_inames)  # pyright: ignore[reportPossiblyUnboundVariable]
 
         insn_impl_domain = (insn_impl_domain
-                .project_out_except(insn_parameters, [dim_type.param]))
-        insn_impl_domain, desired_domain = align_two(
-                insn_impl_domain, desired_domain)
+                .project_out_except(insn_domain.space.param_names))
 
         if insn_impl_domain != desired_domain:
             i_minus_d = insn_impl_domain - desired_domain
             d_minus_i = desired_domain - insn_impl_domain
-
-            parameter_inames = {
-                    not_none(insn_domain.get_dim_name(dim_type.param, i))
-                    for i in range(insn_impl_domain.dim(dim_type.param))}
 
             lines: list[str] = []
             for bigger, smaller, diff_set, gist_domain in [
@@ -1980,7 +1945,7 @@ def check_implemented_domains(
                     continue
 
                 diff_set = diff_set.coalesce()
-                pt = diff_set.sample_point()
+                pt = diff_set.as_isl().sample_point()
                 assert not pt.is_void()
 
                 # pt_set = isl.Set.from_point(pt)
@@ -1989,7 +1954,7 @@ def check_implemented_domains(
 
                 iname_to_dim = pt.get_space().get_var_dict()
                 point_axes: list[str] = []
-                for iname in insn_inames | parameter_inames:
+                for iname in insn_inames | insn_domain.space.param_names:
                     tp, dim = iname_to_dim[iname]
                     point_axes.append("%s=%d" % (
                         iname, pt.get_coordinate_val(tp, dim).to_python()))

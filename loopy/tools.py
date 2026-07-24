@@ -33,6 +33,7 @@ from constantdict import constantdict
 from typing_extensions import ParamSpec, override
 
 import islpy as isl
+import namedisl as nisl
 from pytools import Hash, ProcessLogger, memoize_method
 from pytools.persistent_dict import (
     KeyBuilder as KeyBuilderBase,
@@ -98,26 +99,34 @@ class LoopyKeyBuilder(KeyBuilderBase):
         key_hash.update(prn.get_str().encode("utf8"))
 
     @override
-    def update_for_Map(self, key_hash: Hash, key: isl.Map):
-        if isinstance(key, isl.Map):
+    def update_for_Map(self, key_hash: Hash, key: isl.Map | nisl.Map):
+        if isinstance(key, nisl.Map):
+            self._update_for_isl_obj(key_hash, key.as_isl())
+        elif isinstance(key, isl.Map):
             self._update_for_isl_obj(key_hash, key)
         else:
             super().update_for_Map(key_hash, key)
 
-    def update_for_BasicMap(self, key_hash: Hash, key: isl.BasicMap):  # ruff:ignore[invalid-function-name]
-        if isinstance(key, isl.BasicMap):
+    def update_for_BasicMap(self, key_hash: Hash, key: isl.BasicMap | nisl.BasicMap):  # ruff:ignore[invalid-function-name]
+        if isinstance(key, nisl.BasicMap):
+            self._update_for_isl_obj(key_hash, key.as_isl())
+        elif isinstance(key, isl.BasicMap):
             self._update_for_isl_obj(key_hash, key)
         else:
             raise TypeError("called on a non-isl type")
 
-    def update_for_Set(self, key_hash: Hash, key: isl.Set):  # ruff:ignore[invalid-function-name]
-        if isinstance(key, isl.Set):
+    def update_for_Set(self, key_hash: Hash, key: isl.Set | nisl.Set):  # ruff:ignore[invalid-function-name]
+        if isinstance(key, nisl.Set):
+            self._update_for_isl_obj(key_hash, key.as_isl())
+        elif isinstance(key, isl.Set):
             self._update_for_isl_obj(key_hash, key)
         else:
             raise TypeError("called on a non-isl type")
 
-    def update_for_BasicSet(self, key_hash: Hash, key: isl.BasicSet):  # ruff:ignore[invalid-function-name]
-        if isinstance(key, isl.BasicSet):
+    def update_for_BasicSet(self, key_hash: Hash, key: isl.BasicSet | nisl.BasicSet):  # ruff:ignore[invalid-function-name]
+        if isinstance(key, nisl.BasicSet):
+            self._update_for_isl_obj(key_hash, key.as_isl())
+        elif isinstance(key, isl.BasicSet):
             self._update_for_isl_obj(key_hash, key)
         else:
             raise TypeError("called on a non-isl type")

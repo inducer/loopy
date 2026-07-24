@@ -64,6 +64,8 @@ from constantdict import constantdict
 from typing_extensions import override
 
 import islpy as isl
+import namedisl as nisl
+from namedisl import DimType
 from pytools import fset_union, memoize_method, memoize_on_first_arg
 
 from loopy.diagnostic import LoopyError
@@ -122,7 +124,7 @@ def temporaries_read_in_subkernel(
                                  for insn_id in insn_ids)
     domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
     params = fset_union(
-        kernel.domains[dom_idx].get_var_names_not_none(isl.dim_type.param)
+        kernel.domains[dom_idx].space.param_names
         for dom_idx in domain_idxs)
 
     return (frozenset(tv
@@ -150,7 +152,7 @@ def args_read_in_subkernel(
                                  for insn_id in insn_ids)
     domain_idxs = {kernel.get_home_domain_index(iname) for iname in inames}
     params = fset_union(
-        kernel.domains[dom_idx].get_var_names_not_none(isl.dim_type.param)
+        kernel.domains[dom_idx].space.param_names
         for dom_idx in domain_idxs)
     return (frozenset(arg
                 for insn_id in insn_ids
@@ -407,9 +409,9 @@ def get_return_from_kernel_mapping(kernel: LoopKernel) -> Mapping[int, int | Non
 # {{{ check for write races in accesses
 
 def _check_for_access_races(
-            map_a: isl.Map,
+            map_a: nisl.Map,
             insn_a: InstructionBase,
-            map_b: isl.Map,
+            map_b: nisl.Map,
             insn_b: InstructionBase,
             knl: LoopKernel,
             callables_table: CallablesTable,
@@ -424,10 +426,9 @@ def _check_for_access_races(
 
     .. note::
 
-        The accesses ``map_a``, ``map_b`` lead to write races iff there exists 2
+        The accesses ``map_a``, ``map_b`` lead to write races iff there exist two
         *unequal* global ids that access the same address.
     """
-    import pymbolic.primitives as p
 
     from loopy.kernel.data import (
         AddressSpace,
@@ -435,88 +436,64 @@ def _check_for_access_races(
         filter_iname_tags_by_type,
     )
     from loopy.kernel.tools import get_hw_axis_base_for_codegen
-    from loopy.symbolic import aff_from_expr, aff_to_expr, isl_set_from_expr
 
     assert address_space in [AddressSpace.LOCAL, AddressSpace.GLOBAL]
 
     gsize, lsize = knl.get_grid_size_upper_bounds(callables_table,
                                                   return_dict=True)
 
-    # {{{ Step 1: Preprocess the maps
+    # {{{ preprocess the maps
 
-    # Step 1.1: Project out inames which are also map's dims, but does not form the
-    #           insn's within_inames
-    # Step 1.2: Perform any offsetting required to the hw axes iname terms
-    # Step 1.3: Project out sequential inames in the access maps
-    # Step 1.4: Rename the dims with their iname tags i.e. (g.i or l.i)
-    # Step 1.5: Name the ith output dims as _lp_dim{i}
+    updated_maps: list[nisl.Map] = []
 
-    updated_maps: list[isl.Map] = []
-
-    for (map_, insn) in [
-            (map_a, insn_a),
-            (map_b, insn_b)]:
+    for map_, insn, map_name in [
+            (map_a, insn_a, "A"),
+            (map_b, insn_b, "B")]:
         dims_not_to_project_out = ({iname
                                     for iname in insn.within_inames
                                     if knl.iname_tags_of_type(
                                         iname, HardwareConcurrentTag)}
                                    | knl.all_params())
-        map_ = map_.project_out_except(sorted(dims_not_to_project_out),
-                                       [isl.dim_type.in_,
-                                        isl.dim_type.param,
-                                        isl.dim_type.div,
-                                        isl.dim_type.cst])
+        map_ = map_.project_out_except(sorted(dims_not_to_project_out))
 
-        for name, (dt, pos) in map_.get_var_dict().items():
-            if dt == isl.dim_type.in_:
-                tag, = filter_iname_tags_by_type(knl.inames[name].tags,
-                                                 HardwareConcurrentTag)
+        renaming: list[tuple[str, str]] = []
+        for name in map_.space.in_names:
+            tag, = filter_iname_tags_by_type(knl.inames[name].tags,
+                                                HardwareConcurrentTag)
 
-                iname_lower_bound = get_hw_axis_base_for_codegen(knl, name)
+            iname_lower_bound = get_hw_axis_base_for_codegen(knl, name).as_pw_aff()
 
-                if not iname_lower_bound.plain_is_zero():
-                    # Hardware inames with nonzero base have an offset applied in
-                    # code generation:
-                    # https://github.com/inducer/loopy/blob/4e0b1c7635afe1473c8636377f8e7ef6d78dfd46/loopy/codegen/loop.py#L293-L297
-                    # https://github.com/inducer/loopy/issues/600#issuecomment-1104066735
+            if iname_lower_bound.plain_is_zero():
+                # Hardware inames with nonzero base have an offset applied in
+                # code generation:
+                # https://github.com/inducer/loopy/blob/4e0b1c7635afe1473c8636377f8e7ef6d78dfd46/loopy/codegen/loop.py#L293-L297
+                # https://github.com/inducer/loopy/issues/600#issuecomment-1104066735
 
-                    map_ = map_.add_dims(isl.dim_type.out, 1)
-                    map_ = map_.move_dims(
-                        isl.dim_type.in_, pos+1,
-                        isl.dim_type.out, map_.dim(isl.dim_type.out)-1,
-                        1
-                    )
-                    map_ = map_.set_dim_name(isl.dim_type.in_, pos+1, name+"'")
+                prime_name = name+"'"
+                map_ = map_.add_dims(DimType.in_, [prime_name])
 
-                    lbound_offset_expr_aff = aff_from_expr(
-                        map_.domain().space,
-                        (p.Variable(name+"'")
-                         + aff_to_expr(iname_lower_bound)
-                         - p.Variable(name))
-                    )
-                    lbound_offset_as_domain = lbound_offset_expr_aff.zero_basic_set()
-                    map_ = map_.intersect_domain(lbound_offset_as_domain)
+                v = map_.domain_var_pw_affs
+                map_ = map_.intersect_domain(
+                    (v[prime_name] + iname_lower_bound - v[name]).where("==", 0))
 
-                    map_ = map_.project_out(dt, pos, 1)
-                    assert map_.get_dim_name(dt, pos) == name+"'"
-                    map_ = map_.set_dim_name(dt, pos, name)
+                map_ = map_.project_out([name])
+                map_ = map_.rename_dims([(prime_name, name)])
 
-                map_ = map_.set_dim_name(dt, pos, str(tag))
+            renaming.append((name, f"{tag!s}.{map_name}"))
 
-        for i_l in lsize:
-            if f"l.{i_l}" not in map_.get_var_dict():
-                ndim = map_.dim(isl.dim_type.in_)
-                map_ = map_.add_dims(isl.dim_type.in_, 1)
-                map_ = map_.set_dim_name(isl.dim_type.in_, ndim, f"l.{i_l}")
+        map_ = map_.rename_dims(renaming)
 
-        for i_g in gsize:
-            if f"g.{i_g}" not in map_.get_var_dict():
-                ndim = map_.dim(isl.dim_type.in_)
-                map_ = map_.add_dims(isl.dim_type.in_, 1)
-                map_ = map_.set_dim_name(isl.dim_type.in_, ndim, f"g.{i_g}")
-
-        for pos in range(map_.dim(isl.dim_type.out)):
-            map_ = map_.set_dim_name(isl.dim_type.out, pos, f"_lp_dim{pos}")
+        # Add missing dimensions
+        map_ = map_.add_dims(DimType.in_, [
+            *[
+                dim_name for i_l in lsize
+                if (dim_name := f"l.{i_l}.{map_name}") not in map_.space.names
+            ],
+            *[
+                dim_name for g_l in gsize
+                if (dim_name := f"g.{g_l}.{map_name}") not in map_.space.names
+            ]
+        ])
 
         updated_maps.append(map_)
 
@@ -524,60 +501,27 @@ def _check_for_access_races(
 
     # }}}
 
-    # {{{ Step 2: rename all lid's, gid's in map_a to lid.A, gid.A
+    set_a = map_a.as_set()
+    set_b = map_b.as_set()
 
-    for name, (dt, pos) in map_a.get_var_dict().items():
-        if dt == isl.dim_type.in_:
-            map_a = map_a.set_dim_name(dt, pos, name+".A")
+    set_a, set_b = nisl.align_two(set_a, set_b)
 
-    # }}}
+    # {{{ create the set any(l.i.A != l.i.B) OR any(g.i.A != g.i.B)
 
-    # {{{ Step 3: rename all lid's, gid's in map_b to lid.B, gid.B
+    v = set_a.var_pw_affs
 
-    for name, (dt, pos) in map_b.get_var_dict().items():
-        if dt == isl.dim_type.in_:
-            map_b = map_b.set_dim_name(dt, pos, name+".B")
-
-    # }}}
-
-    # {{{ Step 4: make map_a, map_b ISL sets
-
-    map_a, map_b = isl.align_two(map_a, map_b)
-    map_a = map_a.move_dims(isl.dim_type.in_, map_a.dim(isl.dim_type.in_),
-                            isl.dim_type.out, 0, map_a.dim(isl.dim_type.out))
-
-    map_b = map_b.move_dims(isl.dim_type.in_, map_b.dim(isl.dim_type.in_),
-                            isl.dim_type.out, 0, map_b.dim(isl.dim_type.out))
-    set_a = map_a.domain()
-    set_b = map_b.domain()
-
-    # }}}
-
-    assert set_a.get_space() == set_b.get_space()
-
-    # {{{ Step 5: create the set any(l.i.A != l.i.B) OR any(g.i.A != g.i.B)
-
-    space = set_a.space
-    unequal_local_id_set = isl.Set.empty(set_a.get_space())
-    unequal_group_id_set = isl.Set.empty(set_a.get_space())
-    equal_group_id_set = isl.BasicSet.universe(set_a.get_space())
+    unequal_local_id_set = set_a.empty_like_me()
+    unequal_group_id_set = set_a.empty_like_me()
+    equal_group_id_set = set_a.universe_like_me()
 
     for i_l in lsize:
-        lid_a = p.Variable(f"l.{i_l}.A")
-        lid_b = p.Variable(f"l.{i_l}.B")
-        unequal_local_id_set |= (isl_set_from_expr(space,
-                                                   p.Comparison(lid_a, "!=", lid_b))
-                                 )
+        unequal_local_id_set |= v[f"l.{i_l}.A"].where("!=", v[f"l.{i_l}.B"])
 
     for i_g in gsize:
-        gid_a = p.Variable(f"g.{i_g}.A")
-        gid_b = p.Variable(f"g.{i_g}.B")
-        unequal_group_id_set |= (isl_set_from_expr(space,
-                                                   p.Comparison(gid_a, "!=", gid_b))
-                                 )
-        equal_group_id_set &= (isl_set_from_expr(space,
-                                                 p.Comparison(gid_a, "==", gid_b))
-                               )
+        gid_a = f"g.{i_g}.A"
+        gid_b = f"g.{i_g}.B"
+        unequal_group_id_set |= v[gid_a].where("!=", v[gid_b])
+        equal_group_id_set &= v[gid_a].where("==", v[gid_b])
 
     # }}}
 
@@ -1101,8 +1045,6 @@ def get_loop_tree(kernel: LoopKernel) -> LoopTree:
         Multiple loop nestings might exist for *kernel*, but this routine returns
         one valid loop nesting.
     """
-    from islpy import dim_type
-
     tree = get_partial_loop_nest_tree(kernel)
     iname_to_tree_node_id = (
         _get_iname_to_tree_node_id_from_partial_loop_nest_tree(tree))
@@ -1116,11 +1058,11 @@ def get_loop_tree(kernel: LoopKernel) -> LoopTree:
     loop_inames = loop_inames - _get_parallel_inames(kernel)
 
     for dom in kernel.domains:
-        for outer_iname in set(dom.get_var_names(dim_type.param)):
+        for outer_iname in dom.space.param_names:
             if outer_iname not in loop_inames:
                 continue
 
-            for inner_iname in dom.get_var_names(dim_type.set):
+            for inner_iname in dom.space.set_names:
                 if inner_iname not in loop_inames:
                     continue
 

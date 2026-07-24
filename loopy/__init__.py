@@ -150,7 +150,6 @@ from loopy.transform.fusion import fuse_kernels
 from loopy.transform.iname import (
     add_inames_for_unused_hw_axes,
     add_inames_to_insn,
-    affine_map_inames,
     chunk_iname,
     duplicate_inames,
     find_unused_axis_tag,
@@ -298,7 +297,6 @@ __all__ = [
     "add_nosync",
     "add_padding",
     "add_prefetch",
-    "affine_map_inames",
     "alias_temporaries",
     "allocate_temporaries_for_base_storage",
     "assignment_to_subst",

@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 import islpy as isl
+import namedisl as nisl
 
 
 def test_aff_to_expr():
@@ -32,12 +33,12 @@ def test_aff_to_expr():
     x = (5*a + 3*b) % 17 % 5
     print(x)
     from loopy.symbolic import aff_to_expr
-    print(aff_to_expr(x))
+    print(aff_to_expr(nisl.to_named(x)))
 
 
 def test_aff_to_expr_2():
     from loopy.symbolic import aff_to_expr
-    x = isl.Aff("[n] -> { [i0] -> [(-i0 + 2*floor((i0)/2))] }")
+    x = nisl.make_aff("[n] -> { [i0] -> [(-i0 + 2*floor((i0)/2))] }")
     from pymbolic import var
     i0 = var("i0")
     assert aff_to_expr(x) == (-1)*i0 + 2*(i0 // 2)
@@ -45,7 +46,7 @@ def test_aff_to_expr_2():
 
 def test_pw_aff_to_conditional_expr():
     from loopy.symbolic import pw_aff_to_expr
-    cond = isl.PwAff("[i] -> { [(0)] : i = 0; [(-1 + i)] : i > 0 }")
+    cond = nisl.make_pw_aff("[i] -> { [(0)] : i = 0; [(-1 + i)] : i > 0 }")
     expr = pw_aff_to_expr(cond)
     assert str(expr) == "0 if i == 0 else -1 + i"
 
@@ -75,15 +76,17 @@ def test_subst_into_pwaff():
     arg_dict = {
             "m": 3*Variable("nx"),
             "n": 2*Variable("ny")+4}
-    space = isl.Set("[nx, ny, nz] -> { []: }").params().space
-    poly = isl.PwAff("[m, n] -> { [3 * m + 2 * n] : "
+    space = nisl.Space.from_names(param=["nx", "ny", "nz"])
+    poly = nisl.make_pw_aff("[m, n] -> { [3 * m + 2 * n] : "
         "m > 0 and n > 0; [7* m + 4*n] : m > 0 and n <= 0 }")
 
     from loopy.isl_helpers import subst_into_pwaff
     result = subst_into_pwaff(space, poly, arg_dict)
-    expected = isl.PwAff("[nx, ny, nz] -> { [(9nx + 4ny+8)] : nx > 0 and ny > -2;"
+    expected = nisl.make_pw_aff(
+        "[nx, ny, nz] -> { [(9nx + 4ny+8)] : nx > 0 and ny > -2;"
             " [(21nx + 8ny+16)] : nx > 0 and ny <= -2 }")
-    assert result == expected
+
+    assert result.equals(expected)
 
 
 def test_simplify_via_aff_reproducibility():

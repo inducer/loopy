@@ -479,7 +479,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
             if not isinstance(i, Variable):
                 raise LoopyError("In defining instruction '%s': "
                         "assignee index '%s' is not a plain variable. "
-                        "Perhaps use loopy.affine_map_inames() "
+                        "Perhaps use loopy.map_domain() "
                         "to perform substitution." % (def_id, i))
 
             arguments.append(i.name)

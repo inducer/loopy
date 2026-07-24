@@ -34,14 +34,14 @@ from collections.abc import (
     Set as AbstractSet,
 )
 from typing import TYPE_CHECKING, Any, Concatenate, Literal, TypeAlias, final
-from warnings import warn
 
 from constantdict import constantdict
-from typing_extensions import deprecated, override
+from typing_extensions import override
 
-import islpy as isl
+import namedisl as nisl
 import pymbolic.primitives as prim
 from islpy import dim_type
+from namedisl import DimType
 from pytools.tag import Tag
 
 from loopy.diagnostic import LoopyError
@@ -53,8 +53,7 @@ from loopy.symbolic import (
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
-    aff_from_expr,
-    get_dependencies,
+    aff_to_expr,
     pw_aff_to_expr,
 )
 from loopy.translation_unit import TranslationUnit, for_each_kernel
@@ -107,8 +106,6 @@ __doc__ = """
 .. autofunction:: split_reduction_inward
 
 .. autofunction:: split_reduction_outward
-
-.. autofunction:: affine_map_inames
 
 .. autofunction:: find_unused_axis_tag
 
@@ -228,19 +225,18 @@ class _InameSplitter(RuleAwareIdentityMapper[[]]):
 
 
 def _split_iname_in_set(
-            s: isl.BasicSet,
+            s: nisl.Set,
             iname_to_split: InameStr,
             inner_iname: InameStr,
             outer_iname: InameStr,
             fixed_length: int,
             fixed_length_is_inner: bool
-        ) -> isl.BasicSet:
-    var_dict = s.get_var_dict()
-
-    if iname_to_split not in var_dict:
+        ) -> nisl.Set:
+    s_names = s.space.names
+    if iname_to_split not in s_names:
         return s
 
-    orig_dim_type, _ = var_dict[iname_to_split]
+    orig_dim_type, _ = s.space.name_to_dim[iname_to_split]
     # orig_dim_type may be set or param (the latter if the iname is
     # used as a parameter in a subdomain).
 
@@ -248,7 +244,7 @@ def _split_iname_in_set(
     # wrt the set s.
     from pytools import generate_unique_names
     for dup_iname_to_split in generate_unique_names(f"dup_{iname_to_split}"):
-        if dup_iname_to_split not in var_dict:
+        if dup_iname_to_split not in s_names:
             break
     else:
         # NOTE: this should never happen, but it's a way to let pyright know
@@ -257,32 +253,21 @@ def _split_iname_in_set(
     from loopy.isl_helpers import duplicate_axes
     s = duplicate_axes(s, (iname_to_split,), (dup_iname_to_split,))
 
-    outer_var_nr = s.dim(orig_dim_type)
-    inner_var_nr = s.dim(orig_dim_type)+1
-
-    s = s.add_dims(orig_dim_type, 2)
-    s = s.set_dim_name(orig_dim_type, outer_var_nr, outer_iname)
-    s = s.set_dim_name(orig_dim_type, inner_var_nr, inner_iname)
-
-    from loopy.isl_helpers import make_slab
+    s = s.add_dims(orig_dim_type, (outer_iname, inner_iname))
 
     if fixed_length_is_inner:
         fixed_iname, var_length_iname = inner_iname, outer_iname
     else:
         fixed_iname, var_length_iname = outer_iname, inner_iname
 
-    space = s.get_space()
+    v = s.var_pw_affs
     s = s & (
-            make_slab(space, fixed_iname, 0, fixed_length)
-            # name = fixed_iname + fixed_length*var_length_iname
-            .add_constraint(isl.Constraint.eq_from_names(
-                space, {
-                    dup_iname_to_split: 1,
-                    fixed_iname: -1,
-                    var_length_iname: -fixed_length})))
+        v[fixed_iname].where(">=", 0)
+        & v[fixed_iname].where("<", fixed_length)
+        & v[dup_iname_to_split].where("==",
+                v[fixed_iname] + fixed_length*v[var_length_iname]))
 
-    dup_iname_dim_type, dup_name_idx = space.get_var_dict()[dup_iname_to_split]
-    return s.project_out(dup_iname_dim_type, dup_name_idx, 1)
+    return s.project_out([dup_iname_to_split])
 
 
 def _split_iname_backend(
@@ -490,7 +475,7 @@ def chunk_iname(
     """
 
     size = kernel.get_iname_bounds(split_iname).size
-    k0 = isl.Aff.zero_on_domain(size.domain().space)
+    k0 = nisl.Aff.zero_on_domain(size.domain().space)
     chunk_ceil = size.div(k0+num_chunks).ceil()
     chunk_floor = size.div(k0+num_chunks).floor()
     chunk_diff = chunk_ceil - chunk_floor
@@ -534,9 +519,9 @@ def chunk_iname(
         dt, idx = var_dict[split_iname]
         assert dt == dim_type.set
 
-        aff_zero = isl.Aff.zero_on_domain(dom.space)
+        aff_zero = nisl.Aff.zero_on_domain(dom.space)
         aff_split_iname = aff_zero.set_coefficient_val(dim_type.in_, idx, 1)
-        aligned_size = isl.align_spaces(size, aff_zero)
+        aligned_size = nisl.align_spaces(size, aff_zero)
         box_dom = (
                 dom
                 .eliminate(dt, idx, 1)
@@ -652,26 +637,22 @@ def join_inames(
             raise LoopyError(
                     f"iname '{iname}' is not 'at home' in the join's leaf domain")
 
-    new_domain = domch.domain
-    new_dim_idx = new_domain.dim(dim_type.set)
-    new_domain = new_domain.add_dims(dim_type.set, 1)
-    new_domain = new_domain.set_dim_name(dim_type.set, new_dim_idx, new_iname)
+    new_domain = domch.domain.add_dims(DimType.out, [new_iname])
 
-    joint_aff = zero = isl.Aff.zero_on_domain(new_domain.space)
+    v = new_domain.var_pw_affs
+
+    joint_aff =  v[0]
     subst_dict: dict[InameStr, ArithmeticExpression] = {}
     base_divisor = 1
 
     for i, iname in enumerate(inames):
-        iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
-        iname_aff = zero.add_coefficient_val(iname_dt, iname_idx, 1)
-
-        joint_aff = joint_aff + base_divisor*iname_aff
+        joint_aff = joint_aff + base_divisor*v[iname]
 
         bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
         from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
 
-        length = int(pw_aff_to_expr(
+        length = int(aff_to_expr(
             static_max_of_pw_aff(bounds.size, constants_only=True)))
 
         try:
@@ -684,19 +665,12 @@ def join_inames(
         my_val = prim.Variable(new_iname) // base_divisor
         if i+1 < len(inames):
             my_val %= length
-        my_val += pw_aff_to_expr(lower_bound_aff)
+        my_val += aff_to_expr(lower_bound_aff)
         subst_dict[iname] = my_val
 
         base_divisor *= length
 
-    from loopy.isl_helpers import iname_rel_aff
-    new_domain = new_domain.add_constraint(
-            isl.Constraint.equality_from_aff(
-                iname_rel_aff(new_domain.get_space(), new_iname, "==", joint_aff)))
-
-    for iname in inames:
-        iname_to_dim = new_domain.get_space().get_var_dict()
-        iname_dt, iname_idx = iname_to_dim[iname]
+    new_domain = new_domain & v[new_iname].where("==", joint_aff)
 
     def subst_within_inames(fid: InameStrSet) -> InameStrSet:
         result: set[InameStr] = set()
@@ -1281,18 +1255,9 @@ def remove_unused_inames(
 
     domains = kernel.domains
     for iname in sorted(unused_inames):
-        new_domains: list[isl.BasicSet] = []
-
-        for dom in domains:
-            try:
-                dt, idx = dom.get_var_dict()[iname]
-            except KeyError:
-                pass
-            else:
-                dom = dom.project_out(dt, idx, 1)
-            new_domains.append(dom)
-
-        domains = new_domains
+        domains = [
+            dom.project_out([iname]) if iname in dom.space else dom
+            for dom in domains]
 
     return kernel.copy(domains=domains)
 
@@ -1451,219 +1416,6 @@ def split_reduction_outward(
     """
 
     return _split_reduction(kernel, inames, "out", within)
-
-# }}}
-
-
-# {{{ affine map inames
-
-@deprecated("use map_domain instead")
-@for_each_kernel
-def affine_map_inames(
-            kernel: LoopKernel,
-            old_inames: ToInameStrSetConvertible,
-            new_inames: ToInameStrSetConvertible,
-            equations:
-                Sequence[tuple[ArithmeticExpression, ArithmeticExpression] | str]
-        ) -> LoopKernel:
-    """Return a new *kernel* where the affine transform specified by *equations*
-    has been applied to the inames.
-
-    :arg old_inames: an iterable of inames to be replaced by affine transforms
-        of their values. May also be a string of comma-separated inames.
-    :arg new_inames: an iterable of new inames that are not yet used in *kernel*,
-        but have their values established in terms of *old_inames* by
-        *equations*. May also be a string of comma-separated inames.
-    :arg equations: a sequence of equations establishing a relationship
-        between *old_inames* and *new_inames*. Each equation should be
-        a tuple ``(lhs, rhs)`` of expressions or a string, with left and
-        right hand side of the equation separated by ``=``.
-    """
-
-    warn("affine_map_inames is deprecated and will stop working in 2H2026. "
-         "Rewrite in terms of map_domain.", DeprecationWarning, stacklevel=3)
-
-    # {{{ check and parse arguments
-
-    old_inames = _to_inames_tuple(old_inames)
-    new_inames = _to_inames_tuple(new_inames)
-    if isinstance(equations, str):
-        equations = [equations]
-
-    import re
-    eqn_re = re.compile(r"^([^=]+)=([^=]+)$")
-
-    def parse_equation(
-            eqn: str | tuple[ArithmeticExpression, ArithmeticExpression]
-        ) -> tuple[ArithmeticExpression, ArithmeticExpression]:
-        if isinstance(eqn, str):
-            eqn_match = eqn_re.match(eqn)
-            if not eqn_match:
-                raise ValueError(f"invalid equation: {eqn}")
-
-            from loopy.symbolic import parse
-            lhs = parse(eqn_match.group(1))
-            rhs = parse(eqn_match.group(2))
-            assert prim.is_arithmetic_expression(lhs)
-            assert prim.is_arithmetic_expression(rhs)
-            return (lhs, rhs)
-        elif isinstance(eqn, tuple):
-            if len(eqn) != 2:
-                raise ValueError(
-                    "unexpected length of equation tuple, got {len(eqn)}, should be 2")
-
-            return eqn
-        else:
-            raise TypeError(
-                f"unexpected type of equation: got {type(eqn)}, "
-                "should be string or tuple")
-
-    equations = [parse_equation(eqn) for eqn in equations]
-
-    all_vars = kernel.all_variable_names()
-    for iname in new_inames:
-        if iname in all_vars:
-            raise LoopyError(f"new iname '{iname}' is already used in kernel")
-
-    for iname in old_inames:
-        if iname not in kernel.all_inames():
-            raise LoopyError(f"old iname '{iname}' not known")
-
-    # }}}
-
-    # {{{ substitute iname use
-
-    from pymbolic.algorithm import solve_affine_equations_for
-    old_inames_to_expr = solve_affine_equations_for(old_inames, equations)
-
-    subst_dict: dict[str, ArithmeticExpression] = {
-            v.name: expr
-            for v, expr in old_inames_to_expr.items()}
-
-    var_name_gen = kernel.get_var_name_generator()
-
-    from pymbolic.mapper.substitutor import make_subst_func
-
-    from loopy.match import parse_stack_match
-
-    rule_mapping_context = SubstitutionRuleMappingContext(
-            kernel.substitutions, var_name_gen)
-    old_to_new = RuleAwareSubstitutionMapper(rule_mapping_context,
-            make_subst_func(subst_dict), within=parse_stack_match(None))
-
-    kernel = rule_mapping_context.finish_kernel(old_to_new.map_kernel(kernel))
-    kernel = kernel.copy(
-            applied_iname_rewrites=(*kernel.applied_iname_rewrites, subst_dict))
-
-    # }}}
-
-    # {{{ change domains
-
-    new_inames_set = frozenset(new_inames)
-    old_inames_set = frozenset(old_inames)
-
-    new_domains: list[isl.BasicSet] = []
-    for idom, dom in enumerate(kernel.domains):
-        dom_var_dict = dom.get_var_dict()
-        old_iname_overlap = [
-                iname
-                for iname in old_inames
-                if iname in dom_var_dict]
-
-        if not old_iname_overlap:
-            new_domains.append(dom)
-            continue
-
-        dom_new_inames: set[InameStr] = set()
-        dom_old_inames: set[InameStr] = set()
-
-        # mapping for new inames to dim_types
-        new_iname_dim_types: dict[str, isl.dim_type] = {}
-
-        dom_equations: list[tuple[ArithmeticExpression, ArithmeticExpression]] = []
-        for iname in old_iname_overlap:
-            for ieqn, (lhs, rhs) in enumerate(equations):
-                eqn_deps = get_dependencies(lhs) | get_dependencies(rhs)
-                if iname in eqn_deps:
-                    dom_new_inames.update(eqn_deps & new_inames_set)
-                    dom_old_inames.update(eqn_deps & old_inames_set)
-
-                if dom_old_inames:
-                    dom_equations.append((lhs, rhs))
-
-                this_eqn_old_iname_dim_types = {
-                        dom_var_dict[old_iname][0]
-                        for old_iname in eqn_deps & old_inames_set}
-
-                if this_eqn_old_iname_dim_types:
-                    if len(this_eqn_old_iname_dim_types) > 1:
-                        raise ValueError(
-                                f"inames '{_to_inames_str(eqn_deps & old_inames_set)}' "
-                                f"(from equation {ieqn} (0-based)) in domain {idom} "
-                                "(0-based) are not of a uniform dim_type")
-
-                    this_eqn_new_iname_dim_type, = this_eqn_old_iname_dim_types
-
-                    for new_iname in eqn_deps & new_inames_set:
-                        if new_iname in new_iname_dim_types:
-                            if (this_eqn_new_iname_dim_type
-                                    != new_iname_dim_types[new_iname]):
-                                raise ValueError(
-                                        "dim_type disagreement for iname "
-                                        f"'{new_iname}' (from equation {ieqn} "
-                                        f"(0-based)) in domain {idom} (0-based)")
-                        else:
-                            new_iname_dim_types[new_iname] = \
-                                    this_eqn_new_iname_dim_type
-
-        if not dom_old_inames <= set(dom_var_dict):
-            raise ValueError(
-                    f"domain {idom} (0-based) does not know about all old inames "
-                    f"(specifically {_to_inames_str(dom_old_inames-set(dom_var_dict))}"
-                    ") needed to define new inames")
-
-        # add inames to domain with correct dim_types
-        for iname in dom_new_inames:
-            dt = new_iname_dim_types[iname]
-            iname_idx = dom.dim(dt)
-            dom = dom.add_dims(dt, 1)
-            dom = dom.set_dim_name(dt, iname_idx, iname)
-
-        # add equations
-        for lhs, rhs in dom_equations:
-            dom = dom.add_constraint(
-                    isl.Constraint.equality_from_aff(
-                        aff_from_expr(dom.space, rhs - lhs)))
-
-        # project out old inames
-        for iname in dom_old_inames:
-            dt, idx = dom.get_var_dict()[iname]
-            dom = dom.project_out(dt, idx, 1)
-
-        new_domains.append(dom)
-
-    # }}}
-
-    # {{{ switch iname refs in instructions
-
-    def fix_iname_set(insn_id: InsnId, inames: InameStrSet) -> InameStrSet:
-        if old_inames_set <= inames:
-            return (inames - old_inames_set) | new_inames_set
-        elif old_inames_set & inames:
-            raise LoopyError(
-                    f"instruction '{insn_id}' uses only a part "
-                    f"({_to_inames_str(old_inames_set & inames)}), not all, "
-                    "of the old inames")
-        else:
-            return inames
-
-    new_instructions = [
-            insn.copy(within_inames=fix_iname_set(insn.id, insn.within_inames))
-            for insn in kernel.instructions]
-
-    # }}}
-
-    return kernel.copy(domains=new_domains, instructions=new_instructions)
 
 # }}}
 
@@ -2061,9 +1813,9 @@ class _MapDomainMapper(RuleAwareIdentityMapper[[]]):
 # {{{ _apply_identity_for_missing_map_dims(mapping, desired_dims)
 
 def _apply_identity_for_missing_map_dims(
-            mapping: isl.BasicMap,
-            desired_dims: Sequence[str],
-    ) -> tuple[isl.BasicMap, Sequence[tuple[str, str]]]:
+            mapping: nisl.Map,
+            desired_dims: Collection[str],
+    ) -> tuple[nisl.Map, Sequence[tuple[str, str]]]:
     """For every variable *v* in *desired_dims* that is not found in the
     input space for *mapping*, add input dimension *v*, output dimension
     ``v_'proxy'_``, and constraint ``v = v_'proxy'_`` to the mapping.
@@ -2092,28 +1844,28 @@ def _apply_identity_for_missing_map_dims(
     # dependency maps, which may contain variable names consisting of an iname
     # suffixed with a single apostrophe.)
 
-    from loopy.isl_helpers import add_and_name_dims, add_eq_constraint_from_names
-
     # {{{ Find any missing vars and add them to the input and output space
 
-    missing_dims = list(set(desired_dims) - set(mapping.get_var_names(dim_type.in_)))
-    augmented_mapping = add_and_name_dims(mapping, dim_type.in_, missing_dims)
+    missing_dims = list(set(desired_dims) - mapping.space.in_names)
+    augmented_mapping = mapping.add_dims(DimType.in_, missing_dims)
 
     missing_dims_proxies = [f"{d}_'prox'_" for d in missing_dims]
-    assert not set(missing_dims_proxies) & set(augmented_mapping.get_var_dict().keys())
+    assert not set(missing_dims_proxies) & augmented_mapping.space.names
 
-    augmented_mapping = add_and_name_dims(
-        augmented_mapping, dim_type.out, missing_dims_proxies)
-
-    proxy_name_pairs = list(zip(missing_dims, missing_dims_proxies, strict=True))
+    augmented_mapping = augmented_mapping.add_dims(DimType.out, missing_dims_proxies)
+    proxy_name_pairs = list(zip(missing_dims_proxies, missing_dims, strict=True))
 
     # }}}
 
     # {{{ Add identity constraint (v = v_'proxy'_) for each new pair of dims
+    augmented_mapping_set = augmented_mapping.as_set()
+    v = augmented_mapping_set.var_pw_affs
 
     for real_iname, proxy_iname in proxy_name_pairs:
-        augmented_mapping = add_eq_constraint_from_names(
-            augmented_mapping, proxy_iname, real_iname)
+        augmented_mapping_set = augmented_mapping_set & (
+            v[real_iname].where("==", v[proxy_iname])
+        )
+    augmented_mapping = augmented_mapping_set.as_map(augmented_mapping.space.in_names)
 
     # }}}
 
@@ -2125,11 +1877,11 @@ def _apply_identity_for_missing_map_dims(
 # {{{ map_domain
 
 @for_each_kernel
-def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
+def map_domain(kernel: LoopKernel, transform_map: nisl.Map | str) -> LoopKernel:
     """Transform an iname domain by applying a mapping from existing inames to
     new inames.
 
-    :arg transform_map: a bijective :class:`islpy.BasicMap` from existing inames to
+    :arg transform_map: a bijective map from existing inames to
         new inames. To be applicable to a kernel domain, all input inames in
         the map must be found in the domain. The map must be applicable to
         exactly one domain found in *kernel.domains*.
@@ -2140,18 +1892,17 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
     #     - slab processing
     #     - priorities processing
 
-    if not transform_map.to_map().is_bijective():
-        raise LoopyError("transform_map must be bijective")
+    if isinstance(transform_map, str):
+        transform_map = nisl.make_map(transform_map)
 
-    in_var_dict = transform_map.get_var_dict(dim_type.in_)
-    transform_map_out_dims = frozenset(transform_map.get_var_dict(dim_type.out))
-    transform_map_in_dims = frozenset(in_var_dict)
+    if not transform_map.is_bijective():
+        raise LoopyError("transform_map must be bijective")
 
     # {{{ Make sure that none of the mapped inames are involved in loop priorities
 
     if hasattr(kernel, "loop_priority") and kernel.loop_priority:
         for prio in kernel.loop_priority:
-            if set(prio) & transform_map_in_dims:
+            if set(prio) & transform_map.space.in_names:
                 raise ValueError(
                     f"Loop priority {prio!r} contains iname(s) transformed by "
                     f"map {transform_map} in map_domain.")
@@ -2164,11 +1915,10 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
     var_substitutions: dict[prim.Variable, ArithmeticExpression] = {}
     applied_iname_rewrites = kernel.applied_iname_rewrites
 
-    out_vars_in_terms_of_in_vars = transform_map.reverse().to_map().as_pw_multi_aff()
+    out_vars_in_terms_of_in_vars = transform_map.reverse().as_pw_multi_aff()
 
-    for iname in transform_map_in_dims:
-        subst_from_map = pw_aff_to_expr(
-            out_vars_in_terms_of_in_vars.get_pw_aff(in_var_dict[iname][1]))
+    for iname in transform_map.space.in_names:
+        subst_from_map = pw_aff_to_expr(out_vars_in_terms_of_in_vars[iname])
         substitutions[iname] = subst_from_map
         var_substitutions[prim.Variable(iname)] = subst_from_map
 
@@ -2179,14 +1929,9 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
 
     # {{{ Function to apply mapping to one set
 
-    def process_set(s: isl.BasicSet) -> isl.BasicSet:
+    def process_set(s: nisl.Set) -> nisl.Set:
         """Return the transformed set. Assume that map is applicable to this
         set."""
-
-        # {{{ Align dims of transform_map and s so that map can be applied
-
-        # Create a map whose input space matches the set
-        map_with_s_domain = isl.Map.from_domain(s)
 
         # {{{ Check for missing map dims and add them
 
@@ -2197,55 +1942,14 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
 
         augmented_transform_map, proxy_name_pairs = \
             _apply_identity_for_missing_map_dims(
-                transform_map, s.get_var_names_not_none(dim_type.set))
-
-        # }}}
-
-        # {{{ Align transform map input dims with set dims
-
-        # FIXME: Make an exported/documented interface of this in islpy
-
-        dim_types = [dim_type.param, dim_type.in_, dim_type.out]
-        # Variables found in iname domain set
-        s_names = {
-                not_none(map_with_s_domain.get_dim_name(dt, i))
-                for dt in dim_types
-                for i in range(map_with_s_domain.dim(dt))
-                }
-        # Variables found in transform map
-        map_names = {
-                not_none(augmented_transform_map.get_dim_name(dt, i))
-                for dt in dim_types
-                for i in range(augmented_transform_map.dim(dt))
-                }
-        # (_align_dim_type uses these two sets to determine which names are in
-        # both the obj and template)
-
-        from islpy import _align_dim_type
-        aligned_map = _align_dim_type(
-                dim_type.param,
-                augmented_transform_map, map_with_s_domain, False,
-                map_names, s_names)
-        aligned_map = _align_dim_type(
-                dim_type.in_,
-                aligned_map, map_with_s_domain, False,
-                map_names, s_names)
-
-        # }}}
+                transform_map, s.space.set_names)
 
         # }}}
 
         # Apply the transform map to the domain
-        new_s = aligned_map.intersect_domain(s).range()
+        new_s = augmented_transform_map.intersect_domain(s).range()
 
-        # Now rename any proxy dims back to their original names
-
-        from loopy.isl_helpers import find_and_rename_dim
-        for real_iname, proxy_iname in proxy_name_pairs:
-            new_s = find_and_rename_dim(
-                new_s, dim_type.set, proxy_iname, real_iname)
-
-        return new_s
+        return new_s.rename_dims(proxy_name_pairs)
 
         # FIXME: Revive _project_out_only_if_all_instructions_in_within
 
@@ -2254,7 +1958,7 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
     # {{{ Apply the transform map to exactly one domain
 
     map_applied_to_one_dom = False
-    new_domains: list[isl.BasicSet] = []
+    new_domains: list[nisl.Set] = []
     transform_map_rules = (
         "Transform map must be applicable to exactly one domain. "
         "A transform map is applicable to a domain if its input "
@@ -2262,7 +1966,7 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
 
     for old_domain in kernel.domains:
         # Make sure transform map is applicable to this set. Then transform.
-        if not transform_map_in_dims <= frozenset(old_domain.get_var_dict()):
+        if not transform_map.space.in_names <= frozenset(old_domain.space.names):
             # Map not applicable to this set because map transforms at least
             # one iname that is not present in the set. Don't transform.
             new_domains.append(old_domain)
@@ -2293,26 +1997,27 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
     # {{{ Update within_inames for each statement
 
     # If we get this far, we know that the map was applied to exactly one domain,
-    # and that all the inames in transform_map_in_dims were transformed to
+    # and that all the inames in transform_map.space.in_names were transformed to
     # inames in transform_map_out_dims. However, it's still possible that for some
     # statements, stmt.within_inames will contain at least one but not all of the
-    # transformed inames (transform_map_in_dims).
+    # transformed inames (transform_map.space.in_names).
     # In this case, it's not clear what within_inames should be. Therefore, we
     # require that if any transformed inames are found in stmt.within_inames,
     # ALL transformed inames must be found in stmt.within_inames.
 
     new_stmts: list[InstructionBase] = []
     for stmt in kernel.instructions:
-        overlap = transform_map_in_dims & stmt.within_inames
+        overlap = transform_map.space.in_names & stmt.within_inames
         if overlap:
-            if len(overlap) != len(transform_map_in_dims):
+            if len(overlap) != len(transform_map.space.in_names):
                 raise LoopyError(
                     f"Statement '{stmt.id}' is within only a part of the mapped "
                     f"inames in transformation map {transform_map}. Statements "
                     "must be within all or none of the mapped inames.")
 
             stmt = stmt.copy(within_inames=(
-                stmt.within_inames - transform_map_in_dims) | transform_map_out_dims)
+                stmt.within_inames - transform_map.space.in_names
+            ) | transform_map.space.out_names)
         else:
             # Leave stmt unmodified
             pass
@@ -2329,7 +2034,7 @@ def map_domain(kernel: LoopKernel, transform_map: isl.BasicMap) -> LoopKernel:
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
     ins = _MapDomainMapper(
-            rule_mapping_context, transform_map_out_dims, substitutions)
+            rule_mapping_context, transform_map.space.out_names, substitutions)
 
     kernel = ins.map_kernel(kernel)
     return rule_mapping_context.finish_kernel(kernel)
@@ -2526,33 +2231,10 @@ def rename_inames(
 
             dom = kernel.get_inames_domain(frozenset((old_iname, new_iname)))
 
-            var_dict = dom.get_var_dict()
-            _, old_idx = var_dict[old_iname]
-            _, new_idx = var_dict[new_iname]
+            dom_old = dom.project_out([new_iname])
+            dom_new = dom.project_out([old_iname]).rename_dims([(new_iname, old_iname)])
 
-            par_idx = dom.dim(dim_type.param)
-            dom_old = dom.move_dims(
-                    dim_type.param, par_idx, dim_type.set, old_idx, 1)
-            dom_old = dom_old.move_dims(dim_type.set,
-                                        dom_old.dim(dim_type.set),
-                                        dim_type.param, par_idx, 1)
-            dom_old = dom_old.project_out(dim_type.set,
-                                          new_idx
-                                          if new_idx < old_idx
-                                          else new_idx - 1,
-                                          1)
-
-            par_idx = dom.dim(dim_type.param)
-            dom_new = dom.move_dims(dim_type.param, par_idx,
-                                    dim_type.set, new_idx, 1)
-            dom_new = dom_new.move_dims(dim_type.set, dom_new.dim(dim_type.set),
-                                        dim_type.param, par_idx, 1)
-            dom_new = dom_new.project_out(dim_type.set,
-                                          old_idx
-                                          if old_idx < new_idx
-                                          else old_idx - 1, 1)
-
-            if not (dom_old <= dom_new <= dom_old):
+            if not dom_old.equals(dom_new):
                 raise LoopyError(
                         f"inames {old_iname} and {new_iname} do not iterate over "
                         "the same domain")

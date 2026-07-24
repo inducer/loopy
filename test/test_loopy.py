@@ -1513,7 +1513,7 @@ def test_finite_difference_expr_subst(ctx_factory: cl.CtxFactory):
     # Is loopy smart enough to understand that these are equal?
     _evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
 
-    fused0_knl = lp.affine_map_inames(fused_knl, "i", "inew", "inew+1=i")
+    fused0_knl = lp.map_domain(fused_knl, "{[i] -> [inew]: inew+1=i}")
 
     gpu_knl = lp.split_iname(
             fused0_knl, "inew", 128, outer_tag="g.0", inner_tag="l.0")

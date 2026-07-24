@@ -27,6 +27,8 @@ from typing import TYPE_CHECKING, cast
 
 from constantdict import constantdict
 
+import namedisl as nisl
+from namedisl import DimType
 from pymbolic.primitives import EmptyOK, Subscript, Variable
 
 from loopy.diagnostic import LoopyError
@@ -37,7 +39,7 @@ from loopy.kernel.function_interface import (
     ScalarCallable,
 )
 from loopy.kernel.instruction import CallInstruction
-from loopy.symbolic import SubArrayRef
+from loopy.symbolic import SubArrayRef, pwaff_from_expr
 from loopy.translation_unit import TranslationUnit
 from loopy.typing import not_none
 
@@ -143,12 +145,10 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
 
         # {{{ handling ilp tags
 
-        import islpy as isl
         from pymbolic import var
 
         from loopy.kernel.data import IlpBaseTag, VectorizeTag
 
-        dim_type = isl.dim_type.set
         ilp_inames = {iname for iname in insn.within_inames
                          if all(isinstance(tag, (IlpBaseTag, VectorizeTag))
                                 for tag in kernel.inames[iname].tags)}
@@ -159,13 +159,12 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
             ilp_inames_map[var(iname)] = var(new_iname_name)
             new_ilp_inames.add(new_iname_name)
         for iname in ilp_inames:
-            new_domain = kernel.get_inames_domain(iname).copy()
-            for i in range(new_domain.n_dim()):
-                old_iname = new_domain.get_dim_name(dim_type, i)
+            new_domain = kernel.get_inames_domain(iname)
+            renamings: list[tuple[str, str]] = []
+            for old_iname in new_domain.space.set_names:
                 if old_iname in ilp_inames:
-                    new_domain = new_domain.set_dim_name(
-                        dim_type, i, ilp_inames_map[var(old_iname)].name)
-            new_domains.append(new_domain)
+                    renamings.append((old_iname, ilp_inames_map[var(old_iname)].name))
+            new_domains.append(new_domain.rename_dims(renamings))
 
         # }}}
 
@@ -194,18 +193,17 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
                 # Updating the domains corresponding to the new inames.
                 for iname_var in p.swept_inames:
                     iname = iname_var.name
-                    new_domain_pack = kernel.get_inames_domain(iname).copy()
-                    new_domain_unpack = kernel.get_inames_domain(iname).copy()
-                    for i in range(new_domain_pack.n_dim()):
-                        old_iname = new_domain_pack.get_dim_name(dim_type, i)
-                        assert old_iname
+                    iname_domain = kernel.get_inames_domain(iname)
+                    renamings_pack: list[tuple[str, str]] = []
+                    renamings_unpack: list[tuple[str, str]] = []
+                    for old_iname in iname_domain.space.names:
                         if var(old_iname) in new_pack_inames:
-                            new_domain_pack = new_domain_pack.set_dim_name(
-                                dim_type, i, new_pack_inames[var(old_iname)].name)
-                            new_domain_unpack = new_domain_unpack.set_dim_name(
-                                dim_type, i, new_unpack_inames[var(old_iname)].name)
-                    new_domains.append(new_domain_pack)
-                    new_domains.append(new_domain_unpack)
+                            renamings_pack.append(
+                                (old_iname, new_pack_inames[var(old_iname)].name))
+                            renamings_unpack.append(
+                                (old_iname, new_unpack_inames[var(old_iname)].name))
+                    new_domains.append(iname_domain.rename_dims(renamings_pack))
+                    new_domains.append(iname_domain.rename_dims(renamings_unpack))
 
                 arg = p.subscript.aggregate.name
                 pack_name = vng(arg + "_pack")
@@ -240,7 +238,6 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
 
                 # {{{ getting the lhs for packing and rhs for unpacking
 
-                from loopy.isl_helpers import make_slab
                 from loopy.symbolic import simplify_via_aff
 
                 flatten_index = simplify_via_aff(
@@ -302,16 +299,20 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
                     for _ in not_none(arg_desc.shape)
                 ]
 
-                ctx = kernel.isl_context
-                space = isl.Space.create_from_names(ctx,
-                        set=[iname.name for iname in updated_swept_inames])
-                iname_set = isl.BasicSet.universe(space)
+                space = nisl.Space.from_names(
+                        param=[],
+                        out=[iname.name for iname in updated_swept_inames])
+                iname_set = nisl.Set.universe(space)
+                v = iname_set.var_pw_affs
                 for iname_var, axis_length in zip(
                             updated_swept_inames,
                             not_none(arg_desc.shape),
                             strict=True):
-                    iname_set = iname_set & make_slab(space, iname_var.name, 0,
-                            axis_length)
+                    iname_set = iname_set & (
+                        v[iname_var.name].where(">=", 0)
+                        & v[iname_var.name].where("<", pwaff_from_expr(v, axis_length))
+                    )
+
                 new_domains = [*new_domains, iname_set]
 
                 # }}}

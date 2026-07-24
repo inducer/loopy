@@ -1,6 +1,7 @@
 """Code generation for Instruction objects."""
 from __future__ import annotations
 
+from loopy.kernel.instruction import Assignment
 from loopy.types import NumpyType
 
 
@@ -27,7 +28,6 @@ THE SOFTWARE.
 """
 from typing import TYPE_CHECKING, Any
 
-import islpy as isl
 from pymbolic.mapper.stringifier import PREC_NONE
 from pytools import memoize_on_first_arg
 
@@ -38,14 +38,13 @@ from loopy.codegen.result import CodeGenerationResult
 if TYPE_CHECKING:
     from collections.abc import Collection, Set as AbstractSet
 
+    import namedisl as nisl
     from pymbolic import Expression
 
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import InstructionBase
     from loopy.target import ASTType
     from loopy.typing import InsnId
-
-dim_type = isl.dim_type
 
 
 # These 'id' arguments are here because Set has a __hash__ supplied by isl,
@@ -58,12 +57,10 @@ dim_type = isl.dim_type
 def _get_new_implemented_domain(
         kernel: LoopKernel,
         id_chk_domain: int,
-        chk_domain: isl.Set,
+        chk_domain: nisl.Set,
         id_implemented_domain: int,
-        implemented_domain: isl.Set):
+        implemented_domain: nisl.Set):
 
-    chk_domain, implemented_domain = isl.align_two(
-            chk_domain, implemented_domain)
     chk_domain = chk_domain.gist(implemented_domain)
 
     new_implemented_domain = implemented_domain & chk_domain
@@ -73,15 +70,16 @@ def _get_new_implemented_domain(
 def to_codegen_result(
             codegen_state: CodeGenerationState,
             insn_id: InsnId,
-            domain: isl.BasicSet,
+            domain: nisl.Set,
             check_inames: Collection[str],
             required_preds: AbstractSet[Expression],
             ast: ASTType
         ) -> CodeGenerationResult[ASTType] | None:
-    chk_domain = isl.Set.from_basic_set(domain)
+    chk_domain = domain
     chk_domain = chk_domain.remove_redundancies()
-    chk_domain = codegen_state.kernel.cache_manager.eliminate_except(chk_domain,
-            check_inames, (dim_type.set,))
+    chk_domain = chk_domain .eliminate_except(
+        {*check_inames, *chk_domain.space.param_names},
+        cache=codegen_state.kernel.isl_cache)
 
     chk_domain, new_implemented_domain = _get_new_implemented_domain(
             codegen_state.kernel,
@@ -147,7 +145,7 @@ def generate_instruction_code(
 
 def generate_assignment_instruction_code(
             codegen_state: CodeGenerationState,
-            insn: InstructionBase
+            insn: Assignment
         ):
     kernel = codegen_state.kernel
 
@@ -193,10 +191,12 @@ def generate_assignment_instruction_code(
         assignee_indices = ()
 
     elif isinstance(lhs, Subscript):
+        assert isinstance(lhs.aggregate, Variable)
         assignee_var_name = lhs.aggregate.name
         assignee_indices = lhs.index_tuple
 
     elif isinstance(lhs, LinearSubscript):
+        assert isinstance(lhs.aggregate, Variable)
         assignee_var_name = lhs.aggregate.name
         assignee_indices = (lhs.index,)
 

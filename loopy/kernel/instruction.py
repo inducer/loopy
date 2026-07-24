@@ -46,7 +46,7 @@ from warnings import warn
 
 from typing_extensions import Self, override
 
-import islpy as isl
+import namedisl as nisl
 import pymbolic.primitives as p
 from pytools import ImmutableRecord, memoize_method
 from pytools.tag import Tag, Taggable, tag_dataclass
@@ -1794,9 +1794,9 @@ def _check_and_fix_temp_var_type(
 # }}}
 
 
-def get_insn_domain(insn: InstructionBase, kernel: LoopKernel) -> isl.Set:
+def get_insn_domain(insn: InstructionBase, kernel: LoopKernel) -> nisl.Set:
     """
-    Returns an instance of :class:`islpy.Set` for the *insn*'s domain.
+    Returns *insn*'s domain, including predicates.
 
     .. note::
 
@@ -1812,21 +1812,18 @@ def get_insn_domain(insn: InstructionBase, kernel: LoopKernel) -> isl.Set:
     valueargs_to_add = ({arg.name for arg in kernel.args
                          if isinstance(arg, ValueArg)
                          and arg.name not in kernel.get_written_variables()}
-                        - set(domain.get_var_names(isl.dim_type.param)))
+                        - domain.space.param_names)
 
     # only consider valueargs relevant to *insn*
     valueargs_to_add = valueargs_to_add & insn.read_dependency_names()
 
-    for arg_to_add in valueargs_to_add:
-        idim = domain.dim(isl.dim_type.param)
-        domain = domain.add_dims(isl.dim_type.param, 1)
-        domain = domain.set_dim_name(isl.dim_type.param, idim, arg_to_add)
+    domain = domain.add_dims(nisl.DimType.param, valueargs_to_add)
 
     # }}}
 
     # {{{ enforce restriction from predicates
 
-    insn_preds_set = isl.Set.universe(domain.space)
+    insn_preds_set = domain.universe_like_me()
 
     for predicate in insn.predicates:
         from loopy.symbolic import condition_to_set

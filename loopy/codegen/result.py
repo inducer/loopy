@@ -36,7 +36,7 @@ from loopy.target import ASTType
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    import islpy
+    import namedisl as nisl
     from pymbolic import Expression
 
     from loopy.codegen import CodeGenerationState
@@ -112,7 +112,7 @@ class CodeGenerationResult(Generic[ASTType]):
 
     .. attribute:: implemented_domains
 
-        A mapping from instruction ID to a list of :class:`islpy.Set`
+        A mapping from instruction ID to a list of :class:`nisl.Set`
         objects.
 
     .. attribute:: host_preambles
@@ -124,7 +124,7 @@ class CodeGenerationResult(Generic[ASTType]):
     """
     host_program: GeneratedProgram | None
     device_programs: Sequence[GeneratedProgram]
-    implemented_domains: Mapping[str, list[islpy.Set]]
+    implemented_domains: Mapping[str, list[nisl.Set]]
     host_preambles: Sequence[tuple[str, str]] = ()
     device_preambles: Sequence[tuple[str, str]] = ()
 
@@ -136,7 +136,7 @@ class CodeGenerationResult(Generic[ASTType]):
                 codegen_state: CodeGenerationState,
                 insn_id: InsnId,
                 ast: ASTType,
-                implemented_domain: islpy.Set,
+                implemented_domain: nisl.Set,
             ):
         prg = GeneratedProgram(
                 name=codegen_state.gen_program_name,
@@ -258,7 +258,7 @@ def merge_codegen_results(
     new_device_programs = []
     new_device_preambles: list[tuple[str, str]] = []
     dev_program_names = set()
-    implemented_domains: dict[str, list[islpy.Set]] = {}
+    implemented_domains: dict[str, list[nisl.Set]] = {}
     codegen_result = None
 
     block_cls = codegen_state.ast_builder.ast_block_class

@@ -48,8 +48,8 @@ import numpy as np
 from constantdict import constantdict
 from typing_extensions import overload, override
 
-import islpy as isl
-from islpy import dim_type
+import namedisl as nisl
+from namedisl import DimType
 from pytools import (
     UniqueNameGenerator,
     fset_union,
@@ -73,7 +73,6 @@ from loopy.kernel.data import (
 )
 from loopy.tools import update_persistent_hash
 from loopy.types import LoopyType, NumpyType
-from loopy.typing import InsnId, PreambleGenerator, SymbolMangler, not_none
 
 
 if TYPE_CHECKING:
@@ -90,12 +89,11 @@ if TYPE_CHECKING:
 
     from loopy.kernel.function_interface import InKernelCallable
     from loopy.kernel.instruction import BarrierKind, InstructionBase
-    from loopy.kernel.tools import SetOperationCacheManager
     from loopy.options import Options
     from loopy.schedule import ScheduleItem
     from loopy.target import ASTBuilderBase, ASTType, TargetBase
     from loopy.translation_unit import CallablesTable
-    from loopy.typing import InameStr
+    from loopy.typing import InameStr, InsnId, PreambleGenerator, SymbolMangler
 
 
 # {{{ loop kernel object
@@ -108,17 +106,17 @@ class KernelState(IntEnum):
 
 
 def _get_inames_from_domains(
-            domains: Sequence[isl.Set | isl.BasicSet]
+            domains: Sequence[nisl.Set]
         ) -> AbstractSet[InameStr]:
     return fset_union(
-            frozenset(dom.get_var_names_not_none(dim_type.set)) for dom in domains)
+            frozenset(dom.space.dim_names(DimType.out)) for dom in domains)
 
 
 @dataclass(frozen=True)
 class _BoundsRecord:
-    lower_bound_pw_aff: isl.PwAff
-    upper_bound_pw_aff: isl.PwAff
-    size: isl.PwAff
+    lower_bound_pw_aff: nisl.PwAff
+    upper_bound_pw_aff: nisl.PwAff
+    size: nisl.PwAff
 
 
 @dataclass(frozen=True)
@@ -158,7 +156,7 @@ class LoopKernel(Taggable):
     .. automethod:: tagged
     .. automethod:: without_tags
     """
-    domains: Sequence[isl.BasicSet]
+    domains: Sequence[nisl.Set]
     """Represents the :ref:`domain-tree`."""
 
     instructions: Sequence[InstructionBase]
@@ -167,7 +165,7 @@ class LoopKernel(Taggable):
     """
 
     args: Sequence[KernelArgument]
-    assumptions: isl.BasicSet
+    assumptions: nisl.Set
     """
     Must be a :class:`islpy.BasicSet` parameter domain.
     """
@@ -222,15 +220,16 @@ class LoopKernel(Taggable):
         ] | None = None
 
     def __post_init__(self):
-        assert isinstance(self.assumptions, isl.BasicSet)
-        assert self.assumptions.is_params()
+        assert isinstance(self.assumptions, nisl.Set)
+        # assert self.assumptions.is_params()
 
         if not self.index_dtype.is_integral():
             raise TypeError("index_dtype must be an integer")
         if np.iinfo(self.index_dtype.numpy_dtype).min >= 0:
             raise TypeError("index_dtype must be signed")
 
-        assert self.assumptions.get_ctx() == isl.DEFAULT_CONTEXT
+        import islpy as isl
+        assert self.assumptions._obj.get_ctx() == isl.DEFAULT_CONTEXT
 
     # {{{ symbol mangling
 
@@ -352,7 +351,7 @@ class LoopKernel(Taggable):
         from loopy.kernel.tools import is_domain_dependent_on_inames
 
         for dom_idx, dom in enumerate(self.domains):
-            inames = set(dom.get_var_names_not_none(dim_type.set))
+            inames = dom.space.dim_names(DimType.out)
 
             # This next domain may be nested inside the previous domain.
             # Or it may not, in which case we need to figure out how many
@@ -417,58 +416,51 @@ class LoopKernel(Taggable):
         return {
                 iname: i_domain
                 for i_domain, dom in enumerate(self.domains)
-                for iname in dom.get_var_names_not_none(dim_type.set)}
+                for iname in dom.space.dim_names(DimType.out)}
 
     def get_home_domain_index(self, iname: str) -> int:
         return self._get_home_domain_map()[iname]
 
     @property
-    def isl_context(self) -> isl.Context:
+    def isl_context(self) -> nisl.Context:
         for dom in self.domains:
-            return dom.get_ctx()
+            return dom._obj.get_ctx()
 
         raise AssertionError()
 
     @memoize_method
-    def combine_domains(self, domains: Sequence[int]) -> isl.BasicSet:
+    def combine_domains(self, domains: Sequence[int]) -> nisl.Set:
         """
         :arg domains: domain indices of domains to be combined. More 'dominant'
-            domains (those which get most say on the actual dim_type of an iname)
+            domains (those which get most say on the actual DimType of an iname)
             must be later in the order.
         """
         assert isinstance(domains, tuple)  # for caching
 
         if not domains:
-            return isl.BasicSet.universe(isl.Space.set_alloc(
-                self.isl_context, 0, 0))
+            return nisl.make_set("{[]}", self.isl_context)
 
         result = None
         for dom_index in domains:
             dom = self.domains[dom_index]
-            if result is None:
-                result = dom
+            if result is not None:
+                # These are names that are set names in 'outer' domains and occur
+                # as parameters on the inner domain 'dom'.
+                dom = dom.move_dims(
+                    result.space.set_names & dom.space.param_names, DimType.out)
+
+                result = result & dom
             else:
-                aligned_dom, aligned_result = isl.align_two(
-                        dom, result)
-                result = aligned_result & aligned_dom
+                result = dom
 
         assert result is not None
+
         # Subdomains may carry other domains' inames as parameters.
         # Move them back into the 'set' part of the space.
-        param_names = {
-                not_none(result.get_dim_name(dim_type.param, i))
-                for i in range(result.dim(dim_type.param))}
-        for actual_iname in param_names - self.all_params():
-            result = result.move_dims(
-                    dim_type.set,
-                    result.dim(dim_type.set),
-                    dim_type.param,
-                    result.to_set().find_dim_by_name(dim_type.param, actual_iname),
-                    1)
+        param_names = result.space.dim_names(DimType.param)
+        return result.move_dims(param_names - self.all_params(), DimType.out)
 
-        return result
-
-    def get_inames_domain(self, inames: str | Collection[str]) -> isl.BasicSet:
+    def get_inames_domain(self, inames: str | Collection[str]) -> nisl.Set:
         if not inames:
             return self.combine_domains(())
 
@@ -577,7 +569,7 @@ class LoopKernel(Taggable):
 
         result = set()
         for dom in self.domains:
-            result.update(set(dom.get_var_names(dim_type.param)) - all_inames)
+            result.update(set(dom.space.dim_names(DimType.param)) - all_inames)
 
         from loopy.tools import intern_frozenset_of_ids
         return intern_frozenset_of_ids(result)
@@ -726,7 +718,7 @@ class LoopKernel(Taggable):
             insn.read_dependency_names()
             for insn in self.instructions
         ) | fset_union(
-            domain.get_var_names_not_none(dim_type.param)
+            domain.space.dim_names(DimType.param)
             for domain in self.domains
         )
 
@@ -777,7 +769,7 @@ class LoopKernel(Taggable):
             return []
         else:
             from pytools import flatten
-            loop_arg_names = list(flatten(dom.get_var_names(dim_type.param)
+            loop_arg_names = list(flatten(dom.space.dim_names(DimType.param)
                     for dom in self.domains))
             return [arg.name for arg in self.args if isinstance(arg, ValueArg)
                     if arg.name in loop_arg_names]
@@ -800,14 +792,13 @@ class LoopKernel(Taggable):
     # {{{ bounds finding
 
     @property
-    def cache_manager(self) -> SetOperationCacheManager:
+    def isl_cache(self) -> nisl.Cache:
         try:
             return self._cache_manager
         except AttributeError:
             pass
 
-        from loopy.kernel.tools import SetOperationCacheManager
-        cm = SetOperationCacheManager()
+        cm = nisl.Cache()
         object.__setattr__(self, "_cache_manager", cm)
         return cm
 
@@ -819,27 +810,19 @@ class LoopKernel(Taggable):
         domain = self.get_inames_domain(frozenset([iname]))
 
         assumptions = self.assumptions.project_out_except(
-                set(domain.get_var_dict(dim_type.param)), [dim_type.param])
+            domain.space.dim_names(DimType.param))
 
-        aligned_assumptions, domain = isl.align_two(assumptions, domain)
-
-        dom_intersect_assumptions = aligned_assumptions & domain
+        dom_intersect_assumptions = assumptions & domain
 
         if constants_only:
             # Kill all variable dependencies
-            dom_intersect_assumptions = dom_intersect_assumptions.project_out_except(
-                    [iname], [dim_type.param, dim_type.set])
+            dom_intersect_assumptions = \
+                dom_intersect_assumptions.project_out_except([iname])
 
-        iname_idx = dom_intersect_assumptions.get_var_dict()[iname][1]
-
-        lower_bound_pw_aff = (
-                self.cache_manager.dim_min(
-                    dom_intersect_assumptions, iname_idx)
-                .coalesce())
-        upper_bound_pw_aff = (
-                self.cache_manager.dim_max(
-                    dom_intersect_assumptions, iname_idx)
-                .coalesce())
+        lower_bound_pw_aff = dom_intersect_assumptions.dim_min(
+            iname, cache=self.isl_cache)
+        upper_bound_pw_aff = dom_intersect_assumptions.dim_max(
+            iname, cache=self.isl_cache)
 
         size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
         size = size.gist(assumptions)
@@ -863,7 +846,7 @@ class LoopKernel(Taggable):
                 callables_table: CallablesTable,
                 *,
                 ignore_auto: bool = False,
-            ) -> tuple[dict[int, isl.PwAff], dict[int, isl.PwAff]]:
+            ) -> tuple[dict[int, nisl.PwAff], dict[int, nisl.PwAff]]:
         """
         Returns a tuple of (global_sizes, local_sizes), where global_sizes,
         local_sizes are the grid sizes accommodating all of *insn_ids*. The grid
@@ -949,7 +932,7 @@ class LoopKernel(Taggable):
                 size_as_aff = static_max_of_pw_aff(size,
                         constants_only=isinstance(tag, LocalInameTag),
                         context=self.assumptions)
-                size = isl.PwAff.from_aff(size_as_aff)
+                size = size_as_aff.as_pw_aff()
             except StaticValueFindingError:
                 pass
 
@@ -965,10 +948,10 @@ class LoopKernel(Taggable):
                 ignore_auto: bool = False,
                 return_dict: bool = False
             ) -> (
-            tuple[dict[int, isl.PwAff],
-                dict[int, isl.PwAff]]
-            | tuple[tuple[isl.PwAff, ...],
-                    tuple[isl.PwAff, ...]]):
+            tuple[dict[int, nisl.PwAff],
+                dict[int, nisl.PwAff]]
+            | tuple[tuple[nisl.PwAff, ...],
+                tuple[nisl.PwAff, ...]]):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of all instructions whose IDs are given
         in *insn_ids*.
@@ -1079,7 +1062,7 @@ class LoopKernel(Taggable):
                 *,
                 ignore_auto: bool = ...,
                 return_dict: Literal[False] = ...
-            ) -> tuple[tuple[isl.PwAff, ...], tuple[isl.PwAff, ...]]: ...
+            ) -> tuple[tuple[nisl.PwAff, ...], tuple[nisl.PwAff, ...]]: ...
 
     @overload
     def get_grid_size_upper_bounds(self,
@@ -1087,17 +1070,17 @@ class LoopKernel(Taggable):
                 *,
                 ignore_auto: bool = ...,
                 return_dict: Literal[True]
-            ) -> tuple[dict[int, isl.PwAff], dict[int, isl.PwAff]]: ...
+            ) -> tuple[dict[int, nisl.PwAff], dict[int, nisl.PwAff]]: ...
 
     def get_grid_size_upper_bounds(self,
                 callables_table: CallablesTable,
                 ignore_auto: bool = False,
                 return_dict: bool = False
             ) -> (
-            tuple[dict[int, isl.PwAff],
-                dict[int, isl.PwAff]]
-            | tuple[tuple[isl.PwAff, ...],
-                    tuple[isl.PwAff, ...]]):
+            tuple[dict[int, nisl.PwAff],
+                dict[int, nisl.PwAff]]
+            | tuple[tuple[nisl.PwAff, ...],
+                tuple[nisl.PwAff, ...]]):
         """Return a tuple (global_size, local_size) containing a grid that
         could accommodate execution of *all* instructions in the kernel.
 
@@ -1374,7 +1357,6 @@ class LoopKernel(Taggable):
         from loopy.tools import LoopyKeyBuilder
         LoopyKeyBuilder()(self)
 
-        # pylint: disable=no-member
         return (result, self._pytools_persistent_hash_digest)
 
     def __setstate__(self, state):
@@ -1399,8 +1381,7 @@ class LoopKernel(Taggable):
             object.__setattr__(
                     self, "_pytools_persistent_hash_digest", p_hash_digest)
 
-        from loopy.kernel.tools import SetOperationCacheManager
-        object.__setattr__(self, "_cache_manager", SetOperationCacheManager())
+        object.__setattr__(self, "_cache_manager", nisl.Cache())
 
     # }}}
 
@@ -1461,14 +1442,15 @@ class LoopKernel(Taggable):
             kwargs["inames"] = {name: inames.get(name, KernelIname(name, frozenset()))
                                 for name in _get_inames_from_domains(domains)}
 
-            assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
+            import islpy as isl
+            assert all(dom._obj.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
 
         return kwargs
 
     def copy(self, **kwargs: Any) -> LoopKernel:
         result = replace(self, **self.get_copy_kwargs(**kwargs))
 
-        object.__setattr__(result, "_cache_manager", self.cache_manager)
+        object.__setattr__(result, "_cache_manager", self.isl_cache)
 
         if "instructions" not in kwargs:
             # Avoid carrying over an invalid cache when instructions are

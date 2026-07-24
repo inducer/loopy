@@ -32,6 +32,7 @@ from constantdict import constantdict
 from typing_extensions import final, override
 
 import islpy as isl
+import namedisl as nisl
 from pymbolic import ArithmeticExpression, var
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools import memoize_on_first_arg
@@ -786,10 +787,10 @@ def precompute_for_single_kernel(
         # }}}
 
         abm: ArrayToBufferMapBase = ArrayToBufferMap(
-                kernel, domch.domain, sweep_inames,
+                kernel, domch.domain.as_basic().as_isl(), sweep_inames,
                 access_descriptors, len(storage_axis_names))
 
-        non1_storage_axis_names = []
+        non1_storage_axis_names: list[str] = []
         for i, saxis in enumerate(storage_axis_names):
             if abm.non1_storage_axis_flags[i]:
                 non1_storage_axis_names.append(saxis)
@@ -811,7 +812,7 @@ def precompute_for_single_kernel(
                 iname+"'" for iname in non1_storage_axis_names]
 
         mod_domain = abm.augment_domain_with_sweep(
-            domch.domain, primed_non1_saxis_names,
+            domch.domain.as_basic().as_isl(), primed_non1_saxis_names,
             boxify_sweep=fetch_bounding_box)
 
         check_domain = mod_domain
@@ -839,8 +840,8 @@ def precompute_for_single_kernel(
                 dt, dim_idx = var_dict[primed_non1_saxis_names[i]]
                 mod_domain = mod_domain.set_dim_name(dt, dim_idx, saxis)
 
-        def add_assumptions(d):
-            assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
+        def add_assumptions(d: isl.Set):
+            assumption_non_param = kernel.assumptions.as_isl()
             assumptions, domain = isl.align_two(assumption_non_param, d)
             return assumptions & domain
 
@@ -848,9 +849,9 @@ def precompute_for_single_kernel(
 
         check_domain = add_assumptions(
             check_domain.project_out_except(
-                primed_non1_saxis_names, [isl.dim_type.set]))
+                primed_non1_saxis_names, [isl.dim_type.set]).to_set())
 
-        mod_check_domain = add_assumptions(mod_domain)
+        mod_check_domain = add_assumptions(mod_domain.to_set())
 
         # re-add the prime from the new variable
         var_dict = mod_check_domain.get_var_dict(isl.dim_type.set)
@@ -879,12 +880,12 @@ def precompute_for_single_kernel(
         # {{{ check that we didn't shrink the original domain
 
         # project out the new names from the modified domain
-        orig_domain_inames = list(domch.domain.get_var_dict(isl.dim_type.set))
+        orig_domain_inames = list(domch.domain.as_isl().get_var_dict(isl.dim_type.set))
         mod_check_domain = add_assumptions(
                 mod_domain.project_out_except(
-                    orig_domain_inames, [isl.dim_type.set]))
+                    orig_domain_inames, [isl.dim_type.set]).to_set())
 
-        check_domain = add_assumptions(domch.domain)
+        check_domain = add_assumptions(domch.domain.as_isl())
 
         mod_check_domain, check_domain = isl.align_two(
                 mod_check_domain, check_domain)
@@ -901,7 +902,8 @@ def precompute_for_single_kernel(
 
         # }}}
 
-        new_kernel_domains = domch.get_domains_with(mod_domain)
+        new_kernel_domains = domch.get_domains_with(
+            nisl.make_basic_set(mod_domain).as_set())
 
     else:
         # leave kernel domains unchanged

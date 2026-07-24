@@ -35,7 +35,6 @@ from typing import (
 from constantdict import constantdict
 from typing_extensions import Self
 
-import islpy as isl
 from pytools import MinRecursionLimit, ProcessLogger
 from pytools.persistent_dict import WriteOncePersistentDict
 
@@ -285,11 +284,11 @@ def find_loop_nest_around_map(kernel: LoopKernel) -> Mapping[str, set[str]]:
                 result[inner_iname].add(outer_iname)
 
     for dom in kernel.domains:
-        for outer_iname in dom.get_var_names(isl.dim_type.param):
+        for outer_iname in dom.space.param_names:
             if outer_iname not in all_inames:
                 continue
 
-            for inner_iname in dom.get_var_names_not_none(isl.dim_type.set):
+            for inner_iname in dom.space.set_names:
                 result[inner_iname].add(outer_iname)
 
     return result
@@ -1486,7 +1485,7 @@ def _generate_loop_schedules_internal(
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
             from islpy import dim_type
             iname_home_domain_params = set(
-                    iname_home_domain.get_var_names_not_none(dim_type.param))
+                    iname_home_domain.space.param_names)
 
             # The previous check should have ensured this is true, because
             # the loop_nest_around_map takes the domain dependency graph into
