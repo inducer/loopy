@@ -965,22 +965,11 @@ def rename_inames_in_batch(
     :arg batches: A mapping from ``new_iname`` to a collection of
         inames that are to be renamed to ``new_iname``.
     """
-    from loopy.transform.iname import remove_unused_inames, rename_inames_multi
+    from loopy.transform.iname import rename_inames_multi
 
     old_inames = list(batches.values())
     new_inames = list(batches.keys())
 
-    kernel = cast("LoopKernel", rename_inames_multi(
-        kernel, old_inames, new_inames,
-
-        # type-ignore because remove_newly_unused_inames is added by a
-        # decorator in a non-type-able way.
-        remove_newly_unused_inames=False  # pyright: ignore[reportCallIssue]
-    ))
-
-    # FIXME: Set remove_newly_unused_inames==True above and remove this, now that
-    # there's just one call?
-    return remove_unused_inames(kernel, fset_union(batches.values()))
-
+    return rename_inames_multi(kernel, old_inames, new_inames)
 
 # vim: foldmethod=marker
