@@ -1299,6 +1299,54 @@ def test_has_precise_dependencies() -> None:
         dep.has_precise_dependencies(mixed_kernel)
 
 
+def test_relax_strict_happens_after_rejects_c_instruction() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        [
+            lp.CInstruction(
+                "i",
+                "tmp[i] = 1;",
+                assignees=("tmp[i]",),
+                id="C",
+            ),
+        ],
+        temporary_variables={
+            "tmp": lp.TemporaryVariable(
+                "tmp", dtype=np.float32, shape=("N",)
+            ),
+        },
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+
+    with pytest.raises(LoopyError, match="does not support CInstruction 'C'"):
+        dep.relax_strict_happens_after(t_unit)
+
+
+def test_relax_strict_happens_after_rejects_base_storage() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        """
+        a[i] = i {id=A}
+        b[i] = a[i] {id=B}
+        """,
+        temporary_variables={
+            name: lp.TemporaryVariable(
+                name,
+                dtype=np.float32,
+                shape=("N",),
+                base_storage="base",
+            )
+            for name in ("a", "b")
+        },
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+
+    with pytest.raises(
+        LoopyError, match="temporary 'a' with base_storage"
+    ):
+        dep.relax_strict_happens_after(t_unit)
+
+
 def test_relax_strict_happens_after_tracks_scalar_accesses() -> None:
     kernel = _relax_strict_happens_after(
         """
@@ -1447,6 +1495,71 @@ def test_relax_strict_happens_after_composes_user_supplied_relations() -> None:
             }
             """)
     )
+
+
+def test_relax_strict_happens_after_traverses_self_edges() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < 8 }",
+        """
+        x[i + 1] = inp[i] {id=P}
+        out[i] = x[i] {id=C}
+        """,
+    )
+    kernel = t_unit.default_entrypoint
+    c_after_c = HappensAfter(nisl.make_map("""
+        {
+            [i_after] -> [i_before] :
+                0 <= i_before < i_after < 8
+        }
+        """).as_isl())
+    c_after_p = HappensAfter(nisl.make_map("""
+        {
+            [i_after] -> [i_before = i_after] :
+                0 <= i_after < 8
+        }
+        """).as_isl())
+    kernel = kernel.copy(instructions=tuple(
+        stmt.copy(happens_after={
+            "P": {},
+            "C": {"C": c_after_c, "P": c_after_p},
+        }[stmt.id])
+        for stmt in kernel.instructions
+    ))
+
+    kernel = dep.relax_strict_happens_after(kernel)
+
+    required_order = kernel.id_to_insn["C"].happens_after["P"].instances_rel
+    assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
+    assert required_order.equals(nisl.make_map("""
+        {
+            [i_after] -> [i_before = i_after - 1] :
+                1 <= i_after < 8
+        }
+        """))
+
+
+def test_relax_strict_happens_after_rejects_nontransitive_self_order() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < 8 }",
+        "out[i] = i {id=S}",
+    )
+    kernel = t_unit.default_entrypoint
+    immediate_predecessor = HappensAfter(nisl.make_map("""
+        {
+            [i_after] -> [i_before = i_after - 1] :
+                1 <= i_after < 8
+        }
+        """).as_isl())
+    kernel = kernel.copy(instructions=(
+        kernel.id_to_insn["S"].copy(
+            happens_after={"S": immediate_predecessor}
+        ),
+    ))
+
+    with pytest.raises(LoopyError, match="self.*'S'.*not transitive"):
+        dep.relax_strict_happens_after(kernel)
 
 
 def test_relax_strict_happens_after_unions_branched_paths() -> None:
@@ -2032,6 +2145,46 @@ def test_verification_rejects_unenforced_order() -> None:
         match="schedule does not enforce 'T' after 'S'",
     ):
         lp.generate_code_v2(t_unit)
+
+
+def test_verification_does_not_order_vector_lanes() -> None:
+    t_unit = lp.make_kernel(
+        "{ [v] : 0 <= v < 4 }",
+        "out[v] = v {id=S}",
+    )
+    kernel = t_unit.default_entrypoint
+    required_order = HappensAfter(
+        nisl.make_map("""
+            {
+                [v_after] -> [v_before = v_after - 1] :
+                    1 <= v_after < 4
+            }
+            """).as_isl()
+    )
+    kernel = kernel.copy(
+        instructions=(
+            kernel.id_to_insn["S"].copy(
+                happens_after={"S": required_order}
+            ),
+        )
+    )
+    t_unit = lp.tag_inames(t_unit.with_kernel(kernel), {"v": "vec"})
+    kernel = t_unit.default_entrypoint.copy(
+        state=lp.KernelState.LINEARIZED,
+        linearization=(
+            CallKernel("device_program"),
+            EnterLoop("v"),
+            RunInstruction("S"),
+            LeaveLoop("v"),
+            ReturnFromKernel("device_program"),
+        ),
+    )
+
+    with pytest.raises(
+        LoopyError,
+        match="schedule does not enforce 'S' after 'S'",
+    ):
+        verify_happens_after_is_enforced(t_unit.with_kernel(kernel))
 
 
 def test_verification_handles_explicit_barrier_instruction() -> None:

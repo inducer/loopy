@@ -84,6 +84,8 @@ def _get_timestamp_points_from_linearization(
             "Kernel must be linearized before instance-level analysis."
         )
 
+    from loopy.kernel.data import VectorizeTag
+
     def build_timestamp_from_stack(
         stack: list[tuple[int, ScheduleItem]],
     ) -> Sequence[int | str]:
@@ -91,6 +93,9 @@ def _get_timestamp_points_from_linearization(
         for frame in stack:
             match frame:
                 case (x, EnterLoop(iname=iname)):
+                    if kernel.iname_tags_of_type(iname, VectorizeTag):
+                        continue
+
                     tstamp.append(x)
                     tstamp.append(iname)
 

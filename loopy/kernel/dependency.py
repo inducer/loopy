@@ -40,6 +40,7 @@ from pytools.graph import compute_topological_order
 from loopy import for_each_kernel
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (
+    CInstruction,
     HappensAfter,
     InstructionBase,
     MultiAssignmentBase,
@@ -403,6 +404,73 @@ def _compose_happens_after_relations(
         second.space.dimtype_to_names[DimType.in_], second_interface, strict=True
     ))
     return first.apply_range(second).coalesce()
+
+
+def _saturate_cross_relations_with_self_relations(
+    kernel: LoopKernel,
+) -> LoopKernel:
+    self_relations: dict[str, nisl.Map] = {}
+    for stmt in kernel.instructions:
+        happens_after = stmt.happens_after.get(stmt.id)
+        if happens_after is None:
+            continue
+        if happens_after.instances_rel is None:
+            raise LoopyError(
+                "self-relation saturation requires precise dependencies"
+            )
+
+        # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+        self_relation = nisl.make_map(happens_after.instances_rel).coalesce()
+        if not (
+            _compose_happens_after_relations(
+                self_relation, self_relation
+            ) - self_relation
+        ).is_empty():
+            raise LoopyError(
+                f"self happens-after relation for '{stmt.id}' is not "
+                "transitive"
+            )
+
+        self_relations[stmt.id] = self_relation
+
+    new_stmts: list[InstructionBase] = []
+    for stmt in kernel.instructions:
+        new_happens_after: dict[str, HappensAfter] = {}
+        for source_id, happens_after in stmt.happens_after.items():
+            if happens_after.instances_rel is None:
+                raise LoopyError(
+                    "self-relation saturation requires precise dependencies"
+                )
+
+            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+            relation = nisl.make_map(happens_after.instances_rel).coalesce()
+            if source_id != stmt.id:
+                self_relation = self_relations.get(stmt.id)
+                if self_relation is not None:
+                    relation = (
+                        relation
+                        | _compose_happens_after_relations(
+                            self_relation, relation
+                        )
+                    ).coalesce()
+
+                self_relation = self_relations.get(source_id)
+                if self_relation is not None:
+                    relation = (
+                        relation
+                        | _compose_happens_after_relations(
+                            relation, self_relation
+                        )
+                    ).coalesce()
+
+            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+            new_happens_after[source_id] = HappensAfter(relation.as_isl())
+
+        new_stmts.append(
+            stmt.copy(happens_after=constantdict(new_happens_after))
+        )
+
+    return kernel.copy(instructions=tuple(new_stmts))
 
 
 def _validate_instance_mapping(
@@ -908,6 +976,22 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
     :returns: *kernel* with the minimally required execution order on statement
     instances in a program needed to satisfy data dependencies.
     """
+
+    for stmt in kernel.instructions:
+        if isinstance(stmt, CInstruction):
+            raise LoopyError(
+                "precise dependency relaxation does not support "
+                f"CInstruction '{stmt.id}'"
+            )
+
+    for temporary in kernel.temporary_variables.values():
+        if temporary.base_storage is not None:
+            raise LoopyError(
+                "precise dependency relaxation does not support temporary "
+                f"'{temporary.name}' with base_storage"
+            )
+
+    kernel = _saturate_cross_relations_with_self_relations(kernel)
 
     coarse_dependency_graph: dict[str, frozenset[str]] = {}
     for stmt in kernel.instructions:
