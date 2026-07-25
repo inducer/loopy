@@ -869,14 +869,48 @@ def _relax_strict_happens_after_inner(
     :returns: The updated precise dependencies for *sink_id*.
     """
 
-    def record_conflicts(source_relation: nisl.Map) -> nisl.Map:
+    def record_conflicts(
+        source_relation: nisl.Map,
+        *,
+        select_most_recent_writer: bool,
+    ) -> nisl.Map:
         source_relation = _suffix_names(source_relation, "_before", DimType.in_)
 
-        # live_access_rel; source_relation^-1
-        conflicts = live_access_rel.apply_range(source_relation.reverse())
+        sink_names = incoming_instances_rel.space.in_names
+        cell_names = live_access_rel.space.out_names
 
-        # Only conflicts ordered along this graph path are required.
-        required_order = incoming_instances_rel & conflicts
+        candidate_set = (
+            live_access_rel.as_set()
+            & incoming_instances_rel.as_set()
+            & source_relation.as_set()
+        )
+        candidates = candidate_set.as_map(
+            in_names=(*sink_names, *cell_names)
+        )
+
+        if select_most_recent_writer:
+            self_happens_after = kernel.id_to_insn[
+                source_id
+            ].happens_after.get(source_id)
+            if self_happens_after is not None:
+                assert self_happens_after.instances_rel is not None
+                # FIXME: Remove conversion once HappensAfter stores
+                # namedisl.Map.
+                self_relation = nisl.make_map(
+                    self_happens_after.instances_rel
+                )
+                dominated = candidates & _compose_happens_after_relations(
+                    candidates, self_relation
+                )
+                candidates = (candidates - dominated).coalesce()
+
+        required_order = (
+            candidates
+            .as_set()
+            .project_out(cell_names)
+            .as_map(in_names=sink_names)
+            .coalesce()
+        )
         previous = happens_after.get(source_id)
         if not required_order.is_empty():
             if previous is None:
@@ -885,13 +919,14 @@ def _relax_strict_happens_after_inner(
                 assert previous.instances_rel is not None
                 # FIXME: remove named conversion
                 previous_instances_rel = nisl.make_map(previous.instances_rel)
-                combined_order = required_order | previous_instances_rel
+                combined_order = (
+                    required_order | previous_instances_rel
+                ).coalesce()
 
             # FIXME: remove unnamed conversion
             happens_after[source_id] = HappensAfter(combined_order.as_isl())
 
-        # Retire only live accesses supplied by an ordered source instance.
-        return live_access_rel & required_order.apply_range(source_relation)
+        return candidates.domain().as_map(in_names=sink_names).coalesce()
 
     def normalize_interface_and_compose(
         incoming_relation: nisl.Map, next_edge_relation: nisl.Map
@@ -914,7 +949,10 @@ def _relax_strict_happens_after_inner(
             if var in rel_finder.write_relations[source_id]:
                 source_relation = rel_finder.write_relations[source_id][var]
 
-                caught_accesses = record_conflicts(source_relation)
+                caught_accesses = record_conflicts(
+                    source_relation,
+                    select_most_recent_writer=True,
+                )
                 live_access_rel = live_access_rel - caught_accesses
 
         # Write-after-write and write-after-read
@@ -922,13 +960,19 @@ def _relax_strict_happens_after_inner(
             if var in rel_finder.write_relations[source_id]:
                 source_relation = rel_finder.write_relations[source_id][var]
 
-                caught_accesses = record_conflicts(source_relation)
+                caught_accesses = record_conflicts(
+                    source_relation,
+                    select_most_recent_writer=True,
+                )
                 live_access_rel = live_access_rel - caught_accesses
 
             # don't update live_access_rel; does not find a "most recent writer"
             if var in rel_finder.read_relations[source_id]:
                 source_relation = rel_finder.read_relations[source_id][var]
-                _ = record_conflicts(source_relation)
+                _ = record_conflicts(
+                    source_relation,
+                    select_most_recent_writer=False,
+                )
 
         case _:
             raise ValueError("unknown access type")

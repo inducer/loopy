@@ -1363,8 +1363,40 @@ def test_relax_strict_happens_after_tracks_scalar_accesses() -> None:
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
-                [i_after] -> [i_before] :
-                    0 <= i_before <= i_after < N
+                [i_after] -> [i_before = i_after] :
+                    0 <= i_after < N
+            }
+            """)
+    )
+
+
+def test_relax_strict_happens_after_selects_writers_per_cell() -> None:
+    kernel = _relax_strict_happens_after(
+        """
+        x[i, j] = i + j {id=S}
+        out[i, j] = x[i, j] + x[i, j - 1] {id=T}
+        """,
+        """
+        {
+            [i, j] :
+                0 <= i < NI and 0 <= j < NJ
+        }
+        """,
+    )
+
+    required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
+    assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
+    assert required_order.equals(
+        nisl.make_map("""
+            [NI, NJ] -> {
+                [j_after, i_after] ->
+                [i_before = i_after, j_before] :
+                    0 <= i_after < NI and
+                    0 <= j_after < NJ and
+                    0 <= j_before < NJ and
+                    j_after - 1 <= j_before <= j_after
             }
             """)
     )
