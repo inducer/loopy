@@ -56,7 +56,7 @@ from loopy.symbolic import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
 
     from namedisl.core import NamedIslObjectT
 
@@ -126,7 +126,7 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
 
             access_set = access_set & coordinates[cell_name].eq_set(index_aff)
 
-        return access_set.as_map(in_names=instance_names)
+        return _set_as_map(access_set, in_names=instance_names)
 
     def _record_access(
         self,
@@ -226,6 +226,20 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
             self.rec(expr.subscript, stmt_id, access_type)
         finally:
             self._additional_inames = previous_inames
+
+
+def _set_as_map(
+    set_: nisl.Set, in_names: Collection[str]
+) -> nisl.Map:
+    if in_names:
+        return set_.as_map(in_names)
+
+    # FIXME: Use Set.as_map directly once namedisl handles an empty input
+    # dimension space.
+    domain = set_.project_out(set_.space.out_names)
+    result = nisl.make_map_from_domain_and_range(domain, set_)
+    assert isinstance(result, nisl.Map)
+    return result
 
 
 def apply_affine_transform_to_happens_afters(
@@ -811,7 +825,8 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
             else:
                 ordered_instances = strict_lex | equal_prefix
 
-            instances_rel = ordered_instances.as_map(
+            instances_rel = _set_as_map(
+                ordered_instances,
                 in_names=tuple(f"{name}_after" for name in after_inames)
             )
 
@@ -884,7 +899,8 @@ def _relax_strict_happens_after_inner(
             & incoming_instances_rel.as_set()
             & source_relation.as_set()
         )
-        candidates = candidate_set.as_map(
+        candidates = _set_as_map(
+            candidate_set,
             in_names=(*sink_names, *cell_names)
         )
 
@@ -908,9 +924,10 @@ def _relax_strict_happens_after_inner(
             candidates
             .as_set()
             .project_out(cell_names)
-            .as_map(in_names=sink_names)
-            .coalesce()
         )
+        required_order = _set_as_map(
+            required_order, in_names=sink_names
+        ).coalesce()
         previous = happens_after.get(source_id)
         if not required_order.is_empty():
             if previous is None:
@@ -926,7 +943,9 @@ def _relax_strict_happens_after_inner(
             # FIXME: remove unnamed conversion
             happens_after[source_id] = HappensAfter(combined_order.as_isl())
 
-        return candidates.domain().as_map(in_names=sink_names).coalesce()
+        return _set_as_map(
+            candidates.domain(), in_names=sink_names
+        ).coalesce()
 
     def normalize_interface_and_compose(
         incoming_relation: nisl.Map, next_edge_relation: nisl.Map
@@ -957,6 +976,15 @@ def _relax_strict_happens_after_inner(
 
         # Write-after-write and write-after-read
         case AccessType.write:
+            # Readers must be recorded before a writer retires the live
+            # sink-cell relation.
+            if var in rel_finder.read_relations[source_id]:
+                source_relation = rel_finder.read_relations[source_id][var]
+                _ = record_conflicts(
+                    source_relation,
+                    select_most_recent_writer=False,
+                )
+
             if var in rel_finder.write_relations[source_id]:
                 source_relation = rel_finder.write_relations[source_id][var]
 
@@ -965,14 +993,6 @@ def _relax_strict_happens_after_inner(
                     select_most_recent_writer=True,
                 )
                 live_access_rel = live_access_rel - caught_accesses
-
-            # don't update live_access_rel; does not find a "most recent writer"
-            if var in rel_finder.read_relations[source_id]:
-                source_relation = rel_finder.read_relations[source_id][var]
-                _ = record_conflicts(
-                    source_relation,
-                    select_most_recent_writer=False,
-                )
 
         case _:
             raise ValueError("unknown access type")
@@ -1039,9 +1059,18 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
 
     coarse_dependency_graph: dict[str, frozenset[str]] = {}
     for stmt in kernel.instructions:
-        coarse_dependency_graph[stmt.id] = frozenset({
-            dep for dep in stmt.happens_after if dep != stmt.id
-        })
+        dependencies: set[str] = set()
+        for source_id, happens_after in stmt.happens_after.items():
+            if source_id == stmt.id:
+                continue
+
+            assert happens_after.instances_rel is not None
+            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+            relation = nisl.make_map(happens_after.instances_rel)
+            if not relation.is_empty():
+                dependencies.add(source_id)
+
+        coarse_dependency_graph[stmt.id] = frozenset(dependencies)
 
     topological_order = compute_topological_order(coarse_dependency_graph)
 

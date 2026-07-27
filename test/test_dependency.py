@@ -1370,6 +1370,22 @@ def test_relax_strict_happens_after_tracks_scalar_accesses() -> None:
     )
 
 
+def test_relax_strict_happens_after_tracks_scalar_statements() -> None:
+    kernel = _relax_strict_happens_after(
+        """
+        <> tmp = 1 {id=S}
+        out = tmp {id=T}
+        """,
+        "{ : }",
+    )
+
+    required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
+    assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
+    assert required_order.equals(nisl.make_map("{ [] -> [] }"))
+
+
 def test_relax_strict_happens_after_selects_writers_per_cell() -> None:
     kernel = _relax_strict_happens_after(
         """
@@ -1402,6 +1418,36 @@ def test_relax_strict_happens_after_selects_writers_per_cell() -> None:
     )
 
 
+def test_relax_strict_happens_after_records_readers_before_writer() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        """
+        a[i + 1] = a[i] + 1 {id=S}
+        a[1] = i {id=T}
+        """,
+        [
+            lp.GlobalArg("a", dtype=np.int32, shape=("N + 1",)),
+            "...",
+        ],
+    )
+    t_unit = dep.add_lexicographic_happens_after(t_unit)
+    kernel = dep.relax_strict_happens_after(t_unit).default_entrypoint
+
+    required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
+    assert required_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    required_order = nisl.make_map(required_order)
+    assert required_order.equals(
+        nisl.make_map("""
+            [N] -> {
+                [i_after] -> [i_before] :
+                    0 <= i_before <= 1 and
+                    i_before <= i_after < N
+            }
+            """)
+    )
+
+
 @pytest.mark.parametrize(
     "instructions",
     (
@@ -1422,6 +1468,40 @@ def test_relax_strict_happens_after_drops_nonconflicting_edges(
     kernel = _relax_strict_happens_after(instructions)
 
     assert "S" not in kernel.id_to_insn["T"].happens_after
+
+
+def test_relax_strict_happens_after_ignores_empty_coarse_edges() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        """
+        a[i] = i {id=A}
+        b[i] = i {id=B}
+        """,
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+
+    cross_order = kernel.id_to_insn["B"].happens_after["A"].instances_rel
+    assert cross_order is not None
+    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
+    cross_order = nisl.make_map(cross_order)
+    empty_order = cross_order - cross_order
+
+    a_insn = kernel.id_to_insn["A"]
+    b_insn = kernel.id_to_insn["B"]
+    kernel = kernel.copy(instructions=(
+        a_insn.copy(happens_after={
+            "A": a_insn.happens_after["A"],
+            "B": HappensAfter(empty_order.as_isl()),
+        }),
+        b_insn.copy(happens_after={
+            "A": HappensAfter(empty_order.as_isl()),
+            "B": b_insn.happens_after["B"],
+        }),
+    ))
+
+    kernel = dep.relax_strict_happens_after(kernel)
+
+    assert all(not stmt.happens_after for stmt in kernel.instructions)
 
 
 def test_relax_strict_happens_after_tracks_live_footprints_through_a_chain() -> (
