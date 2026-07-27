@@ -132,7 +132,7 @@ jobs:
         steps:
         -   uses: actions/checkout@v7
         -
-            uses: actions/setup-python@v6
+            uses: actions/setup-python@v7
             with:
                 python-version: '3.x'
         -   name: "Main Script"
@@ -201,7 +201,7 @@ jobs:
             runs-on: ubuntu-latest
             steps:
             -   uses: actions/checkout@v7
-            -   uses: actions/setup-python@v6
+            -   uses: actions/setup-python@v7
             -   run: |
                     pip install cffconvert
                     cffconvert -i CITATION.cff --validate
