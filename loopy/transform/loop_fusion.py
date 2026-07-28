@@ -412,7 +412,10 @@ def _compute_isinfusible_via_access_map(
 
     # amaps should have the same space after projecting out the inner loops, so they
     # can safely be unioned
-    from loopy.kernel.tools import union_amaps
+    def union_amaps(amaps: Sequence[isl.Map]) -> isl.Map:
+        from functools import reduce
+        return reduce(isl.Map.union, amaps[1:], amaps[0])
+
     amap_pred = union_amaps(amaps_pred)
     amap_succ = union_amaps(amaps_succ)
 
