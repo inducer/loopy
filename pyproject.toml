@@ -44,6 +44,8 @@ dependencies = [
 
     "typing-extensions>=4",
     "strenum>=0.4.15",
+
+    "namedisl @ git+https://github.com/inducer/namedisl.git@main"
 ]
 [project.optional-dependencies]
 pyopencl = [
