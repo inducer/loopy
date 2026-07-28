@@ -745,7 +745,6 @@ def tag_inames(
                 | Sequence[tuple[str, _Tags_ish]]
                 | str),
             *,
-            force: bool | None = None,
             ignore_nonexistent: bool = False
         ) -> LoopKernel:
     """Tag an iname.
@@ -772,12 +771,6 @@ def tag_inames(
 
         Added iterable of tags
     """
-
-    if force is not None:
-        from warnings import warn
-
-        warn("Setting 'force' has no effect and the argument will be removed "
-             "in 2026.", DeprecationWarning, stacklevel=2)
 
     if isinstance(iname_to_tag, str):
         def parse_kv(s: str) -> tuple[InameStr, str]:
