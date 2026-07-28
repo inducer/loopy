@@ -2956,6 +2956,11 @@ class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
         self._var_names = set(var_names)
         super().__init__()
 
+    @memoize_method
+    def _get_inames_domain_strict(self, inames: AbstractSet[str]) -> isl.BasicSet:
+        return self.kernel.get_inames_domain(inames).project_out_except(
+            inames, [isl.dim_type.set])
+
     def get_access_range(self, var_name: str) -> isl.Set | None:
         loops_to_amaps = self.access_maps[var_name]
         if not loops_to_amaps:
@@ -2968,7 +2973,7 @@ class BatchedAccessMapMapper(WalkMapper[[AbstractSet[str]]]):
 
     @override
     def map_subscript(self, expr: p.Subscript, /, inames: AbstractSet[str]) -> None:
-        domain = self.kernel.get_inames_domain(inames)
+        domain = self._get_inames_domain_strict(inames)
         super().map_subscript(expr, inames)
 
         assert isinstance(expr.aggregate, p.Variable)

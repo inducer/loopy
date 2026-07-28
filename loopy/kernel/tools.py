@@ -24,12 +24,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import dataclasses
 import itertools
 import logging
 import sys
-from collections.abc import Set as AbstractSet
-from functools import reduce
 from sys import intern
 from typing import (
     TYPE_CHECKING,
@@ -44,10 +41,8 @@ import numpy as np
 from typing_extensions import override
 
 import islpy as isl
-import pymbolic.primitives as p
 from islpy import dim_type
-from pymbolic import Expression
-from pytools import fset_union, memoize_on_first_arg, natsorted, set_union
+from pytools import fset_union, memoize_on_first_arg, natsorted
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from loopy.kernel import LoopKernel
@@ -67,12 +62,21 @@ from loopy.translation_unit import (
     TUnitOrKernelT,
     for_each_kernel,
 )
+from loopy.typing import not_none
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+    from collections.abc import (
+        Callable,
+        Collection,
+        Iterable,
+        Mapping,
+        Sequence,
+        Set as AbstractSet,
+    )
 
-    from pymbolic import ArithmeticExpression
+    import pymbolic.primitives as p
+    from pymbolic import ArithmeticExpression, Expression
     from pytools.tag import Tag
 
     from loopy.types import ToLoopyTypeConvertible
@@ -2305,68 +2309,28 @@ def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
 
 # {{{ get access map from an instruction
 
-@dataclasses.dataclass
-class _IndexCollector(CombineMapper[AbstractSet[tuple[Expression, ...]], []]):
-    var: str
-
-    def __post_init__(self) -> None:
-        super().__init__()
-
-    @override
-    def combine(self,
-                values: Iterable[AbstractSet[tuple[Expression, ...]]]
-            ) -> AbstractSet[tuple[Expression, ...]]:
-        return set_union(values)
-
-    @override
-    def map_subscript(self, expr: p.Subscript) -> AbstractSet[tuple[Expression, ...]]:
-        assert isinstance(expr.aggregate, p.Variable)
-        if expr.aggregate.name == self.var:
-            return (super().map_subscript(expr) | frozenset([expr.index_tuple]))
-        else:
-            return super().map_subscript(expr)
-
-    @override
-    def map_algebraic_leaf(
-                    self, expr: p.AlgebraicLeaf,
-                ) -> frozenset[tuple[Expression, ...]]:
-        return frozenset()
-
-    @override
-    def map_constant(
-                    self, expr: object
-                ) -> frozenset[tuple[Expression, ...]]:
-        return frozenset()
-
-
-def _union_amaps(amaps: Sequence[isl.Map]):
-    import islpy as isl
-    return reduce(isl.Map.union, amaps[1:], amaps[0])
-
-
-def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
+def get_insn_access_maps(
+        kernel: LoopKernel, insn_id: str, var: str) -> list[isl.Map]:
     from loopy.match import Id
-    from loopy.symbolic import get_access_map
     from loopy.transform.subst import expand_subst
 
-    insn = kernel.id_to_insn[insn_id]
-
     kernel = expand_subst(kernel, within=Id(insn_id))
-    indices = tuple(
-        _IndexCollector(var)(
-            (insn.expression, insn.assignees, tuple(insn.predicates))
-        )
-    )
 
-    amaps = [
-        get_access_map(
-            kernel.get_inames_domain(insn.within_inames).to_set(),
-            idx, kernel.assumptions
-        )
-        for idx in indices
-    ]
+    insn = kernel.id_to_insn[insn_id]
+    insn_inames = kernel.insn_inames(insn)
 
-    return _union_amaps(amaps)
+    from loopy.symbolic import BatchedAccessMapMapper
+    bamm = BatchedAccessMapMapper(kernel, [var])
+    bamm((insn.expression, insn.assignees, tuple(insn.predicates)), insn_inames)
+
+    if var in bamm.bad_subscripts:
+        from loopy.diagnostic import UnableToDetermineAccessRangeError
+        raise UnableToDetermineAccessRangeError(
+            f"cannot determine access range for '{var}' in '{insn_id}'")
+
+    return [
+        not_none(amap)
+        for amap in bamm.access_maps[var].values()]
 
 # }}}
 
