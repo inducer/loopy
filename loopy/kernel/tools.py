@@ -24,12 +24,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import dataclasses
 import itertools
 import logging
-import operator
 import sys
-from functools import reduce
 from sys import intern
 from typing import (
     TYPE_CHECKING,
@@ -42,9 +39,6 @@ import numpy as np
 from typing_extensions import override
 
 import namedisl as nisl
-import pymbolic.primitives as p
-from namedisl import DimType
-from pymbolic import Expression
 from pytools import fset_union, memoize_on_first_arg, natsorted
 
 from loopy.diagnostic import LoopyError, warn_with_kernel
@@ -57,7 +51,7 @@ from loopy.kernel.instruction import (
     MultiAssignmentBase,
     _DataObliviousInstruction,
 )
-from loopy.symbolic import CombineMapper, Reduction, get_access_map_storage_names
+from loopy.symbolic import CombineMapper, get_access_map_storage_names
 from loopy.translation_unit import (
     CallableId,
     CallablesTable,
@@ -65,6 +59,7 @@ from loopy.translation_unit import (
     TUnitOrKernelT,
     for_each_kernel,
 )
+from loopy.typing import not_none
 
 
 if TYPE_CHECKING:
@@ -76,7 +71,8 @@ if TYPE_CHECKING:
         Set as AbstractSet,
     )
 
-    from pymbolic import ArithmeticExpression
+    import pymbolic.primitives as p
+    from pymbolic import ArithmeticExpression, Expression
     from pytools.tag import Tag
 
     from loopy.types import ToLoopyTypeConvertible
@@ -2161,70 +2157,6 @@ def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> nisl.Aff:
 
 # {{{ get access map from an instruction
 
-def union_amaps(amaps: Sequence[nisl.Map]):
-    return reduce(operator.or_, amaps[1:], amaps[0])
-
-
-@dataclasses.dataclass
-class _InstructionAccessMapCollector(
-        CombineMapper[dict[frozenset[str], nisl.Map], [nisl.Set]]):
-    knl: LoopKernel
-    var: str
-
-    def __post_init__(self) -> None:
-        super().__init__()
-
-    @override
-    def combine(
-            self,
-            values: Iterable[dict[frozenset[str], nisl.Map]]
-            ) -> dict[frozenset[str], nisl.Map]:
-        result: dict[frozenset[str], nisl.Map] = {}
-        for value in values:
-            for inames, amap in value.items():
-                try:
-                    old_amap = result[inames]
-                except KeyError:
-                    result[inames] = amap
-                else:
-                    result[inames] = union_amaps((old_amap, amap))
-        return result
-
-    @override
-    def map_reduction(
-            self, expr: Reduction, domain: nisl.Set
-            ) -> dict[frozenset[str], nisl.Map]:
-        new_domain = self.knl.get_inames_domain(
-            domain.space.set_names | frozenset(expr.inames))
-        return super().map_reduction(expr, new_domain)
-
-    @override
-    def map_subscript(
-            self, expr: p.Subscript, domain: nisl.Set
-            ) -> dict[frozenset[str], nisl.Map]:
-        from loopy.symbolic import get_access_map
-        assert isinstance(expr.aggregate, p.Variable)
-        if expr.aggregate.name == self.var:
-            inames = domain.space.set_names
-            amap = get_access_map(
-                domain, expr.index_tuple, self.knl.assumptions)
-            return self.combine([
-                super().map_subscript(expr, domain), {inames: amap}])
-        else:
-            return super().map_subscript(expr, domain)
-
-    @override
-    def map_algebraic_leaf(
-                self, expr: p.AlgebraicLeaf, domain: nisl.Set,
-            ) -> dict[frozenset[str], nisl.Map]:
-        return {}
-
-    @override
-    def map_constant(
-            self, expr: object, domain: nisl.Set) -> dict[frozenset[str], nisl.Map]:
-        return {}
-
-
 def get_insn_access_maps(
         kernel: LoopKernel, insn_id: str, var: str) -> list[nisl.Map]:
     from loopy.match import Id
@@ -2234,13 +2166,19 @@ def get_insn_access_maps(
 
     insn = kernel.id_to_insn[insn_id]
     insn_inames = kernel.insn_inames(insn)
-    inames_domain = kernel.get_inames_domain(insn_inames)
-    domain = inames_domain.project_out_except(insn_inames, dim_type=DimType.out)
 
-    inames_to_amap = _InstructionAccessMapCollector(kernel, var)(
-        (insn.expression, insn.assignees, tuple(insn.predicates)), domain)
+    from loopy.symbolic import BatchedAccessMapMapper
+    bamm = BatchedAccessMapMapper(kernel, [var])
+    bamm((insn.expression, insn.assignees, tuple(insn.predicates)), insn_inames)
 
-    return list(inames_to_amap.values())
+    if var in bamm.bad_subscripts:
+        from loopy.diagnostic import UnableToDetermineAccessRangeError
+        raise UnableToDetermineAccessRangeError(
+            f"cannot determine access range for '{var}' in '{insn_id}'")
+
+    return [
+        not_none(amap)
+        for amap in bamm.access_maps[var].values()]
 
 # }}}
 

@@ -391,7 +391,7 @@ def _compute_isinfusible_via_access_map(
     """
 
     from loopy.diagnostic import UnableToDetermineAccessRangeError
-    from loopy.kernel.tools import get_insn_access_maps, union_amaps
+    from loopy.kernel.tools import get_insn_access_maps
 
     try:
         amaps_pred = get_insn_access_maps(kernel, insn_pred, var)
@@ -412,6 +412,11 @@ def _compute_isinfusible_via_access_map(
 
     # amaps should have the same space after projecting out the inner loops, so they
     # can safely be unioned
+    def union_amaps(amaps: Sequence[nisl.Map]) -> nisl.Map:
+        import operator
+        from functools import reduce
+        return reduce(operator.or_, amaps[1:], amaps[0])
+
     amap_pred = union_amaps(amaps_pred)
     amap_succ = union_amaps(amaps_succ)
 
