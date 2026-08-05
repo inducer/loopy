@@ -2298,6 +2298,7 @@ def _postprocess_schedule(
 
 def insert_temporary_alloc_dealloc(kernel: LoopKernel):
     schedule = kernel.linearization
+    assert schedule is not None
     inserted_allocs = set()
     inserted_deallocs = set()
 

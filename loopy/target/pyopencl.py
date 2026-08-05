@@ -835,8 +835,10 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         return []
 
     @override
-    def emit_alloc_temp(self, codegen_state, var_name):
-        from genpy import Assign
+    def emit_alloc_temp(self,
+                codegen_state: CodeGenerationState,
+                var_name: str) -> genpy.Generable:
+        from genpy import Assign, Line
         from pymbolic.mapper.stringifier import PREC_NONE
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
