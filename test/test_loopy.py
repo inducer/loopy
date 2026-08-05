@@ -41,6 +41,7 @@ from loopy.version import (
 
 logger = logging.getLogger(__name__)
 
+
 def test_temporary_memory_allocation(ctx_factory: cl.CtxFactory):
     from pyopencl.tools import ImmediateAllocator, MemoryPool
 
@@ -93,6 +94,7 @@ def test_temporary_memory_allocation(ctx_factory: cl.CtxFactory):
 
     # FIXME This relies on the memory pool not freeing any memory it allocates
     assert mem_pool_alloc.managed_bytes < len(temp_vars) * a.nbytes
+
 
 def test_globals_decl_once_with_multi_subprogram(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()

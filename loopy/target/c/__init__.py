@@ -1009,13 +1009,13 @@ class CFamilyASTBuilder(ASTBuilderBase[Generable]):
             ) -> tuple[Sequence[tuple[str, str]], Generable]:
         kernel = codegen_state.kernel
 
-        assert codegen_state.kernel.linearization is not None
+        assert kernel.linearization is not None
         while not isinstance(kernel.linearization[schedule_index], CallKernel):
             schedule_index += 1
             assert schedule_index < len(kernel.linearization)
         subkernel_name = cast(
                         "CallKernel",
-                        codegen_state.kernel.linearization[schedule_index]
+                        kernel.linearization[schedule_index]
                         ).kernel_name
 
         from cgen import FunctionDeclaration, Value
