@@ -2504,10 +2504,15 @@ def make_function(
 
     # }}}
 
-    from loopy.kernel import _get_inames_from_domains
     from loopy.kernel.data import Iname
+
+    domain_inames: dict[int, frozenset[InameStr]] = {
+        id(dom): frozenset(dom.get_var_names_not_none(dim_type.set))
+        for dom in domains}
+
+    from pytools import fset_union
     inames = {name: Iname(name, frozenset())
-              for name in _get_inames_from_domains(domains)}
+              for name in fset_union(domain_inames.values())}
 
     substitutions = constantdict(substitutions)
     for sname, rule in inline_substitutions.items():
@@ -2555,6 +2560,7 @@ def make_function(
             name=name,
             iname_slab_increments=constantdict(iname_slab_increments),
             applied_iname_rewrites=applied_iname_rewrites,
+            _domain_inames=constantdict(domain_inames),
             )
 
     from loopy.transform.instruction import uniquify_instruction_ids
