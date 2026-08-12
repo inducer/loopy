@@ -52,6 +52,7 @@ from loopy.symbolic import (
     LocalHardwareAxisIndex,
     ResolvedFunction,
     SubArrayRef,
+    flatten,
 )
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeInferenceMapper, TypeReader
@@ -336,8 +337,8 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
                 result = self.make_subscript(
                         ary,
                         make_var(access_info.array_name),
-                        simplify_using_aff(
-                            self.kernel, self.rec_arith(subscript, "i")))
+                        flatten(self.rec_arith(
+                            simplify_using_aff(self.kernel, subscript), "i")))
 
             if access_info.vector_index is not None:
                 return self.codegen_state.ast_builder.add_vector_access(
