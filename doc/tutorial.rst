@@ -1919,7 +1919,7 @@ Now to make things more interesting, we'll create a kernel with barriers:
           barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
           c[990 * i + 99 * j + lid(0) + 1] = 2 * a[980 * i + 98 * j + lid(0) + 1];
           barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
-          e[980 * i + 98 * j + lid(0) + 1] = c[990 * i + 99 * j + 1 + lid(0) + 1] + c[990 * i + 99 * j + -1 + lid(0) + 1];
+          e[980 * i + 98 * j + lid(0) + 1] = c[1 + 990 * i + 99 * j + lid(0) + 1] + c[-1 + 990 * i + 99 * j + lid(0) + 1];
         }
     }
 
