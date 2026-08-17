@@ -2194,6 +2194,14 @@
             {
                 "code": "reportUnknownArgumentType",
                 "range": {
+                    "startColumn": 39,
+                    "endColumn": 72,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
                     "startColumn": 53,
                     "endColumn": 57,
                     "lineCount": 1
@@ -15520,6 +15528,14 @@
                 "range": {
                     "startColumn": 22,
                     "endColumn": 28,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportAny",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 17,
                     "lineCount": 1
                 }
             },
@@ -35814,6 +35830,14 @@
                 }
             },
             {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 28,
+                    "lineCount": 1
+                }
+            },
+            {
                 "code": "reportUnknownMemberType",
                 "range": {
                     "startColumn": 23,
@@ -53488,6 +53512,14 @@
                 "range": {
                     "startColumn": 26,
                     "endColumn": 38,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportIncompatibleMethodOverride",
+                "range": {
+                    "startColumn": 8,
+                    "endColumn": 21,
                     "lineCount": 1
                 }
             },
