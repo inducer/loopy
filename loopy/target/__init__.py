@@ -323,6 +323,11 @@ class ASTBuilderBase(ABC, Generic[ASTType]):
     def emit_noop_with_comment(self, s):
         raise NotImplementedError()
 
+    def emit_alloc_temp(self, codegen_state, var_name):
+        raise NotImplementedError()
+
+    def emit_dealloc_temp(self, codegen_state, var_name):
+        raise NotImplementedError()
     # }}}
 
     def process_ast(self, node: ASTType):

@@ -1078,10 +1078,12 @@ Tagged prefetching
 Temporaries in global memory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:mod:`loopy` supports using temporaries with global storage duration. As with
-local and private temporaries, the runtime allocates storage for global
-temporaries when the kernel gets executed. The user must explicitly specify that
-a temporary is global. To specify that a temporary is global, use
+:mod:`loopy` supports using temporaries with global storage duration. Note that
+these temporaries will in fact be dynamically allocated before the first usage,
+and deallocated after the last. As with local and private temporaries, the
+runtime allocates storage for global temporaries when the kernel gets executed.
+The user must explicitly specify that a temporary is global. To specify that a
+temporary is global, use
 :func:`loopy.set_temporary_address_space`.
 
 Substitution rules
@@ -1276,15 +1278,17 @@ put those instructions into the schedule.
    ...
    ---------------------------------------------------------------------------
    LINEARIZATION:
-      0: CALL KERNEL rotate_v2
-      1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
-      2:     tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] = tmp  {id=tmp.save}
-      3: RETURN FROM KERNEL rotate_v2
-      4: ... gbarrier
-      5: CALL KERNEL rotate_v2_0
-      6:     tmp = tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]  {id=tmp.reload}
-      7:     arr[(i_inner + i_outer*16 + 1) % n] = tmp  {id=rotate}
-      8: RETURN FROM KERNEL rotate_v2_0
+      0: ALLOCATE tmp_save_slot
+      1: CALL KERNEL rotate_v2
+      2:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
+      3:     tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] = tmp  {id=tmp.save}
+      4: RETURN FROM KERNEL rotate_v2
+      5: ... gbarrier
+      6: CALL KERNEL rotate_v2_0
+      7:     tmp = tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]  {id=tmp.reload}
+      8:     arr[(i_inner + i_outer*16 + 1) % n] = tmp  {id=rotate}
+      9: RETURN FROM KERNEL rotate_v2_0
+     10: DEALLOCATE tmp_save_slot
    ---------------------------------------------------------------------------
 
 Here's an overview of what :func:`loopy.save_and_reload_temporaries` actually
@@ -1294,7 +1298,8 @@ does in more detail:
    variables' live ranges cross a global barrier.
 
 2. For each temporary, :mod:`loopy` creates a storage slot for the temporary in
-   global memory (see :ref:`global_temporaries`).
+   global memory (see :ref:`global_temporaries`). Note that, as a global variable, the storage
+   slot will be dynamically allocated before its first usage and deallocated after its last.
 
 3. :mod:`loopy` saves the temporary into its global storage slot whenever it
    detects the temporary is live-out from a kernel, and reloads the temporary
