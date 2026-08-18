@@ -23,12 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
 from typing import TYPE_CHECKING
 
 from constantdict import constantdict
 
-import islpy as isl
+import namedisl as nisl
+from namedisl import DimType
+from pymbolic import Variable
 from pytools import UniqueNameGenerator
 
 from loopy.diagnostic import LoopyError
@@ -42,10 +43,12 @@ from loopy.kernel.instruction import (
     Assignment,
     CallInstruction,
     CInstruction,
+    InstructionBase,
     MultiAssignmentBase,
     _DataObliviousInstruction,
 )
 from loopy.symbolic import (
+    ResolvedFunction,
     RuleAwareIdentityMapper,
     RuleAwareSubstitutionMapper,
     SubstitutionRuleMappingContext,
@@ -54,7 +57,9 @@ from loopy.translation_unit import CallableId, TranslationUnit, for_each_kernel
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Collection, Sequence
+
+    from pymbolic.typing import ArithmeticExpression
 
 
 __doc__ = """
@@ -194,53 +199,42 @@ class KernelArgumentSubstitutor(RuleAwareIdentityMapper):
 
 # {{{ inlining of a single call instruction
 
-def substitute_into_domain(domain, param_name, expr, allowed_param_dims):
+def substitute_into_domain(
+            domain: nisl.Set,
+            param_name: str,
+            expr: ArithmeticExpression,
+            allowed_param_dims: Collection[str],
+        ):
     """
     :arg allowed_deps: A :class:`list` of :class:`str` that are
     """
     import pymbolic.primitives as prim
 
     from loopy.symbolic import get_dependencies, isl_set_from_expr
-    if param_name not in domain.get_var_dict():
+    if param_name not in domain.space.names:
         # param_name not in domain => domain will be unchanged
         return domain
 
     # {{{ rename 'param_name' to avoid namespace pollution with allowed_param_dims
 
-    dt, pos = domain.get_var_dict()[param_name]
-    domain = domain.set_dim_name(dt, pos, UniqueNameGenerator(
-        set(allowed_param_dims))(param_name))
+    domain = domain.rename_dims([(
+            param_name, UniqueNameGenerator(set(allowed_param_dims))(param_name))])
 
     # }}}
 
-    for dep in get_dependencies(expr):
-        if dep in allowed_param_dims:
-            domain = domain.add_dims(isl.dim_type.param, 1)
-            domain = domain.set_dim_name(
-                    isl.dim_type.param,
-                    domain.dim(isl.dim_type.param)-1,
-                    dep)
-        else:
-            raise ValueError("Augmenting caller's domain "
-                    f"with '{dep}' is not allowed.")
+    domain.add_dims(DimType.param, [
+        dep for dep in get_dependencies(expr)
+        if dep in allowed_param_dims
+    ])
 
-    set_ = isl_set_from_expr(domain.space,
+    set_ = isl_set_from_expr(domain.var_pw_affs,
             prim.Comparison(prim.Variable(param_name),
                             "==",
                             expr))
 
-    bset, = set_.get_basic_sets()
-    domain = domain & bset
+    domain = domain & set_
 
-    return domain.project_out(dt, pos, 1)
-
-
-def rename_iname(domain, old_iname, new_iname):
-    if old_iname not in domain.get_var_dict():
-        return domain
-
-    dt, pos = domain.get_var_dict()[old_iname]
-    return domain.set_dim_name(dt, pos, new_iname)
+    return domain.project_out([param_name])
 
 
 def get_valid_domain_param_names(knl):
@@ -253,7 +247,11 @@ def get_valid_domain_param_names(knl):
             )
 
 
-def _inline_call_instruction(caller_knl, callee_knl, call_insn):
+def _inline_call_instruction(
+            caller_knl: LoopKernel,
+            callee_knl: LoopKernel,
+            call_insn: CallInstruction
+):
     """
     Returns a copy of *caller_knl* with the *call_insn* in the *kernel*
     replaced by inlining *callee_knl* into it within it.
@@ -267,6 +265,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     # {{{ sanity checks
 
+    assert isinstance(call_insn.expression.function, (Variable, ResolvedFunction))
     assert call_insn.expression.function.name == callee_knl.name
 
     # }}}
@@ -281,17 +280,13 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     # {{{ construct callee->caller name mappings
 
-    # name_map: Mapping[str, str]
     # A mapping from variable names in the callee kernel's namespace to
     # the ones they would be referred by in the caller's namespace post inlining.
-    name_map = {}
-
-    # only consider temporary variables and inames, arguments would be mapping
-    # according to the invocation in call_insn.
-    for name in (callee_knl.all_inames()
-                 | set(callee_knl.temporary_variables.keys())):
-        new_name = vng(callee_label+name)
-        name_map[name] = new_name
+    name_map = {
+        name: vng(callee_label+name)
+        for name in (callee_knl.all_inames()
+                    | set(callee_knl.temporary_variables.keys()))
+    }
 
     # }}}
 
@@ -308,7 +303,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     # {{{ register callee's temps as caller's
 
     # new_temps: caller's temps post inlining
-    new_temps = caller_knl.temporary_variables.copy()
+    new_temps = dict(caller_knl.temporary_variables)
 
     for name, tv in callee_knl.temporary_variables.items():
         new_temps[name_map[name]] = tv.copy(name=name_map[name])
@@ -337,9 +332,13 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     # rename inames
     new_domains = list(callee_knl.domains)
-    for old_iname in callee_knl.all_inames():
-        new_domains = [rename_iname(dom, old_iname, name_map[old_iname])
-                       for dom in new_domains]
+    new_domains = [
+        dom.rename_dims([
+            (old_iname, name_map[old_iname])
+            for old_iname in callee_knl.all_inames()
+            if old_iname in dom.space.names
+        ])
+        for dom in new_domains]
 
     # realize domains' dim params in terms of caller's variables
     new_assumptions = callee_knl.assumptions
@@ -426,7 +425,7 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
 
     # {{{ map callee's instruction ids
 
-    inlined_insns = [noop_start]
+    inlined_insns: list[InstructionBase] = [noop_start]
 
     for insn in callee_knl.instructions:
         new_within_inames = (frozenset(name_map[iname]
@@ -469,24 +468,22 @@ def _inline_call_instruction(caller_knl, callee_knl, call_insn):
     # {{{ swap out call_insn with inlined_instructions
 
     idx = caller_knl.instructions.index(call_insn)
-    new_insns = (caller_knl.instructions[:idx]
-                 + inlined_insns
-                 + caller_knl.instructions[idx+1:])
+    new_insns = [
+        *caller_knl.instructions[:idx],
+        *inlined_insns,
+        *caller_knl.instructions[idx+1:]
+        ]
 
     # }}}
-
-    old_assumptions, new_assumptions = isl.align_two(
-            caller_knl.assumptions, new_assumptions)
 
     return caller_knl.copy(instructions=new_insns,
                            temporary_variables=new_temps,
                            domains=[*caller_knl.domains, *new_domains],
-                           assumptions=(old_assumptions.params()
-                                        & new_assumptions.params()),
+                           assumptions=caller_knl.assumptions & new_assumptions,
                            inames=new_inames,
-                           preambles=caller_knl.preambles+callee_knl.preambles,
-                           preamble_generators=(caller_knl.preamble_generators
-                                                + callee_knl.preamble_generators),
+                           preambles=[*caller_knl.preambles, *callee_knl.preambles],
+                           preamble_generators=[*caller_knl.preamble_generators,
+                                                *callee_knl.preamble_generators],
                            )
 
 # }}}

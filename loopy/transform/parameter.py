@@ -25,8 +25,10 @@ THE SOFTWARE.
 
 
 from typing import TYPE_CHECKING
+from warnings import warn
 
 import islpy as isl
+import namedisl as nisl
 
 from loopy.kernel import LoopKernel
 from loopy.symbolic import RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext
@@ -50,7 +52,10 @@ __doc__ = """
 # {{{ assume
 
 @for_each_kernel
-def assume(kernel: LoopKernel, assumptions: str | isl.Set | isl.BasicSet) -> LoopKernel:
+def assume(
+            kernel: LoopKernel,
+            assumptions: str | nisl.Set | nisl.BasicSet | isl.BasicSet | isl.Set
+        ) -> LoopKernel:
     """Include an assumption about :ref:`domain-parameters` in the kernel, e.g.
     `n mod 4 = 0`.
 
@@ -61,16 +66,24 @@ def assume(kernel: LoopKernel, assumptions: str | isl.Set | isl.BasicSet) -> Loo
         assumptions_set_str = "[%s] -> { : %s}" \
                 % (",".join(s for s in kernel.outer_params()),
                     assumptions)
-        assumptions = isl.BasicSet.read_from_str(kernel.domains[0].get_ctx(),
-                assumptions_set_str)
+        assumptions = nisl.make_set(assumptions_set_str)
 
-    if not isinstance(assumptions, isl.BasicSet):
-        raise TypeError("'assumptions' must be a BasicSet or a string")
+    if isinstance(assumptions, (isl.BasicSet, isl.Set)):
+        warn(
+            "Passing raw islpy objects is deprecated and will stop working in 2028. "
+            "Use namedisl instead.", DeprecationWarning, stacklevel=2)
+        assumptions = nisl.to_named(assumptions)
 
-    old_assumptions, new_assumptions = isl.align_two(kernel.assumptions, assumptions)
+    if isinstance(assumptions, nisl.BasicSet):
+        assumptions = assumptions.as_set()
+
+    if not isinstance(assumptions, nisl.Set):
+        raise TypeError("'assumptions' must be a Set or a string")
+
+    old_assumptions, new_assumptions = nisl.align_two(kernel.assumptions, assumptions)
 
     return kernel.copy(
-            assumptions=old_assumptions.params() & new_assumptions.params())
+            assumptions=old_assumptions & new_assumptions)
 
 # }}}
 
@@ -82,26 +95,14 @@ def _fix_parameter(
             name: str,
             value: float,
             within: ToStackMatchConvertible = None):
-    def process_set(s: isl.BasicSet):
-        var_dict = s.get_var_dict()
-
-        try:
-            dt, idx = var_dict[name]
-        except KeyError:
+    def process_set(s: nisl.Set):
+        if name not in s.space.names:
             return s
 
         if not isinstance(value, int):
             raise ValueError(f"parameter '{name}' is used in a set, must be an integer")
 
-        value_aff = isl.Aff.zero_on_domain(s.space) + value
-
-        from loopy.isl_helpers import iname_rel_aff
-        name_equal_value_aff = iname_rel_aff(s.space, name, "==", value_aff)
-
-        return (s
-                .add_constraint(
-                    isl.Constraint.equality_from_aff(name_equal_value_aff))
-                .project_out(dt, idx, 1))
+        return s.fix_dim(name, value)
 
     new_domains = [process_set(dom) for dom in kernel.domains]
 

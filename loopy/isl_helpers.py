@@ -1,5 +1,3 @@
-"""isl helpers"""
-
 from __future__ import annotations
 
 
@@ -27,151 +25,122 @@ THE SOFTWARE.
 
 
 from typing import TYPE_CHECKING, TypeVar
-from warnings import warn
 
-import islpy as isl
-from islpy import dim_type
+import namedisl as nisl
+from namedisl import DimType
 
-from loopy.diagnostic import LoopyError, StaticValueFindingError
-from loopy.typing import not_none
+from loopy.diagnostic import (
+    ExpressionToAffineConversionError,
+    StaticValueFindingError,
+)
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Collection, Mapping, Sequence
 
     from pymbolic import ArithmeticExpression, Expression
 
+    from loopy.typing import InameStr
 
-def pw_aff_to_aff(pw_aff: isl.Aff | isl.PwAff) -> isl.Aff:
-    if isinstance(pw_aff, isl.Aff):
+
+def find_max_of_pwaff_with_params(
+            pw_aff: nisl.PwAff,
+            allowed_params: Collection[str] | None,
+            *, cache: nisl.Cache | None,
+        ):
+    """Get a parametric maximmum of a :class:`namedisl.PwAff`.
+
+    :arg allowed_params: 'None' means all, making this a no-op.
+    """
+    if allowed_params is None:
         return pw_aff
 
-    assert isinstance(pw_aff, isl.PwAff)
-    pieces = pw_aff.get_pieces()
-
-    if len(pieces) == 0:
-        raise RuntimeError("PwAff does not have any pieces")
-
-    if len(pieces) > 1:
-        _, first_aff = pieces[0]
-        for _, other_aff in pieces[1:]:
-            if not first_aff.plain_is_equal(other_aff):
-                raise NotImplementedError("only single-valued piecewise affine "
-                        "expressions are supported here--encountered "
-                        f"multi-valued expression '{pw_aff}'")
-
-        return first_aff
-
-    return pieces[0][1]
+    out_name = "_lpy_output"
+    pw_aff = pw_aff.add_dims(DimType.in_, [out_name])
+    pw_aff_set = pw_aff.eq_set(pw_aff.var_pw_affs[out_name])
+    pw_aff_set = pw_aff_set.move_dims(
+        pw_aff.space.param_names - set(allowed_params), DimType.out)
+    return pw_aff_set.dim_max(out_name, cache=cache)
 
 
-# {{{ make_slab
-
-def make_slab(space: isl.Space,
-              iname: str | tuple[dim_type, int],
-              start: isl.Aff | isl.PwAff | ArithmeticExpression,
-              stop: isl.Aff | isl.PwAff | ArithmeticExpression,
-              iname_multiplier: int = 1) -> isl.BasicSet:
+def base_index_and_length(
+        cache: nisl.Cache,
+        set_: nisl.Set | nisl.BasicSet,
+        iname: InameStr,
+        context: nisl.Set | nisl.BasicSet | None = None,
+        allowed_params_in_length: Collection[str] | None = None,
+    ) -> tuple[ArithmeticExpression, ArithmeticExpression]:
+    # copied and mildly adapted from
+    # https://github.com/inducer/loopy/blob/eab7e4d3a4341229084de2d44a84bd9c60e3c611/loopy/kernel/tools.py#L454C1-L524C1
     """
-    Returns an instance of :class:`islpy._isl.BasicSet`, which satisfies the
-    constraint ``start <= iname_multiplier*iname < stop``.
-
-    :arg space: An instance of :class:`islpy._isl.Space`.
-    :arg iname: Either an instance of :class:`str` as a name of the ``iname`` or a
-        tuple of ``(iname_dt, iname_dx)`` indicating the *iname* in the space.
-    :arg start: An instance of :class:`int`  or an instance of :class:`islpy._isl.Aff`
-        indicating the lower bound of ``iname_multiplier*iname``(inclusive).
-    :arg stop: An instance of :class:`int`  or an instance of :class:`islpy._isl.Aff`
-        indicating the upper bound of ``iname_multiplier*iname``.
-    :arg iname_multiplier: A strictly positive :class:`int` denoting *iname*'s
-        coefficient in the above inequality expression.
+    :arg n_allowed_params_in_length: Simplifies the 'length'
+        argument so that only the first that many params
+        (in the domain of *set_*) occur.
     """
-    zero = isl.Aff.zero_on_domain(space)
+    if isinstance(set_, nisl.BasicSet):
+        set_ = set_.as_set()
+    if isinstance(context, nisl.BasicSet):
+        context = context.as_set()
 
-    if isinstance(start, (isl.Aff, isl.PwAff)):
-        start, zero = isl.align_two(pw_aff_to_aff(start), zero)
-    if isinstance(stop, (isl.Aff, isl.PwAff)):
-        stop, zero = isl.align_two(pw_aff_to_aff(stop), zero)
+    lower_bound_pw_aff = set_.dim_min(iname, cache=cache)
+    upper_bound_pw_aff = set_.dim_max(iname, cache=cache)
 
-    space = zero.get_domain_space()
+    from loopy.diagnostic import StaticValueFindingError
+    from loopy.isl_helpers import (
+        static_max_of_pw_aff,
+        static_min_of_pw_aff,
+        static_value_of_pw_aff,
+    )
+    from loopy.symbolic import pw_aff_to_expr
 
-    from pymbolic.primitives import ExpressionNode
+    # {{{ first: try to find static lower bound value
 
-    from loopy.symbolic import aff_from_expr
-    if isinstance(start, ExpressionNode):
-        start = aff_from_expr(space, start)
-    if isinstance(stop, ExpressionNode):
-        stop = aff_from_expr(space, stop)
+    try:
+        base_index_aff = static_value_of_pw_aff(
+                lower_bound_pw_aff, constants_only=False,
+                context=context)
+    except StaticValueFindingError:
+        base_index_aff = None
 
-    if isinstance(start, int):
-        start = zero + start
-    if isinstance(stop, int):
-        stop = zero + stop
+    if base_index_aff is not None:
+        base_index = pw_aff_to_expr(base_index_aff.as_pw_aff())
 
-    if isinstance(iname, str):
-        iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
-    else:
-        iname_dt, iname_idx = iname
+        length = find_max_of_pwaff_with_params(
+                (upper_bound_pw_aff
+                - base_index_aff.as_pw_aff() + 1),
+                allowed_params_in_length,
+                cache=cache)
+        length = pw_aff_to_expr(static_max_of_pw_aff(
+                length, constants_only=False,
+                context=context).as_pw_aff())
 
-    iname_aff = zero.add_coefficient_val(iname_dt, iname_idx, 1)
+        return base_index, length
 
-    if iname_multiplier > 0:
-        result = (isl.BasicSet.universe(space)
-                # start <= iname_multiplier*iname
-                .add_constraint(isl.Constraint.inequality_from_aff(
-                    iname_multiplier*iname_aff - start))
-                # iname_multiplier*iname < stop
-                .add_constraint(isl.Constraint.inequality_from_aff(
-                    stop-1 - iname_multiplier*iname_aff)))
-    else:
-        raise LoopyError("iname_multiplier must be strictly positive")
+    # }}}
 
-    return result
+    # {{{ if that didn't work, try finding a lower bound
 
+    base_index_aff = static_min_of_pw_aff(
+            lower_bound_pw_aff, constants_only=False,
+            context=context)
 
-def make_loop_bounds_from_pwaffs(space, iname, lbound, ubound):
-    dt, pos = space.get_var_dict()[iname]
-    iname_pwaff = isl.PwAff.var_on_domain(space, dt, pos)
+    base_index = pw_aff_to_expr(base_index_aff.as_pw_aff())
 
-    iname_pwaff, lbound = isl.align_two(iname_pwaff, lbound)
-    iname_pwaff, ubound = isl.align_two(iname_pwaff, ubound)
-    assert iname_pwaff.space == lbound.space
-    assert iname_pwaff.space == ubound.space
+    length = find_max_of_pwaff_with_params(
+            (upper_bound_pw_aff - base_index_aff.as_pw_aff() + 1),
+            allowed_params_in_length,
+            cache=cache,
+    )
+    length = pw_aff_to_expr(static_max_of_pw_aff(
+            length, constants_only=False,
+            context=context).as_pw_aff())
 
-    return (
-        iname_pwaff.ge_set(lbound)
-        &
-        iname_pwaff.le_set(ubound))
-
-# }}}
-
-
-def iname_rel_aff(space, iname, rel, aff):
-    """*aff*'s domain space is allowed to not match *space*."""
-
-    dt, pos = space.get_var_dict()[iname]
-    assert dt in [isl.dim_type.set, isl.dim_type.param]
-    if dt == isl.dim_type.set:
-        dt = isl.dim_type.in_
-
-    from islpy import align_spaces
-    aff = align_spaces(aff, isl.Aff.zero_on_domain(space))
-
-    if rel in ["==", "<="]:
-        return aff.add_coefficient_val(dt, pos, -1)
-    elif rel == ">=":
-        return aff.neg().add_coefficient_val(dt, pos, 1)
-    elif rel == "<":
-        return (aff-1).add_coefficient_val(dt, pos, -1)
-    elif rel == ">":
-        return (aff+1).neg().add_coefficient_val(dt, pos, 1)
-    else:
-        raise ValueError("unknown value of 'rel': %s" % rel)
+    return base_index, length
 
 
 # {{{ simplify_pw_aff
 
-def simplify_pw_aff(pw_aff, context=None):
+def simplify_pw_aff(pw_aff: nisl.PwAff, context: nisl.Set | None = None):
     if context is not None:
         pw_aff = pw_aff.gist_params(context)
 
@@ -181,13 +150,13 @@ def simplify_pw_aff(pw_aff, context=None):
         restart = False
         did_something = False
 
-        pieces = pw_aff.get_pieces()
+        pieces = pw_aff.pieces()
         for i, (dom_i, aff_i) in enumerate(pieces):
             for j, (dom_j, aff_j) in enumerate(pieces):
                 if i == j:
                     continue
 
-                if aff_i.gist(dom_j).to_pw_aff().is_equal(aff_j):
+                if aff_i.gist(dom_j) == aff_j:
                     # aff_i is sufficient to cover aff_j, eliminate aff_j
                     new_pieces = pieces[:]
                     if i < j:
@@ -197,9 +166,10 @@ def simplify_pw_aff(pw_aff, context=None):
                         new_pieces.pop(i)
                         new_pieces.pop(j)
 
-                    pw_aff = isl.PwAff.alloc(dom_i | dom_j, aff_i)
+                    pw_aff = nisl.PwAff.from_piece_and_aff(dom_i | dom_j, aff_i)
                     for dom, aff in new_pieces:
-                        pw_aff = pw_aff.union_max(isl.PwAff.alloc(dom, aff))
+                        pw_aff = pw_aff.union_max(
+                            nisl.PwAff.from_piece_and_aff(dom, aff))
 
                     restart = True
                     did_something = True
@@ -211,7 +181,7 @@ def simplify_pw_aff(pw_aff, context=None):
         if not did_something:
             break
 
-    assert pw_aff.get_aggregate_domain() <= pw_aff.eq_set(old_pw_aff)
+    assert pw_aff.aggregate_domain() <= pw_aff.where("==", old_pw_aff)
 
     return pw_aff
 
@@ -221,22 +191,19 @@ def simplify_pw_aff(pw_aff, context=None):
 # {{{ static_*_of_pw_aff
 
 def static_extremum_of_pw_aff(
-            pw_aff: isl.PwAff,
+            pw_aff: nisl.PwAff,
             constants_only: bool,
-            set_method: Callable[[isl.PwAff, isl.Aff | isl.PwAff], isl.Set],
+            set_method: Callable[[nisl.PwAff, nisl.PwAff], nisl.Set],
             what: str,
-            context: isl.Set | isl.BasicSet | None,
-        ) -> isl.Aff:
+            context: nisl.Set | None,
+        ) -> nisl.Aff:
     if context is not None:
-        context = isl.align_spaces(
-               context, pw_aff.get_domain_space(),
-                obj_bigger_ok=True).params()
         pw_aff = pw_aff.gist(context)
 
-    pieces = pw_aff.get_pieces()
+    pieces = pw_aff.pieces()
     if len(pieces) == 1:
         (_, result), = pieces
-        if constants_only and not result.is_cst():
+        if constants_only and not result.is_constant():
             raise StaticValueFindingError(
                 f"a numeric {what} was not found for PwAff '{pw_aff}'")
         return result
@@ -244,12 +211,11 @@ def static_extremum_of_pw_aff(
     from pytools import flatten, memoize
 
     @memoize
-    def is_bounded(set: isl.Set):
-        assert set.dim(dim_type.set) == 0
+    def is_bounded(set: nisl.Set):
+        assert set.space.dim(DimType.out) == 0
         return (set
-                .move_dims(dim_type.set, 0,
-                    dim_type.param, 0, set.dim(dim_type.param))
-                .is_bounded())
+        .move_dims(set.space.dim_names(DimType.param), DimType.out)
+        .is_bounded())
 
     # put constant bounds with unbounded validity first
     order = [
@@ -261,13 +227,13 @@ def static_extremum_of_pw_aff(
 
     pieces = flatten([
             [(set, aff) for set, aff in pieces
-                if aff.is_cst() == want_is_constant
+                if aff.is_constant() == want_is_constant
                 and is_bounded(set) == want_is_bounded]
             for want_is_constant, want_is_bounded in order])
 
-    reference = pw_aff.get_aggregate_domain()
+    reference = pw_aff.aggregate_domain()
     if context is not None:
-        reference = reference.intersect(context)
+        reference = reference & context
 
     # {{{ find bounds that are also global bounds
 
@@ -277,10 +243,10 @@ def static_extremum_of_pw_aff(
             if use_gist:
                 candidate_aff = candidate_aff.gist(set)
 
-            if constants_only and not candidate_aff.is_cst():
+            if constants_only and not candidate_aff.is_constant():
                 continue
 
-            if reference <= set_method(pw_aff, candidate_aff):
+            if reference <= set_method(pw_aff, candidate_aff.as_pw_aff()):
                 return candidate_aff
 
     # }}}
@@ -290,42 +256,37 @@ def static_extremum_of_pw_aff(
 
 
 def static_min_of_pw_aff(
-            pw_aff: isl.PwAff,
+            pw_aff: nisl.PwAff,
             constants_only: bool,
-            context: isl.Set | isl.BasicSet | None = None,
-        ) -> isl.Aff:
-    return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.ge_set,
-            "minimum", context)
+            context: nisl.Set | None = None,
+        ) -> nisl.Aff:
+    return static_extremum_of_pw_aff(pw_aff, constants_only, nisl.PwAff.ge_set,
+    "minimum", context)
 
 
 def static_max_of_pw_aff(
-            pw_aff: isl.PwAff,
+            pw_aff: nisl.PwAff,
             constants_only: bool,
-            context: isl.Set | isl.BasicSet | None = None,
-        ) -> isl.Aff:
-    return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.le_set,
-            "maximum", context)
+            context: nisl.Set | None = None,
+        ) -> nisl.Aff:
+    return static_extremum_of_pw_aff(pw_aff, constants_only, nisl.PwAff.le_set,
+    "maximum", context)
 
 
 def static_value_of_pw_aff(
-            pw_aff: isl.PwAff,
+            pw_aff: nisl.PwAff,
             constants_only: bool,
-            context: isl.Set | isl.BasicSet | None = None,
-        ) -> isl.Aff:
-    return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.eq_set,
-            "value", context)
+            context: nisl.Set | None = None,
+        ) -> nisl.Aff:
+    return static_extremum_of_pw_aff(pw_aff, constants_only, nisl.PwAff.eq_set,
+    "value", context)
 
 # }}}
 
 
 # {{{ duplicate_axes
 
-SetT = TypeVar("SetT", isl.BasicSet, isl.Set)
-
-
-def _align_and_intersect(d1: SetT, d2: SetT) -> SetT:
-    d1, d2 = isl.align_two(d1, d2)
-    return d1 & d2
+SetT = TypeVar("SetT", nisl.BasicSet, nisl.Set)
 
 
 def duplicate_axes(
@@ -339,16 +300,16 @@ def duplicate_axes(
 
     .. testsetup::
 
-        >>> import islpy as isl
+        >>> import namedisl as nisl
         >>> from loopy.isl_helpers import duplicate_axes
 
     .. doctest::
 
-        >>> bset = isl.BasicSet("{[i, j]: 0<=i<10 and 0<=j<30}")
+        >>> bset = nisl.make_basic_set("{[i, j]: 0<=i<10 and 0<=j<30}")
         >>> duplicate_axes(bset, ("i",), ("i'",))
-        BasicSet("{ [i, j, i'] : 0 <= i <= 9 and 0 <= j <= 29 and 0 <= i' <= 9 }")
+        BasicSet("{ [i, i', j] : 0 <= i <= 9 and 0 <= i' <= 9 and 0 <= j <= 29 }")
     """
-    if not isinstance(isl_obj, (isl.Set, isl.BasicSet)):
+    if not isinstance(isl_obj, (nisl.Set, nisl.BasicSet)):
         return [
                 duplicate_axes(i, duplicate_inames, new_inames)
                 for i in isl_obj]
@@ -356,16 +317,7 @@ def duplicate_axes(
     if not duplicate_inames:
         return isl_obj
 
-    old_name_to_new_name = dict(zip(duplicate_inames, new_inames, strict=True))
-
-    dup_isl_obj = isl_obj
-
-    for old_name, (dt, pos) in isl_obj.get_var_dict().items():
-        dup_isl_obj = dup_isl_obj.set_dim_name(dt, pos,
-                                               old_name_to_new_name.get(old_name,
-                                                                        old_name))
-
-    return _align_and_intersect(dup_isl_obj, isl_obj)
+    return isl_obj.rename_dims(zip(duplicate_inames, new_inames, strict=True)) & isl_obj
 
 
 def duplicate_axes_multi(
@@ -380,62 +332,61 @@ def duplicate_axes_multi(
 # }}}
 
 
-def is_nonnegative(expr: ArithmeticExpression, over_set: isl.Set) -> bool | None:
+def is_nonnegative(expr: ArithmeticExpression, over_set: nisl.Set) -> bool | None:
     from pymbolic.primitives import Product
 
-    from loopy.symbolic import aff_from_expr
+    from loopy.symbolic import guarded_pwaff_from_expr
 
     if isinstance(expr, Product) and all(
             is_nonnegative(child, over_set) for child in expr.children):
         return True
 
-    space = over_set.get_space()
     try:
-        aff = aff_from_expr(space, -expr-1)
-    except Exception:
+        pwaff = guarded_pwaff_from_expr(over_set.var_pw_affs, expr)
+    except ExpressionToAffineConversionError:
         return None
-    expr_neg_set = isl.BasicSet.universe(space).add_constraint(
-            isl.Constraint.inequality_from_aff(aff))
 
-    return over_set.intersect(expr_neg_set).is_empty()
+    expr_neg_set = pwaff.where("<", 0)
+
+    return (over_set & expr_neg_set).is_empty()
 
 
 # {{{ convexify
 
-def convexify(domain: isl.Set) -> isl.BasicSet:
+def convexify(domain: nisl.Set) -> nisl.BasicSet:
     """Try a few ways to get *domain* to be a BasicSet, i.e.
     explicitly convex.
     """
 
-    if isinstance(domain, isl.BasicSet):
+    if isinstance(domain, nisl.BasicSet):
         return domain
 
-    dom_bsets = domain.get_basic_sets()
+    dom_bsets = domain.basic_sets()
     if len(dom_bsets) == 1:
         bset, = dom_bsets
         return bset
 
     hull_domain = domain.simple_hull()
-    if isl.Set.from_basic_set(hull_domain) <= domain:
+    if hull_domain.as_set() <= domain:
         return hull_domain
 
     domain = domain.coalesce()
 
-    dom_bsets = domain.get_basic_sets()
+    dom_bsets = domain.basic_sets()
     if len(dom_bsets) == 1:
         bset, = dom_bsets
         return bset
 
     hull_domain = domain.simple_hull()
-    if isl.Set.from_basic_set(hull_domain) <= domain:
+    if hull_domain.as_set() <= domain:
         return hull_domain
 
-    dom_bsets = domain.get_basic_sets()
+    dom_bsets = domain.basic_sets()
     assert len(dom_bsets) > 1
 
     print("PIECES:")
     for dbs in dom_bsets:
-        print("  %s" % (isl.Set.from_basic_set(dbs).gist(domain)))
+        print("  %s" % (dbs.as_set().gist(domain)))
     raise NotImplementedError("Could not find convex representation of set")
 
 # }}}
@@ -443,234 +394,60 @@ def convexify(domain: isl.Set) -> isl.BasicSet:
 
 # {{{ boxify
 
-def boxify(cache_manager, domain, box_inames, context):
-    var_dict = domain.get_var_dict(dim_type.set)
-    box_iname_indices = [var_dict[iname][1] for iname in box_inames]
-    n_nonbox_inames = min(box_iname_indices)
+def boxify(
+    cache: nisl.Cache,
+    domain: nisl.Set,
+    box_inames: frozenset[str],
+    context: nisl.Set | None
+):
+    nonbox_names = domain.space.set_names - box_inames
+    domain = domain.move_dims(nonbox_names, DimType.param)
 
-    assert box_iname_indices == list(range(
-            n_nonbox_inames, domain.dim(dim_type.set)))
+    result = domain.eliminate(box_inames)
 
-    n_old_parameters = domain.dim(dim_type.param)
-    domain = domain.move_dims(
-            dim_type.param, n_old_parameters, dim_type.set, 0, n_nonbox_inames)
-
-    result = domain
-    zero = isl.Aff.zero_on_domain(result.space)
-
-    for i in range(len(box_iname_indices)):
-        result = result.eliminate(dim_type.set, i, 1)
-
-        iname_aff = zero.add_coefficient_val(dim_type.in_, i, 1)
-
-        def add_in_dims(aff):
-            return aff.add_dims(dim_type.in_, len(box_inames))
-
-        iname_min = add_in_dims(cache_manager.dim_min(domain, i)).coalesce()
-        iname_max = add_in_dims(cache_manager.dim_max(domain, i)).coalesce()
-
-        iname_slab = (iname_min.le_set(iname_aff)
-                .intersect(iname_max.ge_set(iname_aff)))
-
-        for i, iname in enumerate(box_inames):
-            iname_slab = iname_slab.set_dim_name(dim_type.set, i, iname)
+    v = result.var_pw_affs
+    for box_iname in box_inames:
+        iname_slab = (
+            v[box_iname].where(">=", domain.dim_min(box_iname, cache=cache))
+                & v[box_iname].where("<=", domain.dim_max(box_iname, cache=cache))
+        )
 
         if context is not None:
-            iname_slab, context = isl.align_two(iname_slab, context)
             iname_slab = iname_slab.gist(context)
-        iname_slab = iname_slab.coalesce()
+            iname_slab = iname_slab.coalesce()
 
         result = result & iname_slab
 
-    result = result.move_dims(
-            dim_type.set, 0, dim_type.param, n_old_parameters, n_nonbox_inames)
+    result = result.move_dims(nonbox_names, DimType.out)
 
     return convexify(result)
 
 # }}}
 
 
-def project_out(set, inames):
-    for iname in inames:
-        var_dict = set.get_var_dict()
-        dt, dim_idx = var_dict[iname]
-        set = set.project_out(dt, dim_idx, 1)
-
-    return set
-
-
-def obj_involves_variable(obj, var_name):
-    loc = obj.get_var_dict().get(var_name)
-    if loc is not None and not obj.get_coefficient_val(*loc).is_zero():
-        return True
-
-    for idiv in obj.dim(dim_type.div):
-        if obj_involves_variable(obj.get_div(idiv), var_name):
-            return True
-
-    return False
-
-
-# {{{ get_simple_strides
-
-def get_simple_strides(bset, key_by="name"):
-    """Return a dictionary from inames to strides in bset. Each stride is
-    returned as a :class:`islpy.Val`. If no stride can be determined, the
-    corresponding key will not be present in the returned dictionary.
-
-    This only recognizes simple strides involving single variables.
-
-    :arg key_by: "index" or "name"
-    """
-    result = {}
-
-    comp_div_set_pieces = convexify(bset.compute_divs()).get_basic_sets()
-    assert len(comp_div_set_pieces) == 1
-    bset, = comp_div_set_pieces
-
-    def _get_indices_and_coeffs(obj, dts):
-        result = []
-        for dt in dts:
-            for dim_idx in range(obj.dim(dt)):
-                coeff_val = obj.get_coefficient_val(dt, dim_idx)
-                if not coeff_val.is_zero():
-                    result.append((dt, dim_idx, coeff_val))
-
-        return result
-
-    for cns in bset.get_constraints():
-        if not cns.is_equality():
-            continue
-        aff = cns.get_aff()
-
-        # recognizes constraints of the form
-        #  -i0 + 2*floor((i0)/2) == 0
-
-        divs_with_coeffs = _get_indices_and_coeffs(aff, [dim_type.div])
-        if len(divs_with_coeffs) != 1:
-            continue
-
-        (_, idiv, div_coeff), = divs_with_coeffs
-
-        div = aff.get_div(idiv)
-
-        # check for sub-divs
-        if _get_indices_and_coeffs(div, [dim_type.div]):
-            # found one -> not supported
-            continue
-
-        denom = div.get_denominator_val().to_python()
-
-        # if the coefficient in front of the div is not the same as the denominator
-        if not div_coeff.div(denom).is_one():
-            # not supported
-            continue
-
-        inames_and_coeffs = _get_indices_and_coeffs(
-                div, [dim_type.param, dim_type.in_])
-
-        if len(inames_and_coeffs) != 1:
-            continue
-
-        (dt, dim_idx, coeff), = inames_and_coeffs
-
-        if not (coeff * denom).is_one():
-            # not supported
-            continue
-
-        inames_and_coeffs = _get_indices_and_coeffs(
-                aff, [dim_type.param, dim_type.in_])
-
-        if len(inames_and_coeffs) != 1:
-            continue
-
-        (outer_dt, outer_dim_idx, outer_coeff), = inames_and_coeffs
-        if (not outer_coeff.neg().is_one()
-                or (outer_dt, outer_dim_idx) != (dt, dim_idx)):
-            # not supported
-            continue
-
-        if key_by == "name":
-            key = bset.get_dim_name(dt, dim_idx)
-        elif key_by == "index":
-            key_dt = dt if dt != dim_type.in_ else dim_type.set
-
-            key = (key_dt, dim_idx)
-        else:
-            raise ValueError("invalid value of 'key_by")
-
-        result[key] = denom
-
-    return result
-
-# }}}
-
-
-# {{{ find_max_of_pwaff_with_params
-
-def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
-    if n_allowed_params is None:
-        return pw_aff
-
-    extra_dim_idx = pw_aff.dim(dim_type.param,)
-    pw_aff = pw_aff.add_dims(dim_type.param, 1)
-
-    zero = isl.Aff.zero_on_domain(pw_aff.domain().space)
-    extra_dim = zero.set_coefficient_val(dim_type.param, extra_dim_idx, 1)
-
-    pw_aff_set = pw_aff.eq_set(extra_dim)
-
-    pw_aff_set = pw_aff_set.move_dims(
-            dim_type.set, 0, dim_type.param, n_allowed_params,
-            pw_aff_set.dim(dim_type.param) - n_allowed_params)
-
-    return pw_aff_set.dim_max(pw_aff_set.dim(dim_type.set)-1)
-
-# }}}
-
-
 # {{{ subst_into_pw(qpolynomial|aff)
 
-HasNamesT = TypeVar("HasNamesT", isl.PwQPolynomial, isl.BasicSet, isl.PwAff)
-
-
-def set_dim_name(
-             obj: HasNamesT,
-             dt: dim_type,
-             pos: int,
-             name: str,
-         ) -> HasNamesT:
-    assert isinstance(name, str)
-    if isinstance(obj, (isl.PwQPolynomial, isl.BasicSet)):
-        return obj.set_dim_name(dt, pos, name)
-    elif isinstance(obj, isl.PwAff):
-        # work around missing isl_pw_aff_set_dim_name for now.
-        # https://github.com/inducer/loopy/pull/233/files#r580594032
-        return obj.set_dim_id(dt, pos, isl.Id.read_from_str(obj.get_ctx(), name))
-    else:
-        raise NotImplementedError(f"not implemented for {type(obj)}.")
-
-
-PwAffOrPolynomialT = TypeVar("PwAffOrPolynomialT", isl.PwAff, isl.PwQPolynomial)
+SubstableT = TypeVar("SubstableT", nisl.PwAff, nisl.PwQPolynomial, nisl.Set)
 
 
 def get_param_subst_domain(
-            new_space: isl.Space,
-            base_obj: PwAffOrPolynomialT,
+            new_space: nisl.Space,
+            base_obj: SubstableT,
             subst_dict: Mapping[str, Expression],
-        ) -> tuple[PwAffOrPolynomialT, isl.BasicSet, Mapping[str, Expression]]:
+        ) -> tuple[
+            SubstableT, nisl.Set,
+            Mapping[str, Expression], Collection[str]]:
     """Modify the :mod:`islpy` object *base_obj* to incorporate parameters for
     the keys of *subst_dict*, and rename existing parameters to include a
     trailing prime.
 
-    :arg new_space: A :class:`islpy.Space` for that contains the keys of
-        *subst_dict*
+    :arg new_space: contains the keys of *subst_dict*
     :arg subst_dict: A dictionary mapping parameters occurring in *base_obj*
         to their values in terms of variables in *new_space*
-    :returns: a tuple ``(base_obj, subst_domain, subst_dict)``, where
+    :returns: a tuple ``(base_obj, subst_domain, subst_dict, primed_names)``, where
         *base_obj* is the passed *base_obj* with the space extended to cover
-        the new parameters in *new_space*, *subst_domain* is an
-        :class:`islpy.BasicSet` incorporating the constraints from *subst_dict*
+        the new parameters in *new_space*, *subst_domain* is the set
+        incorporating the constraints from *subst_dict*
         and existing in the same space as *base_obj*, and *subst_dict*
         is a copy of the passed *subst_dict* modified to incorporate primed
         variable names in the keys.
@@ -678,14 +455,16 @@ def get_param_subst_domain(
 
     # {{{ rename subst_dict keys and base_obj parameters to include trailing prime
 
-    i_begin_subst_space = base_obj.dim(dim_type.param)
-
-    new_subst_dict = {}
-    for i in range(i_begin_subst_space):
-        old_name = not_none(base_obj.space.get_dim_name(dim_type.param, i))
+    new_subst_dict: dict[str, Expression] = {}
+    renaming: list[tuple[str, str]] = []
+    primed_names: list[str] = []
+    for old_name in base_obj.space.param_names:
         new_name = old_name + "'"
         new_subst_dict[new_name] = subst_dict[old_name]
-        base_obj = set_dim_name(base_obj, dim_type.param, i, new_name)
+        primed_names.append(new_name)
+        renaming.append((old_name, new_name))
+
+    base_obj = base_obj.rename_dims(renaming)
 
     subst_dict = new_subst_dict
     del new_subst_dict
@@ -694,33 +473,31 @@ def get_param_subst_domain(
 
     # {{{ add dimensions to base_obj
 
-    base_obj = base_obj.add_dims(dim_type.param, new_space.dim(dim_type.param))
-    for i in range(new_space.dim(dim_type.param)):
-        base_obj = set_dim_name(base_obj, dim_type.param, i+i_begin_subst_space,
-                not_none(new_space.get_dim_name(dim_type.param, i)))
+    base_obj = base_obj.add_dims(DimType.param, new_space.param_names)
 
     # }}}
 
     # {{{ build subst_domain
 
-    subst_domain = isl.BasicSet.universe(base_obj.space).params()
+    subst_domain = nisl.Set.universe(
+        base_obj.space if DimType.out in base_obj.space.dimtype_to_names
+        else base_obj.space.as_set_space())
+    v = subst_domain.var_pw_affs
 
-    from loopy.symbolic import guarded_aff_from_expr
-    for i in range(i_begin_subst_space):
-        name = base_obj.space.get_dim_name(dim_type.param, i)
-        aff = guarded_aff_from_expr(subst_domain.space, subst_dict[name])
-        aff = aff.set_coefficient_val(dim_type.param, i, -1)
-        subst_domain = subst_domain.add_constraint(
-                isl.Constraint.equality_from_aff(aff))
+    from loopy.symbolic import guarded_pwaff_from_expr
+    for name in primed_names:
+        subst_domain = subst_domain & (
+            v[name].where("==",
+                guarded_pwaff_from_expr(v, subst_dict[name])))
 
     # }}}
 
-    return base_obj, subst_domain, subst_dict
+    return base_obj, subst_domain, subst_dict, primed_names
 
 
 def subst_into_pwqpolynomial(
-             new_space: isl.Space,
-             poly: isl.PwQPolynomial,
+             new_space: nisl.Space,
+             poly: nisl.PwQPolynomial,
              subst_dict: Mapping[str, Expression]
          ):
     """
@@ -733,29 +510,28 @@ def subst_into_pwqpolynomial(
         parameters of *new_space*. The expression must be affine in the param
         dims of *new_space*.
     """
-    if not poly.get_pieces():
+    if not poly.pieces():
         # pw poly is univserally zero
-        result = isl.PwQPolynomial.zero(new_space.insert_dims(dim_type.out, 0, 1))
-        assert result.dim(dim_type.out) == 1
+        result = nisl.PwQPolynomial.zero_on_domain(new_space)
         return result
 
-    i_begin_subst_space = poly.dim(dim_type.param)
-
-    poly, subst_domain, subst_dict = get_param_subst_domain(
+    poly, subst_domain, subst_dict, primed_names = get_param_subst_domain(
             new_space, poly, subst_dict)
 
     from loopy.symbolic import qpolynomial_from_expr, qpolynomial_to_expr
-    new_pieces = []
-    for valid_set, qpoly in poly.get_pieces():
+    new_pieces: list[tuple[nisl.Set, nisl.QPolynomial]] = []
+    for valid_set, qpoly in poly.pieces():
         valid_set = valid_set & subst_domain
         if valid_set.plain_is_empty():
             continue
 
-        valid_set = valid_set.project_out(dim_type.param, 0, i_begin_subst_space)
+        valid_set = valid_set.project_out(primed_names)
         from pymbolic.mapper.substitutor import SubstitutionMapper, make_subst_func
         sub_mapper = SubstitutionMapper(make_subst_func(subst_dict))
         expr = sub_mapper(qpolynomial_to_expr(qpoly))
-        qpoly = qpolynomial_from_expr(valid_set.space, expr)
+        qpoly = qpolynomial_from_expr({
+            k: v.as_pw_qpoly() for k, v in valid_set.var_pw_affs.items()
+        }, expr)
 
         new_pieces.append((valid_set, qpoly))
 
@@ -763,18 +539,17 @@ def subst_into_pwqpolynomial(
         raise ValueError("no pieces of PwQPolynomial survived the substitution")
 
     valid_set, qpoly = new_pieces[0]
-    result = isl.PwQPolynomial.alloc(valid_set, qpoly)
+    result = nisl.PwQPolynomial.from_piece_and_qpolynomial(valid_set, qpoly)
     for valid_set, qpoly in new_pieces[1:]:
         result = result.add_disjoint(
-                isl.PwQPolynomial.alloc(valid_set, qpoly))
+                nisl.PwQPolynomial.from_piece_and_qpolynomial(valid_set, qpoly))
 
-    assert result.dim(dim_type.out)
     return result
 
 
 def subst_into_pwaff(
-             new_space: isl.Space,
-             pwaff: isl.PwAff,
+             new_space: nisl.Space,
+             pwaff: nisl.PwAff,
              subst_dict: Mapping[str, Expression]
          ):
     """
@@ -793,56 +568,26 @@ def subst_into_pwaff(
 
     from loopy.symbolic import aff_from_expr, aff_to_expr
 
-    i_begin_subst_space = pwaff.dim(dim_type.param)
-    pwaff, subst_domain, subst_dict = get_param_subst_domain(
+    pwaff, subst_domain, subst_dict, primed_names = get_param_subst_domain(
             new_space, pwaff, subst_dict)
     subst_mapper = SubstitutionMapper(make_subst_func(subst_dict))
-    pwaffs = []
+    pwaffs: list[nisl.PwAff] = []
 
-    for valid_set, qpoly in pwaff.get_pieces():
+    for valid_set, qpoly in pwaff.pieces():
         valid_set = valid_set & subst_domain
         if valid_set.plain_is_empty():
             continue
 
-        valid_set = valid_set.project_out(dim_type.param, 0, i_begin_subst_space)
-        aff = aff_from_expr(valid_set.space, subst_mapper(aff_to_expr(qpoly)))
+        valid_set = valid_set.project_out(primed_names)
+        aff = aff_from_expr(valid_set.var_affs, subst_mapper(aff_to_expr(qpoly)))
 
-        pwaffs.append(isl.PwAff.alloc(valid_set, aff))
+        pwaffs.append(nisl.PwAff.from_piece_and_aff(valid_set, aff))
 
     if not pwaffs:
         raise ValueError("no pieces of PwAff survived the substitution")
 
     return reduce(lambda pwaff1, pwaff2: pwaff1.union_add(pwaff2),
                   pwaffs).coalesce()
-
-# }}}
-
-
-# {{{ add_and_name_dims
-
-def add_and_name_dims(isl_obj, dt, names):
-    """Append dimensions of the specified dimension type to the provided ISL
-    object, and set their names.
-
-    :arg isl_obj: An :class:`islpy.Set` or  :class:`islpy.Map` to which
-        new dimensions will be added.
-
-    :arg dt: An :class:`islpy.dim_type`, i.e., an :class:`int`, specifying the
-        dimension type for the new dimensions.
-
-    :arg names: An iterable of :class:`str` values specifying the names of the
-        new dimensions to be added.
-
-    :returns: An object of the same type as *isl_obj* with the new dimensions
-        added and named.
-
-    """
-
-    new_idx_start = isl_obj.dim(dt)
-    isl_obj = isl_obj.add_dims(dt, len(names))
-    for i, name in enumerate(names):
-        isl_obj = isl_obj.set_dim_name(dt, new_idx_start+i, name)
-    return isl_obj
 
 # }}}
 
@@ -866,45 +611,11 @@ def add_eq_constraint_from_names(isl_obj, var1, var2):
 
     """
     return isl_obj.add_constraint(
-               isl.Constraint.eq_from_names(
+               nisl.Constraint.eq_from_names(
                    isl_obj.space,
                    {1: 0, var1: 1, var2: -1}))
 
 # }}}
 
-
-# {{{ find_and_rename_dim
-
-def find_and_rename_dim(isl_obj, dt, old_name, new_name):
-    """Rename a dimension in an ISL object.
-
-    :arg isl_obj: An :class:`islpy.Set` or  :class:`islpy.Map` containing the
-        dimension to be renamed.
-
-    :arg dt: An :class:`islpy.dim_type` (i.e., :class:`int`) specifying the
-        dimension type containing the dimension to be renamed.
-
-    :arg old_name: A :class:`str` specifying the name of the dimension to be
-        renamed.
-
-    :arg new_name: A :class:`str` specifying the new name of the dimension to
-        be renamed.
-
-    :returns: An object of the same type as *isl_obj* with the dimension
-        *old_name* renamed to *new_name*.
-
-    """
-    return isl_obj.set_dim_name(
-            dt, isl_obj.to_set().find_dim_by_name(dt, old_name), new_name)
-
-# }}}
-
-
-def simplify_via_aff(expr):
-    warn("simplify_via_aff has moved to loopy.symbolic. "
-            "Importing it from loopy.isl_helpers will stop working in July 2022.",
-            DeprecationWarning, stacklevel=2)
-    from loopy.symbolic import simplify_via_aff
-    return simplify_via_aff(expr)
 
 # vim: foldmethod=marker

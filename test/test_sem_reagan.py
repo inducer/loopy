@@ -61,9 +61,9 @@ def test_tim2d(ctx_factory: cl.CtxFactory):
 
                 "Gux(a,b) := G$x[0,e,a,b]*ur(a,b)+G$x[1,e,a,b]*us(a,b)",
                 "Guy(a,b) := G$y[1,e,a,b]*ur(a,b)+G$y[2,e,a,b]*us(a,b)",
-                "lap[e,i,j]  = "
+                ("lap[e,i,j]  = "
                 "  simul_reduce(sum, m, D[m,i]*Gux(m,j))"
-                "+ simul_reduce(sum, m, D[m,j]*Guy(i,m))"
+                "+ simul_reduce(sum, m, D[m,j]*Guy(i,m))")
 
             ],
             [

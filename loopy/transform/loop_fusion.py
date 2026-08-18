@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, cast, final
 from constantdict import constantdict
 from typing_extensions import override
 
+import namedisl as nisl
+from namedisl import DimType
 from pytools import fset_union, memoize_on_first_arg
 
 from loopy.diagnostic import LoopyError
@@ -41,6 +43,7 @@ from loopy.symbolic import (
     Reduction,
     RuleAwareIdentityMapper,
     SubstitutionRuleMappingContext,
+    get_access_map_storage_names,
 )
 from loopy.typing import InameStr
 
@@ -386,12 +389,9 @@ def _compute_isinfusible_via_access_map(
 
     Helper used in :func:`_build_ldg`.
     """
-    import islpy as isl
-    import pymbolic.primitives as prim
 
     from loopy.diagnostic import UnableToDetermineAccessRangeError
     from loopy.kernel.tools import get_insn_access_map
-    from loopy.symbolic import isl_set_from_expr
 
     try:
         amap_pred = get_insn_access_map(kernel, insn_pred, var)
@@ -401,96 +401,50 @@ def _compute_isinfusible_via_access_map(
         # fallback to the safer option => infusible
         return True
 
-    amap_pred = amap_pred.project_out_except(
-        outer_inames | {candidate_pred}, [isl.dim_type.param, isl.dim_type.in_]
-    )
-    amap_succ = amap_succ.project_out_except(
-        outer_inames | {candidate_succ}, [isl.dim_type.param, isl.dim_type.in_]
-    )
+    storage_dim_names = get_access_map_storage_names(amap_pred)
+    assert set(storage_dim_names) == amap_pred.space.out_names
+    assert set(storage_dim_names) == amap_succ.space.out_names
 
-    # move outer inames to param
-    for outer_iname in sorted(outer_inames):
-        amap_pred = amap_pred.move_dims(
-            dst_type=isl.dim_type.param,
-            dst_pos=amap_pred.dim(isl.dim_type.param),
-            src_type=isl.dim_type.in_,
-            src_pos=amap_pred.get_var_dict()[outer_iname][1],
-            n=1,
-        )
-        amap_succ = amap_succ.move_dims(
-            dst_type=isl.dim_type.param,
-            dst_pos=amap_succ.dim(isl.dim_type.param),
-            src_type=isl.dim_type.in_,
-            src_pos=amap_succ.get_var_dict()[outer_iname][1],
-            n=1,
-        )
+    amap_pred = amap_pred.project_out_except(
+        outer_inames | {candidate_pred}, dim_type=DimType.in_)
+    amap_succ = amap_succ.project_out_except(
+        outer_inames | {candidate_succ}, dim_type=DimType.in_)
+
+    amap_pred = amap_pred.move_dims(outer_inames, DimType.param)
+    amap_succ = amap_succ.move_dims(outer_inames, DimType.param)
 
     # since both ranges denote the same variable they must be subscripted with
     # the same number of indices.
-    assert amap_pred.dim(isl.dim_type.out) == amap_succ.dim(isl.dim_type.out)
-    assert amap_pred.dim(isl.dim_type.in_) == 1
-    assert amap_succ.dim(isl.dim_type.in_) == 1
+    assert amap_pred.space.out_names == amap_succ.space.out_names
+    assert len(amap_pred.space.in_names) == 1
+    assert len(amap_succ.space.in_names) == 1
 
-    if amap_pred == amap_succ:
+    if amap_pred.equals(amap_succ):
         return False
 
-    ndim = amap_pred.dim(isl.dim_type.out)
+    amap_pred = amap_pred.rename_dims(
+        [(stor_dim_name, f"{stor_dim_name}_p") for stor_dim_name in storage_dim_names])
+    amap_succ = amap_succ.rename_dims(
+        [(stor_dim_name, f"{stor_dim_name}_s") for stor_dim_name in storage_dim_names])
 
-    # {{{ set the out dim names as `amap_a_dim0`, `amap_a_dim1`, ...
-
-    for idim in range(ndim):
-        amap_pred = amap_pred.set_dim_name(
-            isl.dim_type.out, idim, f"_lpy_amap_a_dim{idim}"
-        )
-        amap_succ = amap_succ.set_dim_name(
-            isl.dim_type.out, idim, f"_lpy_amap_b_dim{idim}"
-        )
-
-    # }}}
-
-    # {{{ amap_pred -> set_pred, amap_succ -> set_succ
-
-    # move all dimensions into domain
-    amap_pred = amap_pred.move_dims(
-        isl.dim_type.in_,
-        amap_pred.dim(isl.dim_type.in_),
-        isl.dim_type.out,
-        0,
-        amap_pred.dim(isl.dim_type.out),
-    )
-
-    amap_succ = amap_succ.move_dims(
-        isl.dim_type.in_,
-        amap_succ.dim(isl.dim_type.in_),
-        isl.dim_type.out,
-        0,
-        amap_succ.dim(isl.dim_type.out),
-    )
-    set_pred, set_succ = amap_pred.domain(), amap_succ.domain()
-    set_pred, set_succ = isl.align_two(set_pred, set_succ)
-
-    # }}}
+    set_pred = amap_pred.as_set()
+    set_succ = amap_succ.as_set()
+    set_pred, set_succ = nisl.align_two(set_pred, set_succ)
 
     # {{{ build the bset, both accesses access the same element
 
-    accesses_same_index_set = isl.BasicSet.universe(set_pred.space)
-    for idim in range(ndim):
-        cnstrnt = isl.Constraint.eq_from_names(
-            set_pred.space,
-            {f"_lpy_amap_a_dim{idim}": 1, f"_lpy_amap_b_dim{idim}": -1},
+    v = set_pred.var_pw_affs
+    accesses_same_index_set = set_pred.universe_like_me()
+    for stor_dim_name in storage_dim_names:
+        accesses_same_index_set = accesses_same_index_set & (
+            v[f"{stor_dim_name}_p"].where("==", v[f"{stor_dim_name}_s"])
         )
-        accesses_same_index_set = accesses_same_index_set.add_constraint(cnstrnt)
 
     # }}}
 
-    candidates_not_equal = isl_set_from_expr(
-        set_pred.space,
-        prim.Comparison(
-            prim.Variable(candidate_pred), ">", prim.Variable(candidate_succ)
-        ),
-    )
+    candidates_greater = v[candidate_pred].where(">", v[candidate_succ])
     return not (
-        set_pred & set_succ & accesses_same_index_set & candidates_not_equal
+        set_pred & set_succ & accesses_same_index_set & candidates_greater
     ).is_empty()
 
 
@@ -965,18 +919,11 @@ def rename_inames_in_batch(
     :arg batches: A mapping from ``new_iname`` to a collection of
         inames that are to be renamed to ``new_iname``.
     """
-    from loopy.transform.iname import remove_unused_inames, rename_inames
+    from loopy.transform.iname import rename_inames_multi
 
-    for new_iname, candidates in batches.items():
-        kernel = cast("LoopKernel", rename_inames(
-            kernel, candidates, new_iname,
+    old_inames = list(batches.values())
+    new_inames = list(batches.keys())
 
-            # type-ignore because remove_newly_unused_inames is added by a
-            # decorator in a non-type-able way.
-            remove_newly_unused_inames=False  # pyright: ignore[reportCallIssue]
-        ))
-
-    return remove_unused_inames(kernel, fset_union(batches.values()))
-
+    return rename_inames_multi(kernel, old_inames, new_inames)
 
 # vim: foldmethod=marker

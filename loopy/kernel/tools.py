@@ -27,25 +27,23 @@ THE SOFTWARE.
 import dataclasses
 import itertools
 import logging
+import operator
 import sys
 from collections.abc import Set as AbstractSet
 from functools import reduce
 from sys import intern
 from typing import (
     TYPE_CHECKING,
-    Concatenate,
     Generic,
-    ParamSpec,
     TypeVar,
     cast,
 )
 
 import numpy as np
-from typing_extensions import deprecated, override
+from typing_extensions import override
 
-import islpy as isl
+import namedisl as nisl
 import pymbolic.primitives as p
-from islpy import dim_type
 from pymbolic import Expression
 from pytools import fset_union, memoize_on_first_arg, natsorted, set_union
 
@@ -59,7 +57,7 @@ from loopy.kernel.instruction import (
     MultiAssignmentBase,
     _DataObliviousInstruction,
 )
-from loopy.symbolic import CombineMapper
+from loopy.symbolic import CombineMapper, get_access_map_storage_names
 from loopy.translation_unit import (
     CallableId,
     CallablesTable,
@@ -70,7 +68,7 @@ from loopy.translation_unit import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+    from collections.abc import Collection, Iterable, Mapping, Sequence
 
     from pymbolic import ArithmeticExpression
     from pytools.tag import Tag
@@ -336,7 +334,7 @@ def find_all_insn_inames(kernel: LoopKernel) -> dict[str, InameStrSet]:
             for iname in inames_old:
                 home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
 
-                for par in home_domain.get_var_names(dim_type.param):
+                for par in home_domain.space.param_names:
                     # Add all inames occurring in parameters of domains that my
                     # current inames refer to.
 
@@ -378,156 +376,92 @@ def find_all_insn_inames(kernel: LoopKernel) -> dict[str, InameStrSet]:
 
 # }}}
 
-
-# {{{ set operation cache
-
-SetLikeT = TypeVar("SetLikeT", isl.Set, isl.BasicSet)
+# {{{ domain change helpers
 
 
-def _eliminate_except(
-            set_: SetLikeT,
-            except_inames: Collection[str],
-            dts: Sequence[dim_type]
-        ) -> SetLikeT:
-    return set_.eliminate_except(except_inames, dts)
+class MultiDomainChanger:
+    """
+    Like :class:`DomainChanger`, but operates on multiple collections of inames.
+    """
 
+    kernel: LoopKernel
+    leaf_domain_indices: list[int | None]
 
-def _get_dim_max(set_: isl.BasicSet | isl.Set, idx: int):
-    if isinstance(set_, isl.BasicSet):
-        set_ = set_.to_set()
-    return set_.dim_max(idx)
+    def __init__(self, kernel: LoopKernel, inames: Sequence[Collection[InameStr]]):
+        """
+        :arg inames: a sequence of non-mutable iterable
+        """
 
+        self.kernel = kernel
+        self.leaf_domain_indices = []
+        for inms in inames:
+            if inms:
+                ldi = kernel.get_leaf_domain_indices(inms)
+                if len(ldi) > 1:
+                    raise RuntimeError("Inames '%s' require more than one leaf "
+                            "domain, which makes the domain change that is part "
+                            "of your current operation ambiguous." % ", ".join(inms))
 
-def _get_dim_min(set_: isl.BasicSet | isl.Set, idx: int):
-    if isinstance(set_, isl.BasicSet):
-        set_ = set_.to_set()
-    return set_.dim_min(idx)
+                self.leaf_domain_indices.append(ldi[0])
+            else:
+                self.leaf_domain_indices.append(None)
 
+    @property
+    def domains(self) -> Sequence[nisl.Set]:
+        trivial_domain = self.kernel.combine_domains(())
 
-ResultT = TypeVar("ResultT")
-P = ParamSpec("P")
+        result: list[nisl.Set] = []
+        for idx in self.leaf_domain_indices:
+            if idx is None:
+                result.append(trivial_domain)
+            else:
+                result.append(self.kernel.domains[idx])
 
-
-class SetOperationCacheManager:
-    cache: dict[int, list[tuple[isl.Set | isl.BasicSet, object]]]
-
-    def __init__(self) -> None:
-        self.cache = {}
-
-    def op(self,
-           set_: isl.Set | isl.BasicSet,
-           op: Callable[Concatenate[isl.Set | isl.BasicSet, P], ResultT],
-           *args: P.args,
-           **kwargs: P.kwargs) -> ResultT:
-        assert not kwargs
-
-        hashval = hash((set_, op, args))
-        bucket = self.cache.setdefault(hashval, [])
-
-        cmp_set = set_.to_set() if isinstance(set_, isl.BasicSet) else set_
-        for bkt_set, result in bucket:
-            if cmp_set.plain_is_equal(bkt_set):
-                return cast("ResultT", result)
-
-        result = op(set_, *args, **kwargs)
-        bucket.append((set_, result))
         return result
 
-    def dim_min(self, set_: isl.Set | isl.BasicSet, axis: int):
-        if set_.plain_is_empty():
-            raise LoopyError("domain '%s' is empty" % set_)
+    def get_domains_with(
+            self, replacements: Sequence[nisl.Set]) -> Sequence[nisl.Set]:
+        if len(replacements) != len(self.leaf_domain_indices):
+            raise LoopyError("replacements has incorrect length.")
 
-        return self.op(set_, _get_dim_min, axis)
+        index_to_replacements: dict[int | None, nisl.Set] = {}
+        for idx, repl in zip(self.leaf_domain_indices, replacements, strict=True):
+            try:
+                existing_repl = index_to_replacements[idx]
+            except KeyError:
+                index_to_replacements[idx] = repl
+            else:
+                if repl != existing_repl:
+                    raise LoopyError(
+                        "found multiple inconsistent replacements for the same "
+                        "domain.")
 
-    def dim_max(self, set_: isl.Set | isl.BasicSet, axis: int) -> isl.PwAff:
-        if set_.plain_is_empty():
-            raise LoopyError("domain '%s' is empty" % set_)
+        result = list(self.kernel.domains)
+        for idx, replacement in zip(
+                self.leaf_domain_indices, replacements, strict=True):
+            if idx is not None:
+                result[idx] = replacement
+            else:
+                result.append(replacement)
 
-        return self.op(set_, _get_dim_max, axis)
+        return result
 
-    def eliminate_except(self,
-             set_: SetLikeT,
-             except_inames: Collection[str],
-             dts: Sequence[dim_type]) -> SetLikeT:
-        # FIXME: I can't figure out how to teach the type system what's going on.
-        return self.op(set_, _eliminate_except, except_inames, dts)  # pyright: ignore[reportReturnType, reportArgumentType]
-
-    def base_index_and_length(
-            self,
-            set_: isl.Set | isl.BasicSet,
-            iname: int | InameStr,
-            context: isl.Set | isl.BasicSet | None = None,
-            n_allowed_params_in_length: int | None = None
-        ) -> tuple[ArithmeticExpression, ArithmeticExpression]:
-        """
-        :arg n_allowed_params_in_length: Simplifies the 'length'
-            argument so that only the first that many params
-            (in the domain of *set_*) occur.
-        """
-        if not isinstance(iname, int):
-            iname_to_dim = set_.space.get_var_dict()
-            idx = iname_to_dim[iname][1]
+    def get_kernel_with(self, replacements: Sequence[nisl.Set]):
+        if all(
+                replacement == domain
+                for domain, replacement in zip(
+                    self.domains, replacements, strict=True)):
+            return self.kernel
         else:
-            idx = iname
+            return self.kernel.copy(
+                domains=self.get_domains_with(replacements),
 
-        lower_bound_pw_aff = self.dim_min(set_, idx)
-        upper_bound_pw_aff = self.dim_max(set_, idx)
+                # Changing the domain might look like it wants to change grid
+                # sizes. Not true.
+                # (Relevant for 'slab decomposition')
+                overridden_get_grid_sizes_for_insn_ids=(
+                    self.kernel.get_grid_sizes_for_insn_ids))
 
-        from loopy.diagnostic import StaticValueFindingError
-        from loopy.isl_helpers import (
-            find_max_of_pwaff_with_params,
-            static_max_of_pw_aff,
-            static_min_of_pw_aff,
-            static_value_of_pw_aff,
-        )
-        from loopy.symbolic import pw_aff_to_expr
-
-        # {{{ first: try to find static lower bound value
-
-        try:
-            base_index_aff = static_value_of_pw_aff(
-                    lower_bound_pw_aff, constants_only=False,
-                    context=context)
-        except StaticValueFindingError:
-            base_index_aff = None
-
-        if base_index_aff is not None:
-            base_index = pw_aff_to_expr(base_index_aff)
-
-            length = find_max_of_pwaff_with_params(
-                    upper_bound_pw_aff - isl.PwAff.from_aff(base_index_aff) + 1,
-                    n_allowed_params_in_length)
-            length = pw_aff_to_expr(static_max_of_pw_aff(
-                    length, constants_only=False,
-                    context=context))
-
-            return base_index, length
-
-        # }}}
-
-        # {{{ if that didn't work, try finding a lower bound
-
-        base_index_aff = static_min_of_pw_aff(
-                lower_bound_pw_aff, constants_only=False,
-                context=context)
-
-        base_index = pw_aff_to_expr(base_index_aff)
-
-        length = find_max_of_pwaff_with_params(
-                upper_bound_pw_aff - isl.PwAff.from_aff(base_index_aff) + 1,
-                n_allowed_params_in_length)
-        length = pw_aff_to_expr(static_max_of_pw_aff(
-                length, constants_only=False,
-                context=context))
-
-        return base_index, length
-
-        # }}}
-
-# }}}
-
-
-# {{{ domain change helper
 
 class DomainChanger:
     """Helps change the domain responsible for *inames* within a kernel.
@@ -536,7 +470,8 @@ class DomainChanger:
     """
 
     kernel: LoopKernel
-    leaf_domain_index: int | None
+
+    _multi_changer: MultiDomainChanger
 
     def __init__(self, kernel: LoopKernel, inames: Collection[InameStr]):
         """
@@ -544,47 +479,21 @@ class DomainChanger:
         """
 
         self.kernel = kernel
-        if inames:
-            ldi = kernel.get_leaf_domain_indices(inames)
-            if len(ldi) > 1:
-                raise RuntimeError("Inames '%s' require more than one leaf "
-                        "domain, which makes the domain change that is part "
-                        "of your current operation ambiguous." % ", ".join(inames))
+        self._multi_changer = MultiDomainChanger(kernel, [inames])
 
-            self.leaf_domain_index, = ldi
-
-        else:
-            self.leaf_domain_index = None
+    @property
+    def leaf_domain_index(self) -> int | None:
+        return self._multi_changer.leaf_domain_indices[0]
 
     @property
     def domain(self):
-        if self.leaf_domain_index is None:
-            return self.kernel.combine_domains(())
-        else:
-            return self.kernel.domains[self.leaf_domain_index]
+        return self._multi_changer.domains[0]
 
-    @deprecated("use .domain instead")
-    def get_original_domain(self):
-        return self.domain
+    def get_domains_with(self, replacement: nisl.Set):
+        return self._multi_changer.get_domains_with([replacement])
 
-    def get_domains_with(self, replacement: isl.BasicSet):
-        result = list(self.kernel.domains)
-        if self.leaf_domain_index is not None:
-            result[self.leaf_domain_index] = replacement
-        else:
-            result.append(replacement)
-
-        return result
-
-    def get_kernel_with(self, replacement: isl.BasicSet):
-        return self.kernel.copy(
-                domains=self.get_domains_with(replacement),
-
-                # Changing the domain might look like it wants to change grid
-                # sizes. Not true.
-                # (Relevant for 'slab decomposition')
-                overridden_get_grid_sizes_for_insn_ids=(
-                    self.kernel.get_grid_sizes_for_insn_ids))
+    def get_kernel_with(self, replacement: nisl.Set):
+        return self._multi_changer.get_kernel_with([replacement])
 
 # }}}
 
@@ -738,7 +647,7 @@ def show_dependency_graph(*args, **kwargs):
 def is_domain_dependent_on_inames(kernel: LoopKernel,
         domain_index: int, inames: AbstractSet[str]) -> bool:
     dom = kernel.domains[domain_index]
-    dom_parameters = set(dom.get_var_names_not_none(dim_type.param))
+    dom_parameters = set(dom.space.param_names)
 
     # {{{ check for parenthood by loop bound iname
 
@@ -932,7 +841,7 @@ def assign_automatic_axes(
         """
         try:
             desired_length = kernel.get_constant_iname_length(iname)
-        except isl.Error:
+        except nisl.Error:
             # Likely unbounded, automatic assignment is not
             # going to happen for this iname.
             new_inames = dict(kernel.inames)
@@ -1057,7 +966,7 @@ def assign_automatic_axes(
             def get_iname_length(iname):
                 try:
                     return kernel.get_constant_iname_length(iname)
-                except isl.Error:
+                except nisl.Error:
                     return -1
             # assign longest auto axis inames first
             auto_axis_inames.sort(
@@ -1204,15 +1113,15 @@ def guess_var_shape(
                 shape = ()
         else:
             from loopy.isl_helpers import static_max_of_pw_aff
-            from loopy.symbolic import pw_aff_to_expr
+            from loopy.symbolic import aff_to_expr
 
             shape: Sequence[ArithmeticExpression] | None = []
-            for i in range(access_range.dim(dim_type.set)):
+            for i, axis_name in enumerate(get_access_map_storage_names(access_range)):
                 try:
                     shape.append(
-                            pw_aff_to_expr(static_max_of_pw_aff(
-                                kernel.cache_manager.dim_max(
-                                    access_range, i) + 1,
+                            aff_to_expr(static_max_of_pw_aff(
+                                access_range.dim_max(
+                                    axis_name, cache=kernel.isl_cache) + 1,
                                 constants_only=False)))
                 except Exception:
                     print("While trying to find shape axis %d of "
@@ -2211,17 +2120,17 @@ def get_call_graph(
 
 # {{{ get_outer_params
 
-def get_outer_params(domains):
+def get_outer_params(domains: Sequence[nisl.Set]):
     """
     Returns names of dims that appear only as params in *domains*.
 
-    :arg domains: An instance of :class:`list` of :class:`isl.BasicSet`.
+    :arg domains: An instance of :class:`list` of :class:`nisl.BasicSet`.
     """
-    all_inames = set()
-    all_params = set()
+    all_inames: set[InameStr] = set()
+    all_params: set[InameStr] = set()
     for dom in domains:
-        all_inames.update(dom.get_var_names(dim_type.set))
-        all_params.update(dom.get_var_names(dim_type.param))
+        all_inames.update(dom.space.set_names)
+        all_params.update(dom.space.param_names)
 
     from loopy.tools import intern_frozenset_of_ids
     return intern_frozenset_of_ids(all_params-all_inames)
@@ -2229,9 +2138,9 @@ def get_outer_params(domains):
 # }}}
 
 
-def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> isl.Aff:
+def get_hw_axis_base_for_codegen(kernel: LoopKernel, iname: str) -> nisl.Aff:
     """
-    Returns a :class:`isl.PwAff` hardware axes lower bound to serve as an
+    Returns a :class:`nisl.PwAff` hardware axes lower bound to serve as an
     offsetting expression
     during the hardware ina
     """
@@ -2280,9 +2189,8 @@ class _IndexCollector(CombineMapper[AbstractSet[tuple[Expression, ...]], []]):
         return frozenset()
 
 
-def _union_amaps(amaps: Sequence[isl.Map]):
-    import islpy as isl
-    return reduce(isl.Map.union, amaps[1:], amaps[0])
+def _union_amaps(amaps: Sequence[nisl.Map]):
+    return reduce(operator.or_, amaps[1:], amaps[0])
 
 
 def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
@@ -2301,7 +2209,7 @@ def get_insn_access_map(kernel: LoopKernel, insn_id: str, var: str):
 
     amaps = [
         get_access_map(
-            kernel.get_inames_domain(insn.within_inames).to_set(),
+            kernel.get_inames_domain(insn.within_inames),
             idx, kernel.assumptions
         )
         for idx in indices

@@ -27,7 +27,6 @@ import namedisl as nisl
 import numpy as np
 import pytest
 
-import islpy as isl
 import pyopencl as cl
 from pymbolic import var
 from pyopencl.tools import (  # ruff:ignore[unused-import]
@@ -78,10 +77,6 @@ def test_add_lexicographic_happens_after_is_strict_for_self() -> None:
 
     assert self_relation is not None
     assert previous_relation is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    self_relation = nisl.make_map(self_relation)
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    previous_relation = nisl.make_map(previous_relation)
     assert self_relation.equals(
         nisl.make_map("""
         [N] -> {
@@ -110,8 +105,6 @@ def test_add_lexicographic_happens_after_uses_domain_dimension_order() -> None:
     self_relation = kernel.id_to_insn["S"].happens_after["S"].instances_rel
 
     assert self_relation is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    self_relation = nisl.make_map(self_relation)
     assert self_relation.equals(
         nisl.make_map("""
         [NZ, NA] -> {
@@ -154,10 +147,6 @@ def test_add_lexicographic_happens_after_orders_mixed_loop_nests() -> None:
     assert kernel.id_to_insn["U"].happens_after.keys() == {"T", "U"}
     assert shared_nest_relation is not None
     assert disjoint_nest_relation is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    shared_nest_relation = nisl.make_map(shared_nest_relation)
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    disjoint_nest_relation = nisl.make_map(disjoint_nest_relation)
     assert shared_nest_relation.equals(
         nisl.make_map("""
         [NI, NJ, NK] -> {
@@ -185,8 +174,7 @@ def _get_precise_relation(
 ) -> nisl.Map:
     relation = kernel.id_to_insn[sink_id].happens_after[source_id].instances_rel
     assert relation is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    return nisl.make_map(relation)
+    return relation
 
 
 def test_affine_happens_after_transform_tiling() -> None:
@@ -442,7 +430,7 @@ def test_map_domain_transforms_precise_happens_after() -> None:
         """,
     )
     t_unit = dep.add_lexicographic_happens_after(t_unit)
-    transform_map = isl.BasicMap("""
+    transform_map = nisl.make_map("""
         [NI] -> {
             [i] -> [io, ii] :
                 i = 4*io + ii and 0 <= ii < 4
@@ -451,7 +439,7 @@ def test_map_domain_transforms_precise_happens_after() -> None:
 
     expected = dep.apply_affine_transform_to_happens_afters(
         t_unit.default_entrypoint,
-        nisl.make_map(transform_map.to_map()),
+        transform_map,
     )
     kernel = lp.map_domain(t_unit, transform_map).default_entrypoint
 
@@ -535,21 +523,21 @@ def test_splice_happens_after_as_consumer_inherits_branched_order() -> None:
                 i_before = i_after and j_before = j_after and
                 0 <= i_after < NI and 0 <= j_after < NJ
         }
-        """).as_isl())
+        """))
     a_after_q = HappensAfter(nisl.make_map("""
         [NI, NJ] -> {
             [i_after, j_after] -> [i_before] :
                 i_before = i_after and
                 0 <= i_after < NI and 0 <= j_after < NJ
         }
-        """).as_isl())
+        """))
     s_after_a = HappensAfter(nisl.make_map("""
         [NI, NJ] -> {
             [i_after, j_after] -> [i_before, j_before] :
                 i_before = i_after and j_before = j_after and
                 0 <= i_after < NI and 0 <= j_after < NJ
         }
-        """).as_isl())
+        """))
 
     new_happens_after = {
         "P": {"P": kernel.id_to_insn["P"].happens_after["P"]},
@@ -634,13 +622,13 @@ def test_splice_happens_after_as_consumer_unions_existing_order() -> None:
         [N] -> {
             [i_after] -> [i_before = i_after] : 0 <= i_after < N
         }
-        """).as_isl())
+        """))
     c_after_p = HappensAfter(nisl.make_map("""
         [N] -> {
             [ic_after, lane_after] -> [i_before = ic_after] :
                 0 <= ic_after < N and lane_after = 0
         }
-        """).as_isl())
+        """))
     new_happens_after = {
         "P": {"P": kernel.id_to_insn["P"].happens_after["P"]},
         "A": {
@@ -694,7 +682,7 @@ def test_splice_happens_after_as_consumer_handles_scalar_anchor() -> None:
             "P": {"P": kernel.id_to_insn["P"].happens_after["P"]},
             "A": {
                 "A": kernel.id_to_insn["A"].happens_after["A"],
-                "P": HappensAfter(nisl.make_map("{ [] -> [] }").as_isl()),
+                "P": HappensAfter(nisl.make_map("{ [] -> [] }")),
             },
             "C": {"C": kernel.id_to_insn["C"].happens_after["C"]},
         }[stmt.id])
@@ -741,7 +729,7 @@ def test_splice_happens_after_as_producer_redirects_branched_order() -> None:
                 i_before = i_after and j_before = j_after and
                 0 <= i_after < NI and 0 <= j_after < NJ
         }
-        """).as_isl())
+        """))
     g_after_q = HappensAfter(nisl.make_map("""
         [NI, NJ] -> {
             [tile_after, lane_after, jp_after] -> [i_before, j_before] :
@@ -750,28 +738,28 @@ def test_splice_happens_after_as_producer_redirects_branched_order() -> None:
                 0 <= 2*tile_after + lane_after < NI and
                 0 <= lane_after < 2 and 0 <= jp_after < NJ
         }
-        """).as_isl())
+        """))
     s_after_a = HappensAfter(nisl.make_map("""
         [NI, NJ] -> {
             [i_after, j_after] -> [i_before, j_before] :
                 i_before = i_after and j_before = j_after and
                 0 <= i_after < NI and 0 <= j_after < NJ
         }
-        """).as_isl())
+        """))
     s_after_q = HappensAfter(nisl.make_map("""
         [NI, NJ] -> {
             [i_after, j_after] -> [i_before, j_before] :
                 i_before = i_after and j_before = j_after and
                 0 <= i_after < NI and 0 <= j_after < NJ
         }
-        """).as_isl())
+        """))
     t_after_a = HappensAfter(nisl.make_map("""
         [NI, NJ] -> {
             [i_after] -> [i_before, j_before] :
                 i_before = i_after and
                 0 <= i_after < NI and 0 <= j_before < NJ
         }
-        """).as_isl())
+        """))
     happens_after = {
         "Q": {},
         "A": {"Q": a_after_q},
@@ -847,13 +835,13 @@ def test_splice_happens_after_as_producer_preserves_unmapped_order() -> None:
         [N] -> {
             [i_after] -> [i_before = i_after] : 0 <= i_after < N
         }
-        """).as_isl())
+        """))
     s_after_g = HappensAfter(nisl.make_map("""
         [N] -> {
             [i_after] -> [ip_before = i_after] :
                 0 <= i_after < N and 2*i_after >= N
         }
-        """).as_isl())
+        """))
     kernel = kernel.copy(instructions=tuple(
         stmt.copy(happens_after={
             "A": {},
@@ -915,7 +903,7 @@ def test_splice_happens_after_as_producer_handles_scalar_producer() -> None:
                         [i_after] -> [i_before = i_after] :
                             0 <= i_after < N
                     }
-                    """).as_isl()),
+                    """)),
             },
         }[stmt.id])
         for stmt in kernel.instructions
@@ -964,9 +952,9 @@ def test_splice_happens_after_as_consumer_and_producer() -> None:
     kernel = kernel.copy(instructions=tuple(
         stmt.copy(happens_after={
             "D": {},
-            "A": {"D": HappensAfter(same_instance.as_isl())},
+            "A": {"D": HappensAfter(same_instance)},
             "G": {},
-            "S": {"A": HappensAfter(same_instance.as_isl())},
+            "S": {"A": HappensAfter(same_instance)},
         }[stmt.id])
         for stmt in kernel.instructions
     ))
@@ -1026,7 +1014,7 @@ def test_combined_splice_accepts_independent_partial_maps() -> None:
         [N] -> {
             [i_after] -> [i_before = i_after] : 0 <= i_after < N
         }
-        """).as_isl())
+        """))
     kernel = kernel.copy(instructions=tuple(
         stmt.copy(happens_after={
             "D": {},
@@ -1224,8 +1212,6 @@ def test_relax_strict_happens_after_expands_substitution_rules() -> None:
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
@@ -1257,8 +1243,6 @@ def test_relax_strict_happens_after_finds_direct_hazards(
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -1358,8 +1342,6 @@ def test_relax_strict_happens_after_tracks_scalar_accesses() -> None:
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
@@ -1381,8 +1363,6 @@ def test_relax_strict_happens_after_tracks_scalar_statements() -> None:
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(nisl.make_map("{ [] -> [] }"))
 
 
@@ -1402,8 +1382,6 @@ def test_relax_strict_happens_after_selects_writers_per_cell() -> None:
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -1435,8 +1413,6 @@ def test_relax_strict_happens_after_records_readers_before_writer() -> None:
 
     required_order = kernel.id_to_insn["T"].happens_after["S"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
@@ -1482,8 +1458,6 @@ def test_relax_strict_happens_after_ignores_empty_coarse_edges() -> None:
 
     cross_order = kernel.id_to_insn["B"].happens_after["A"].instances_rel
     assert cross_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    cross_order = nisl.make_map(cross_order)
     empty_order = cross_order - cross_order
 
     a_insn = kernel.id_to_insn["A"]
@@ -1491,10 +1465,10 @@ def test_relax_strict_happens_after_ignores_empty_coarse_edges() -> None:
     kernel = kernel.copy(instructions=(
         a_insn.copy(happens_after={
             "A": a_insn.happens_after["A"],
-            "B": HappensAfter(empty_order.as_isl()),
+            "B": HappensAfter(empty_order),
         }),
         b_insn.copy(happens_after={
-            "A": HappensAfter(empty_order.as_isl()),
+            "A": HappensAfter(empty_order),
             "B": b_insn.happens_after["B"],
         }),
     ))
@@ -1521,10 +1495,6 @@ def test_relax_strict_happens_after_tracks_live_footprints_through_a_chain() -> 
     fallback_order = kernel.id_to_insn["D"].happens_after["A"].instances_rel
     assert recent_order is not None
     assert fallback_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    recent_order = nisl.make_map(recent_order)
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    fallback_order = nisl.make_map(fallback_order)
     assert recent_order.equals(
         nisl.make_map("""
             [NI, NJ] -> {
@@ -1571,7 +1541,7 @@ def test_relax_strict_happens_after_composes_user_supplied_relations() -> None:
                 [j_after] -> [i_before = 2*j_after] :
                     0 <= j_after < N
             }
-            """).as_isl()
+            """)
     )
     u_after_t = HappensAfter(
         instances_rel=nisl.make_map("""
@@ -1579,7 +1549,7 @@ def test_relax_strict_happens_after_composes_user_supplied_relations() -> None:
                 [k_after] -> [j_before = k_after - 1] :
                     1 <= k_after < N
             }
-            """).as_isl()
+            """)
     )
     kernel = kernel.copy(
         instructions=tuple(
@@ -1597,8 +1567,6 @@ def test_relax_strict_happens_after_composes_user_supplied_relations() -> None:
 
     required_order = kernel.id_to_insn["U"].happens_after["S"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
@@ -1623,13 +1591,13 @@ def test_relax_strict_happens_after_traverses_self_edges() -> None:
             [i_after] -> [i_before] :
                 0 <= i_before < i_after < 8
         }
-        """).as_isl())
+        """))
     c_after_p = HappensAfter(nisl.make_map("""
         {
             [i_after] -> [i_before = i_after] :
                 0 <= i_after < 8
         }
-        """).as_isl())
+        """))
     kernel = kernel.copy(instructions=tuple(
         stmt.copy(happens_after={
             "P": {},
@@ -1642,8 +1610,6 @@ def test_relax_strict_happens_after_traverses_self_edges() -> None:
 
     required_order = kernel.id_to_insn["C"].happens_after["P"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(nisl.make_map("""
         {
             [i_after] -> [i_before = i_after - 1] :
@@ -1663,7 +1629,7 @@ def test_relax_strict_happens_after_rejects_nontransitive_self_order() -> None:
             [i_after] -> [i_before = i_after - 1] :
                 1 <= i_after < 8
         }
-        """).as_isl())
+        """))
     kernel = kernel.copy(instructions=(
         kernel.id_to_insn["S"].copy(
             happens_after={"S": immediate_predecessor}
@@ -1708,8 +1674,6 @@ def test_relax_strict_happens_after_unions_branched_paths() -> None:
 
     required_order = kernel.id_to_insn["D"].happens_after["A"].instances_rel
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    required_order = nisl.make_map(required_order)
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
@@ -2121,7 +2085,7 @@ def test_numerical_affine_and_splicing_integration(
         {
             [i_after] -> [i_before = i_after] : 0 <= i_after < 64
         }
-        """).as_isl())
+        """))
     kernel = t_unit.default_entrypoint
     kernel = kernel.copy(instructions=tuple(
         stmt.copy(happens_after={
@@ -2186,8 +2150,7 @@ def test_verification_enforces_self_recurrence(
         .instances_rel
     )
     assert required_order is not None
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    assert nisl.make_map(required_order).equals(
+    assert required_order.equals(
         nisl.make_map("""
             [N] -> {
                 [i_after] -> [i_before = i_after - 1] :
@@ -2271,7 +2234,7 @@ def test_verification_does_not_order_vector_lanes() -> None:
                 [v_after] -> [v_before = v_after - 1] :
                     1 <= v_after < 4
             }
-            """).as_isl()
+            """)
     )
     kernel = kernel.copy(
         instructions=(

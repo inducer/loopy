@@ -1194,9 +1194,9 @@ def test_inlining_does_not_require_barrier(inline: bool):
     loopy_kernel_knl = lp.make_kernel(
         [
             "{ [i] : 0 <= i <= 1322 }",
-            "[m] -> { [j_outer, j_inner]"
+            ("[m] -> { [j_outer, j_inner]"
             " : j_inner >= 0 and -64j_outer <= j_inner <= 63"
-            " and j_inner < m - 64j_outer }",
+            " and j_inner < m - 64j_outer }"),
         ],
         """
         [i]: y[j_inner + j_outer*64, i] = fft([i]: y[j_inner + j_outer*64, i])

@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 from typing_extensions import override
 
-import islpy as isl
+import namedisl as nisl
 import pymbolic.primitives as p
 from pymbolic.mapper.differentiator import DifferentiationMapper, Smoothness
 
@@ -39,12 +39,12 @@ from pymbolic import ArithmeticExpression, Expression
 
 import loopy as lp
 from loopy.diagnostic import LoopyError
-from loopy.isl_helpers import make_slab
 from loopy.kernel import LoopKernel
 from loopy.symbolic import (
     ExpansionState,
     RuleAwareIdentityMapper,
     SubstitutionRuleMappingContext,
+    pwaff_from_expr,
 )
 
 
@@ -201,6 +201,9 @@ class LoopyDiffMapper(
 # {{{ diff context
 
 class DifferentiationContext:
+    kernel: LoopKernel
+    by_name: str
+
     def __init__(self, kernel, var_name_gen, by_name, diff_iname_prefix,
             additional_shape):
         self.kernel = kernel
@@ -225,15 +228,15 @@ class DifferentiationContext:
     def get_new_kernel(self):
         knl = self.kernel
 
-        new_args = knl.args + self.new_args
-        new_temp_vars = knl.temporary_variables.copy()
+        new_args = [*knl.args, *self.new_args]
+        new_temp_vars = dict(knl.temporary_variables)
         new_temp_vars.update(self.new_temporary_variables)
 
         knl = knl.copy(
                 args=new_args,
                 temporary_variables=new_temp_vars,
                 instructions=self.new_instructions,
-                domains=knl.domains + self.new_domains)
+                domains=[*knl.domains, *self.new_domains])
 
         del new_args
         del new_temp_vars
@@ -253,13 +256,16 @@ class DifferentiationContext:
         for s in self.additional_shape:
             diff_parameters.update(get_dependencies(s))
 
-        diff_domain = isl.BasicSet(
+        diff_domain = nisl.make_set(
                 "[%s] -> {[%s]}"
                 % (", ".join(diff_parameters), ", ".join(diff_inames)))
 
+        v = diff_domain.var_pw_affs
         for i, diff_iname in enumerate(diff_inames):
-            diff_domain = diff_domain & make_slab(
-                diff_domain.space, diff_iname, 0, self.additional_shape[i])
+            diff_domain = diff_domain & (
+                v[0].where("<=", v[diff_iname])
+                    & v[diff_iname].where("<",
+                        pwaff_from_expr(v, self.additional_shape[i])))
 
         self.new_domains.append(diff_domain)
 

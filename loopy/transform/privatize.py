@@ -221,7 +221,8 @@ def privatize_temporaries_with_inames(
 
             bounds = kernel.get_iname_bounds(iname, constants_only=False)
             priv_axis_iname_to_length[iname] = pw_aff_to_expr(
-                        static_max_of_pw_aff(bounds.size, constants_only=False))
+                        static_max_of_pw_aff(bounds.size, constants_only=False)
+                        .as_pw_aff())
             iname_to_lbound[iname] = pw_aff_to_expr(bounds.lower_bound_pw_aff)
 
     # }}}

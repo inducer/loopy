@@ -48,8 +48,7 @@ def vanilla():
                        """,
                        [lp.ValueArg("k", dtype="int32"),
                         lp.ValueArg("n", dtype="int32"),
-                        lp.GlobalArg("a", shape=(None, ),
-                                        dtype="int32")])
+                        lp.GlobalArg("a", dtype="int32")])
     return lp.assume(k, "k >= 0 and n >= k")
 
 

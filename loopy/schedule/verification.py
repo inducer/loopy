@@ -33,8 +33,6 @@ import namedisl as nisl
 from constantdict import constantdict
 from namedisl import DimType
 
-import islpy as isl
-
 from loopy import KernelState, LoopKernel, for_each_kernel
 from loopy.diagnostic import LoopyError
 from loopy.schedule import (
@@ -201,9 +199,8 @@ def _build_statement_timestamp_relations(
 
         full_str = dom_str + ", " + ran_str if dom_str else ran_str
 
-        # FIXME: isl -> named conversion
-        domain = nisl.make_set(
-            kernel.get_inames_domain(stmt.within_inames).to_set()
+        domain = kernel.get_inames_domain(
+            stmt.within_inames
         ).project_out_except(
             [*stmt.within_inames, *kernel.all_params()], dim_type="all"
         )
@@ -247,9 +244,8 @@ def _build_barrier_timestamp_relations(
         dom_str = ", ".join(inames)
         full_str = f"{dom_str}, {ran_str}" if dom_str else ran_str
 
-        # FIXME: isl -> named conversion
-        domain = nisl.make_set(
-            kernel.get_inames_domain(frozenset(inames)).to_set()
+        domain = kernel.get_inames_domain(
+            frozenset(inames)
         ).project_out_except(
             [*inames, *kernel.all_params()], dim_type="all"
         )
@@ -570,11 +566,7 @@ def verify_happens_after_is_enforced(kernel: LoopKernel) -> LoopKernel:
                     f"'{source_id}'"
                 )
 
-            required = nisl.make_map(
-                happens_after.instances_rel.reset_tuple_id(
-                    isl.dim_type.in_
-                ).reset_tuple_id(isl.dim_type.out)
-            )
+            required = happens_after.instances_rel
             enforced = _build_enforced_order(
                 kernel,
                 sink.id,

@@ -1513,7 +1513,7 @@ def test_finite_difference_expr_subst(ctx_factory: cl.CtxFactory):
     # Is loopy smart enough to understand that these are equal?
     _evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
 
-    fused0_knl = lp.affine_map_inames(fused_knl, "i", "inew", "inew+1=i")
+    fused0_knl = lp.map_domain(fused_knl, "{[i] -> [inew]: inew+1=i}")
 
     gpu_knl = lp.split_iname(
             fused0_knl, "inew", 128, outer_tag="g.0", inner_tag="l.0")
@@ -2008,11 +2008,7 @@ def test_tight_loop_bounds(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    if (queue.device.platform.vendor == "Intel(R) Corporation"
-            and queue.device.driver_version in [
-                "2019.8.7.0",
-                "2019.8.8.0",
-                ]):
+    if queue.device.platform.vendor == "Intel(R) Corporation":
         pytest.skip("Intel CL miscompiles this kernel")
 
     knl = lp.make_kernel(

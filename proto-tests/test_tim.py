@@ -30,9 +30,9 @@ def test_tim2d(ctx_factory):
             "ur(a,b) := sum_float32(@o, D[a,o]*u[e,o,b])",
             "us(a,b) := sum_float32(@o, D[b,o]*u[e,a,o])",
 
-            "lap[e,i,j]  = "
+            ("lap[e,i,j]  = "
             "  sum_float32(m, D[m,i]*(G[0,e,m,j]*ur(m,j) + G[1,e,m,j]*us(m,j)))"
-            "+ sum_float32(m, D[m,j]*(G[1,e,i,m]*ur(i,m) + G[2,e,i,m]*us(i,m)))"
+            "+ sum_float32(m, D[m,j]*(G[1,e,i,m]*ur(i,m) + G[2,e,i,m]*us(i,m)))")
 
             ],
             [
@@ -91,9 +91,9 @@ def test_red2d(ctx_factory):
             "ue(a,b) := u[e,a,b]",
             "ur(a,b) := sum_float32(@o, D[a,o]*ue(o,b))",
             "us(a,b) := sum_float32(@o, D[b,o]*ue(a,o))",
-            "lap[e,i,j]  = "
+            ("lap[e,i,j]  = "
             "  sum_float32(m, D[m,i]*(G[0,e,m,j]*ur(m,j)+G[1,e,m,j]*us(m,j)))"
-            "+ sum_float32(m, D[m,j]*(G[1,e,i,m]*ur(i,m)+G[2,e,i,m]*us(i,m)))"
+            "+ sum_float32(m, D[m,j]*(G[1,e,i,m]*ur(i,m)+G[2,e,i,m]*us(i,m)))")
             ],
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),
@@ -154,10 +154,10 @@ def test_tim3d(ctx_factory):
             "us(a,b,c) := sum_float32(@o, D[b,o]*u[e,a,o,c])",
             "ut(a,b,c) := sum_float32(@o, D[c,o]*u[e,a,b,o])",
 
-            "lap[e,i,j,k]  = "
+            ("lap[e,i,j,k]  = "
             "   sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"  # ruff:ignore[line-too-long]
             " + sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"  # ruff:ignore[line-too-long]
-            " + sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"  # ruff:ignore[line-too-long]
+            " + sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))")  # ruff:ignore[line-too-long]
              ],
             [
             lp.ArrayArg("u", dtype, shape=field_shape, order=order),

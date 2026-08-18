@@ -28,7 +28,6 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from typing_extensions import override
 
-import islpy as isl
 import pymbolic.primitives as p
 from pymbolic import Expression, var
 from pymbolic.mapper import Mapper
@@ -53,6 +52,7 @@ from loopy.symbolic import (
     LocalHardwareAxisIndex,
     ResolvedFunction,
     SubArrayRef,
+    flatten,
 )
 from loopy.target.c import CExpression
 from loopy.type_inference import TypeInferenceMapper, TypeReader
@@ -337,8 +337,8 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
                 result = self.make_subscript(
                         ary,
                         make_var(access_info.array_name),
-                        simplify_using_aff(
-                            self.kernel, self.rec_arith(subscript, "i")))
+                        flatten(self.rec_arith(
+                            simplify_using_aff(self.kernel, subscript), "i")))
 
             if access_info.vector_index is not None:
                 return self.codegen_state.ast_builder.add_vector_access(
@@ -391,11 +391,8 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
                 type_context: TypeContext):
         from loopy.symbolic import get_dependencies
         iname_deps = get_dependencies(expr) & self.kernel.all_inames()
-        domain = self.kernel.get_inames_domain(iname_deps)
 
-        assumption_non_param = isl.BasicSet.from_params(self.kernel.assumptions)
-        assumptions, domain = isl.align_two(assumption_non_param, domain)
-        domain = domain & assumptions
+        domain = self.kernel.get_inames_domain(iname_deps) & self.kernel.assumptions
 
         num_type = self.infer_type(expr.numerator)
         den_type = self.infer_type(expr.denominator)
@@ -405,9 +402,9 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
                                       "for floating-point types")
 
         from loopy.isl_helpers import is_nonnegative
-        num_nonneg = is_nonnegative(expr.numerator, domain.to_set()) \
+        num_nonneg = is_nonnegative(expr.numerator, domain) \
             or num_type.numpy_dtype.kind == "u"
-        den_nonneg = is_nonnegative(expr.denominator, domain.to_set()) \
+        den_nonneg = is_nonnegative(expr.denominator, domain) \
             or den_type.numpy_dtype.kind == "u"
 
         result_dtype = self.infer_type(expr)

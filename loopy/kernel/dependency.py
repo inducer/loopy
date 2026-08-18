@@ -117,11 +117,9 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         access_set = domain.add_dims(DimType.out, cell_names)
         coordinates = access_set.var_pw_affs
         for cell_name, index_expr in zip(cell_names, subscript, strict=True):
-            index_aff = nisl.make_aff(
-                aff_from_expr(
-                    access_set.space.as_isl_set_space(),
-                    index_expr,
-                )
+            index_aff = aff_from_expr(
+                access_set.var_affs,
+                index_expr,
             ).as_pw_aff()
 
             access_set = access_set & coordinates[cell_name].eq_set(index_aff)
@@ -140,9 +138,7 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
 
         stmt = self.kernel.id_to_insn[stmt_id]
         domain_inames = stmt.within_inames | self._additional_inames
-        inames_domain = nisl.make_set(
-            self.kernel.get_inames_domain(domain_inames).to_set()
-        )
+        inames_domain = self.kernel.get_inames_domain(domain_inames)
         access_rel = self._get_access_relation(inames_domain, subscript)
 
         additional_inames = self._additional_inames - stmt.within_inames
@@ -231,15 +227,7 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
 def _set_as_map(
     set_: nisl.Set, in_names: Collection[str]
 ) -> nisl.Map:
-    if in_names:
-        return set_.as_map(in_names)
-
-    # FIXME: Use Set.as_map directly once namedisl handles an empty input
-    # dimension space.
-    domain = set_.project_out(set_.space.out_names)
-    result = nisl.make_map_from_domain_and_range(domain, set_)
-    assert isinstance(result, nisl.Map)
-    return result
+    return set_.as_map(in_names)
 
 
 def apply_affine_transform_to_happens_afters(
@@ -267,10 +255,7 @@ def apply_affine_transform_to_happens_afters(
                 "transformation's input inames"
             )
 
-        # FIXME: Remove conversion once LoopKernel domains use namedisl.Set.
-        stmt_domain = nisl.make_set(
-            kernel.get_inames_domain(stmt.within_inames).to_set()
-        )
+        stmt_domain = kernel.get_inames_domain(stmt.within_inames)
         stmt_inames = stmt_domain.space.dimtype_to_names[DimType.out]
         nonxformed_names = tuple(
             name for name in stmt_inames if name not in transformed_inames
@@ -312,10 +297,7 @@ def apply_affine_transform_to_happens_afters(
                 new_happens_after[src_id] = happens_after
                 continue
 
-            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-            instances_rel = nisl.make_map(
-                happens_after.instances_rel
-            ).coalesce()
+            instances_rel = happens_after.instances_rel.coalesce()
             proxy_renames: list[tuple[str, str]] = []
 
             if sink_xform is not None:
@@ -341,8 +323,10 @@ def apply_affine_transform_to_happens_afters(
                 proxy_renames.extend(src_proxy_renames)
 
             instances_rel = instances_rel.rename_dims(proxy_renames).coalesce()
-            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-            new_happens_after[src_id] = HappensAfter(instances_rel.as_isl())
+            new_happens_after[src_id] = HappensAfter(
+                instances_rel,
+                variable_name=happens_after.variable_name,
+            )
 
         new_stmts.append(
             sink_stmt.copy(happens_after=constantdict(new_happens_after))
@@ -381,10 +365,7 @@ def _suffix_names(
 def _statement_instance_set(
     kernel: LoopKernel, stmt: InstructionBase, suffix: str
 ) -> nisl.Set:
-    # FIXME: Remove conversion once LoopKernel domains use namedisl.Set.
-    instance_set = nisl.make_set(
-        kernel.get_inames_domain(stmt.within_inames).to_set()
-    )
+    instance_set = kernel.get_inames_domain(stmt.within_inames)
     unused_inames = instance_set.space.out_names - stmt.within_inames
     if unused_inames:
         instance_set = instance_set.project_out(unused_inames)
@@ -433,8 +414,7 @@ def _saturate_cross_relations_with_self_relations(
                 "self-relation saturation requires precise dependencies"
             )
 
-        # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-        self_relation = nisl.make_map(happens_after.instances_rel).coalesce()
+        self_relation = happens_after.instances_rel.coalesce()
         if not (
             _compose_happens_after_relations(
                 self_relation, self_relation
@@ -456,8 +436,7 @@ def _saturate_cross_relations_with_self_relations(
                     "self-relation saturation requires precise dependencies"
                 )
 
-            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-            relation = nisl.make_map(happens_after.instances_rel).coalesce()
+            relation = happens_after.instances_rel.coalesce()
             if source_id != stmt.id:
                 self_relation = self_relations.get(stmt.id)
                 if self_relation is not None:
@@ -477,8 +456,10 @@ def _saturate_cross_relations_with_self_relations(
                         )
                     ).coalesce()
 
-            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-            new_happens_after[source_id] = HappensAfter(relation.as_isl())
+            new_happens_after[source_id] = HappensAfter(
+                relation,
+                variable_name=happens_after.variable_name,
+            )
 
         new_stmts.append(
             stmt.copy(happens_after=constantdict(new_happens_after))
@@ -532,6 +513,7 @@ def _add_or_union_happens_after(
     sink_id: str,
     source_id: str,
     instances_rel: nisl.Map,
+    variable_name: str | None = None,
 ) -> None:
     instances_rel = instances_rel.coalesce()
     if instances_rel.is_empty():
@@ -545,8 +527,7 @@ def _add_or_union_happens_after(
                 f"relations for '{sink_id}' and '{source_id}'"
             )
 
-        # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-        previous_rel = nisl.make_map(previous.instances_rel)
+        previous_rel = previous.instances_rel
         if (
             previous_rel.space.dimtype_to_names[DimType.in_]
             != instances_rel.space.dimtype_to_names[DimType.in_]
@@ -558,9 +539,13 @@ def _add_or_union_happens_after(
                 "statement instance spaces"
             )
         instances_rel = (previous_rel | instances_rel).coalesce()
+        if variable_name != previous.variable_name:
+            variable_name = None
 
-    # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-    happens_after[source_id] = HappensAfter(instances_rel.as_isl())
+    happens_after[source_id] = HappensAfter(
+        instances_rel,
+        variable_name=variable_name,
+    )
 
 
 def splice_happens_after_as_consumer(
@@ -613,13 +598,16 @@ def splice_happens_after_as_consumer(
                 f"'{anchor_id}' to '{source_id}'"
             )
 
-        # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
         inherited = _compose_happens_after_relations(
             consumer_to_anchor,
-            nisl.make_map(happens_after.instances_rel),
+            happens_after.instances_rel,
         )
         _add_or_union_happens_after(
-            new_happens_after, consumer_id, source_id, inherited
+            new_happens_after,
+            consumer_id,
+            source_id,
+            inherited,
+            variable_name=happens_after.variable_name,
         )
 
     return kernel.copy(instructions=tuple(
@@ -698,8 +686,7 @@ def splice_happens_after_as_producer(
                 f"'{sink.id}' to '{anchor_id}'"
             )
 
-        # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-        anchor_order = nisl.make_map(happens_after.instances_rel).coalesce()
+        anchor_order = happens_after.instances_rel.coalesce()
         redirected_anchor_order = anchor_order.intersect_range(
             mapped_anchor_instances
         ).coalesce()
@@ -714,13 +701,17 @@ def splice_happens_after_as_producer(
         if remaining_anchor_order.is_empty():
             del new_happens_after[anchor_id]
         else:
-            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
             new_happens_after[anchor_id] = HappensAfter(
-                remaining_anchor_order.as_isl()
+                remaining_anchor_order,
+                variable_name=happens_after.variable_name,
             )
 
         _add_or_union_happens_after(
-            new_happens_after, sink.id, producer_id, redirected_order
+            new_happens_after,
+            sink.id,
+            producer_id,
+            redirected_order,
+            variable_name=happens_after.variable_name,
         )
 
         new_stmts.append(
@@ -779,16 +770,12 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
 
         sources = (stmt,) if i == 0 else (stmt, kernel.instructions[i - 1])
 
-        after_domain = nisl.make_set(
-            kernel.get_inames_domain(stmt.within_inames).to_set()
-        )
+        after_domain = kernel.get_inames_domain(stmt.within_inames)
 
         after_inames = after_domain.space.dimtype_to_names[DimType.out]
         after_domain = _suffix_names(after_domain, "_after", DimType.out)
         for source in sources:
-            before_domain = nisl.make_set(
-                kernel.get_inames_domain(source.within_inames).to_set()
-            )
+            before_domain = kernel.get_inames_domain(source.within_inames)
 
             before_inames = before_domain.space.dimtype_to_names[DimType.out]
             before_domain = _suffix_names(before_domain, "_before", DimType.out)
@@ -831,7 +818,7 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
             )
 
             new_happens_after[source.id] = HappensAfter(
-                instances_rel=instances_rel.as_isl()
+                instances_rel=instances_rel
             )
 
         new_stmts.append(stmt.copy(happens_after=new_happens_after))
@@ -910,11 +897,7 @@ def _relax_strict_happens_after_inner(
             ].happens_after.get(source_id)
             if self_happens_after is not None:
                 assert self_happens_after.instances_rel is not None
-                # FIXME: Remove conversion once HappensAfter stores
-                # namedisl.Map.
-                self_relation = nisl.make_map(
-                    self_happens_after.instances_rel
-                )
+                self_relation = self_happens_after.instances_rel
                 dominated = candidates & _compose_happens_after_relations(
                     candidates, self_relation
                 )
@@ -934,14 +917,20 @@ def _relax_strict_happens_after_inner(
                 combined_order = required_order
             else:
                 assert previous.instances_rel is not None
-                # FIXME: remove named conversion
-                previous_instances_rel = nisl.make_map(previous.instances_rel)
+                previous_instances_rel = previous.instances_rel
                 combined_order = (
                     required_order | previous_instances_rel
                 ).coalesce()
 
-            # FIXME: remove unnamed conversion
-            happens_after[source_id] = HappensAfter(combined_order.as_isl())
+            variable_name = (
+                var
+                if previous is None or previous.variable_name == var
+                else None
+            )
+            happens_after[source_id] = HappensAfter(
+                combined_order,
+                variable_name=variable_name,
+            )
 
         return _set_as_map(
             candidates.domain(), in_names=sink_names
@@ -1010,8 +999,7 @@ def _relax_strict_happens_after_inner(
                     "defined to use precise dependency finding machinery."
                 )
 
-            # FIXME: removed named conversion
-            src_instances_rel = nisl.make_map(src_happens_after.instances_rel)
+            src_instances_rel = src_happens_after.instances_rel
             outgoing_instances_rel = normalize_interface_and_compose(
                 incoming_instances_rel, src_instances_rel
             ).coalesce()
@@ -1065,8 +1053,7 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
                 continue
 
             assert happens_after.instances_rel is not None
-            # FIXME: Remove conversion once HappensAfter stores namedisl.Map.
-            relation = nisl.make_map(happens_after.instances_rel)
+            relation = happens_after.instances_rel
             if not relation.is_empty():
                 dependencies.add(source_id)
 
@@ -1108,7 +1095,7 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
                         source_id,
                         var,
                         sink_access_type,
-                        nisl.make_map(happens_after.instances_rel),
+                        happens_after.instances_rel,
                         access_relation,
                         rel_finder,
                         new_happens_after,
