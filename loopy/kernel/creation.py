@@ -1089,6 +1089,8 @@ def parse_domains(
             dom = nisl.to_named(dom).as_set()
         elif isinstance(dom, nisl.BasicSet):
             dom = dom.as_set()
+        elif isinstance(dom, nisl.Set):
+            pass
         else:
             raise TypeError(f"unexpected type of domain {i+1} (1-based)")
 
