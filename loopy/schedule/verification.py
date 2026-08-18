@@ -204,7 +204,9 @@ def _build_statement_timestamp_relations(
         # FIXME: isl -> named conversion
         domain = nisl.make_set(
             kernel.get_inames_domain(stmt.within_inames).to_set()
-        ).project_out_except([*stmt.within_inames, *kernel.all_params()])
+        ).project_out_except(
+            [*stmt.within_inames, *kernel.all_params()], dim_type="all"
+        )
 
         if stmt.within_inames:
             reln = nisl.make_set(f"{{[{full_str}]}}").as_map(stmt.within_inames)
@@ -248,7 +250,9 @@ def _build_barrier_timestamp_relations(
         # FIXME: isl -> named conversion
         domain = nisl.make_set(
             kernel.get_inames_domain(frozenset(inames)).to_set()
-        ).project_out_except([*inames, *kernel.all_params()])
+        ).project_out_except(
+            [*inames, *kernel.all_params()], dim_type="all"
+        )
 
         if inames:
             relation = nisl.make_set(f"{{[{full_str}]}}").as_map(inames)
