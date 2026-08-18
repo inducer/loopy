@@ -1069,7 +1069,7 @@ def parse_domains(
     result: list[nisl.Set] = []
     used_inames: set[InameStr] = set()
 
-    for dom in domains:
+    for i, dom in enumerate(domains):
         if isinstance(dom, str):
             if not dom.lstrip().startswith("["):
                 # i.e. if no parameters are already given
@@ -1079,17 +1079,18 @@ def parse_domains(
                 dom = "[{}] -> {}".format(",".join(sorted(parameters)), dom)
 
             try:
-                dom = isl.BasicSet.read_from_str(isl.DEFAULT_CONTEXT, dom)
+                dom = nisl.make_set(dom)
             except Exception:
                 print("failed to parse domain '%s'" % dom)
                 raise
-        else:
-            assert isinstance(dom, (isl.Set, isl.BasicSet))
-            # assert dom.get_ctx() == ctx
-
-        dom = nisl.to_named(dom)
-        if isinstance(dom, nisl.BasicSet):
+        elif isinstance(dom, isl.Set):
+            dom = nisl.to_named(dom)
+        elif isinstance(dom, isl.BasicSet):
+            dom = nisl.to_named(dom).as_set()
+        elif isinstance(dom, nisl.BasicSet):
             dom = dom.as_set()
+        else:
+            raise TypeError(f"unexpected type of domain {i+1} (1-based)")
 
         for iname in dom.space.set_names:
             if iname in used_inames:
