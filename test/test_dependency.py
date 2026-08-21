@@ -1098,6 +1098,29 @@ def test_access_relation_finder_tracks_reads_and_writes_per_statement() -> None:
     )
 
 
+def test_access_relation_finder_handles_value_arg_subscript() -> None:
+    t_unit = lp.make_kernel(
+        "{ [i] : 0 <= i < N }",
+        "out[i] = a[offset + i] {id=S}",
+        [
+            lp.GlobalArg("a", shape=("N + offset",)),
+            lp.ValueArg("offset", np.int32),
+            "...",
+        ],
+    )
+
+    kernel = t_unit.default_entrypoint
+    insn = kernel.id_to_insn["S"]
+    rel_find = dep.AccessRelationFinder(kernel)
+    rel_find(insn.expression, insn.id, dep.AccessType.read)
+
+    assert rel_find.read_relations["S"]["a"].equals(nisl.make_map("""
+        [N, offset] -> {
+            [i] -> [ax_0 = offset + i] : 0 <= i < N
+        }
+        """))
+
+
 def test_access_relation_names_do_not_clash_with_inames() -> None:
     t_unit = lp.make_kernel(
         """
@@ -1396,7 +1419,7 @@ def test_relax_strict_happens_after_selects_writers_per_cell() -> None:
     )
 
 
-def test_relax_strict_happens_after_records_readers_before_writer() -> None:
+def test_relax_strict_happens_after_selects_live_readers() -> None:
     t_unit = lp.make_kernel(
         "{ [i] : 0 <= i < N }",
         """
@@ -1416,12 +1439,19 @@ def test_relax_strict_happens_after_records_readers_before_writer() -> None:
     assert required_order.equals(
         nisl.make_map("""
             [N] -> {
-                [i_after] -> [i_before] :
-                    0 <= i_before <= 1 and
-                    i_before <= i_after < N
+                [i_after] -> [i_before = i_after] :
+                    0 <= i_after <= 1 and i_after < N
             }
             """)
     )
+    self_order = kernel.id_to_insn["T"].happens_after["T"].instances_rel
+    assert self_order is not None
+    assert self_order.equals(nisl.make_map("""
+        [N] -> {
+            [i_after] -> [i_before = i_after - 1] :
+                0 < i_after < N
+        }
+        """))
 
 
 @pytest.mark.parametrize(
@@ -1513,12 +1543,83 @@ def test_relax_strict_happens_after_tracks_live_footprints_through_a_chain() -> 
             [NI, NJ] -> {
                 [i_after, j_after] ->
                 [i_before = i_after, j_before = j_after] :
-                    0 <= i_after < NI and
-                    0 <= j_after < NJ and
-                    i_after mod 2 = 1
+                    0 < i_after < NI and
+                    0 <= j_after < NJ
             }
             """)
     )
+
+
+def test_relax_strict_happens_after_selects_writers_globally() -> None:
+    t_unit = lp.make_kernel(
+        "{ : }",
+        """
+        a = 0 {id=W0}
+        a = 1 {id=W1}
+        out = a {id=R}
+        """,
+    )
+    kernel = dep.add_lexicographic_happens_after(t_unit).default_entrypoint
+    r_insn = kernel.id_to_insn["R"]
+    kernel = kernel.copy(instructions=tuple(
+        insn.copy(happens_after={
+            **insn.happens_after,
+            "W0": r_insn.happens_after["W1"],
+        })
+        if insn.id == "R" else insn
+        for insn in kernel.instructions
+    ))
+
+    kernel = dep.relax_strict_happens_after(kernel)
+
+    assert "W0" not in kernel.id_to_insn["R"].happens_after
+    required_order = kernel.id_to_insn["R"].happens_after["W1"].instances_rel
+    assert required_order is not None
+    assert required_order.equals(nisl.make_map("{ [] -> [] }"))
+
+
+def test_relax_strict_happens_after_keeps_incomparable_writers() -> None:
+    t_unit = lp.make_kernel(
+        [
+            "{ [q] : 0 <= q < 2 }",
+            "{ [p] : p = 0 }",
+            "{ [a_idx] : a_idx = 0 }",
+        ],
+        """
+        x[0] = p {id=P}
+        x[q] = q {id=Q}
+        out[a_idx] = x[0] {id=A}
+        """,
+    )
+    kernel = t_unit.default_entrypoint
+    q_after_p = HappensAfter(nisl.make_map("""
+        { [q_after = 1] -> [p_before = 0] }
+        """))
+    a_after_q = HappensAfter(nisl.make_map("""
+        { [a_idx_after = 0] -> [q_before] : 0 <= q_before < 2 }
+        """))
+    kernel = kernel.copy(instructions=tuple(
+        insn.copy(happens_after={
+            "P": {},
+            "Q": {"P": q_after_p},
+            "A": {"Q": a_after_q},
+        }[insn.id])
+        for insn in kernel.instructions
+    ))
+
+    kernel = dep.relax_strict_happens_after(kernel)
+
+    a_happens_after = kernel.id_to_insn["A"].happens_after
+    q_order = a_happens_after["Q"].instances_rel
+    p_order = a_happens_after["P"].instances_rel
+    assert q_order is not None
+    assert p_order is not None
+    assert q_order.equals(nisl.make_map("""
+        { [a_idx_after = 0] -> [q_before = 0] }
+        """))
+    assert p_order.equals(nisl.make_map("""
+        { [a_idx_after = 0] -> [p_before = 0] }
+        """))
 
 
 def test_relax_strict_happens_after_composes_user_supplied_relations() -> None:

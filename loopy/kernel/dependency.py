@@ -52,6 +52,7 @@ from loopy.symbolic import (
     SubstitutionRuleExpander,
     WalkMapper,
     aff_from_expr,
+    get_dependencies,
 )
 
 
@@ -81,6 +82,7 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
     _write_relations: dict[str, dict[str, nisl.Map]]
     _name_generator: UniqueNameGenerator
     _cell_names: list[str]
+    _constant_names: frozenset[str]
     _storage_variables: frozenset[str]
     _subst_expander: SubstitutionRuleExpander
 
@@ -91,6 +93,12 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         self._write_relations = {stmt.id: {} for stmt in kernel.instructions}
         self._name_generator = kernel.get_var_name_generator()
         self._cell_names = []
+        from loopy.kernel.data import ValueArg
+        self._constant_names = frozenset(
+            arg.name for arg in kernel.args
+            if isinstance(arg, ValueArg)
+            and arg.name not in kernel.get_written_variables()
+        )
         self._storage_variables = frozenset(kernel.non_iname_variable_names())
         self._subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
@@ -107,6 +115,16 @@ class AccessRelationFinder(WalkMapper[[str, AccessType]]):
         domain: nisl.Set,
         subscript: tuple[Expression, ...],
     ) -> nisl.Map:
+        subscript_dependencies = frozenset(
+            dependency
+            for index in subscript
+            for dependency in get_dependencies(index)
+        )
+        domain = domain.add_dims(
+            DimType.param,
+            (subscript_dependencies & self._constant_names)
+            - domain.space.param_names,
+        )
         instance_names = domain.space.dimtype_to_names[DimType.out]
         while len(self._cell_names) < len(subscript):
             axis = len(self._cell_names)
@@ -826,197 +844,139 @@ def add_lexicographic_happens_after(kernel: LoopKernel) -> LoopKernel:
     return kernel.copy(instructions=new_stmts)
 
 
-def _relax_strict_happens_after_inner(
+def _compute_reachable_happens_after(
     kernel: LoopKernel,
-    sink_id: str,
-    source_id: str,
-    var: str,
-    sink_access_type: AccessType,
-    incoming_instances_rel: nisl.Map,
-    live_access_rel: nisl.Map,
-    rel_finder: AccessRelationFinder,
-    happens_after: dict[str, HappensAfter],
-) -> Mapping[str, HappensAfter]:
-    """
-    Recursively finds conflicting accesses to *var* by *sink* and *source* to
-    determine the minimal required execution order between statement instances
-    of *source* and *sink*.
+    topological_order: list[str],
+) -> dict[str, dict[str, nisl.Map]]:
+    """Return every nonempty fine-grained branch of the supplied order."""
+    result: dict[str, dict[str, nisl.Map]] = {}
 
-    :arg sink_id: The ID of the statement whose instances will be in the domain
-    of the resulting :class:`namedisl.Map`.
+    for sink_id in topological_order:
+        reachable: dict[str, nisl.Map] = {}
+        self_happens_after = kernel.id_to_insn[sink_id].happens_after.get(sink_id)
+        if self_happens_after is not None:
+            assert self_happens_after.instances_rel is not None
+            if not self_happens_after.instances_rel.is_empty():
+                reachable[sink_id] = self_happens_after.instances_rel
 
-    :arg source_id: The ID of the statement whose instances will be in the range
-    of the resulting :class:`namedisl.Map`.
-
-    :arg var: The variable for which we are performing data dependence analysis.
-
-    :arg sink_access_type: A :class:`AccessType` describing whether *sink_id*
-    reads or writes *var*. This determines how live instances are removed from
-    *live_access_rel*.
-
-    :arg incoming_instances_rel: The incoming :class:`namedisl.Map` describing
-    how each sink and source instance are related.
-
-    :arg live_access_rel: A :class:`namedisl.Map` describing the set of live
-    accesses by *sink_id* to *var*. When conflicts are found, the conflicting
-    relation is used to remove elements from this relation.
-
-    :arg rel_finder: A :class:`AccessRelationFinder` with access relations
-    constructed before entering this routine.
-
-    :arg happens_after: A mapping from statement IDs to
-    :class:`loopy.HappensAfter` recording the dependencies from *sink* to all
-    statements in *happens_after*.
-
-    :returns: The updated precise dependencies for *sink_id*.
-    """
-
-    def record_conflicts(
-        source_relation: nisl.Map,
-        *,
-        select_most_recent_writer: bool,
-    ) -> nisl.Map:
-        source_relation = _suffix_names(source_relation, "_before", DimType.in_)
-
-        sink_names = incoming_instances_rel.space.in_names
-        cell_names = live_access_rel.space.out_names
-
-        candidate_set = (
-            live_access_rel.as_set()
-            & incoming_instances_rel.as_set()
-            & source_relation.as_set()
-        )
-        candidates = _set_as_map(
-            candidate_set,
-            in_names=(*sink_names, *cell_names)
-        )
-
-        if select_most_recent_writer:
-            self_happens_after = kernel.id_to_insn[
-                source_id
-            ].happens_after.get(source_id)
-            if self_happens_after is not None:
-                assert self_happens_after.instances_rel is not None
-                self_relation = self_happens_after.instances_rel
-                dominated = candidates & _compose_happens_after_relations(
-                    candidates, self_relation
-                )
-                candidates = (candidates - dominated).coalesce()
-
-        required_order = (
-            candidates
-            .as_set()
-            .project_out(cell_names)
-        )
-        required_order = _set_as_map(
-            required_order, in_names=sink_names
-        ).coalesce()
-        previous = happens_after.get(source_id)
-        if not required_order.is_empty():
-            if previous is None:
-                combined_order = required_order
+        for intermediate_id in topological_order:
+            if intermediate_id == sink_id:
+                sink_to_intermediate = None
             else:
-                assert previous.instances_rel is not None
-                previous_instances_rel = previous.instances_rel
-                combined_order = (
-                    required_order | previous_instances_rel
-                ).coalesce()
+                sink_to_intermediate = reachable.get(intermediate_id)
+                if sink_to_intermediate is None:
+                    continue
 
-            variable_name = (
-                var
-                if previous is None or previous.variable_name == var
-                else None
-            )
-            happens_after[source_id] = HappensAfter(
-                combined_order,
-                variable_name=variable_name,
-            )
+            intermediate = kernel.id_to_insn[intermediate_id]
+            for source_id, happens_after in intermediate.happens_after.items():
+                if source_id == intermediate_id:
+                    continue
 
-        return _set_as_map(
-            candidates.domain(), in_names=sink_names
-        ).coalesce()
+                assert happens_after.instances_rel is not None
+                edge_relation = happens_after.instances_rel
+                if edge_relation.is_empty():
+                    continue
 
-    def normalize_interface_and_compose(
-        incoming_relation: nisl.Map, next_edge_relation: nisl.Map
-    ) -> nisl.Map:
-        incoming_relation = incoming_relation.rename_dims(
-            (name, name[: len(name) - len("_before")])
-            for name in incoming_relation.space.out_names
-        )
+                if sink_to_intermediate is None:
+                    path_relation = edge_relation
+                else:
+                    path_relation = _compose_happens_after_relations(
+                        sink_to_intermediate, edge_relation
+                    )
+                if path_relation.is_empty():
+                    continue
 
-        next_edge_relation = next_edge_relation.rename_dims(
-            (name, name[: len(name) - len("_after")])
-            for name in next_edge_relation.space.in_names
-        )
-
-        return incoming_relation.apply_range(next_edge_relation)
-
-    match sink_access_type:
-        # Read-after-write
-        case AccessType.read:
-            if var in rel_finder.write_relations[source_id]:
-                source_relation = rel_finder.write_relations[source_id][var]
-
-                caught_accesses = record_conflicts(
-                    source_relation,
-                    select_most_recent_writer=True,
-                )
-                live_access_rel = live_access_rel - caught_accesses
-
-        # Write-after-write and write-after-read
-        case AccessType.write:
-            # Readers must be recorded before a writer retires the live
-            # sink-cell relation.
-            if var in rel_finder.read_relations[source_id]:
-                source_relation = rel_finder.read_relations[source_id][var]
-                _ = record_conflicts(
-                    source_relation,
-                    select_most_recent_writer=False,
+                previous = reachable.get(source_id)
+                reachable[source_id] = (
+                    path_relation
+                    if previous is None
+                    else (previous | path_relation).coalesce()
                 )
 
-            if var in rel_finder.write_relations[source_id]:
-                source_relation = rel_finder.write_relations[source_id][var]
+        result[sink_id] = reachable
 
-                caught_accesses = record_conflicts(
-                    source_relation,
-                    select_most_recent_writer=True,
-                )
-                live_access_rel = live_access_rel - caught_accesses
+    return result
 
-        case _:
-            raise ValueError("unknown access type")
 
-    # Continue backward through the strict-order graph.
-    if not live_access_rel.is_empty() and (sink_id != source_id):
-        source_stmt = kernel.id_to_insn[source_id]
-        for src_dep_id, src_happens_after in source_stmt.happens_after.items():
-            if src_dep_id == source_id:
+def _find_conflicting_access_candidates(
+    sink_access_relation: nisl.Map,
+    sink_to_source: nisl.Map,
+    source_access_relation: nisl.Map,
+) -> nisl.Map:
+    """Return ``(sink instance, cell) -> source instance`` conflicts."""
+    source_access_relation = _suffix_names(
+        source_access_relation, "_before", DimType.in_
+    )
+    sink_names = sink_to_source.space.in_names
+    cell_names = sink_access_relation.space.out_names
+    candidate_set = (
+        sink_access_relation.as_set()
+        & sink_to_source.as_set()
+        & source_access_relation.as_set()
+    )
+    return _set_as_map(
+        candidate_set, in_names=(*sink_names, *cell_names)
+    ).coalesce()
+
+
+def _discard_candidates_preceding_writers(
+    candidates: Mapping[str, nisl.Map],
+    writer_candidates: Mapping[str, nisl.Map],
+    reachable_order: Mapping[str, Mapping[str, nisl.Map]],
+) -> dict[str, nisl.Map]:
+    """Remove candidates with a same-cell writer ordered after them."""
+    result: dict[str, nisl.Map] = {}
+    for candidate_id, candidate_relation in candidates.items():
+        dominated = candidate_relation - candidate_relation
+        for writer_id, writer_relation in writer_candidates.items():
+            writer_to_candidate = reachable_order[writer_id].get(candidate_id)
+            if writer_to_candidate is None:
                 continue
 
-            if src_happens_after.instances_rel is None:
-                raise ValueError(
-                    "All `HappensAfter`s must have precise dependencies "
-                    "defined to use precise dependency finding machinery."
+            dominated = dominated | (
+                candidate_relation
+                & _compose_happens_after_relations(
+                    writer_relation, writer_to_candidate
                 )
-
-            src_instances_rel = src_happens_after.instances_rel
-            outgoing_instances_rel = normalize_interface_and_compose(
-                incoming_instances_rel, src_instances_rel
-            ).coalesce()
-
-            _relax_strict_happens_after_inner(
-                kernel,
-                sink_id,
-                src_dep_id,
-                var,
-                sink_access_type,
-                outgoing_instances_rel,
-                live_access_rel,
-                rel_finder,
-                happens_after,
             )
 
-    return happens_after
+        remaining = (candidate_relation - dominated).coalesce()
+        if not remaining.is_empty():
+            result[candidate_id] = remaining
+
+    return result
+
+
+def _record_candidate_order(
+    candidates: Mapping[str, nisl.Map],
+    sink_names: Collection[str],
+    cell_names: Collection[str],
+    var: str,
+    happens_after: dict[str, HappensAfter],
+) -> None:
+    for source_id, candidate_relation in candidates.items():
+        required_order = _set_as_map(
+            candidate_relation.as_set().project_out(cell_names),
+            in_names=sink_names,
+        ).coalesce()
+        previous = happens_after.get(source_id)
+        if previous is None:
+            combined_order = required_order
+        else:
+            assert previous.instances_rel is not None
+            combined_order = (
+                required_order | previous.instances_rel
+            ).coalesce()
+
+        variable_name = (
+            var
+            if previous is None or previous.variable_name == var
+            else None
+        )
+        happens_after[source_id] = HappensAfter(
+            combined_order,
+            variable_name=variable_name,
+        )
 
 
 @for_each_kernel
@@ -1060,6 +1020,9 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
         coarse_dependency_graph[stmt.id] = frozenset(dependencies)
 
     topological_order = compute_topological_order(coarse_dependency_graph)
+    reachable_order = _compute_reachable_happens_after(
+        kernel, topological_order
+    )
 
     rel_finder = AccessRelationFinder(kernel)
     for stmt in kernel.instructions:
@@ -1073,7 +1036,6 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
     new_stmts: list[InstructionBase] = []
     for sink_id in topological_order:
         new_happens_after: dict[str, HappensAfter] = {}
-        old_happens_after = kernel.id_to_insn[sink_id].happens_after
         for sink_access_type, access_relations in (
             (AccessType.read, rel_finder.read_relations[sink_id]),
             (AccessType.write, rel_finder.write_relations[sink_id]),
@@ -1082,22 +1044,56 @@ def relax_strict_happens_after(kernel: LoopKernel) -> LoopKernel:
                 access_relation = _suffix_names(
                     access_relation, "_after", DimType.in_
                 )
-                for source_id, happens_after in old_happens_after.items():
-                    if happens_after.instances_rel is None:
-                        raise ValueError(
-                            "All `HappensAfter`s must have precise dependencies "
-                            "defined to use precise dependency finding machinery."
+                writer_candidates: dict[str, nisl.Map] = {}
+                reader_candidates: dict[str, nisl.Map] = {}
+                for source_id, sink_to_source in reachable_order[sink_id].items():
+                    source_writes = rel_finder.write_relations[source_id]
+                    if var in source_writes:
+                        candidates = _find_conflicting_access_candidates(
+                            access_relation,
+                            sink_to_source,
+                            source_writes[var],
                         )
+                        if not candidates.is_empty():
+                            writer_candidates[source_id] = candidates
 
-                    _relax_strict_happens_after_inner(
-                        kernel,
-                        sink_id,
-                        source_id,
+                    if sink_access_type == AccessType.write:
+                        source_reads = rel_finder.read_relations[source_id]
+                        if var in source_reads:
+                            candidates = _find_conflicting_access_candidates(
+                                access_relation,
+                                sink_to_source,
+                                source_reads[var],
+                            )
+                            if not candidates.is_empty():
+                                reader_candidates[source_id] = candidates
+
+                most_recent_writers = _discard_candidates_preceding_writers(
+                    writer_candidates,
+                    writer_candidates,
+                    reachable_order,
+                )
+                sink_names = access_relation.space.in_names
+                cell_names = access_relation.space.out_names
+                _record_candidate_order(
+                    most_recent_writers,
+                    sink_names,
+                    cell_names,
+                    var,
+                    new_happens_after,
+                )
+
+                if sink_access_type == AccessType.write:
+                    live_readers = _discard_candidates_preceding_writers(
+                        reader_candidates,
+                        writer_candidates,
+                        reachable_order,
+                    )
+                    _record_candidate_order(
+                        live_readers,
+                        sink_names,
+                        cell_names,
                         var,
-                        sink_access_type,
-                        happens_after.instances_rel,
-                        access_relation,
-                        rel_finder,
                         new_happens_after,
                     )
 

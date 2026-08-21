@@ -34,6 +34,7 @@ from pyopencl.tools import (  # ruff:ignore[unused-import]
 from pytools.tag import Tag
 
 import loopy as lp
+import loopy.kernel.dependency as dep
 from loopy.version import (
     LOOPY_USE_LANGUAGE_VERSION_2018_2,  # ruff:ignore[unused-import]
 )
@@ -1345,7 +1346,13 @@ def test_prefetch_with_within(ctx_factory: cl.CtxFactory):
     lp.auto_test_vs_ref(ref_t_unit, ctx_factory(), t_unit)
 
 
-def test_privatize_with_nonzero_lbound(ctx_factory: cl.CtxFactory):
+@pytest.mark.parametrize(
+    "precise_dependencies", (False, True), ids=("legacy", "precise")
+)
+def test_privatize_with_nonzero_lbound(
+    ctx_factory: cl.CtxFactory,
+    precise_dependencies: bool,
+):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1362,6 +1369,10 @@ def test_privatize_with_nonzero_lbound(ctx_factory: cl.CtxFactory):
 
     knl = lp.privatize_temporaries_with_inames(knl, {"j"})
     assert knl["arange_10_to_14"].temporary_variables["tmp"].shape == (4,)
+    if precise_dependencies:
+        knl = dep.add_lexicographic_happens_after(knl)
+        knl = dep.relax_strict_happens_after(knl)
+
     _, (out, ) = knl(queue)
     np.testing.assert_allclose(out.get()[10:14], np.arange(10, 14))
 
