@@ -29,6 +29,7 @@ import pytest
 import pyopencl as cl
 
 import loopy as lp
+import loopy.kernel.dependency as dep
 
 
 logger = logging.getLogger(__name__)
@@ -195,7 +196,13 @@ def test_loop_fusion_constrained_by_outer_loop_deps(ctx_factory: cl.CtxFactory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-def test_loop_fusion_with_loop_carried_deps1(ctx_factory: cl.CtxFactory):
+@pytest.mark.parametrize(
+    "precise_dependencies", (False, True), ids=("legacy", "precise")
+)
+def test_loop_fusion_with_loop_carried_deps1(
+    ctx_factory: cl.CtxFactory,
+    precise_dependencies: bool,
+):
 
     ctx = ctx_factory()
     knl = lp.make_kernel(
@@ -226,6 +233,10 @@ def test_loop_fusion_with_loop_carried_deps1(ctx_factory: cl.CtxFactory):
         )
         == 1
     )
+
+    if precise_dependencies:
+        knl = dep.add_lexicographic_happens_after(knl)
+        knl = dep.relax_strict_happens_after(knl)
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 

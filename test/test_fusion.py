@@ -22,6 +22,7 @@ THE SOFTWARE.
 
 
 import numpy as np
+import pytest
 
 import namedisl as nisl
 import pyopencl as cl
@@ -30,6 +31,7 @@ from pyopencl.tools import (  # ruff:ignore[unused-import]
 )
 
 import loopy as lp
+import loopy.kernel.dependency as dep
 
 
 def test_two_kernel_fusion(ctx_factory: cl.CtxFactory):
@@ -57,7 +59,13 @@ def test_two_kernel_fusion(ctx_factory: cl.CtxFactory):
     np.testing.assert_allclose(out.get(), np.arange(100, 110))
 
 
-def test_write_block_matrix_fusion(ctx_factory: cl.CtxFactory):
+@pytest.mark.parametrize(
+    "precise_dependencies", (False, True), ids=("legacy", "precise")
+)
+def test_write_block_matrix_fusion(
+    ctx_factory: cl.CtxFactory,
+    precise_dependencies: bool,
+):
     """
     A slightly more complicated fusion test, where all
     sub-kernels write into the same global matrix, but
@@ -170,6 +178,10 @@ def test_write_block_matrix_fusion(ctx_factory: cl.CtxFactory):
         bidirectional=True,
         force=True
     )
+    if precise_dependencies:
+        fused_knl = dep.add_lexicographic_happens_after(fused_knl)
+        fused_knl = dep.relax_strict_happens_after(fused_knl)
+
     _evt, result = fused_knl(queue, **kwargs)
     result = result["result"]
     np.testing.assert_allclose(result, answer)
