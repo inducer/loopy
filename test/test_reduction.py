@@ -147,7 +147,8 @@ def test_multi_nested_dependent_reduction():
                 lp.ValueArg("ntgts", np.int32),
                 lp.ValueArg("nboxes", np.int32),
                 ],
-            assumptions="ntgts>=1",
+            # 'a' is indexed by 'itgt', so the bounds check needs 'ntgts <= n'
+            assumptions="ntgts>=1 and ntgts <= n",
             target=lp.PyOpenCLTarget())
 
     print(lp.generate_code_v2(knl).device_code())
@@ -179,7 +180,8 @@ def test_recursive_nested_dependent_reduction():
                 lp.ValueArg("ntgts", np.int32),
                 lp.ValueArg("nboxes", np.int32),
                 ],
-            assumptions="ntgts>=1",
+            # 'a' is indexed by 'itgt', so the bounds check needs 'ntgts <= n'
+            assumptions="ntgts>=1 and ntgts <= n",
             target=lp.PyOpenCLTarget())
 
     print(lp.generate_code_v2(knl).device_code())

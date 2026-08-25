@@ -770,9 +770,28 @@ class _AccessCheckMapper(WalkMapper[[nisl.Set, str]]):
             for shape_axis in shape:
                 shape_deps.update(get_dependencies(shape_axis))
 
-            if not (get_dependencies(subscript) <= available_vars
-                    and shape_deps <= available_vars):
+            if get_dependencies(subscript) - available_vars:
                 return
+
+            # A shape may depend on kernel parameters (e.g. value args) that
+            # are not part of the instruction's domain, because the
+            # parameter only appears in the shape and not in any expression.
+            # If all such missing parameters are (read-only) value args of the
+            # kernel, add them to the domain as (free) parameters so that the
+            # access range can be checked against the shape. Any other missing
+            # dependency (e.g. a temporary) is data-dependent => can't check.
+            missing_shape_vars = shape_deps - available_vars
+            if missing_shape_vars:
+                from loopy.kernel.data import ValueArg
+
+                value_arg_names = {arg.name for arg in self.kernel.args
+                        if isinstance(arg, ValueArg)
+                        and arg.name not in self.kernel.get_written_variables()}
+                if not missing_shape_vars <= value_arg_names:
+                    return
+
+                domain = domain.add_dims(
+                        DimType.param, sorted(missing_shape_vars))
 
             if len(subscript) != len(shape):
                 raise LoopyError("subscript to '%s' in '%s' has the wrong "

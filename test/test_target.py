@@ -946,6 +946,28 @@ def test_fma_codegen(dtype):
         )
 
 
+def test_bounds_check_with_shape_only_param():
+    # A parameter that appears only in an array's shape (not in the domain or
+    # in any expression) must still be accounted for in the out-of-bounds
+    # check: without an assumption establishing 'n >= 5' the access is
+    # potentially out-of-bounds, and the check must fail.
+    from loopy.diagnostic import LoopyIndexError
+
+    knl = lp.make_kernel(
+        "{ [i]: 0 <= i < 5 }",
+        "x[i, 0] = 5",
+        [lp.GlobalArg("x", dtype=float, shape=("n", 2)),
+         lp.ValueArg("n", np.int32)],
+        target=lp.CTarget(),
+    )
+
+    with pytest.raises(LoopyIndexError):
+        lp.generate_code_v2(knl)
+
+    knl = lp.assume(knl, "n >= 5")
+    lp.generate_code_v2(knl)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
