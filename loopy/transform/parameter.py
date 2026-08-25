@@ -63,8 +63,15 @@ def assume(
         the assumptions in :ref:`isl-syntax`.
     """
     if isinstance(assumptions, str):
+        # Value args that only appear in argument shapes (and not in any
+        # domain) are also legitimate assumption parameters, so declare
+        # them as well.
+        from loopy.kernel.data import ValueArg
+        param_names = set(kernel.outer_params()) | {
+                arg.name for arg in kernel.args
+                if isinstance(arg, ValueArg)}
         assumptions_set_str = "[%s] -> { : %s}" \
-                % (",".join(s for s in kernel.outer_params()),
+                % (",".join(sorted(param_names)),
                     assumptions)
         assumptions = nisl.make_set(assumptions_set_str)
 
