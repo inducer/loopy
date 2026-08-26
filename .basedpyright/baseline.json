@@ -20876,22 +20876,6 @@
                     "endColumn": 47,
                     "lineCount": 1
                 }
-            },
-            {
-                "code": "reportUnknownMemberType",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 30,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportUnknownArgumentType",
-                "range": {
-                    "startColumn": 18,
-                    "endColumn": 30,
-                    "lineCount": 1
-                }
             }
         ],
         "./loopy/library/function.py": [
@@ -55766,6 +55750,24 @@
                 "range": {
                     "startColumn": 22,
                     "endColumn": 45,
+                    "lineCount": 1
+                }
+            }
+        ],
+        "./loopy/transform/loop_fusion.py": [
+            {
+                "code": "reportUnknownMemberType",
+                "range": {
+                    "startColumn": 22,
+                    "endColumn": 34,
+                    "lineCount": 1
+                }
+            },
+            {
+                "code": "reportUnknownArgumentType",
+                "range": {
+                    "startColumn": 22,
+                    "endColumn": 34,
                     "lineCount": 1
                 }
             }
