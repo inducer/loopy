@@ -889,7 +889,7 @@ def _get_outermost_diverging_inames(
     common_ancestors = (within1 & within2) | {""}
 
     innermost_parent = max(common_ancestors,
-                           key=lambda k: tree.depth(k))
+                           key=tree.depth)
     iname1, = frozenset(tree.children(innermost_parent)) & within1
     iname2, = frozenset(tree.children(innermost_parent)) & within2
 
@@ -1013,13 +1013,13 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
 
     def iname_key(iname: str) -> str:
         all_ancestors = sorted(loop_tree.ancestors(iname),
-                               key=lambda x: loop_tree.depth(x))
+                               key=loop_tree.depth)
         return ",".join([*all_ancestors, iname])
 
     def key(x: ScheduleItem) -> tuple[str, ...]:
         if isinstance(x, RunInstruction):
             iname = max((kernel.id_to_insn[x.insn_id].within_inames & loop_inames),
-                        key=lambda k: loop_tree.depth(k),
+                        key=loop_tree.depth,
                         default="")
             return (iname_key(iname), x.insn_id)
         elif isinstance(x, (EnterLoop, LeaveLoop)):

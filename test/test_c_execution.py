@@ -324,9 +324,9 @@ def test_missing_compilers():
     ccomp = None
     try:
         # test with path wiped out such that we can't find gcc
+        os.environ["PATH"] = ""
+        ccomp = CCompiler()
         with pytest.raises(ExecError):
-            os.environ["PATH"] = ""
-            ccomp = CCompiler()
             __test(eval_tester, ExecutableCTarget, compiler=ccomp)
     finally:
         # make sure we restore the path

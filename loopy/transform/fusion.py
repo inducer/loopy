@@ -370,7 +370,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
         # }}}
 
-        kernels = loop_kernels_to_be_fused[:]
+        kernels = loop_kernels_to_be_fused.copy()
     else:
         assert all(isinstance(knl, LoopKernel) for knl in kernels)
         new_callables = {}

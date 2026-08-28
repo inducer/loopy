@@ -2038,9 +2038,9 @@ def realize_reduction_for_single_kernel(
                     red_realize_ctx=red_realize_ctx,
                     nresults=nresults)
         else:
-            new_expressions = cb_mapper(insn.expression,
+            new_expressions = (cb_mapper(insn.expression,
                     red_realize_ctx=red_realize_ctx,
-                    nresults=1),
+                    nresults=1),)
 
         if red_realize_ctx.were_changes_made:
             # An expansion happened, so insert the generated stuff plus

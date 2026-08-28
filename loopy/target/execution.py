@@ -228,25 +228,25 @@ class ExecutionWrapperGeneratorBase(ABC):
                                         ))
 
                 if arg.offset is not None:
-                    equations.append(
-                            _ArgFindingEquation(
-                                lhs=var("_lpy_even_div_none")(
-                                    var("getattr")(
-                                        var(arg.name), var('"offset"'), var("None")),
-                                    arg.dtype.itemsize),
-                                rhs=arg.offset,
-                                order=0,
-                                based_on_names=frozenset([arg.name]),
-                                ))
+                    equations.extend((
+                        _ArgFindingEquation(
+                            lhs=var("_lpy_even_div_none")(
+                                var("getattr")(
+                                    var(arg.name), var('"offset"'), var("None")),
+                                arg.dtype.itemsize),
+                            rhs=arg.offset,
+                            order=0,
+                            based_on_names=frozenset([arg.name]),
+                            ),
 
-                    # If no value was found by other means, default to zero.
-                    equations.append(
-                            _ArgFindingEquation(
-                                lhs=0,
-                                rhs=arg.offset,
-                                order=1,
-                                based_on_names=frozenset(),
-                                ))
+                        # If no value was found by other means, default to zero.
+                        _ArgFindingEquation(
+                            lhs=0,
+                            rhs=arg.offset,
+                            order=1,
+                            based_on_names=frozenset(),
+                            )
+                    ))
 
         # }}}
 

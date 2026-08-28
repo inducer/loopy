@@ -260,7 +260,7 @@ class ToCountMap(Generic[KeyT]):
         return "\n".join(
                 f"{k}: {v}"
                 for k, v in sorted(self.count_map.items(),
-                    key=lambda k: str(k)))
+                    key=str))
 
     def __len__(self):
         return len(self.count_map)

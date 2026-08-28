@@ -54,7 +54,7 @@ def test_set_trie():
     s.add_or_update({1, 5})
 
     result = []
-    s.descend(lambda prefix: result.extend(prefix))
+    s.descend(result.extend)
     assert result == [1, 2, 3, 4, 5]
 
     with pytest.raises(ValueError):

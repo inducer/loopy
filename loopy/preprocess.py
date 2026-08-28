@@ -688,7 +688,7 @@ def infer_arg_descr(t_unit: TranslationUnit) -> TranslationUnit:
             if isinstance(s, tuple) or s in [None, auto]:
                 return s
             else:
-                return s,
+                return (s,)
 
         arg_id_to_descr: dict[str, ArgDescriptor] = {}
         for arg in t_unit[e].args:

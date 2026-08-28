@@ -718,7 +718,7 @@ def separate_loop_nest(
 
     # {{{ sanity check to ensure the loop nest *inames_to_separate* is possible
 
-    loop_nests = sorted(loop_nests, key=lambda nest: tree.depth(nest))
+    loop_nests = sorted(loop_nests, key=tree.depth)
 
     for outer, inner in itertools.pairwise(loop_nests):
         if outer != tree.parent(inner):

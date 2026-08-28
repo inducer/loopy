@@ -490,7 +490,7 @@ class CExecutor(ExecutorBase):
             specific arguments.
         """
 
-        self.compiler = compiler if compiler else CCompiler()
+        self.compiler = compiler or CCompiler()
         super().__init__(program, entrypoint)
 
     def get_invoker_uncached(self, kernel, entrypoint, codegen_result):

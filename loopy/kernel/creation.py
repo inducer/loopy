@@ -1282,8 +1282,7 @@ class ArgumentGuesser:
         # {{{ find existing and new arg names
 
         existing_arg_names: set[str] = set()
-        for arg in kernel_args:
-            existing_arg_names.add(arg.name)
+        existing_arg_names.update(arg.name for arg in kernel_args)
 
         not_new_arg_names = existing_arg_names | temp_var_names | self.all_inames
 
@@ -2359,7 +2358,7 @@ def make_function(
     """
 
     creation_plog = ProcessLogger(
-            logger, f"{name if name else '(unnamed)'}%s: instantiate")
+            logger, f"{name or '(unnamed)'}%s: instantiate")
 
     if target is None:
         from loopy import _DEFAULT_TARGET

@@ -693,7 +693,7 @@ def _is_generated_t_unit_the_same(
     returns *False*.
     """
     reproducer_variables = {}
-    exec(python_code, reproducer_variables)  # ruff:ignore[exec-builtin]
+    exec(python_code, reproducer_variables)
     t_unit = reproducer_variables[var_name]
     return t_unit == ref_t_unit
 

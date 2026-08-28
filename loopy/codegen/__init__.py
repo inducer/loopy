@@ -371,11 +371,9 @@ def generate_code_for_a_single_kernel(
 
     # {{{ handle preambles
 
-    for arg in kernel.args:
-        seen_dtypes.add(arg.dtype)
+    seen_dtypes.update(arg.dtype for arg in kernel.args)
 
-    for tv in kernel.temporary_variables.values():
-        seen_dtypes.add(tv.dtype)
+    seen_dtypes.update(tv.dtype for tv in kernel.temporary_variables.values())
 
     if kernel.all_inames():
         seen_dtypes.add(kernel.index_dtype)
