@@ -21,6 +21,7 @@ THE SOFTWARE.
 """
 
 import logging
+import math
 
 import numpy as np
 import pytest
@@ -3438,7 +3439,7 @@ def test_creation_kwargs():
     knl = lp.make_kernel(
         "{[i]: 0<=i<10}",
         "a[i] = foo() * i",
-        substitutions={"foo": lp.SubstitutionRule("foo", (), 3.14)},
+        substitutions={"foo": lp.SubstitutionRule("foo", (), math.pi)},
     )
 
     assert len(knl.default_entrypoint.substitutions) != 0
@@ -3451,7 +3452,7 @@ def test_creation_kwargs():
             foo := 5
             a[i] = foo() * i
             """,
-            substitutions={"foo": lp.SubstitutionRule("foo", (), 3.14)},
+            substitutions={"foo": lp.SubstitutionRule("foo", (), math.pi)},
         )
 
 

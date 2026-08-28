@@ -27,6 +27,7 @@ THE SOFTWARE.
 
 import contextlib
 import logging
+from collections import UserDict
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Literal, cast, final
@@ -84,7 +85,7 @@ class InstructionLivenessResult:
     live_out: set[str]
 
 
-class LivenessResult(dict[int, InstructionLivenessResult]):
+class LivenessResult(UserDict[int, InstructionLivenessResult]):
     @classmethod
     def make_empty(cls, nscheditems: int):
         return cls((idx, InstructionLivenessResult(live_in=set(), live_out=set()))

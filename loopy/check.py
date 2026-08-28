@@ -1958,10 +1958,10 @@ def check_implemented_domains(
                     point_axes.append("%s=%d" % (
                         iname, pt.get_coordinate(iname).to_python()))
 
-                lines.append(
-                    f"sample point in {bigger} but not {smaller}: {point_axes}")
-                lines.append(
+                lines.extend((
+                    f"sample point in {bigger} but not {smaller}: {point_axes}",
                     f"gist of constraints in {bigger} but not {smaller}: {gist_domain}")
+                )
 
             if code is not None:
                 print(79*"-")

@@ -703,8 +703,7 @@ def generate_value_arg_setup(
                         'must be supplied")')))
 
         if var_descr.dtype.is_composite():
-            buf_indices_and_args.append(arg_idx)
-            buf_indices_and_args.append(f"{passed_name}")
+            buf_indices_and_args.extend((arg_idx, f"{passed_name}"))
 
         elif var_descr.dtype.is_complex():
             assert isinstance(var_descr.dtype, NumpyType)
@@ -718,10 +717,10 @@ def generate_value_arg_setup(
             else:
                 raise TypeError("unexpected complex type: %s" % dtype)
 
-            buf_indices_and_args.append(arg_idx)
-            buf_indices_and_args.append(
-                f"_lpy_pack('{arg_char}{arg_char}', "
-                f"{passed_name}.real, {passed_name}.imag)")
+            buf_indices_and_args.extend(
+                (arg_idx,
+                    (f"_lpy_pack('{arg_char}{arg_char}', "
+                        f"{passed_name}.real, {passed_name}.imag)")))
 
         elif isinstance(var_descr.dtype, NumpyType):
             add_buf_arg(arg_idx, var_descr.dtype.dtype.char, passed_name)
@@ -762,8 +761,7 @@ def generate_array_arg_setup(
 
         var_descr = kernel.get_var_descriptor(passed_name)
         if isinstance(var_descr, ArrayBase):
-            cl_indices_and_args.append(arg_idx)
-            cl_indices_and_args.append(passed_name)
+            cl_indices_and_args.extend((arg_idx, passed_name))
 
     if cl_indices_and_args:
         assert len(cl_indices_and_args) % 2 == 0
@@ -853,9 +851,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
         allocated_var_names: list[str] = []
         code_lines: list[genpy.Generable] = []
-        code_lines.append(Line())
-        code_lines.append(Comment("{{{ allocate global temporaries"))
-        code_lines.append(Line())
+        code_lines.extend((Line(), Comment("{{{ allocate global temporaries"), Line()))
 
         for tv in global_temporaries:
             if not tv.base_storage:
@@ -870,12 +866,12 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                 else:
                     code_lines.append(Assign(tv.name, "None"))
 
-        code_lines.append(Assign("_global_temporaries", "[{tvs}]".format(
-            tvs=", ".join(tv for tv in allocated_var_names))))
-
-        code_lines.append(Line())
-        code_lines.append(Comment("}}}"))
-        code_lines.append(Line())
+        code_lines.extend((
+            Assign("_global_temporaries",
+                "[{tvs}]".format(tvs=", ".join(tv for tv in allocated_var_names))),
+            Line(),
+            Comment("}}}"),
+            Line()))
 
         return code_lines
 

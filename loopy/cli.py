@@ -74,12 +74,9 @@ def main():
     if args.target == "opencl":
         from loopy.target.opencl import OpenCLTarget
         target = OpenCLTarget
-    elif args.target == "ispc":
+    elif args.target == "ispc" or args.target == "ispc-occa":
         from loopy.target.ispc import ISPCTarget
         target = ISPCTarget
-    elif args.target == "ispc-occa":
-        from loopy.target.ispc import ISPCTarget
-        target = lambda: ISPCTarget()  # ruff:ignore[lambda-assignment]
     elif args.target == "c":
         from loopy.target.c import CTarget
         target = CTarget
@@ -135,14 +132,14 @@ def main():
         if args.occa_defines:
             with open(args.occa_defines) as defines_fd:
                 occa_define_code = defines_to_python_code(defines_fd.read())
-            exec(compile(occa_define_code, args.occa_defines, "exec"), data_dic)  # ruff:ignore[exec-builtin]
+            exec(compile(occa_define_code, args.occa_defines, "exec"), data_dic)
 
         with open(args.infile) as infile_fd:
-            exec(compile(infile_content, args.infile, "exec"), data_dic)  # ruff:ignore[exec-builtin]
+            exec(compile(infile_content, args.infile, "exec"), data_dic)
 
         if args.transform:
             with open(args.transform) as xform_fd:
-                exec(compile(xform_fd.read(),  # ruff:ignore[exec-builtin]
+                exec(compile(xform_fd.read(),
                     args.transform, "exec"), data_dic)
 
         try:

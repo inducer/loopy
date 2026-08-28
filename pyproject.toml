@@ -116,6 +116,7 @@ extend-ignore = [
     "non-empty-init-module",
     "type-check-without-type-error",
     "try-consider-else",
+    "pytest-parameter-with-default-argument",
 
     # FIXME
     "printf-string-formatting", # .format instead of %s

@@ -734,7 +734,7 @@ class LoopKernel(Taggable):
                 for insn in self.instructions
                 for var_name in insn.assignee_var_names()}
 
-        object.__setattr__(self, "_cached_written_variables", result)
+        object.__setattr__(self, "_cached_written_variables", result)  # ruff: ignore[unnecessary-dunder-call]
 
         return result
 
@@ -800,7 +800,7 @@ class LoopKernel(Taggable):
             pass
 
         cm = nisl.Cache()
-        object.__setattr__(self, "_cache_manager", cm)
+        object.__setattr__(self, "_cache_manager", cm)  # ruff: ignore[unnecessary-dunder-call]
         return cm
 
     @memoize_method
@@ -1453,7 +1453,7 @@ class LoopKernel(Taggable):
     def copy(self, **kwargs: Any) -> LoopKernel:
         result = replace(self, **self.get_copy_kwargs(**kwargs))
 
-        object.__setattr__(result, "_cache_manager", self.isl_cache)
+        object.__setattr__(result, "_cache_manager", self.isl_cache)  # ruff: ignore[unnecessary-dunder-call]
 
         if "instructions" not in kwargs:
             # Avoid carrying over an invalid cache when instructions are
@@ -1463,7 +1463,7 @@ class LoopKernel(Taggable):
             except AttributeError:
                 pass
             else:
-                object.__setattr__(result, "_cached_written_variables", cwv)
+                object.__setattr__(result, "_cached_written_variables", cwv)  # ruff: ignore[unnecessary-dunder-call]
 
         return result
 

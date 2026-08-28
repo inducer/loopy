@@ -201,8 +201,9 @@ def pack_and_unpack_args_for_call_for_single_kernel(kernel: LoopKernel,
                                 (old_iname, new_pack_inames[var(old_iname)].name))
                             renamings_unpack.append(
                                 (old_iname, new_unpack_inames[var(old_iname)].name))
-                    new_domains.append(iname_domain.rename_dims(renamings_pack))
-                    new_domains.append(iname_domain.rename_dims(renamings_unpack))
+                    new_domains.extend((
+                        iname_domain.rename_dims(renamings_pack),
+                        iname_domain.rename_dims(renamings_unpack)))
 
                 arg = p.subscript.aggregate.name
                 pack_name = vng(arg + "_pack")

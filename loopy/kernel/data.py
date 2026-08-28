@@ -320,9 +320,9 @@ def parse_tag(tag: ToInameTagConvertible) -> Tag | None:
         return None
     elif tag == "ord":
         return InOrderSequentialSequentialTag()
-    elif tag in ["unr"]:
+    elif tag == "unr":
         return UnrollTag()
-    elif tag in ["vec"]:
+    elif tag == "vec":
         return VectorizeTag()
     elif tag in ["ilp", "ilp.unr"]:
         return UnrolledIlpTag()

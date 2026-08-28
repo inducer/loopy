@@ -526,6 +526,7 @@ def test_input_args_are_required(ctx_factory: cl.CtxFactory):
     for knl in [knl1, knl2]:
         with pytest.raises(LoopyError):
             _ = knl(queue)
+        with pytest.raises(LoopyError):
             _ = knl(queue, g=g)
 
     _ = knl1(queue, f=f)

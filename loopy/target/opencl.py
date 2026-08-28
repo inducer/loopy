@@ -418,7 +418,7 @@ class OpenCLCallable(ScalarCallable):
 
             if dtype.kind == "c":
                 raise LoopyTypeError("fma does not support complex numbers.")
-            if dtype.kind not in "f":
+            if dtype.kind != "f":
                 raise LoopyTypeError("fma requires floating-point arguments, "
                                      f"got '{dtype}'.")
 
