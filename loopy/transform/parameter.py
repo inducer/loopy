@@ -29,6 +29,7 @@ from warnings import warn
 
 import islpy as isl
 import namedisl as nisl
+from namedisl import DimType
 
 from loopy.kernel import LoopKernel
 from loopy.symbolic import RuleAwareSubstitutionMapper, SubstitutionRuleMappingContext
@@ -50,6 +51,14 @@ __doc__ = """
 
 
 # {{{ assume
+
+def _remove_unused_dims(dt: DimType, obj: nisl.Set):
+    unused_dims = {
+        name for name in obj.space.dim_names(dt)
+        if not obj.involves_dims([name])
+        }
+    return obj.project_out(unused_dims)
+
 
 @for_each_kernel
 def assume(
@@ -73,7 +82,8 @@ def assume(
         assumptions_set_str = "[%s] -> { : %s}" \
                 % (",".join(sorted(param_names)),
                     assumptions)
-        assumptions = nisl.make_set(assumptions_set_str)
+        assumptions = _remove_unused_dims(DimType.param,
+            nisl.make_set(assumptions_set_str))
 
     if isinstance(assumptions, (isl.BasicSet, isl.Set)):
         warn(
