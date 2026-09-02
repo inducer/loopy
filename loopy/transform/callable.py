@@ -204,9 +204,10 @@ def substitute_into_domain(
             param_name: str,
             expr: ArithmeticExpression,
             allowed_param_dims: Collection[str],
-        ):
+        ) -> nisl.Set:
     """
-    :arg allowed_deps: A :class:`list` of :class:`str` that are
+    :arg allowed_param_dims: Names that may be introduced as new parameters
+        of *domain* (i.e. parameters of the caller).
     """
     import pymbolic.primitives as prim
 
@@ -217,24 +218,29 @@ def substitute_into_domain(
 
     # {{{ rename 'param_name' to avoid namespace pollution with allowed_param_dims
 
-    domain = domain.rename_dims([(
-            param_name, UniqueNameGenerator(set(allowed_param_dims))(param_name))])
+    renamed_param_name = UniqueNameGenerator(set(allowed_param_dims))(param_name)
+    domain = domain.rename_dims([(param_name, renamed_param_name)])
 
     # }}}
 
-    domain.add_dims(DimType.param, [
-        dep for dep in get_dependencies(expr)
-        if dep in allowed_param_dims
-    ])
+    new_param_names: list[str] = []
+    for dep in get_dependencies(expr):
+        if dep in allowed_param_dims:
+            new_param_names.append(dep)
+        else:
+            raise ValueError("Augmenting caller's domain "
+                    f"with '{dep}' is not allowed.")
+
+    domain = domain.add_dims(DimType.param, new_param_names)
 
     set_ = isl_set_from_expr(domain.var_pw_affs,
-            prim.Comparison(prim.Variable(param_name),
+            prim.Comparison(prim.Variable(renamed_param_name),
                             "==",
                             expr))
 
     domain = domain & set_
 
-    return domain.project_out([param_name])
+    return domain.project_out([renamed_param_name])
 
 
 def get_valid_domain_param_names(knl):
