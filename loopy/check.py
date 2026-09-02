@@ -862,10 +862,23 @@ class _AccessCheckMapper(WalkMapper[[nisl.Set, str]]):
 
             kw_to_pos, _ = get_kw_pos_association(subkernel)
 
-            arg_id_to_arg = self.kernel.id_to_insn[insn_id].arg_id_to_arg()
+            insn = self.kernel.id_to_insn[insn_id]
+            if isinstance(insn, CallInstruction):
+                arg_id_to_arg = insn.arg_id_to_arg()
 
-            kwargs = {k: _mark_variables_from_caller(arg_id_to_arg[kw_to_pos[k]])
-                      for k in subkernel.get_unwritten_value_args()}
+                kwargs = {k: _mark_variables_from_caller(
+                                cast("ArithmeticExpression",
+                                     arg_id_to_arg[kw_to_pos[k]]))
+                          for k in subkernel.get_unwritten_value_args()}
+            else:
+                # The call appears as a plain expression (e.g. on the right
+                # hand side of an assignment); its arguments are found in
+                # *expr* itself.
+                kwargs = {k: _mark_variables_from_caller(
+                                cast("ArithmeticExpression",
+                                     expr.parameters[kw_to_pos[k]]))
+                          for k in subkernel.get_unwritten_value_args()
+                          if kw_to_pos[k] < len(expr.parameters)}
 
             kw_space = nisl.Space.from_names(
                 out=[], param=[*get_dependencies(tuple(kwargs.values())),
