@@ -2307,10 +2307,7 @@ def make_function(
     :arg symbol_manglers: list of functions of signature (name) returning
         a tuple (result_dtype, c_name), where c_name is the C-level symbol to
         be evaluated.
-    :arg assumptions: the initial implemented_domain, captures assumptions
-        on loop domain parameters. (an isl.Set or a string in
-        :ref:`isl-syntax`.  If given as a string, only the CONDITIONS part of
-        the set notation should be given.)
+    :arg assumptions: same as argument of :func:`loopy.assume`.
     :arg silenced_warnings: a list (or semicolon-separated string) or warnings
         to silence
     :arg options: an instance of :class:`loopy.Options` or an equivalent
@@ -2490,25 +2487,6 @@ def make_function(
     for domain in parsed_domains:
         assert domain._obj.get_ctx() == isl.DEFAULT_CONTEXT
 
-    # {{{ process assumptions
-
-    from loopy.kernel.tools import get_outer_params
-
-    if assumptions is None:
-        dom0 = parsed_domains[0]
-        assumptions_space = nisl.Space.from_names(param=dom0.space.param_names)
-        assumptions = nisl.Set.universe(assumptions_space)
-    elif isinstance(assumptions, str):
-        assumptions_set_str = "[%s] -> { : %s}" \
-                % (",".join(s for s in get_outer_params(parsed_domains)),
-                    assumptions)
-        assumptions = nisl.make_set(assumptions_set_str)
-    else:
-        if isinstance(assumptions, isl.BasicSet):
-            assumptions = nisl.to_named(assumptions).as_set()
-        if not isinstance(assumptions, nisl.Set):
-            raise LoopyError("assumptions must be either 'str' or Set")
-
     # }}}
 
     from loopy.kernel import _get_inames_from_domains
@@ -2554,7 +2532,7 @@ def make_function(
             target=target,
             tags=tags,
             inames=inames,
-            assumptions=assumptions,
+            assumptions=nisl.Set.universe(nisl.Space.from_names(param=[], out=[])),
             index_dtype=norm_index_dtype,
             preambles=preambles,
             preamble_generators=preamble_generators,
@@ -2563,6 +2541,14 @@ def make_function(
             iname_slab_increments=constantdict(iname_slab_increments),
             applied_iname_rewrites=applied_iname_rewrites,
             )
+
+    if assumptions is None:
+        pass
+    elif isinstance(assumptions, (str, nisl.Set, isl.Set, isl.BasicSet)):
+        from loopy.transform.parameter import assume
+        knl = assume(knl, assumptions)
+    else:
+        raise TypeError("unexpected type of 'assumptions'")
 
     from loopy.transform.instruction import uniquify_instruction_ids
     knl = uniquify_instruction_ids(knl)
