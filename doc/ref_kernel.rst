@@ -423,13 +423,6 @@ These are usually key-value pairs. The following attributes are recognized:
 * ``tags=tag1:tag2`` Apply tags to this instruction that can then be used
   for :ref:`context-matching`.
 
-* ``groups=group1:group2`` Make this instruction part of the given
-  instruction groups. See :class:`InstructionBase.groups`.
-
-* ``conflicts_grp=group1:group2`` Make this instruction conflict with the
-  given instruction groups. See
-  :class:`InstructionBase.conflicts_with_groups`.
-
 * ``atomic`` The update embodied by the assignment is carried out
   atomically. See :attr:`Assignment.atomicity` for precise semantics.
 

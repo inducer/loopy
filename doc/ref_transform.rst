@@ -37,8 +37,6 @@ Caching, Precomputation and Prefetching
 
 .. autofunction:: buffer_array
 
-.. autofunction:: alias_temporaries
-
 Influencing data access
 -----------------------
 

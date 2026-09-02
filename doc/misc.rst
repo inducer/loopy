@@ -296,11 +296,6 @@ This list is always growing, but here are a few pointers:
   :func:`loopy.split_iname` or :func:`loopy.fix_parameters` along with
   :func:`loopy.split_array_axis`.)
 
-* Reuse of Temporary Storage
-
-  Use :func:`loopy.alias_temporaries` to reduce the size of intermediate
-  storage.
-
 * SoA $\leftrightarrow$ AoS
 
   Use :func:`loopy.tag_array_axes` with the ``"sep"`` array axis tag
