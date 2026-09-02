@@ -2255,7 +2255,7 @@ def make_function(
 
     :arg domains:
 
-        A list of :class:`islpy.BasicSet` (i.e. convex set) instances
+        A list of set instances
         representing the :ref:`domain-tree`. May also be a list of strings
         which will be parsed into such instances according to :ref:`isl-syntax`.
 
@@ -2471,10 +2471,6 @@ def make_function(
     # }}}
 
     instructions, inames_to_dup, inline_substitutions = parse_instructions(instructions)
-
-    # {{{ find/create isl_context
-
-    # }}}
 
     instructions, inames_to_dup, cse_temp_vars = expand_cses(
             instructions, inames_to_dup)
