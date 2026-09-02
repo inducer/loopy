@@ -1463,7 +1463,14 @@ class AccessFootprintGatherer(CombineMapper[Mapping[str, nisl.Set], []]):
 # {{{ count
 
 def add_assumptions_guard(kernel: LoopKernel, pwqpolynomial: nisl.PwQPolynomial):
-    return GuardedPwQPolynomial(pwqpolynomial, kernel.assumptions)
+    params = {
+        *pwqpolynomial.space.param_names,
+        *kernel.assumptions.space.param_names}
+    pwqpolynomial = pwqpolynomial.add_dims(
+        DimType.param, params - pwqpolynomial.space.param_names)
+    assumptions = kernel.assumptions.add_dims(
+        DimType.param, params - kernel.assumptions.space.param_names)
+    return GuardedPwQPolynomial(pwqpolynomial, assumptions)
 
 
 def count(kernel: LoopKernel, set: nisl.Set):
