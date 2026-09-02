@@ -119,7 +119,7 @@ def _fix_parameter(
         if not isinstance(value, int):
             raise ValueError(f"parameter '{name}' is used in a set, must be an integer")
 
-        return s.fix_dim(name, value)
+        return s.fix_dim(name, value).project_out([name])
 
     new_domains = [process_set(dom) for dom in kernel.domains]
 
