@@ -1230,8 +1230,6 @@ def _check_variable_access_ordered_inner(kernel: LoopKernel) -> None:
 
     for (writer_id, other_id), variables in dep_reqs_to_vars.items():
         writer = kernel.id_to_insn[writer_id]
-        other = kernel.id_to_insn[other_id]
-
         for var in variables:
             eq_class = aliasing_equiv_classes[var]
             unaliased_readers = rmap.get(var, set())
@@ -1246,14 +1244,6 @@ def _check_variable_access_ordered_inner(kernel: LoopKernel) -> None:
             if (not is_relationship_by_aliasing and not
                 overlap_checker.do_access_ranges_overlap_conservative(
                         writer_id, "w", other_id, "any", var)):
-                continue
-
-            # Do not enforce ordering for aliasing-based relationships
-            # in different groups.
-            if (is_relationship_by_aliasing and (
-                    bool(writer.groups & other.conflicts_with_groups)
-                    or
-                    bool(other.groups & writer.conflicts_with_groups))):
                 continue
 
             msg = ("No dependency relationship found between "

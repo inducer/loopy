@@ -189,8 +189,6 @@ def get_default_insn_options_dict() -> dict[str, Any]:
         "depends_on": frozenset(),
         "depends_on_is_final": False,
         "no_sync_with": frozenset(),
-        "groups": frozenset(),
-        "conflicts_with_groups": frozenset(),
         "insn_id": None,
         "inames_to_dup": [],
         "priority": 0,
@@ -318,16 +316,6 @@ def parse_insn_options(
             match = parse_match(match_expr)
             result["no_sync_with"] = result["no_sync_with"].union(
                     frozenset([(match, scope)]))
-
-        elif opt_key == "groups" and opt_value is not None:
-            result["groups"] = frozenset(
-                    intern(grp.strip()) for grp in opt_value.split(":")
-                    if grp.strip())
-
-        elif opt_key == "conflicts" and opt_value is not None:
-            result["conflicts_with_groups"] = frozenset(
-                    intern(grp.strip()) for grp in opt_value.split(":")
-                    if grp.strip())
 
         elif opt_key == "inames" and opt_value is not None:
             if opt_value.startswith("+"):
@@ -733,9 +721,6 @@ def parse_instructions(
                 "id": intern_if_str(insn.id),
                 "depends_on": frozenset(intern_if_str(dep)
                     for dep in insn.depends_on),
-                "groups": frozenset(checked_intern(grp) for grp in insn.groups),
-                "conflicts_with_groups": frozenset(
-                    checked_intern(grp) for grp in insn.conflicts_with_groups),
                 "within_inames": frozenset(
                     checked_intern(iname) for iname in insn.within_inames),
             }
@@ -850,12 +835,6 @@ def parse_instructions(
                         predicates=(
                             insn.predicates
                             | insn_options_stack[-1]["predicates"]),
-                        groups=(
-                            insn.groups
-                            | insn_options_stack[-1]["groups"]),
-                        conflicts_with_groups=(
-                            insn.conflicts_with_groups
-                            | insn_options_stack[-1]["conflicts_with_groups"]),
                         **kwargs)
 
             norm_tags = _normalize_tags(insn.tags)

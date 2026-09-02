@@ -133,7 +133,6 @@ from loopy.transform.callable import (
 from loopy.transform.concatenate import concatenate_arrays
 from loopy.transform.data import (
     add_prefetch,
-    alias_temporaries,
     allocate_temporaries_for_base_storage,
     change_arg_to_image,
     remove_unused_arguments,
@@ -297,7 +296,6 @@ __all__ = [
     "add_nosync",
     "add_padding",
     "add_prefetch",
-    "alias_temporaries",
     "allocate_temporaries_for_base_storage",
     "assignment_to_subst",
     "assume",

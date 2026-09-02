@@ -364,16 +364,6 @@ def find_loop_insn_dep_map(
     return result
 
 
-def group_insn_counts(kernel: LoopKernel) -> Mapping[str, int]:
-    result: dict[str, int] = {}
-
-    for insn in kernel.instructions:
-        for grp in insn.groups:
-            result[grp] = result.get(grp, 0) + 1
-
-    return result
-
-
 def gen_dependencies_except(
         kernel: LoopKernel, insn_id: str, except_insn_ids: AbstractSet[str]
         ) -> Iterator[str]:
@@ -688,8 +678,6 @@ class SchedulerState:
     prescheduled_inames: set[str]
     may_schedule_global_barriers: bool
     within_subkernel: bool
-    group_insn_counts: Mapping[str, int]
-    active_group_counts: Mapping[str, int]
     insns_in_topologically_sorted_order: Sequence[InstructionBase]
 
     @property
@@ -726,7 +714,7 @@ def get_insns_in_topologically_sorted_order(
     insn_id_to_feature_id: dict[InsnId, int] = {}
     insn_features: dict[Hashable, int] = {}
     for insn in kernel.instructions:
-        feature = (insn.within_inames, insn.groups, insn.conflicts_with_groups)
+        feature = (insn.within_inames,)
         if feature not in insn_features:
             feature_id = len(insn_features)
             insn_features[feature] = feature_id
@@ -757,8 +745,6 @@ def schedule_as_many_run_insns_as_possible(
     two instructions to be similar if:
 
     * Both are within the same set of non-parallel inames.
-    * Both belong to the same groups.
-    * Both conflict with the same groups.
     """
 
     # {{{ bail when implementation is unsupported
@@ -790,15 +776,11 @@ def schedule_as_many_run_insns_as_possible(
                 else None)
 
     def is_similar_to_template(insn: InstructionBase):
-        if ((insn.within_inames - sched_state.concurrent_inames)
-                != have_inames):
-            # sched_state.concurrent_inames contains inames for which no
-            # EnterLoop/LeaveLoop nodes occur.
-            # FIXME: Should really rename that
-            return False
-        if insn.groups != template_insn.groups:
-            return False
-        return insn.conflicts_with_groups == template_insn.conflicts_with_groups
+        # sched_state.concurrent_inames contains inames for which no
+        # EnterLoop/LeaveLoop nodes occur.
+        # FIXME: Should really rename that
+        return ((insn.within_inames - sched_state.concurrent_inames)
+                == have_inames)
 
     # }}}
 
@@ -853,22 +835,12 @@ def schedule_as_many_run_insns_as_possible(
     new_insn_ids_to_try = (None if newly_scheduled_insn_ids
             else sched_state.insn_ids_to_try)
 
-    new_active_group_counts = dict(sched_state.active_group_counts)
-    if newly_scheduled_insn_ids:
-        # all the newly scheduled insns belong to the same groups as
-        # template_insn
-        for grp in template_insn.groups:
-            new_active_group_counts[grp] -= len(newly_scheduled_insn_ids)
-            if new_active_group_counts[grp] == 0:
-                new_active_group_counts.pop(grp)
-
     return sched_state.copy(
             schedule=updated_schedule,
             scheduled_insn_ids=updated_scheduled_insn_ids,
             unscheduled_insn_ids=updated_unscheduled_insn_ids,
             preschedule=preschedule,
             insn_ids_to_try=new_insn_ids_to_try,
-            active_group_counts=new_active_group_counts,
             insns_in_topologically_sorted_order=left_over_toposorted_insns
             )
 
@@ -915,10 +887,6 @@ def _generate_loop_schedules_v2(kernel: LoopKernel) -> Sequence[ScheduleItem]:
     # {{{ can v2 scheduler handle the kernel?
 
     from loopy.schedule.tools import V2SchedulerNotImplementedError
-    if any(insn.conflicts_with_groups for insn in kernel.instructions):
-        raise V2SchedulerNotImplementedError("v2 scheduler cannot schedule"
-                " kernels with instruction having conflicts with groups.")
-
     if any(insn.priority != 0 for insn in kernel.instructions):
         raise V2SchedulerNotImplementedError("v2 scheduler cannot schedule"
                 " kernels with instruction priorities set.")
@@ -1136,14 +1104,13 @@ def _generate_loop_schedules_internal(
     # the current loop nest, in this set:
 
     reachable_insn_ids: set[InsnId] = set()
-    active_groups = frozenset(sched_state.active_group_counts)
 
     def insn_sort_key(insn_id: InsnId):
         insn = kernel.id_to_insn[insn_id]
 
         # Sort by insn.id as a last criterion to achieve deterministic
         # schedule generation order.
-        return (insn.priority, len(active_groups & insn.groups), insn.id)
+        return (insn.priority, insn.id)
 
     # Use previous instruction sorting result if it is available
     if sched_state.insn_ids_to_try is None:
@@ -1219,18 +1186,6 @@ def _generate_loop_schedules_internal(
 
         # }}}
 
-        # {{{ determine group-based readiness
-
-        if insn.conflicts_with_groups & active_groups:
-            is_ready = False
-
-            if debug_mode:
-                print("instruction '%s' conflicts with active group(s) '%s'"
-                        % (insn.id, ",".join(
-                            active_groups & insn.conflicts_with_groups)))
-
-        # }}}
-
         # {{{ determine reachability
 
         if (not is_ready and have <= want):
@@ -1244,34 +1199,10 @@ def _generate_loop_schedules_internal(
         if is_ready and not debug_mode:
             iid_set = frozenset([insn.id])
 
-            # {{{ update active group counts for added instruction
-
-            if insn.groups:
-                new_active_group_counts = dict(sched_state.active_group_counts)
-
-                for grp in insn.groups:
-                    if grp in new_active_group_counts:
-                        new_active_group_counts[grp] -= 1
-                        if new_active_group_counts[grp] == 0:
-                            del new_active_group_counts[grp]
-
-                    else:
-                        new_active_group_counts[grp] = (
-                                sched_state.group_insn_counts[grp] - 1)
-            else:
-                new_active_group_counts = sched_state.active_group_counts
-
-            # }}}
-
             # {{{ update instruction_ids_to_try/toposorted_insns
 
             new_insn_ids_to_try = list(insn_ids_to_try)
             new_insn_ids_to_try.remove(insn.id)
-
-            # invalidate instruction_ids_to_try when active group changes
-            if set(new_active_group_counts.keys()) != set(
-                    sched_state.active_group_counts.keys()):
-                new_insn_ids_to_try = None
 
             # explicitly use id to compare to avoid performance issues like #199
             new_toposorted_insns = [x for x in
@@ -1289,7 +1220,6 @@ def _generate_loop_schedules_internal(
                         sched_state.preschedule
                         if insn_id not in sched_state.prescheduled_insn_ids
                         else sched_state.preschedule[1:]),
-                    active_group_counts=new_active_group_counts,
                     insns_in_topologically_sorted_order=new_toposorted_insns,
                     )
 
@@ -1304,10 +1234,7 @@ def _generate_loop_schedules_internal(
                     debug=debug):
                 yield sub_sched
 
-            if not sched_state.group_insn_counts:
-                # No groups: We won't need to backtrack on scheduling
-                # instructions.
-                return
+            return
 
     # }}}
 
@@ -1435,9 +1362,6 @@ def _generate_loop_schedules_internal(
         print("active inames :", ",".join(sched_state.active_inames))
         print("inames entered so far :", ",".join(sched_state.entered_inames))
         print("reachable insns:", ",".join(reachable_insn_ids))
-        print("active groups (with insn counts):", ",".join(
-            "%s: %d" % (grp, c)
-            for grp, c in sched_state.active_group_counts.items()))
         print(75*"-")
 
     if needed_inames:
@@ -1938,13 +1862,6 @@ class DependencyTracker:
             else:
                 dep_descr = "{tgt} depends on {src}"
 
-        grps = source.groups & target.conflicts_with_groups
-        if not grps:
-            grps = target.groups & source.conflicts_with_groups
-
-        if grps:
-            dep_descr = "{src} conflicts with {tgt} (via '%s')" % ", ".join(grps)
-
         return dep_descr
 
 
@@ -2373,9 +2290,6 @@ def _generate_loop_schedules_inner(
 
             # ilp and vec are not parallel for the purposes of the scheduler
             concurrent_inames=concurrent_inames - ilp_inames - vec_inames,
-
-            group_insn_counts=group_insn_counts(kernel),
-            active_group_counts={},
 
             insns_in_topologically_sorted_order=(
                 get_insns_in_topologically_sorted_order(kernel)),

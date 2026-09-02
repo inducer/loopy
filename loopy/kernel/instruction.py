@@ -197,19 +197,6 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         Defaults to *False*.
 
-    .. attribute:: groups
-
-        A :class:`frozenset` of strings indicating the names of 'instruction
-        groups' of which this instruction is a part. An instruction group is
-        considered 'active' as long as one (but not all) instructions of the
-        group have been executed.
-
-    .. attribute:: conflicts_with_groups
-
-        A :class:`frozenset` of strings indicating which instruction groups
-        (see :attr:`groups`) may not be active when this
-        instruction is scheduled.
-
     .. attribute:: priority
 
         Scheduling priority, an integer. Higher means 'execute sooner'.
@@ -283,8 +270,6 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     happens_after: Mapping[str, HappensAfter]
     depends_on_is_final: bool
-    groups: frozenset[str]
-    conflicts_with_groups: frozenset[str]
     no_sync_with: frozenset[tuple[InsnId, NoSyncScope]]
     predicates: frozenset[Expression]
     within_inames: frozenset[InameStr]
@@ -293,8 +278,8 @@ class InstructionBase(ImmutableRecord, Taggable):
 
     # within_inames_is_final is deprecated and will be removed in version 2017.x.
 
-    fields: ClassVar[set[str]] = {"id", "depends_on_is_final", "groups",
-        "conflicts_with_groups", "no_sync_with", "predicates",
+    fields: ClassVar[set[str]] = {"id", "depends_on_is_final",
+        "no_sync_with", "predicates",
         "within_inames_is_final", "within_inames", "priority"}
 
     def __init__(self,
@@ -302,8 +287,6 @@ class InstructionBase(ImmutableRecord, Taggable):
                  happens_after: (
                      Mapping[str, HappensAfter] | frozenset[str] | str | None),
                  depends_on_is_final: bool | None,
-                 groups: frozenset[str] | None,
-                 conflicts_with_groups: frozenset[str] | None,
                  no_sync_with: frozenset[tuple[InsnId, NoSyncScope]] | None,
                  within_inames_is_final: bool | None,
                  within_inames: frozenset[str] | None,
@@ -374,12 +357,6 @@ class InstructionBase(ImmutableRecord, Taggable):
 
         # }}}
 
-        if groups is None:
-            groups = frozenset()
-
-        if conflicts_with_groups is None:
-            conflicts_with_groups = frozenset()
-
         if no_sync_with is None:
             no_sync_with = frozenset()
 
@@ -412,15 +389,11 @@ class InstructionBase(ImmutableRecord, Taggable):
         # from loopy.tools import is_interned
         # assert is_interned(id)
         # assert all(is_interned(dep) for dep in depends_on)
-        # assert all(is_interned(grp) for grp in groups)
-        # assert all(is_interned(grp) for grp in conflicts_with_groups)
         # assert all(is_interned(iname) for iname in within_inames)
         # assert all(is_interned(pred) for pred in predicates)
 
         assert isinstance(within_inames, AbstractSet)
         assert isinstance(happens_after, abc_Mapping) or happens_after is None
-        assert isinstance(groups, AbstractSet)
-        assert isinstance(conflicts_with_groups, AbstractSet)
 
         from loopy.tools import is_hashable
         assert is_hashable(happens_after)
@@ -430,7 +403,6 @@ class InstructionBase(ImmutableRecord, Taggable):
                 happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
                 no_sync_with=no_sync_with,
-                groups=groups, conflicts_with_groups=conflicts_with_groups,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
@@ -551,10 +523,6 @@ class InstructionBase(ImmutableRecord, Taggable):
         if self.no_sync_with:
             result.append("nosync="+":".join(
                     "%s@%s" % entry for entry in self.no_sync_with))
-        if self.groups:
-            result.append("groups=%s" % ":".join(self.groups))
-        if self.conflicts_with_groups:
-            result.append("conflicts=%s" % ":".join(self.conflicts_with_groups))
         if self.priority:
             result.append("priority=%d" % self.priority)
         if self.tags:
@@ -602,9 +570,6 @@ class InstructionBase(ImmutableRecord, Taggable):
         self.happens_after = constantdict({
                 intern(after_id): ha
                 for after_id, ha in self.happens_after.items()})
-        self.groups = intern_frozenset_of_ids(self.groups)
-        self.conflicts_with_groups = (
-                intern_frozenset_of_ids(self.conflicts_with_groups))
         self.within_inames = (
                 intern_frozenset_of_ids(self.within_inames))
 
@@ -944,8 +909,6 @@ class Assignment(MultiAssignmentBase):
                  happens_after:
                      Mapping[str, HappensAfter] | frozenset[str] | str | None = None,
                  depends_on_is_final: bool | None = None,
-                 groups: frozenset[str] | None = None,
-                 conflicts_with_groups: frozenset[str] | None = None,
                  no_sync_with: frozenset[tuple[InsnId, NoSyncScope]] | None = None,
                  within_inames_is_final: bool | None = None,
                  within_inames: frozenset[str] | None = None,
@@ -968,8 +931,6 @@ class Assignment(MultiAssignmentBase):
                 id=id,
                 happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
-                groups=groups,
-                conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
@@ -1114,8 +1075,6 @@ class CallInstruction(MultiAssignmentBase):
             id: str | None = None,
             happens_after=None,
             depends_on_is_final=None,
-            groups=None,
-            conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None,
             within_inames=None,
@@ -1129,8 +1088,6 @@ class CallInstruction(MultiAssignmentBase):
                 id=id,
                 happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
-                groups=groups,
-                conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
@@ -1439,7 +1396,6 @@ class CInstruction(InstructionBase):
             iname_exprs, code,
             read_variables=frozenset(), assignees=(),
             id=None, happens_after=None, depends_on_is_final=None,
-            groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=0,
@@ -1459,7 +1415,6 @@ class CInstruction(InstructionBase):
                 id=id,
                 happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
-                groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
@@ -1622,7 +1577,6 @@ class NoOpInstruction(_DataObliviousInstruction):
     """
 
     def __init__(self, id=None, happens_after=None, depends_on_is_final=None,
-            groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
@@ -1631,8 +1585,6 @@ class NoOpInstruction(_DataObliviousInstruction):
                 id=id,
                 happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
-                groups=groups,
-                conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
@@ -1695,7 +1647,6 @@ class BarrierInstruction(_DataObliviousInstruction):
                                                      "mem_kind"}
 
     def __init__(self, id, happens_after=None, depends_on_is_final=None,
-            groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
@@ -1711,8 +1662,6 @@ class BarrierInstruction(_DataObliviousInstruction):
                 id=id,
                 happens_after=happens_after,
                 depends_on_is_final=depends_on_is_final,
-                groups=groups,
-                conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,

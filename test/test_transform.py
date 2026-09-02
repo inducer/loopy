@@ -238,40 +238,6 @@ def test_fusion():
     print(knl)
 
 
-def test_alias_temporaries(ctx_factory: cl.CtxFactory):
-    ctx = ctx_factory()
-
-    knl = lp.make_kernel(
-        "{[i]: 0<=i<n}",
-        """
-        times2(i) := 2*a[i]
-        times3(i) := 3*a[i]
-        times4(i) := 4*a[i]
-
-        x[i] = times2(i)
-        y[i] = times3(i)
-        z[i] = times4(i)
-        """)
-
-    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
-
-    ref_knl = knl
-
-    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
-
-    knl = lp.precompute(knl, "times2", "i_inner", default_tag="l.auto")
-    knl = lp.precompute(knl, "times3", "i_inner", default_tag="l.auto")
-    knl = lp.precompute(knl, "times4", "i_inner", default_tag="l.auto")
-
-    knl = lp.alias_temporaries(knl, ["times2_0", "times3_0", "times4_0"])
-
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.allocate_temporaries_for_base_storage(knl)
-    lp.auto_test_vs_ref(
-            ref_knl, ctx, knl,
-            parameters={"n": 30})
-
-
 def test_vectorize(ctx_factory: cl.CtxFactory):
     ctx = ctx_factory()
 
@@ -622,13 +588,9 @@ def test_add_nosync():
 
         <>tmp3[2*i] = 0 {id=insn3}
         <>tmp4 = 1 + tmp3[2*i] {id=insn4}
-
-        <>tmp5[i] = 0 {id=insn5,groups=g1}
-        tmp5[i] = 1 {id=insn6,conflicts=g1}
         """, name="nosync")
 
     orig_prog = lp.set_temporary_address_space(orig_prog, "tmp3", "local")
-    orig_prog = lp.set_temporary_address_space(orig_prog, "tmp5", "local")
 
     # No dependency present - don't add nosync
     prog = lp.add_nosync(orig_prog, "any", "writes:tmp", "writes:tmp2",
@@ -650,11 +612,6 @@ def test_add_nosync():
             prog["nosync"].id_to_insn["insn3"].no_sync_with)
     assert frozenset([("insn3", "local")]) == (
             prog["nosync"].id_to_insn["insn4"].no_sync_with)
-
-    # Groups
-    prog = lp.add_nosync(orig_prog, "local", "insn5", "insn6")
-    assert frozenset([("insn5", "local")]) == (
-            prog["nosync"].id_to_insn["insn6"].no_sync_with)
 
 
 def test_uniquify_instruction_ids():

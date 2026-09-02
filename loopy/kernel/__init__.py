@@ -284,17 +284,6 @@ class LoopKernel(Taggable):
 
         raise RuntimeError("Unreachable.")
 
-    def all_group_names(self):
-        result = set()
-        for insn in self.instructions:
-            result.update(insn.groups)
-            result.update(insn.conflicts_with_groups)
-
-        return frozenset(result)
-
-    def get_group_name_generator(self):
-        return UniqueNameGenerator(set(self.all_group_names()))
-
     def get_var_descriptor(
             self, name: str) -> TemporaryVariable | KernelArgument:
         try:

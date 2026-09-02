@@ -46,7 +46,6 @@ if TYPE_CHECKING:
 
     from loopy.kernel.instruction import InstructionBase
     from loopy.match import ToMatchConvertible
-    from loopy.typing import InsnId
 
 
 # {{{ find_instructions
@@ -427,14 +426,6 @@ def add_nosync(
     del source
     del sink
 
-    def insns_in_conflicting_groups(insn1_id: InsnId, insn2_id: InsnId):
-        insn1 = kernel.id_to_insn[insn1_id]
-        insn2 = kernel.id_to_insn[insn2_id]
-        return (
-                bool(insn1.groups & insn2.conflicts_with_groups)
-                or
-                bool(insn2.groups & insn1.conflicts_with_groups))
-
     from collections import defaultdict
     nosync_to_add = defaultdict(set)
 
@@ -442,9 +433,7 @@ def add_nosync(
     for sink in sinks:
         for source in sources:
 
-            needs_nosync = force or (
-                    source in rec_dep_map[sink]
-                    or insns_in_conflicting_groups(source, sink))
+            needs_nosync = force or source in rec_dep_map[sink]
 
             if not needs_nosync:
                 continue

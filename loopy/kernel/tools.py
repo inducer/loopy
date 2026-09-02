@@ -1616,11 +1616,6 @@ def stringify_instruction_list(kernel: LoopKernel) -> list[str]:
         if isinstance(insn, lp.Assignment) and insn.atomicity:
             options.append("atomic=%s" % ":".join(
                 str(a) for a in insn.atomicity))
-        if insn.groups:
-            options.append("groups=%s" % ":".join(insn.groups))
-        if insn.conflicts_with_groups:
-            options.append(
-                    "conflicts=%s" % ":".join(insn.conflicts_with_groups))
         if insn.no_sync_with:
             options.append("no_sync_with=%s" % ":".join(
                 "%s@%s" % entry for entry in sorted(insn.no_sync_with)))

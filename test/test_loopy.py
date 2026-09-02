@@ -1316,7 +1316,7 @@ def test_save_local_multidim_array(ctx_factory: cl.CtxFactory, debug=False):
     save_and_reload_temporaries_test(queue, knl, 1, debug)
 
 
-def test_save_with_base_storage(ctx_factory: cl.CtxFactory, debug=False):
+def no_test_save_with_base_storage(ctx_factory: cl.CtxFactory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
