@@ -249,6 +249,12 @@ class CudaTarget(CFamilyTarget):
     def get_device_ast_builder(self):
         return CUDACASTBuilder(self)
 
+    @property
+    def known_device_callables(self):
+        callables = super().known_device_callables
+        callables.update(get_cuda_callables())
+        return callables
+
     # {{{ types
 
     @memoize_method
@@ -329,16 +335,6 @@ class CUDACASTBuilder(CFamilyASTBuilder):
     target: CudaTarget
 
     preamble_function_qualifier = "inline __device__"
-
-    # {{{ library
-
-    @property
-    def known_callables(self):
-        callables = super().known_callables
-        callables.update(get_cuda_callables())
-        return callables
-
-    # }}}
 
     # {{{ top-level codegen
 
