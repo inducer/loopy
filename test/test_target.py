@@ -968,6 +968,53 @@ def test_bounds_check_with_shape_only_param():
     lp.generate_code_v2(knl)
 
 
+def test_cuda_specific_callables():
+    # CudaCallable's type inference was spelled 'cuda_with_types' and was
+    # therefore never called, leaving rsqrt/atan2/dot unusable on CudaTarget.
+    from loopy.diagnostic import LoopyTypeError
+    from loopy.target.cuda import vec as cuda_vec
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        "out[i] = rsqrt(a[i]) + atan2(a[i], b[i])",
+        [lp.GlobalArg("a,b,out", np.float32, shape="n"),
+         lp.ValueArg("n", np.int32)],
+        target=lp.CudaTarget())
+    code = lp.generate_code_v2(knl).device_code()
+    assert "rsqrt(" in code
+    assert "atan2(" in code
+
+    # 'dot' returns the scalar type of its vector-typed arguments.
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        "out[i] = dot(a[i], b[i])",
+        [lp.GlobalArg("a,b", cuda_vec.float4, shape="n"),
+         lp.GlobalArg("out", shape="n"),
+         lp.ValueArg("n", np.int32)],
+        target=lp.CudaTarget())
+    assert (lp.infer_unknown_types(knl)["loopy_kernel"].arg_dict["out"].dtype
+            == lp.to_loopy_type(np.float32))
+    assert "dot(" in lp.generate_code_v2(knl).device_code()
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        "out[i] = rsqrt(a[i])",
+        [lp.GlobalArg("a,out", np.complex64, shape="n"),
+         lp.ValueArg("n", np.int32)],
+        target=lp.CudaTarget())
+    with pytest.raises(LoopyTypeError):
+        lp.generate_code_v2(knl)
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        "out[i] = atan2(a[i], b[i], a[i])",
+        [lp.GlobalArg("a,b,out", np.float32, shape="n"),
+         lp.ValueArg("n", np.int32)],
+        target=lp.CudaTarget())
+    with pytest.raises(LoopyError, match="can take only 2 arguments"):
+        lp.generate_code_v2(knl)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:

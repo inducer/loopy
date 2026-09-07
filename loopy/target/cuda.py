@@ -26,9 +26,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
+from constantdict import constantdict
+from typing_extensions import Self, override
 
 from cgen import Const, Declarator, Generable, Pointer
 from pymbolic import var
@@ -46,14 +48,15 @@ from loopy.kernel.data import (
 from loopy.kernel.function_interface import ScalarCallable
 from loopy.target.c import CFamilyASTBuilder, CFamilyTarget
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
-from loopy.types import NumpyType
+from loopy.types import LoopyType, NumpyType
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.translation_unit import CallablesInferenceContext
 
 
 # {{{ vector types
@@ -144,37 +147,50 @@ _CUDA_SPECIFIC_FUNCTIONS = {
 
 
 class CudaCallable(ScalarCallable):
+    """
+    Records information about functions provided by the CUDA runtime.
+    """
 
-    def cuda_with_types(self, arg_id_to_dtype, callables_table):
-
+    @override
+    def with_types(self,
+                   arg_id_to_dtype: Mapping[int | str, LoopyType],
+                   clbl_inf_ctx: CallablesInferenceContext,
+               ) -> tuple[Self, CallablesInferenceContext]:
         name = self.name
+
+        for id in arg_id_to_dtype:
+            if not isinstance(id, int):
+                raise LoopyError(f"'{name}' can take only positional arguments")
+
+        arg_num_to_dtype = {cast("int", id): t for id, t in arg_id_to_dtype.items()}
 
         if name in _CUDA_SPECIFIC_FUNCTIONS:
             num_args = _CUDA_SPECIFIC_FUNCTIONS[name]
 
             # {{{ sanity checks
 
-            for id, dtype in arg_id_to_dtype.items():
+            for id, dtype in arg_num_to_dtype.items():
                 if not -1 <= id < num_args:
                     raise LoopyError("%s can take only %d arguments." % (name,
                             num_args))
 
-                if dtype is not None and dtype.kind == "c":
+                if dtype is not None and dtype.is_complex():
                     raise LoopyTypeError(
                         f"'{name}' does not support complex arguments.")
 
             # }}}
 
             for i in range(num_args):
-                if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
+                if arg_num_to_dtype.get(i) is None:
                     # the types provided aren't mature enough to specialize the
                     # callable
                     return (
-                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                            callables_table)
+                            self.copy(
+                                arg_id_to_dtype=constantdict(arg_num_to_dtype)),
+                            clbl_inf_ctx)
 
             dtype = np.result_type(*[
-                    dtype.numpy_dtype for id, dtype in arg_id_to_dtype.items()
+                    dtype.numpy_dtype for id, dtype in arg_num_to_dtype.items()
                     if id >= 0])
 
             updated_arg_id_to_dtype = {id: NumpyType(dtype)
@@ -182,30 +198,43 @@ class CudaCallable(ScalarCallable):
 
             return (
                     self.copy(name_in_target=name,
-                        arg_id_to_dtype=updated_arg_id_to_dtype),
-                    callables_table)
+                        arg_id_to_dtype=constantdict(updated_arg_id_to_dtype)),
+                    clbl_inf_ctx)
 
         if name == "dot":
             # CUDA dot function:
             # Performs dot product. Input types: vector and return type: scalar.
             for i in range(2):
-                if i not in arg_id_to_dtype or arg_id_to_dtype[i] is None:
+                if arg_num_to_dtype.get(i) is None:
                     # the types provided aren't mature enough to specialize the
                     # callable
                     return (
-                            self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                            callables_table)
+                            self.copy(
+                                arg_id_to_dtype=constantdict(arg_num_to_dtype)),
+                            clbl_inf_ctx)
 
-            input_dtype = arg_id_to_dtype[0]
+            input_dtype = arg_num_to_dtype[0]
+            fields = input_dtype.numpy_dtype.fields
+            if fields is None:
+                raise LoopyTypeError(
+                    f"'{name}' requires vector-typed arguments, got "
+                    f"{input_dtype}")
 
-            scalar_dtype, _offset, _field_name = input_dtype.fields["x"]
-            return_dtype = scalar_dtype
-            return self.copy(arg_id_to_dtype={0: input_dtype, 1: input_dtype,
-                                              -1: return_dtype})
+            # CUDA's vector types name their first component 'x'.
+            scalar_dtype = fields["x"][0]
+
+            return (
+                    self.copy(name_in_target=name,
+                        arg_id_to_dtype=constantdict({
+                            -1: NumpyType(scalar_dtype),
+                            0: input_dtype,
+                            1: input_dtype
+                            })),
+                    clbl_inf_ctx)
 
         return (
-                self.copy(arg_id_to_dtype=arg_id_to_dtype),
-                callables_table)
+                self.copy(arg_id_to_dtype=constantdict(arg_num_to_dtype)),
+                clbl_inf_ctx)
 
 
 def get_cuda_callables():
