@@ -42,6 +42,7 @@ nitpick_ignore_regex = [
     ("py:class", r".*tuple\[str"),
     ("py:class", r"KeyT"),
     ("py:class", r"loopy\.statistics\.KeyT"),
+    ("py:class", r"_Tags_ish"),
 ]
 
 sphinxconfig_missing_reference_aliases = {

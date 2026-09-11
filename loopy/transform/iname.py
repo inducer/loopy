@@ -926,7 +926,7 @@ def duplicate_inames(
             within: ToStackMatchConvertible,
             new_inames: InameStr | Sequence[InameStr | None] | None = None,
             suffix: str | None = None,
-            tags: Mapping[str, ToInameTagConvertible] | None = None
+            tags: Mapping[str, _Tags_ish] | None = None
         ) -> LoopKernel:
     """
     :arg within: a stack match as understood by :func:`loopy.match.parse_stack_match`.
