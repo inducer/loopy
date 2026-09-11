@@ -583,7 +583,7 @@ class DependencyMapper(DependencyMapperBase[P]):
 
 
 class SubstitutionRuleExpander(IdentityMapper[[]]):
-    rules: Mapping[str, SubstitutionRule]
+    subst_rules: Mapping[str, SubstitutionRule]
 
     def __init__(self, rules: Mapping[str, SubstitutionRule]) -> None:
         super().__init__()
@@ -1156,6 +1156,390 @@ def get_reduction_inames(expr: Expression) -> frozenset[str]:
     return _get_dependencies_and_reduction_inames(expr)[1]
 
 
+@dataclass(frozen=True)
+class _SubstitutionRuleDependencyInfo:
+    """Dependency information equivalent to full substitution-rule expansion.
+
+    This stores only the properties needed by kernel construction. It does not
+    contain or construct the expanded expression.
+
+    ``bound_names_by_dependency[name]`` stores the reduction and swept inames
+    that contain every occurrence of *name*. This is needed when a later
+    substitution inserts an expression containing one of those inames.
+    """
+
+    dependency_names: frozenset[str]
+    reduction_inames: frozenset[str]
+    bound_names: frozenset[str]
+    bound_names_by_dependency: constantdict[str, frozenset[str]]
+    expands_to_call_or_reduction: bool
+    expands_to_bare_variable: str | None
+
+
+_SubstitutionRuleDependencyCache: TypeAlias = dict[
+    tuple[str, tuple[_SubstitutionRuleDependencyInfo, ...]],
+    _SubstitutionRuleDependencyInfo,
+]
+
+
+def _record_dependency(
+        bound_names_by_dependency: dict[str, frozenset[str]],
+        name: str,
+        bound_names: frozenset[str],
+    ) -> None:
+    previous = bound_names_by_dependency.get(name)
+    bound_names_by_dependency[name] = (
+        bound_names if previous is None else previous & bound_names)
+
+
+class _SubstitutionRuleAwareDependencyMapper(
+        DependencyMapperWithReductionInames[[]]):
+    """Collect dependencies through substitution rules without expanding them."""
+
+    subst_rules: Mapping[str, SubstitutionRule]
+    arg_context: Mapping[str, _SubstitutionRuleDependencyInfo]
+    rule_cache: _SubstitutionRuleDependencyCache
+    active_rule_names: tuple[str, ...]
+    bound_names: set[str]
+    bound_names_by_dependency: dict[str, frozenset[str]]
+
+    def __init__(
+            self,
+            subst_rules: Mapping[str, SubstitutionRule],
+            *,
+            arg_context: Mapping[str, _SubstitutionRuleDependencyInfo] | None = None,
+            rule_cache: _SubstitutionRuleDependencyCache | None = None,
+            active_rule_names: tuple[str, ...] = (),
+        ) -> None:
+        super().__init__(composite_leaves=False)
+        self.subst_rules = subst_rules
+        self.arg_context = {} if arg_context is None else arg_context
+        self.rule_cache = {} if rule_cache is None else rule_cache
+        self.active_rule_names = active_rule_names
+        self.bound_names: set[str] = set()
+        self.bound_names_by_dependency: dict[str, frozenset[str]] = {}
+
+    def get_dependency_info(
+            self, expr: Expression) -> _SubstitutionRuleDependencyInfo:
+        dependency_names = frozenset(
+            cast("p.Variable", dep).name for dep in self(expr))
+        (
+            expands_to_call_or_reduction,
+            expands_to_bare_variable,
+        ) = self._get_expansion_kind(expr)
+        return _SubstitutionRuleDependencyInfo(
+            dependency_names=dependency_names,
+            reduction_inames=frozenset(self.reduction_inames),
+            bound_names=frozenset(self.bound_names),
+            bound_names_by_dependency=constantdict({
+                name: self.bound_names_by_dependency[name]
+                for name in dependency_names
+            }),
+            expands_to_call_or_reduction=expands_to_call_or_reduction,
+            expands_to_bare_variable=expands_to_bare_variable,
+        )
+
+    def _resolve_reference(
+            self, expr: Expression) -> _SubstitutionRuleDependencyInfo | None:
+        """Return dependency information if *expr* is a substitution-rule
+        reference or the name of a formal argument present in the current
+        argument context. Return *None* otherwise.
+
+        Tagged variable names are not rule references, but tagged calls are.
+        """
+        if isinstance(expr, p.Variable) and not isinstance(expr, TaggedVariable):
+            if expr.name in self.subst_rules:
+                return self._apply_arg_context(
+                    self._get_subst_rule_info(expr.name, ()))
+            return self.arg_context.get(expr.name)
+
+        if isinstance(expr, p.Call) and isinstance(expr.function, p.Variable):
+            name, _tags = parse_tagged_name(expr.function)
+            if name in self.subst_rules:
+                return self._apply_arg_context(
+                    self._get_subst_rule_info(name, expr.parameters))
+
+        return None
+
+    def _get_expansion_kind(
+            self, expr: Expression) -> tuple[bool, str | None]:
+        """Classify the outermost node of *expr* after rule expansion.
+
+        Return ``(is_call_or_reduction, bare_variable_name)`` without building
+        the expansion: ``(True, None)`` if the expanded expression is itself a
+        call or a :class:`Reduction`, e.g. ``sum(j, a[j])`` or ``s(i)`` for
+        ``s(k) := sum(j, a[k, j])``; ``(False, name)`` if it is the single
+        variable *name*, e.g. ``alias`` for ``alias := j`` gives ``"j"``;
+        ``(False, None)`` otherwise, e.g. ``a[i]``. A rule reference or formal
+        argument is classified by the record of what it expands to.
+        """
+        info = self._resolve_reference(expr)
+        if info is not None:
+            return info.expands_to_call_or_reduction, info.expands_to_bare_variable
+        if isinstance(expr, p.Variable):
+            return False, expr.name
+        if isinstance(expr, p.Call):
+            return True, None
+        return isinstance(expr, Reduction), None
+
+    def _dependencies_from_info(
+            self,
+            info: _SubstitutionRuleDependencyInfo,
+        ) -> Dependencies:
+        self.reduction_inames.update(info.reduction_inames)
+        self.bound_names.update(info.bound_names)
+        for name in info.dependency_names:
+            _record_dependency(
+                self.bound_names_by_dependency,
+                name,
+                info.bound_names_by_dependency[name],
+            )
+        return {p.Variable(name) for name in info.dependency_names}
+
+    def _apply_arg_context(
+            self,
+            info: _SubstitutionRuleDependencyInfo,
+        ) -> _SubstitutionRuleDependencyInfo:
+        """Apply an enclosing rule's argument bindings to *info*."""
+        bound_name_renames: dict[str, str] = {}
+        for name in info.bound_names:
+            replacement = self.arg_context.get(name)
+            if replacement is None:
+                bound_name_renames[name] = name
+            elif replacement.expands_to_bare_variable is not None:
+                bound_name_renames[name] = (
+                    replacement.expands_to_bare_variable)
+            else:
+                raise LoopyError(
+                    f"reduction or swept iname '{name}' must resolve "
+                    "to a bare variable"
+                )
+
+        bound_names = set(bound_name_renames.values())
+        reduction_inames = {
+            bound_name_renames[name]
+            for name in info.reduction_inames
+        }
+        bound_names_by_dependency: dict[str, frozenset[str]] = {}
+
+        for name in info.dependency_names:
+            enclosing_bound_names = frozenset(
+                bound_name_renames[bound_name]
+                for bound_name in info.bound_names_by_dependency[name]
+            )
+            replacement = self.arg_context.get(name)
+            if replacement is None:
+                _record_dependency(
+                    bound_names_by_dependency, name, enclosing_bound_names)
+                continue
+
+            bound_names.update(replacement.bound_names)
+            reduction_inames.update(replacement.reduction_inames)
+            for replacement_name in replacement.dependency_names:
+                _record_dependency(
+                    bound_names_by_dependency,
+                    replacement_name,
+                    enclosing_bound_names
+                    | replacement.bound_names_by_dependency[
+                        replacement_name],
+                )
+
+        dependency_names = frozenset(
+            name
+            for name, enclosing_bound_names
+            in bound_names_by_dependency.items()
+            if name not in enclosing_bound_names
+        )
+
+        expands_to_call_or_reduction = info.expands_to_call_or_reduction
+        expands_to_bare_variable = info.expands_to_bare_variable
+        if expands_to_bare_variable is not None:
+            replacement = self.arg_context.get(expands_to_bare_variable)
+            if replacement is not None:
+                expands_to_call_or_reduction = (
+                    replacement.expands_to_call_or_reduction
+                )
+                expands_to_bare_variable = (
+                    replacement.expands_to_bare_variable
+                )
+
+        return _SubstitutionRuleDependencyInfo(
+            dependency_names=dependency_names,
+            reduction_inames=frozenset(reduction_inames),
+            bound_names=frozenset(bound_names),
+            bound_names_by_dependency=constantdict({
+                name: bound_names_by_dependency[name]
+                for name in dependency_names
+            }),
+            expands_to_call_or_reduction=expands_to_call_or_reduction,
+            expands_to_bare_variable=expands_to_bare_variable,
+        )
+
+    @override
+    def map_variable(self, expr: p.Variable, /) -> Dependencies:
+        info = self._resolve_reference(expr)
+        if info is not None:
+            return self._dependencies_from_info(info)
+
+        _record_dependency(
+            self.bound_names_by_dependency, expr.name, frozenset())
+        return super().map_variable(expr)
+
+    @override
+    def map_tagged_variable(self, expr: TaggedVariable, /) -> Dependencies:
+        _record_dependency(
+            self.bound_names_by_dependency, expr.name, frozenset())
+        return super().map_tagged_variable(expr)
+
+    def _map_bound_expression(
+            self,
+            bound_names: Sequence[str],
+            expr: Expression,
+            *,
+            is_reduction: bool,
+        ) -> Dependencies:
+        resolved_bound_names: set[str] = set()
+        for bound_name in bound_names:
+            # ArgumentGuesser checks this during make_kernel; keep the mapper
+            # valid for direct callers as well.
+            if bound_name in self.arg_context:
+                raise LoopyError(
+                    f"substitution rule argument '{bound_name}' cannot be used as "
+                    "a reduction or swept iname in the same rule"
+                )
+
+            bound_name_info = type(self)(
+                self.subst_rules,
+                arg_context=self.arg_context,
+                rule_cache=self.rule_cache,
+                active_rule_names=self.active_rule_names,
+            ).get_dependency_info(p.Variable(bound_name))
+            if bound_name_info.expands_to_bare_variable is None:
+                raise LoopyError(
+                    f"reduction or swept iname '{bound_name}' must resolve "
+                    "to a bare variable"
+                )
+            resolved_bound_names.add(
+                bound_name_info.expands_to_bare_variable)
+
+        child_info = type(self)(
+            self.subst_rules,
+            arg_context=self.arg_context,
+            rule_cache=self.rule_cache,
+            active_rule_names=self.active_rule_names,
+        ).get_dependency_info(expr)
+        self.bound_names.update(child_info.bound_names | resolved_bound_names)
+        self.reduction_inames.update(child_info.reduction_inames)
+        if is_reduction:
+            self.reduction_inames.update(resolved_bound_names)
+
+        dependencies: Dependencies = set()
+        frozen_resolved_bound_names = frozenset(resolved_bound_names)
+        for name in child_info.dependency_names:
+            enclosing_bound_names = (
+                child_info.bound_names_by_dependency[name]
+                | frozen_resolved_bound_names)
+            if name not in enclosing_bound_names:
+                dependencies.add(p.Variable(name))
+                _record_dependency(
+                    self.bound_names_by_dependency,
+                    name,
+                    enclosing_bound_names,
+                )
+
+        return dependencies
+
+    @override
+    def map_reduction(self, expr: Reduction, /) -> Dependencies:
+        return self._map_bound_expression(
+            expr.inames, expr.expr, is_reduction=True)
+
+    @override
+    def map_sub_array_ref(self, expr: SubArrayRef, /) -> Dependencies:
+        return self._map_bound_expression(
+            tuple(iname.name for iname in expr.swept_inames),
+            expr.subscript,
+            is_reduction=False,
+        )
+
+    @override
+    def map_call(self, expr: p.Call, /) -> Dependencies:
+        info = self._resolve_reference(expr)
+        if info is not None:
+            return self._dependencies_from_info(info)
+
+        return super().map_call(expr)
+
+    def _get_subst_rule_info(
+            self,
+            name: str,
+            arguments: Sequence[Expression],
+        ) -> _SubstitutionRuleDependencyInfo:
+        rule = self.subst_rules[name]
+        if len(rule.arguments) != len(arguments):
+            raise LoopyError(
+                f"number of arguments to '{name}' does not match definition"
+            )
+
+        argument_infos = tuple(
+            type(self)(
+                self.subst_rules,
+                arg_context=self.arg_context,
+                rule_cache=self.rule_cache,
+                active_rule_names=self.active_rule_names,
+            ).get_dependency_info(argument)
+            for argument in arguments
+        )
+        cache_key = (name, argument_infos)
+        info = self.rule_cache.get(cache_key)
+        if info is not None:
+            return info
+
+        if name in self.active_rule_names:
+            cycle_start = self.active_rule_names.index(name)
+            cycle = (*self.active_rule_names[cycle_start:], name)
+            raise LoopyError(
+                "recursive substitution rules are not supported: "
+                + " -> ".join(cycle)
+            )
+
+        info = type(self)(
+            self.subst_rules,
+            arg_context=dict(zip(
+                rule.arguments, argument_infos, strict=True)),
+            rule_cache=self.rule_cache,
+            active_rule_names=(*self.active_rule_names, name),
+        ).get_dependency_info(rule.expression)
+        self.rule_cache[cache_key] = info
+        return info
+
+
+def get_substitution_rule_dependencies(
+        rules: Mapping[str, SubstitutionRule],
+    ) -> dict[str, frozenset[str]]:
+    """Return the dependency names of each substitution-rule body.
+
+    The result maps rule names to the same names that :func:`get_dependencies`
+    would find after fully expanding the body's rule references. No expanded
+    expression is constructed; a shared cache is used for this query only.
+
+    Formal arguments remain symbolic and appear in the result when read.
+    Subtract a rule's arguments to obtain its free dependency names.
+    Reduction and swept inames are excluded according to their binding scope.
+    Unused actual arguments of nested rule calls do not add dependencies.
+
+    :arg rules: a mapping of names to :class:`loopy.SubstitutionRule` objects.
+        Rules must be acyclic. The mapping is not modified.
+    """
+    rule_cache: _SubstitutionRuleDependencyCache = {}
+    return {
+        name: _SubstitutionRuleAwareDependencyMapper(
+            rules, rule_cache=rule_cache
+        ).get_dependency_info(rule.expression).dependency_names
+        for name, rule in rules.items()
+    }
+
+
 class SubArrayRefSweptInamesCollector(CombineMapper[AbstractSet[str], []]):
     @override
     def combine(self, values: Iterable[AbstractSet[str]]) -> AbstractSet[str]:
@@ -1186,7 +1570,7 @@ class SubArrayRefSweptInamesCollector(CombineMapper[AbstractSet[str], []]):
     map_resolved_function: Callable[[Self, ResolvedFunction], AbstractSet[str]] = _map_no_swept_inames  # ruff:ignore[line-too-long]
 
 
-def get_sub_array_ref_swept_inames(expr: SubArrayRef) -> AbstractSet[str]:
+def get_sub_array_ref_swept_inames(expr: Expression) -> AbstractSet[str]:
     return SubArrayRefSweptInamesCollector()(expr)
 
 
