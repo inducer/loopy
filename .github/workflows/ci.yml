@@ -43,7 +43,9 @@ jobs:
 
                 build_py_project_in_conda_env
                 cipip install pygments
-                cipip install basedpyright
+
+                # Flakily indicates an error in loopy.symbolic?
+                cipip install "basedpyright!=1.40.1"
 
                 basedpyright "$(get_proj_name)" test
 
