@@ -628,12 +628,27 @@ class CMathCallable(ScalarCallable):
 
             dtype = arg_num_to_dtype[0].numpy_dtype
 
-            # type ignore because I think .real exists on all numpy arrays
-            real_dtype = np.empty(0, dtype=dtype).real.dtype  # pyright: ignore[reportAttributeAccessIssue]
-
             if dtype.kind in ("u", "i"):
-                # ints and unsigned casted to float32
-                dtype = np.float32
+                if name == "abs":
+                    # Like C's abs/labs/llabs, integer abs stays integral.
+                    # OpenCLCallable.with_types keeps it integral, too.
+                    return (
+                            self.copy(
+                                name_in_target=f"lpy_abs_{dtype.name}",
+                                arg_id_to_dtype=constantdict({
+                                    0: NumpyType(dtype),
+                                    -1: NumpyType(dtype)})),
+                            clbl_inf_ctx)
+                elif name not in ["real", "imag", "conj"]:
+                    # ints and unsigned casted to float32. 'real', 'imag' and
+                    # 'conj' are left alone: they fall through to the type
+                    # error below.
+                    dtype = np.dtype(np.float32)
+
+            real_dtype = np.empty(0, dtype=dtype).real.dtype
+
+            # Determine this before *name* picks up a precision suffix below.
+            result_dtype = real_dtype if name in ["abs", "real", "imag"] else dtype
 
             # for CUDA, C Targets the name must be modified
             if real_dtype == np.float64:
@@ -645,8 +660,6 @@ class CMathCallable(ScalarCallable):
                 name = name + "l"  # fabsl
             else:
                 raise LoopyTypeError(f"{name} does not support type {dtype}")
-
-            result_dtype = real_dtype if name in ["abs", "real", "imag"] else dtype
 
             if dtype.kind == "c" or name in ["real", "realf", "imag", "imagf"]:
                 if name not in ["conj", "conjf"]:
@@ -811,6 +824,25 @@ class CMathCallable(ScalarCallable):
             yield ("40_lpy_min", f"""
             static inline {ctype} {self.name_in_target}({ctype} a, {ctype} b) {{
               return (a < b ? a : b);
+            }}""")
+
+        name_in_target = self.name_in_target
+        if name_in_target is not None and name_in_target.startswith("lpy_abs_"):
+            # Both asserts are here for the type checker.
+            assert self.arg_id_to_dtype is not None
+            dtype = self.arg_id_to_dtype[-1]
+            assert isinstance(dtype, NumpyType)
+            ctype = target.dtype_to_typename(dtype)
+
+            # 'a < 0' would draw a compiler warning for an unsigned type.
+            if dtype.numpy_dtype.kind == "u":
+                body = "return a;"
+            else:
+                body = "return (a < 0 ? -a : a);"
+
+            yield (f"40_{name_in_target}", f"""
+            static inline {ctype} {name_in_target}({ctype} a) {{
+              {body}
             }}""")
 
         if self.name == "isnan" and self.name_in_target in {"isnani32",
