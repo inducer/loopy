@@ -832,7 +832,7 @@ class CMathCallable(ScalarCallable):
             assert self.arg_id_to_dtype is not None
             dtype = self.arg_id_to_dtype[-1]
             assert isinstance(dtype, NumpyType)
-            ctype = target.dtype_to_typename(dtype)
+            ctype = target.get_dtype_registry().dtype_to_ctype(dtype)
 
             # 'a < 0' would draw a compiler warning for an unsigned type.
             if dtype.numpy_dtype.kind == "u":
