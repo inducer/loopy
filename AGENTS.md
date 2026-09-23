@@ -348,6 +348,10 @@ Execution tests for OpenCL/CUDA/ISPC may require optional packages, compilers, d
 
 Do not claim a command passed unless it was run successfully. If the suite has unrelated failures, report them separately and avoid changing unrelated behavior merely to obtain a clean run.
 
+## Implementation style
+
+- Whenever possible, prefer constructor functions (`make_xyz`) to having any logic at all (let alone complex logic) in an object constructor. The ideal constructor is the trivial/dataclass-generated one. Backward compatibility constrains this somewhat, but use this goal as design guidance.
+
 ## Test-writing guidance
 
 - Prefer a focused new test module for a major subsystem instead of continually expanding `test_loopy.py`.
