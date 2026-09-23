@@ -17,7 +17,7 @@ all arrays have named-set shapes, resolved layouts, and UNIVERSAL address space
 - Prefer `make_xyz` functions for conversion, normalization, validation, and other construction policy. Keep canonical records' constructors trivial and preferably dataclass-generated; backward-compatible class constructors should delegate to helpers rather than accumulating logic.
 - Do not retain `tuple | namedisl.Set` as the resolved shape representation.
 - Do not infer generic physical allocation size from logical shape.
-- Trust explicitly custom layout injectivity initially. C/F and other layouts that are injective by construction enforce their structural preconditions; arbitrary symbolic `StridedLayout` values use the trusted custom-layout path rather than requiring a solver proof.
+- Treat injectivity as a layout-provider contract for all layouts, not a responsibility of structural validation. Standard factories document why their constructions satisfy it; arbitrary symbolic/custom layouts remain the provider's responsibility.
 - Preserve rectangular wrapper validation and parameter inference.
 - Prefer conservative rejection over unsound race, alias, or lifetime reasoning.
 - Add explicit pre-codegen invariants so partially migrated kernels fail early.
@@ -46,7 +46,7 @@ all arrays have named-set shapes, resolved layouts, and UNIVERSAL address space
    - current race and barrier behavior.
 2. Search external-facing examples and tests for direct tuple operations on `.shape`.
 3. Prototype stable equality and persistent hashing for aligned `namedisl.Set`s.
-4. Prototype named-space alignment, persistent hashing, parameter substitution, pullback, totality/range checking, and singleton evaluation for `namedisl.PwAff` layout components. Prototype a two-copy injectivity query for a tuple of layout components.
+4. Prototype named-space alignment, persistent hashing, parameter substitution, pullback, totality/range checking, and singleton evaluation for `namedisl.PwAff` layout components. Treat injectivity as a documented layout-provider contract rather than a validation query.
 5. Decide the migration spelling using explicit go/no-go criteria:
    - prefer `.shape` immediately when all in-tree core consumers can migrate atomically, persistence is stable, and compatibility impact is limited to documented direct tuple introspection;
    - use canonical `.index_set` plus a deprecated rectangular `.shape` view for one release if core consumers or essential third-party extension points cannot migrate atomically.
@@ -191,7 +191,7 @@ Introduce immutable layout values and access-lowering protocols while retaining 
 
 ### Tasks
 
-1. Define `LogicalAccess` with a full named logical-expression environment, the current instruction domain, and an exact instruction-domain-to-logical-index map when quasi-affine layout components require one.
+1. Define `LogicalAccess` with a full named logical-expression environment and the exact active instruction domain. Implement its instruction-domain-to-logical-index map as a cached property derived from those fields, returning `None` for non-quasi-affine indices.
 2. Define one shared `Layout` protocol supporting:
    - Pymbolic expression and named-ISL parameter mapping;
    - dependency collection and persistent hashing;
@@ -201,7 +201,7 @@ Introduce immutable layout values and access-lowering protocols while retaining 
    - access lowering;
    - shape-aware physical allocation requirements;
    - an optional runtime interface description.
-3. Define the combined layout map from the unchanged logical point to storage-object selector, instance key, lifetime/epoch key, terminal coordinate, and representation coordinate. Add reusable `PwAff` utilities for totality, range, singleton, finite-range, and two-copy joint-injectivity queries.
+3. Define the combined layout map from the unchanged logical point to storage-object selector, instance key, lifetime/epoch key, terminal coordinate, and representation coordinate. Add reusable `PwAff` utilities for named-space alignment, totality, declared ranges, singleton values, and finite ranges; do not put injectivity proving in `validate`.
 4. Define closed layout-state aliases and narrow child types:
    - `ElementTerminalLayout = LinearLayout | RectangularLayout`;
    - `TerminalLayout = ElementTerminalLayout | ImageLayout`;
@@ -210,12 +210,12 @@ Introduce immutable layout values and access-lowering protocols while retaining 
    - `SeparateChildLayout = TerminalLayout | AnyVectorLayout` and covariant generic `SeparateLayout[SeparateChildT]`;
    - `ElementRepresentationLayout`, excluding images, image-backed vectors, and separated variants of either;
    - the existing legal root/scope aliases, distinct from the shared `Layout` protocol.
-5. Define one `StorageReference` carrying object name, storage kind, instance key, lifetime key, and lifetime. Add lowered coordinate variants for linear, image, scalar-vector-lane, and static-swizzle access, plus explicit scalar-lane, whole-vector, and image-texel footprints.
+5. Define `InstanceScope` (`GLOBAL`, `WORKGROUP`, `WORK_ITEM`), `StorageKind` (`GLOBAL_BUFFER`, `LOCAL_MEMORY`, `PRIVATE_MEMORY`, `IMAGE`), and `StorageLifetime` (`PERSISTENT`, `DEVICE_PROGRAM`). Define one `StorageReference` carrying object name, storage kind, instance key, lifetime key, and lifetime. Add lowered coordinate variants for linear, image, scalar-vector-lane, and static-swizzle access, plus explicit scalar-lane, whole-vector, and image-texel footprints.
 6. Implement trivial frozen records for terminal, scope, and representation layouts. `VectorLayout` stores `lane_expr: namedisl.PwAff`; `SeparateLayout` stores `selector_exprs: tuple[namedisl.PwAff, ...]`; scope mappings store logical `PwAff`s. No wrapper removes or renumbers dimensions.
 7. Implement public construction functions, including `make_linear_layout`, `make_rectangular_layout`, `make_c_layout`, `make_f_layout`, `make_strided_layout`, `make_image_layout`, and one `make_*_layout` function per wrapper. Factories perform expression parsing, compatibility projection construction, named-space alignment, normalization, and value-level validation; record constructors contain no such logic.
 8. Encode wrapper-order legality in factory signatures and child annotations. This excludes nested hardware scopes, scope wrappers inside representation wrappers, reversed/repeated vector or separate wrappers, and scoped images or image-backed vectors, while permitting an image-backed vector as a root or top-level separate child. Do not reject shared dependencies among lane, selector, and child-coordinate expressions.
-9. Require built-in/composed layouts to prove combined injectivity over the exact shape. Keep an explicit trusted-injectivity escape hatch only for custom non-quasi-affine layouts.
-10. Add a structured `PhysicalAllocation` result describing physical objects, per-object element extent, alignment, instance scope, and lifetime, computed per storage-object/instance fiber. Reject nonuniform hardware-instance allocation in the first implementation.
+9. Document combined injectivity as a provider contract for every layout. Explain why standard factory constructions satisfy it, require injective maps as a precondition of `pullback`, and reject only statically evident contract violations in normal processing.
+10. Add a structured `PhysicalAllocation` result describing physical objects, separate-object key, per-instance element extent or physical domain, alignment, instance scope, and lifetime, computed per storage-object/instance fiber. Reject nonuniform hardware-instance allocation in the first implementation.
 11. Add a runtime-interface record carrying physical dimensions, strides, byte size, alignment, and parameter equations.
 12. Make generic `LinearLayout` require an explicit size or physical storage domain.
 13. Add target hooks for element-backed vector ABI size/alignment and supported compile-time swizzle forms; image-backed vectors use image-format channel metadata for width.
@@ -231,9 +231,9 @@ Initially place public layout definitions in `loopy/kernel/array.py` or a new `l
 - dependency collection;
 - static and runtime rejection of every illegal child-type combination, including nested `PrivateLayout`;
 - full-environment lowering without positional axis removal;
-- totality, range, named-space alignment, and joint-injectivity queries for piecewise quasi-affine components;
-- valid noninjective components whose combined map is injective, such as `(floor(i/4), i mod 4)`;
-- rejection of a noninjective combined map;
+- totality, range, and named-space alignment checks for piecewise quasi-affine components;
+- valid noninjective components whose user-asserted combined map is injective, such as `(floor(i/4), i mod 4)`;
+- confirmation that structural validation does not claim to prove injectivity;
 - trivial record construction and `make_*_layout` normalization;
 - C/F/fixed-stride expression and allocation derivation, including origins and padding;
 - generic layout rejection without size;
@@ -402,7 +402,7 @@ Add `AddressSpace.UNIVERSAL` and an opt-in normalization transform. Do not enabl
    - rewrite caller and specialized callee consistently;
    - reject unsupported scoped callable cases until Phase 8 completes composition support.
 11. Validate current-instance access constraints and uniform per-instance allocation polyhedrally.
-12. Validate named-space alignment, component totality/ranges, and combined injectivity after universalization.
+12. Validate named-space alignment and component totality/ranges after universalization; preserve injectivity as a documented provider contract.
 13. Make the transform idempotent.
 14. Keep automatic preprocessing conversion disabled in this phase; old-address-space code generation remains the default compatibility path.
 15. Add an opt-in universal-IR validator for tests and development.
@@ -429,7 +429,7 @@ This ordering is mandatory: universalization adds named instance dimensions and 
 - global/local/private conversion;
 - exact added shape dimensions and constraints;
 - named access-map rewriting without dependence on tuple-prefix positions;
-- aligned scope projection expressions and combined injectivity;
+- aligned, total, and in-range scope projection expressions;
 - idempotence;
 - missing hardware axes;
 - nonzero hardware iname bases;
@@ -521,7 +521,7 @@ Preserve polyhedral shape/layout semantics across callable-kernel boundaries.
    - pull back every layout component, including lane, selector, and scope `PwAff`s;
    - preserve correlated domains and translate parameter namespaces;
    - fix nonswept storage-instance dimensions to current values;
-   - prove that the reindexing map is injective on the callee shape before retaining an injective descriptor.
+   - require an injective reindexing map as the `pullback` precondition and reject statically evident repeated-element mappings.
 5. Replace the minimum Phase 6 callable adapter with full named layout pullback.
 6. Validate local/private compatibility at call boundaries.
 7. Update nested callable inference.
@@ -577,7 +577,7 @@ Use combined layout maps and physical access footprints for race-related analysi
    - require equal storage object and instance identity;
    - require overlapping physical footprints and lifetimes;
    - test nonemptiness.
-5. Use equality of universal logical indices only for scalar accesses to the same array after combined injectivity has been established.
+5. Use equality of universal logical indices only for scalar accesses to the same array under the layout-provider injectivity contract.
 6. Reuse and generalize the candidate-scope query introduced in Phase 6; do not maintain a second inference algorithm.
 7. Update schedule-time `WriteRaceChecker`, access-range overlap, and variable-access ordering to remove local/global branching and consume footprint relations.
 8. Treat unknown/non-affine coordinates or footprints conservatively.
@@ -678,7 +678,7 @@ Complete the public transition and remove duplicate representations.
    - noncurrent local/private access;
    - unresolved layout before code generation;
    - misaligned, non-total, or out-of-range layout `PwAff`;
-   - noninjective combined built-in layout map or noninjective callable pullback;
+
    - invalid vector/separate composition;
    - dynamic scalar lane or selector and nonstatic whole-vector swizzle;
    - nonuniform hardware-instance allocation;
@@ -712,7 +712,7 @@ Add sections for:
 - iname-private storage;
 - combined-map injectivity and trusted custom layouts;
 - universal address space;
-- physical allocation requirements;
+- physical storage objects, kinds, instance scopes, lifetimes, allocation fibers, and per-instance extent;
 - legacy `tag_array_axes` compatibility.
 
 Correct the current Fortran-layout description to column-major.
@@ -792,7 +792,7 @@ The project is complete when:
 - noncurrent local/private/iname-private accesses are rejected;
 - layouts, not dim tags, lower accesses and determine allocation;
 - all layout nodes receive one full named logical environment and contribute to one combined map;
-- built-in/composed layout maps are total, range-valid, and jointly injective, while trusted custom layouts are explicit;
+- layout components are structurally valid and range-correct, while combined injectivity remains an explicit provider contract;
 - illegal child combinations are excluded by types and factories without assigning exclusive ownership of logical axes;
 - vector lanes and separate selectors are piecewise quasi-affine expressions with static scalar and whole-vector lowering;
 - image texel channels may be represented by an image-backed vector layout without permitting scoped images;

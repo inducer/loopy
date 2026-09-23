@@ -51,13 +51,66 @@ The set of valid logical subscript tuples. It says which values exist, not how m
 
 An immutable description of how a valid logical subscript selects a storage instance and a physical coordinate within it.
 
+### Scope
+
+The execution granularity that owns a distinct storage instance. Scope is not Python/C lexical scope. The initial scopes are global (one instance shared by all workgroups and work items), workgroup (one instance per workgroup), and work item (one instance per work item). Sequential iname-private values do not introduce another physical scope; they introduce nonoverlapping lifetime epochs that may reuse one instance.
+
+### Physical storage object
+
+One separately named declaration or allocation, such as a kernel argument, temporary buffer, local-memory declaration, private automatic variable, or image object. A `SeparateLayout` may turn one logical array into several physical storage objects.
+
 ### Storage instance
 
-A distinct physical allocation induced by execution context. Examples include one local/shared allocation per workgroup and one private allocation per work item.
+One execution-context realization of a physical storage object. A global buffer object has one global instance, a local/shared declaration has one instance per workgroup, and a private declaration has one instance per work item. The **instance key** is the tuple identifying that realization: empty for global scope, group IDs for workgroup scope, and group plus local/item IDs for work-item scope. “Per-instance extent” means the amount of storage in each realization, not the total multiplied by the number of workgroups or work items.
+
+### Instance scope
+
+The `InstanceScope` value identifying which execution coordinates distinguish storage instances. It is part of allocation and alias semantics:
+
+```python
+class InstanceScope(Enum):
+    GLOBAL = auto()
+    WORKGROUP = auto()
+    WORK_ITEM = auto()
+```
+
+### Storage kind
+
+`StorageKind` identifies the target storage mechanism and declaration/access rules, independently of the logical shape:
+
+```python
+class StorageKind(Enum):
+    GLOBAL_BUFFER = auto()
+    LOCAL_MEMORY = auto()
+    PRIVATE_MEMORY = auto()
+    IMAGE = auto()
+```
+
+- `GLOBAL_BUFFER` is pointer/buffer storage visible to generated device programs;
+- `LOCAL_MEMORY` is workgroup-local/shared storage;
+- `PRIVATE_MEMORY` is work-item-local automatic/register-backed storage;
+- `IMAGE` is an opaque image object accessed through image operations.
+
+The legal combinations of storage kind and instance scope are constrained by layout types and target support. For example, `LOCAL_MEMORY` has workgroup scope and `PRIVATE_MEMORY` has work-item scope in the first implementation.
+
+### Storage lifetime
+
+`StorageLifetime` identifies how long a physical instance remains valid and whether it may cross a generated-subkernel boundary:
+
+```python
+class StorageLifetime(Enum):
+    PERSISTENT = auto()
+    DEVICE_PROGRAM = auto()
+```
+
+- `PERSISTENT` survives generated-subkernel launches and may be passed between them;
+- `DEVICE_PROGRAM` exists only during one generated device-program invocation.
+
+A **lifetime/epoch key** is separate from `StorageLifetime`. It distinguishes logically different sequential iname-private values that reuse one physical instance during that instance's lifetime. The key participates in logical identity but is deliberately omitted when allocating the reused storage.
 
 ### Physical extent
 
-The amount and arrangement of physical storage required by a layout. This is not generally derivable from the cardinality or bounding box of the logical shape.
+The amount and arrangement of coordinates available within one storage instance. For linear/vector storage this is commonly an element count plus alignment; for multidimensional or opaque storage it may be a physical storage domain or target-specific dimensions. It is not the number of instances and is not generally derivable from the cardinality or bounding box of the logical shape.
 
 ## Logical shape
 
@@ -170,15 +223,26 @@ All layout nodes obey one shared `Layout` protocol and are evaluated on the same
 class LogicalAccess:
     """A source-level array access in its named logical-index space.
 
-    :arg domain: The active instruction/code-generation domain.
-    :arg index_map: An exact map from *domain* to logical indices, or
-        *None* when no quasi-affine layout component requires one.
+    :arg domain: The exact active execution domain, including applicable
+        instruction predicates and kernel assumptions. It supplies the
+        constraints needed to interpret piecewise expressions and prove that
+        a lane, selector, or swizzle is static at this access.
     :arg index_exprs: Pymbolic index expressions keyed by logical-axis name.
     """
 
     domain: namedisl.Set
-    index_map: namedisl.Map | None
     index_exprs: constantdict[str, ArithmeticExpression]
+
+    @cached_property
+    def index_map(self) -> namedisl.Map | None:
+        """Return the exact quasi-affine map from *domain* to logical indices.
+
+        Return *None* if an index expression is not quasi-affine. Layouts that
+        contain a ``PwAff`` component reject such an access when they need the
+        map. The cached value is derived state and is excluded from equality,
+        hashing, and persistence.
+        """
+        ...
 
 class Layout(Protocol):
     """Shared behavior of immutable logical-to-physical layout values."""
@@ -204,11 +268,24 @@ class Layout(Protocol):
         ...
 
     def pullback(self, index_map: namedisl.Map) -> Self:
-        """Reexpress this layout through a named logical-index map."""
+        """Reexpress this layout for a view, subarray, or callable argument.
+
+        If this layout denotes ``L: X -> P`` and *index_map* denotes the named
+        reindexing ``f: Y -> X``, return the layout ``L ∘ f: Y -> P``. The
+        operation composes every logical-index-dependent component, including
+        lane, selector, scope, lifetime, and terminal-coordinate expressions.
+        The provider must ensure that ``f`` is injective on the view's shape;
+        this method does not prove that precondition.
+        """
         ...
 
     def validate(self, logical_shape: namedisl.Set) -> None:
-        """Validate this layout on the exact logical shape."""
+        """Check structural well-formedness relative to *logical_shape*.
+
+        Check canonical named-space alignment, component totality and declared
+        ranges, legal child types, and required allocation metadata. Do not
+        attempt to prove layout injectivity; injectivity is a provider contract.
+        """
         ...
 
     def lower_access(
@@ -228,13 +305,17 @@ class Layout(Protocol):
             self, logical_shape: namedisl.Set,
             dtype: LoopyType,
             target: TargetBase) -> RuntimeArrayInterface | None:
-        """Describe the host-array interface, if one exists."""
+        """Describe host argument validation/allocation, if supported."""
         ...
 ```
 
-`map_parameters` covers substitution in both Pymbolic expressions and named-ISL objects. `align_to_shape` aligns parameters and logical dimensions by name. `pullback` composes every logical-index-dependent layout component with a named reindexing map, as required for subarrays and callable arguments. A layout containing a `namedisl.PwAff` component requires `LogicalAccess.index_map`; failure to construct or align that map is an actionable error, not a reason to approximate the access.
+`LogicalAccess.domain` is needed even though `index_map` is cached from `index_exprs`: expressions alone do not state which piecewise branches are reachable, which loop values are active, or which predicates and assumptions may be used to establish a static lane or selector. The domain and expressions together determine the exact access map. A layout containing a `namedisl.PwAff` component requires the cached map; failure to construct or align it is an actionable error, not a reason to approximate the access.
 
-Concrete layouts are immutable and hashable values. Validation checks named spaces, totality of every component on the exact logical shape, range restrictions, allocation requirements, and the combined injectivity contract below. `runtime_interface` returns `None` when the layout has no host-array interface. A generic user-provided layout must include an explicit allocation-size expression or physical storage domain; Loopy must not guess generic allocation sizes from the logical shape.
+`map_parameters` covers substitution in both Pymbolic expressions and named-ISL objects. `align_to_shape` canonicalizes a component's input space so that its set dimensions have exactly the logical shape's axis names, with no missing, extra, duplicate, or unnamed dimensions, and its parameter dimensions refer to the same names independent of ordering. This is what “named-space alignment” means here.
+
+Concrete layouts are immutable and hashable values. `validate` is a structural check only. It verifies that components are already in the canonical named space, are defined throughout the exact logical shape, obey declared ranges such as `0 <= lane_expr < length`, use a legal child composition, and provide required allocation metadata. It does **not** prove injectivity. Every layout provider is responsible for satisfying the injectivity contract below; factory construction of a familiar built-in form may make that obligation evident, but validation does not invoke a general collision solver.
+
+A runtime interface describes how a host wrapper recognizes, validates, and, for outputs, allocates a concrete runtime argument: physical rank and dimensions, strides, byte size/alignment, and parameter-inference equations. Returning `None` means that the layout does not define such a host-array ABI. The array may still be usable as an internal temporary, an opaque target object, or an input accepted through custom wrapper code, provided its physical allocation/code-generation requirements are otherwise known. Generic output allocation and standard host argument checks are unavailable without a runtime interface.
 
 The concrete frozen records should have trivial, preferably dataclass-generated constructors. Public `make_*_layout` functions perform compatibility conversion, expression parsing, named-space alignment, normalization, and validation before constructing those records. This keeps policy out of `__init__` and makes construction logic directly testable.
 
@@ -259,7 +340,14 @@ Built-in quasi-affine components use `namedisl.PwAff` values aligned to `S`. Gen
 
 ### Compositional type structure
 
-The child-type system remains responsible for wrapper-order and ABI legality, independently of which logical dimensions expressions reference:
+The hierarchy has four semantic levels, listed from the innermost leaf to the outermost wrapper:
+
+1. **Terminal layouts** produce coordinates within one physical storage object. `LinearLayout` and `RectangularLayout` address ordinary element storage; `ImageLayout` produces opaque image coordinates.
+2. **Representation layouts** change how values are represented without changing hardware ownership. `VectorLayout` contributes a lane within one vector/texel value, while `SeparateLayout` selects one of several physical storage objects.
+3. **Sequential-lifetime layout** (`InamePrivateLayout`) distinguishes logical epochs that execute sequentially and may reuse the same physical instance.
+4. **Hardware-scope layouts** (`LocalLayout` and `PrivateLayout`) state which workgroup or work item owns a distinct storage instance. They are outermost because storage ownership applies to the complete representation beneath them.
+
+A layout need not contain every level. A plain `LinearLayout` is a complete global layout, while a private vector temporary may have hardware scope outside a vector representation and terminal. The child-type system encodes legal omissions and ordering independently of which logical dimensions the component expressions reference:
 
 ```python
 ElementTerminalLayout = LinearLayout | RectangularLayout
@@ -525,9 +613,9 @@ L(x) = L(y)  implies  x = y
 
 The lifetime key makes the abstract map injective across sequential iname-private epochs even though allocation deliberately drops that key and reuses physical storage. Among concurrently live values, equality of storage object, instance identity, and physical coordinate therefore implies equality of the logical point.
 
-Built-in quasi-affine layouts use a two-copy ISL query to establish totality, range restrictions, and injectivity. A component may be noninjective by itself: `floor(i/4)` and `i mod 4` are each noninjective, while their pair is injective. User-provided non-quasi-affine layouts may use an explicit trusted-injectivity assertion. Noninjective legacy layouts, such as zero stride on a nonsingleton axis or overlapping multidimensional strides, must not silently enter the normalized IR.
+Injectivity is a semantic contract on every layout provider, not something `validate` attempts to prove. This remains true when all components are quasi-affine: Loopy checks that component expressions are well-formed, total, and in range, but it does not run a general two-copy collision query. A component may be noninjective by itself—`floor(i/4)` and `i mod 4` are each noninjective while their pair is injective—so local checks on individual fields would not establish the contract anyway. Built-in factory documentation states why its standard constructions satisfy the contract; users supplying custom expressions are responsible for the combined map. An optional diagnostic injectivity checker may be added later without becoming part of normal validation.
 
-Pullback through a subarray/reindexing map preserves injectivity only when that map is injective on the new logical shape. Specializing a separate selector preserves injectivity on that selector fiber. Dropping a lifetime key is valid only for allocation reuse after schedule analysis proves that the corresponding epochs cannot overlap.
+Pullback through a subarray/reindexing map preserves the contract only when that map is injective on the new logical shape. `pullback` therefore has injective reindexing as a precondition; Loopy rejects mappings that are statically known to repeat elements but does not promise a general proof. Specializing a separate selector preserves injectivity on that selector fiber. Dropping a lifetime key is valid only for allocation reuse after schedule analysis proves that the corresponding epochs cannot overlap.
 
 ## Vector layout
 
@@ -541,7 +629,7 @@ class VectorLayout(Layout, Generic[VectorChildT]):
     child: VectorChildT
 ```
 
-`lane_expr` is aligned to the full logical shape and contributes the representation coordinate without changing the environment passed to `child`. It must be total and satisfy `0 <= lane_expr < length` on the exact shape; `length` is a positive compile-time constant. The pair of child outputs and lane participates in the combined injectivity proof.
+`lane_expr` is aligned to the full logical shape and contributes the representation coordinate without changing the environment passed to `child`. It must be total and satisfy `0 <= lane_expr < length` on the exact shape; `length` is a positive compile-time constant. The pair of child outputs and lane is covered by the provider's combined injectivity contract.
 
 For a scalar access, compose `lane_expr` with the instruction-to-logical-index map and restrict it by the active code-generation domain. The result must be provably one compile-time integer, producing `ScalarLane`; dependence on a runtime parameter, unresolved piecewise branch, or nonconstant loop value is rejected. Whole-vector access is a distinct lowering mode. It must prove that storage object, instance key, and child coordinate are invariant across the vectorized instances and that `lane_expr` produces a compile-time-known lane tuple. A whole-vector write requires that tuple to be a permutation of `0..length-1`; reads may use a statically supported swizzle. No runtime vector indexing is introduced by this design.
 
@@ -577,7 +665,7 @@ class SeparateLayout(Layout, Generic[SeparateChildT]):
     child: SeparateChildT
 ```
 
-Each selector expression is evaluated on the full logical point and contributes one component of the storage-object selector. The unchanged environment is passed to `child`, and the selector tuple plus child outputs participates in combined injectivity. For an actual scalar access, composing the selectors with the access map must yield one compile-time selector tuple unless a target-specific indirect-object mechanism is introduced later.
+Each selector expression is evaluated on the full logical point and contributes one component of the storage-object selector. The unchanged environment is passed to `child`, and the selector tuple plus child outputs is covered by the provider's combined injectivity contract. For an actual scalar access, composing the selectors with the access map must yield one compile-time selector tuple unless a target-specific indirect-object mechanism is introduced later.
 
 The first implementation requires the joint selector range to be a parameter-independent, finite, compile-time-constant Cartesian product. Selector tuples are enumerated lexicographically and use the existing deterministic subargument naming scheme. Named or positional compatibility axes become projection `PwAff`s. Sparse, correlated, or parameter-dependent selector ranges are deferred because they may require per-fiber child specialization and different allocation sizes.
 
@@ -587,15 +675,22 @@ The first implementation permits `make_separate_layout(..., child=make_vector_la
 
 ## Physical extent and allocation
 
-Logical shape does not determine allocation size. Layout allocation is a structured result, not one undifferentiated scalar:
+Logical shape says which logical values exist; it does not by itself say what to allocate. Allocation planning converts a shape and layout into descriptions of physical storage objects. It does not multiply those descriptions by the number of runtime workgroups or work items.
+
+### Allocation result
 
 ```python
 @dataclass(frozen=True)
 class PhysicalAllocation:
+    """All physical storage objects required for one logical array."""
+
     objects: tuple[PhysicalStorageObject, ...]
 
 @dataclass(frozen=True)
 class PhysicalStorageObject:
+    """The allocation requirements for one separately named object."""
+
+    object_key: tuple[int, ...] | None
     kind: StorageKind
     element_extent: ArithmeticExpression | PhysicalStorageDomain
     alignment: int | None
@@ -603,15 +698,41 @@ class PhysicalStorageObject:
     lifetime: StorageLifetime
 ```
 
-`element_extent` is measured in the terminal storage element type; byte size is derived from dtype and, for element-backed vector storage, the target ABI. Allocation is derived per storage-object/instance fiber of the combined map over the exact logical shape. Vector lanes do not multiply the number of vector storage objects. Instance multiplicity is represented by `instance_scope`, not multiplied into per-instance extent. `SeparateLayout` yields one object per materialized selector tuple. Local/private wrappers change scope and lifetime without multiplying the child extent, and the first implementation rejects nonuniform per-instance extents.
+`object_key` is the compile-time selector tuple of a materialized `SeparateLayout`; it is `None` for an unseparated array. `kind`, `instance_scope`, and `lifetime` use the definitions above. `alignment` is a byte alignment, or `None` when the target/default ABI decides it.
 
-Every terminal layout must provide either:
+`element_extent` describes one storage instance of this object. An arithmetic expression is the number of terminal storage elements in a one-dimensional allocation. A `PhysicalStorageDomain` is an exact set of valid physical coordinate tuples for storage that is not adequately described by one count. Neither form includes the number of workgroups, work items, separate objects, or sequential epochs.
+
+### From a layout to an allocation
+
+For a fixed object key `o` and instance key `k`, the corresponding **allocation fiber** is:
+
+```text
+S[o, k] = { x in logical shape : object(x) = o and instance(x) = k }
+```
+
+Allocation proceeds conceptually as follows:
+
+1. Enumerate the finite storage-object selector values. An unseparated layout has one value; a materialized `SeparateLayout` has one value per physical object.
+2. For each object, range the terminal physical coordinate over one allocation fiber to obtain the required per-instance extent or physical domain.
+3. Check that this requirement is uniform across runtime instance keys. The first implementation rejects a layout whose local/private extent changes by workgroup or work item.
+4. Apply representation ABI rules. An element-backed vector changes the terminal element type, size, and alignment; its lanes do not create additional vector objects. Image channels use image-format dimensions rather than ordinary vector padding.
+5. Record the storage kind, instance scope, and lifetime. Runtime execution supplies one instance at global, workgroup, or work-item scope as appropriate; the allocation descriptor itself is not replicated.
+
+Examples:
+
+- A global linear temporary yields one `GLOBAL_BUFFER` object with `GLOBAL` instance scope.
+- A local temporary yields one `LOCAL_MEMORY` object description; each workgroup receives an instance with the stated per-instance extent.
+- A private temporary similarly yields one `PRIVATE_MEMORY` description and one instance per work item.
+- A separate layout yields several object descriptions distinguished by `object_key`.
+- `InamePrivateLayout` adds no object and no physical instance. Its sequential epochs reuse the enclosing instance.
+
+Every terminal layout must provide one of:
 
 - an explicit element-extent expression;
-- an explicit physical storage domain; or
-- structured information from which a built-in layout derives the extent exactly.
+- an explicit `PhysicalStorageDomain`; or
+- structured information from which its factory derives the requirement exactly.
 
-For first-release rectangular layouts with nonnegative strides, the footprint is the half-open interval from zero through the largest declared physical-axis address plus one, including `base_offset`; a negative minimum is rejected. Layouts returned by the C/F factories are injective by construction. Generic strided layouts outside these rules use the trusted custom-layout path and an explicit allocation contract. Image layouts require physical dimensions when Loopy allocates them. Vector layouts adjust child element type, extent, and alignment according to the target ABI.
+For a first-release rectangular layout with nonnegative strides, the required linear interval runs from zero through the largest declared physical-axis address plus one, including `base_offset`; a negative minimum is rejected. A generic symbolic/strided layout uses its explicit allocation contract instead of asking Loopy to infer an extent. An image layout supplies physical image dimensions whenever Loopy owns the allocation.
 
 `TemporaryVariable.storage_shape`, `base_indices`, and `offset` need not remain compatible public state:
 
@@ -619,7 +740,7 @@ For first-release rectangular layouts with nonnegative strides, the footprint is
 - offsets belong in the terminal layout expression;
 - explicit storage sizing belongs in the layout.
 
-Base-storage allocation must additionally account for storage kind, storage-instance scope, lifetime, alignment, and dtype.
+When several arrays share base storage, compatibility includes object key, storage kind, instance scope, lifetime, alignment, dtype, and physical-coordinate requirements—not merely the largest element count.
 
 ## Universal address space
 
@@ -647,7 +768,7 @@ new layout: terminal/representation layout f(i)
 new address space: UNIVERSAL
 ```
 
-An unwrapped terminal or representation layout has global/persistent storage kind by default. Array arguments and persistent temporaries differ in ownership and lifetime metadata, not in logical address space. `InamePrivateLayout` does not by itself imply hardware-private storage; it refines the lifetime of the enclosing global, local, or private storage. Local/private wrappers around images and multiple hardware scope wrappers are rejected initially. Universalization creates named scope dimensions and projection `PwAff`s for their instance mappings; later layout lowering does not depend on those dimensions occupying a tuple prefix.
+An unwrapped terminal or representation layout has `GLOBAL_BUFFER` storage kind and `PERSISTENT` lifetime by default. Array arguments and persistent temporaries differ in ownership and lifetime metadata, not in logical address space. `InamePrivateLayout` does not by itself imply hardware-private storage; it refines the lifetime of the enclosing global, local, or private storage. Local/private wrappers around images and multiple hardware scope wrappers are rejected initially. Universalization creates named scope dimensions and projection `PwAff`s for their instance mappings; later layout lowering does not depend on those dimensions occupying a tuple prefix.
 
 No execution-instance dimensions are added.
 
@@ -689,7 +810,7 @@ Failure or inability to prove equality is an error. Future shuffle/communication
 
 Runtime wrappers validate physical storage, not the logical shape directly.
 
-Layouts should expose a runtime interface such as:
+Layouts may expose a runtime interface such as:
 
 ```python
 @dataclass(frozen=True)
@@ -699,6 +820,8 @@ class RuntimeArrayInterface:
     byte_size: ArithmeticExpression | None
     alignment: int | None
 ```
+
+An array “has no runtime interface” when its resolved layout's `runtime_interface(logical_shape, dtype, target)` returns `None`. Such a layout has no standard host-array contract. This does not make the layout or array invalid: device-only temporaries, opaque target objects, and custom execution wrappers may not need one. It means the standard runtime wrapper cannot infer parameters from that argument, validate its shape/strides beyond separately supplied byte-size information, or allocate it as an output. Those operations require a `RuntimeArrayInterface` or target-specific wrapper logic.
 
 Rectangular layouts must continue to support:
 
@@ -750,7 +873,7 @@ Atomics and volatile casts must query lowered physical storage kind, not `addres
 - No `auto` shape, layout, stride, or offset remains.
 - Every logical access has the correct named space.
 - Every layout `PwAff` is aligned with the canonical logical shape, total on that shape, and within its declared range.
-- Combined layout injectivity has been proved or explicitly trusted.
+
 - Every local/private/iname-private access is current-instance legal.
 - Every terminal layout has an allocation requirement when Loopy allocates it, and hardware-instance fibers have uniform requirements.
 - No unlowered legacy dim tags remain.
@@ -771,7 +894,7 @@ execution coordinates
 
 The footprint distinguishes a scalar element or vector lane, a whole vector, an image texel, and target-specific atomic granularity. Two accesses may conflict when their storage object and instance identity agree, their lifetimes overlap, and their physical footprints overlap. Thus a whole-vector access overlaps every constituent lane, and an image texel write conflicts with reads or writes to any of its channels even though those channels are distinct logical points.
 
-For scalar accesses to one array whose combined layout is proved injective, equality of universal logical indices remains a sound optimization. It is not the universal race criterion. This replaces address-space-specific branching and the current syntactic assumption that mentioning a parallel iname in a subscript proves injectivity. Expressions such as `i % 2` and `i-i` require an actual two-copy collision query.
+For scalar accesses to one array under the layout-provider injectivity contract, equality of universal logical indices remains a sound optimization. It is not the universal race criterion. This replaces address-space-specific branching and the current syntactic assumption that mentioning a parallel iname in a subscript proves injectivity. Expressions such as `i % 2` and `i-i` require an actual two-copy collision query.
 
 For different array names sharing base storage or callable views with different logical namespaces, compose layouts into a common physical coordinate and footprint when possible or conservatively assume overlap. Distinct separate selectors prove disjointness only when they select distinct physical objects. Iname-private lifetime keys prove nonoverlap only after schedule analysis establishes sequential epochs.
 
@@ -797,7 +920,7 @@ For a `SubArrayRef`:
 4. Pull back every source-layout component, including `PwAff` lanes/selectors and scope mappings, through this map.
 5. Preserve correlated and union domains and translate parameter namespaces explicitly.
 6. Fix nonswept storage-instance dimensions to current group/item/iname values.
-7. Prove that the reindexing map is injective on the callee shape; a repeated-element view may not inherit an injective descriptor.
+7. Require the reindexing map to be injective on the callee shape and reject statically evident repeated-element views; `pullback` does not itself prove this precondition.
 8. Return the resulting shape and layout with normalized named spaces.
 
 A local view remains tied to the current group. A private view remains tied to the current item. Calls that imply another storage instance are invalid. No implicit global/local/private conversion occurs at a call boundary.
