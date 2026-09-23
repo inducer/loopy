@@ -1,5 +1,31 @@
 # Review of `ARRAY-DESIGN.md` / `ARRAY-IMPL.md`
 
+> **Status: superseded.** This review was written against the draft at commit
+> `acf3fde6`. Its findings have been dispositioned and `ARRAY-DESIGN.md` and
+> `ARRAY-IMPL.md` have been rewritten accordingly. It is retained only as a
+> record of the reasoning. Where it disagrees with the current design
+> documents, the design documents win.
+>
+> Disposition:
+>
+> | # | Outcome |
+> |---|---|
+> | A1 | **Rejected.** The explicit instance axes stay. They are needed by a separate `compute` transformation and by eventual shuffle/inter-group communication; the redundancy in v1 is an accepted, documented cost. |
+> | A2 | **Adopted, and extended.** No new address space — but rather than a `KernelState` flag alone, the new semantics become a new `Array` type that arguments and temporaries *hold* rather than inherit. |
+> | A3 | Adopted — one `InstancedLayout` with an ordered tuple of instance specs. |
+> | A4 | Applied in place. |
+> | A5 | Adopted — protocol/ABC ambiguity resolved. |
+> | B1 | Adopted — image-backed vectors and all texel/channel machinery cut. |
+> | B2 | Adopted — identity permutation only; swizzle target hook cut. |
+> | B3 | **Adopted in spirit, inverted in method.** `SeparateLayout` stays in the layout algebra, and `sep` is *late*-lowered rather than materialized in preprocessing. This makes `object_key` and the separate-aware lowering paths load-bearing rather than dead. |
+> | B4 | Adopted — flat union plus wrapper-ordering rules in `validate`. |
+> | B5 | Adopted — `PhysicalStorageDomain` deleted; `StorageKind`/`InstanceScope` derived. |
+> | C1 | **Adopted, and taken further.** Race analysis is logical-level *only*: no physical composition, no footprint model, `base_storage` conservative by design. Non-rectangular arrays supply sizing as an expression separate from the indexing expression. |
+> | C2 | Adopted — `auto` temporaries get a bounding-box *layout* over the exact union shape. |
+> | C3 | **Adopted with a correction.** Hashing may indeed return unequal hashes for equal sets; this is now stated as a permanent property rather than something to engineer away, with an invariant that no correctness decision may depend on hash identity, and `base_storage` grouping flagged as the one place needing explicit semantic comparison. |
+> | C4 | **Deferred.** The transform inventory is recorded in `ARRAY-IMPL.md` under "Deferred: transformation migration"; no detailed plan yet. |
+> | C5 | Vector-lane regression accepted (no fallback retained). Parameter inference refactor adopted. Implementation plan intentionally left coarse. |
+
 Review axes as requested: mathematical consistency, Occam's razor, realizability.
 
 The core of the proposal is sound and is the right direction: a logical index set
