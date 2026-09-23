@@ -46,15 +46,17 @@ all arrays have named-set shapes, resolved layouts, and UNIVERSAL address space
    - current race and barrier behavior.
 2. Search external-facing examples and tests for direct tuple operations on `.shape`.
 3. Prototype stable equality and persistent hashing for aligned `namedisl.Set`s.
-4. Prototype substitution/renaming of shape parameters for callable descriptor translation.
+4. Prototype named-space alignment, persistent hashing, parameter substitution, pullback, totality/range checking, and singleton evaluation for `namedisl.PwAff` layout components. Prototype a two-copy injectivity query for a tuple of layout components.
 5. Decide the migration spelling using explicit go/no-go criteria:
    - prefer `.shape` immediately when all in-tree core consumers can migrate atomically, persistence is stable, and compatibility impact is limited to documented direct tuple introspection;
    - use canonical `.index_set` plus a deprecated rectangular `.shape` view for one release if core consumers or essential third-party extension points cannot migrate atomically.
 6. Prototype and settle before publishing layout classes:
    - the concrete physical-storage-domain type;
-   - target vector ABI hooks;
+   - target vector ABI and static-swizzle capability hooks;
    - generic runtime-interface minimums;
-   - the closed layout child-type states and public `make_*_layout` factory signatures.
+   - the closed layout child-type states and public `make_*_layout` factory signatures;
+   - the full named logical-index environment and combined layout-map representation;
+   - static scalar-lane, selector, and whole-vector swizzle proof APIs.
 
 ### Primary files
 
@@ -189,44 +191,34 @@ Introduce immutable layout values and access-lowering protocols while retaining 
 
 ### Tasks
 
-1. Define one shared `Layout` protocol supporting:
-   - expression/parameter mapping;
-   - dependency collection;
-   - persistent hashing;
-   - validation against the logical shape;
+1. Define `LogicalAccess` with a full named logical-expression environment, the current instruction domain, and an exact instruction-domain-to-logical-index map when quasi-affine layout components require one.
+2. Define one shared `Layout` protocol supporting:
+   - Pymbolic expression and named-ISL parameter mapping;
+   - dependency collection and persistent hashing;
+   - named-space alignment;
+   - pullback through a named reindexing map;
+   - validation against the exact logical shape;
    - access lowering;
-   - physical allocation requirements;
+   - shape-aware physical allocation requirements;
    - an optional runtime interface description.
-2. Define closed layout-state aliases and narrow child types:
+3. Define the combined layout map from the unchanged logical point to storage-object selector, instance key, lifetime/epoch key, terminal coordinate, and representation coordinate. Add reusable `PwAff` utilities for totality, range, singleton, finite-range, and two-copy joint-injectivity queries.
+4. Define closed layout-state aliases and narrow child types:
    - `ElementTerminalLayout = LinearLayout | RectangularLayout`;
    - `TerminalLayout = ElementTerminalLayout | ImageLayout`;
    - generic `VectorLayout[VectorChildT]`, where `VectorChildT` is covariantly bounded by `ElementTerminalLayout | ImageLayout`;
    - `ElementVectorLayout`, `ImageVectorLayout`, and their `AnyVectorLayout` union;
    - `SeparateChildLayout = TerminalLayout | AnyVectorLayout` and covariant generic `SeparateLayout[SeparateChildT]`;
    - `ElementRepresentationLayout`, excluding images, image-backed vectors, and separated variants of either;
-   - `InamePrivateLayout.child: ElementRepresentationLayout`;
-   - `InstanceScopedChildLayout = ElementRepresentationLayout | InamePrivateLayout`;
-   - `LocalLayout.child` and `PrivateLayout.child` use `InstanceScopedChildLayout`;
-   - `ArrayLayout` is the closed union of all legal root states and is distinct from the shared `Layout` protocol.
-3. Define one `StorageReference` carrying object name, storage kind, instance scope, and lifetime, plus lowered coordinate variants for linear, vector, and image coordinates. Separate lowering selects a storage reference rather than nesting competing storage names.
-4. Implement trivial frozen records for terminal layouts:
-   - `LinearLayout(expr, size)`;
-   - `RectangularLayout(axes, base_offset)` with explicit logical axes, origins, extents, and strides;
-   - `ImageLayout(axis_exprs, physical_shape)`.
-5. Implement trivial frozen records for scope wrappers:
-   - `LocalLayout`;
-   - `PrivateLayout`;
-   - `InamePrivateLayout`.
-6. Implement trivial frozen records for representation wrappers:
-   - generic `VectorLayout`;
-   - generic `SeparateLayout`.
-7. Implement public construction functions, including `make_linear_layout`, `make_rectangular_layout`, `make_c_layout`, `make_f_layout`, `make_strided_layout`, `make_image_layout`, and one `make_*_layout` function per wrapper. Factories perform expression parsing, compatibility conversion, normalization, and value-level validation; record constructors contain no such logic.
-8. Encode wrapper-order legality in factory signatures and child annotations. This statically excludes nested hardware scopes (including `PrivateLayout` under `PrivateLayout`), scope wrappers inside representation wrappers, `VectorLayout(SeparateLayout(...))`, repeated vector/separate wrappers, and scoped images or image-backed vectors, while permitting an image-backed vector as a root or top-level separate child. Factories additionally reject overlapping consumed axes and malformed values.
-9. Define axis-consumption APIs so every wrapper validates and removes its axes before invoking its child.
-10. Add a structured `PhysicalAllocation` result describing physical objects, per-object element extent, alignment, instance scope, and lifetime.
+   - the existing legal root/scope aliases, distinct from the shared `Layout` protocol.
+5. Define one `StorageReference` carrying object name, storage kind, instance key, lifetime key, and lifetime. Add lowered coordinate variants for linear, image, scalar-vector-lane, and static-swizzle access, plus explicit scalar-lane, whole-vector, and image-texel footprints.
+6. Implement trivial frozen records for terminal, scope, and representation layouts. `VectorLayout` stores `lane_expr: namedisl.PwAff`; `SeparateLayout` stores `selector_exprs: tuple[namedisl.PwAff, ...]`; scope mappings store logical `PwAff`s. No wrapper removes or renumbers dimensions.
+7. Implement public construction functions, including `make_linear_layout`, `make_rectangular_layout`, `make_c_layout`, `make_f_layout`, `make_strided_layout`, `make_image_layout`, and one `make_*_layout` function per wrapper. Factories perform expression parsing, compatibility projection construction, named-space alignment, normalization, and value-level validation; record constructors contain no such logic.
+8. Encode wrapper-order legality in factory signatures and child annotations. This excludes nested hardware scopes, scope wrappers inside representation wrappers, reversed/repeated vector or separate wrappers, and scoped images or image-backed vectors, while permitting an image-backed vector as a root or top-level separate child. Do not reject shared dependencies among lane, selector, and child-coordinate expressions.
+9. Require built-in/composed layouts to prove combined injectivity over the exact shape. Keep an explicit trusted-injectivity escape hatch only for custom non-quasi-affine layouts.
+10. Add a structured `PhysicalAllocation` result describing physical objects, per-object element extent, alignment, instance scope, and lifetime, computed per storage-object/instance fiber. Reject nonuniform hardware-instance allocation in the first implementation.
 11. Add a runtime-interface record carrying physical dimensions, strides, byte size, alignment, and parameter equations.
 12. Make generic `LinearLayout` require an explicit size or physical storage domain.
-13. Add target hooks for element-backed vector ABI size/alignment; image-backed vectors use image-format channel metadata instead.
+13. Add target hooks for element-backed vector ABI size/alignment and supported compile-time swizzle forms; image-backed vectors use image-format channel metadata for width.
 14. Expose image texel channel count through the image layout or associated storage metadata so factories and code generation can validate image-backed vectors.
 
 ### Suggested location
@@ -238,20 +230,22 @@ Initially place public layout definitions in `loopy/kernel/array.py` or a new `l
 - construction, copying, equality, hashing, and mapping for every layout;
 - dependency collection;
 - static and runtime rejection of every illegal child-type combination, including nested `PrivateLayout`;
-- factory validation of overlapping consumed axes;
+- full-environment lowering without positional axis removal;
+- totality, range, named-space alignment, and joint-injectivity queries for piecewise quasi-affine components;
+- valid noninjective components whose combined map is injective, such as `(floor(i/4), i mod 4)`;
+- rejection of a noninjective combined map;
 - trivial record construction and `make_*_layout` normalization;
 - C/F/fixed-stride expression and allocation derivation, including origins and padding;
 - generic layout rejection without size;
-- element-backed and image-backed vector access lowering;
-- image-vector channel-count validation;
-- rejection of image-backed vectors beneath scope wrappers;
-- separate access lowering, including separate image vectors;
-- image coordinates;
-- local/private storage identity metadata.
+- element-backed and image-backed vector lowering with piecewise lane expressions;
+- scalar-lane singleton and static-swizzle analysis;
+- image-vector channel-count validation and rejection beneath scope wrappers;
+- separate selector-expression lowering, including separate image vectors;
+- image coordinates and local/private/lifetime identity metadata.
 
 ### Exit criteria
 
-The shared layout protocol and closed legal-root union can represent every current core layout feature, and illegal wrapper combinations are excluded by child types and factory signatures, even if code generation still uses compatibility adapters.
+The shared layout protocol, full named environment, combined-map validation, and closed legal-root union can represent every current core layout feature. Legal compositions do not depend on destructive axis removal, and illegal wrapper combinations remain excluded by child types and factory signatures.
 
 ## Phase 4: Legacy layout conversion and public APIs
 
@@ -286,28 +280,28 @@ Make layouts canonical while keeping legacy user entry points operational.
 
 For a legacy vector axis:
 
-1. Require the selected axis to be exactly a zero-based compile-time-constant interval, independent of child coordinates.
-2. Remove that axis from the child rectangular/linear layout.
-3. Install `make_vector_layout(axis, length, child)`.
-4. Preserve existing whole-vector behavior for the currently vectorized iname.
-5. Query the target for physical vector size and alignment, including three-vector padding.
+1. Build the named projection `PwAff` for that axis and prove that its range is exactly the zero-based compile-time-constant interval required by the legacy tag.
+2. Install `make_vector_layout(lane_expr, length, child)` without removing or renumbering any logical dimension.
+3. Preserve existing whole-vector behavior for the currently vectorized iname by constructing an explicit static-swizzle proof.
+4. Query the target for physical vector size and alignment, including three-vector padding.
 
 ### Separate conversion details
 
 For legacy separate axes:
 
-1. Install `make_separate_layout(axes, child)` as the semantic representation.
+1. Convert each selected axis to a named projection `PwAff` and install `make_separate_layout(selector_exprs, child)`.
 2. Initially materialize physical subarguments during preprocessing using the existing naming/ABI strategy.
 3. Record the mapping from selector tuples to materialized argument names as lowering output, not canonical array metadata.
-4. Remove selected axes from child shapes/layouts after materialization.
-5. Require selector axes to be parameter-independent zero-based constant Cartesian intervals, enumerate tuples lexicographically, and require selector values to be compile-time known at each access.
-6. Permit `make_separate_layout(..., child=make_vector_layout(...))`; exclude the reverse order and repeated wrappers through child types, and reject overlapping consumed axes in the factories.
+4. Restrict the logical shape to each selector fiber and specialize the child under those equalities. Do not remove dimensions positionally; use an explicit named reindexing map only when a dimension is proven redundant after specialization.
+5. Require the joint selector range to be a parameter-independent finite constant Cartesian product, enumerate tuples lexicographically, and require selector values to be compile-time known at each scalar access.
+6. Permit `make_separate_layout(..., child=make_vector_layout(...))`; exclude the reverse order and repeated wrappers through child types. Shared logical dependencies among selectors and child coordinates are legal when the combined map is injective.
 
 ### Tests
 
 - old tag strings produce equivalent layout expressions;
 - `tag_array_axes` retains C/F/fixed-stride behavior;
-- vector and separate compatibility cases;
+- vector and separate compatibility projections;
+- preservation of full named environments during legacy conversion and separate materialization;
 - nested separate/vector combinations;
 - unsupported compatibility projection diagnostics;
 - user-provided generic layout and size.
@@ -324,27 +318,29 @@ Move allocation and host validation from logical shape to layout-provided physic
 
 ### Tasks
 
-1. Replace `TemporaryVariable.nbytes = product(shape) * itemsize` with layout allocation queries.
-2. Update C-family temporary declaration sizing.
-3. Update base-storage allocation to use:
+1. Replace `TemporaryVariable.nbytes = product(shape) * itemsize` with layout allocation queries that receive the exact logical shape.
+2. Range terminal coordinates per storage-object/instance fiber of the combined layout map. Vector lanes do not multiply vector-object count; separate selectors produce distinct objects; scope keys do not multiply per-instance extent.
+3. Reject nonuniform per-hardware-instance allocation requirements in the first implementation.
+4. Update C-family temporary declaration sizing.
+5. Update base-storage allocation to use:
    - structured per-object element extent;
    - physical storage kind;
    - storage-instance scope without multiplying launch size;
    - lifetime;
    - alignment and dtype.
-4. Implement rectangular runtime interfaces containing:
+6. Implement rectangular runtime interfaces containing:
    - expected physical rank and dimensions;
    - expected strides;
    - allocation size;
    - equations for inferring size parameters.
-5. Refactor wrapper parameter inference to consume layout-contributed equations.
-6. Preserve existing singleton-axis and empty-array stride equivalence where valid.
-7. Preserve rectangular output allocation.
-8. For generic layouts:
+7. Refactor wrapper parameter inference to consume layout-contributed equations.
+8. Preserve existing singleton-axis and empty-array stride equivalence where valid.
+9. Preserve rectangular output allocation.
+10. For generic layouts:
    - validate byte size/alignment when provided;
    - require explicit runtime interface for output allocation;
    - reject ambiguous parameter inference.
-9. Update initializer validation to compare against physical storage representation, not logical shape.
+11. Update initializer validation to compare against physical storage representation, not logical shape.
 
 ### Primary files
 
@@ -364,8 +360,10 @@ Move allocation and host validation from logical shape to layout-provided physic
 - nonrectangular logical shape backed by a rectangular physical array;
 - generic byte-size validation;
 - missing/ambiguous generic output allocation errors;
-- vector physical size and alignment;
-- separate child allocation.
+- vector physical size and alignment without multiplying by lane count twice;
+- lane-correlated child coordinates such as `(floor(i/4), i mod 4)`;
+- one allocation per separate selector fiber;
+- rejection of nonuniform hardware-instance allocation.
 
 ### Exit criteria
 
@@ -385,13 +383,13 @@ Add `AddressSpace.UNIVERSAL` and an opt-in normalization transform. Do not enabl
 4. Implement `to_universal_address_space` at translation-unit scope.
 5. Convert old global arrays to universal arrays with global linear/image/separate/vector layouts.
 6. Convert old local arrays:
-   - add canonical group dimensions to the logical shape;
-   - rewrite all accesses with current group coordinates;
-   - wrap the child layout in `LocalLayout`.
+   - add canonically named group dimensions to the logical shape;
+   - rewrite all accesses through named maps carrying current group coordinates;
+   - construct zero-based group-ID projection `PwAff`s and wrap the child layout in `LocalLayout`.
 7. Convert old private arrays:
-   - add canonical group and item dimensions;
-   - rewrite accesses with current coordinates;
-   - wrap in `PrivateLayout`.
+   - add canonically named group and item dimensions;
+   - rewrite accesses through named maps carrying current coordinates;
+   - construct group/item projection `PwAff`s and wrap in `PrivateLayout`.
 8. Adapt ILP realization to use `InamePrivateLayout` for necessarily sequential private axes.
 9. Rewrite accesses in:
    - instructions and predicates;
@@ -403,10 +401,11 @@ Add `AddressSpace.UNIVERSAL` and an opt-in normalization transform. Do not enabl
    - preserve shape/layout metadata on `SubArrayRef`s;
    - rewrite caller and specialized callee consistently;
    - reject unsupported scoped callable cases until Phase 8 completes composition support.
-11. Validate current-instance access constraints polyhedrally.
-12. Make the transform idempotent.
-13. Keep automatic preprocessing conversion disabled in this phase; old-address-space code generation remains the default compatibility path.
-14. Add an opt-in universal-IR validator for tests and development.
+11. Validate current-instance access constraints and uniform per-instance allocation polyhedrally.
+12. Validate named-space alignment, component totality/ranges, and combined injectivity after universalization.
+13. Make the transform idempotent.
+14. Keep automatic preprocessing conversion disabled in this phase; old-address-space code generation remains the default compatibility path.
+15. Add an opt-in universal-IR validator for tests and development.
 
 ### Preprocessing order
 
@@ -414,7 +413,7 @@ Final target order once automatic conversion is enabled:
 
 1. normalize legacy shapes/layouts;
 2. infer `auto` shapes;
-3. materialize `SeparateLayout` before callable descriptor construction;
+3. materialize `SeparateLayout` by selector fiber, expanding callable signatures and call sites consistently when one logical argument spans multiple physical objects;
 4. realize ILP/iname-private semantics;
 5. infer temporary scope with candidate-scope collision analysis;
 6. specialize callable descriptors and callable kernels;
@@ -423,13 +422,14 @@ Final target order once automatic conversion is enabled:
 9. run target preprocessing;
 10. mark preprocessed.
 
-This ordering is mandatory: universalization changes rank by adding instance dimensions, so independently universalizing unspecialized callers and callees is not supported.
+This ordering is mandatory: universalization adds named instance dimensions and mappings, so independently universalizing unspecialized callers and callees is not supported. Separate materialization must be translation-unit aware rather than deleting selector dimensions independently in each kernel.
 
 ### Tests
 
 - global/local/private conversion;
 - exact added shape dimensions and constraints;
-- access rewriting;
+- named access-map rewriting without dependence on tuple-prefix positions;
+- aligned scope projection expressions and combined injectivity;
 - idempotence;
 - missing hardware axes;
 - nonzero hardware iname bases;
@@ -450,24 +450,26 @@ Remove code generation's dependence on dim tags, old address spaces, and array s
 
 ### Tasks
 
-1. Replace `get_access_info` with layout lowering.
-2. Update C-family expression lowering to dispatch on lowered access variants.
-3. Move image coordinate generation into `ImageLayout`; stop reconstructing it from the original index tuple.
-4. Implement vector lane and whole-vector lowering from `VectorCoordinate`, including image-backed vectors whose selected axis maps to texel channels.
-5. Validate that each image-backed vector length equals the image format's channel count before emission.
-6. Lower image-vector lane reads as a whole image read followed by channel selection, and lower whole-vector image accesses as whole-texel operations.
-7. Reject every partial image-vector write during code generation. Do not synthesize read-modify-write; only a write proven to cover all channels exactly once may emit an image store, and uncertain coverage fails conservatively with an actionable diagnostic.
-8. Consume the storage references selected by early separate materialization.
-9. Generate declarations from layout storage kind:
+1. Replace `get_access_info` with layout lowering from `LogicalAccess`, preserving named expressions and the exact instruction-domain-to-logical-index map.
+2. Compose every layout `PwAff` with the access map and active code-generation domain.
+3. Update C-family expression and instruction lowering to dispatch on storage references, lowered coordinate variants, and physical access footprints.
+4. Move image coordinate generation into `ImageLayout`; stop reconstructing it from the original index tuple.
+5. For scalar accesses, require vector lanes and unmaterialized separate selectors to reduce to compile-time singleton integers.
+6. Represent whole-vector access explicitly and prove child storage/coordinate invariance plus a compile-time static swizzle. Reject runtime-dependent or unresolved piecewise lane mappings.
+7. Validate that each image-backed vector length equals the image format's channel count before emission.
+8. Lower image-vector lane reads as a whole image read followed by static channel selection, and lower whole-vector image accesses as whole-texel operations.
+9. Reject every partial image-vector write during code generation. Do not synthesize read-modify-write; only one explicit whole-vector operation with a proved permutation covering all channels exactly once may emit an image store.
+10. Consume the storage references selected by early separate materialization.
+11. Generate declarations from layout storage kind:
    - global pointer/argument;
    - local/shared declaration;
    - private automatic declaration;
    - image object.
-10. Update OpenCL atomic and volatile qualifiers to query physical storage kind.
-11. Update CUDA shared/private/global declaration handling.
-12. Update ISPC private-lane duplication to use explicit private layouts.
-13. Define `IndexOfCallable` only for layouts with meaningful linear coordinates; reject others clearly.
-14. Remove offset application from target code.
+12. Update OpenCL atomic and volatile qualifiers to query physical storage kind and footprint.
+13. Update CUDA shared/private/global declaration handling.
+14. Update ISPC private-lane duplication to use explicit private layouts.
+15. Define `IndexOfCallable` only for layouts with meaningful linear coordinates; reject others clearly.
+16. Remove offset application from target code.
 
 ### Primary files
 
@@ -484,11 +486,14 @@ Remove code generation's dependence on dim tags, old address spaces, and array s
 
 - generated C/OpenCL/CUDA for each storage kind;
 - image access coordinates;
-- image-backed `float4` channel-axis reads and whole-vector reads/writes;
+- scalar lane expressions that become singleton constants only after domain restriction;
+- piecewise lane expressions with resolved and unresolved branch cases;
+- static identity, reverse, and arbitrary supported read swizzles;
+- rejection of runtime-dependent lanes, selectors, and swizzles;
+- image-backed `float4` lane reads and whole-vector reads/writes;
 - code-generation rejection of scalar-lane and proper-subvector image writes, with no read-modify-write output;
 - image-vector channel-count mismatch diagnostics;
-- ordinary vector lanes and whole-vector access;
-- separate arrays, including separate image vectors;
+- separate arrays, including selector expressions and separate image vectors;
 - local/shared and private declarations;
 - atomic and volatile accesses;
 - unsupported CUDA image diagnostics;
@@ -496,7 +501,7 @@ Remove code generation's dependence on dim tags, old address spaces, and array s
 
 ### Exit criteria
 
-Target expression and declaration code does not inspect dim tags or old array address spaces.
+Target expression and declaration code consumes only named-access layout lowering results, does not inspect dim tags or old array address spaces, and never emits runtime vector indexing for a `PwAff` lane.
 
 ## Phase 8: Callable descriptors and subarray composition
 
@@ -511,11 +516,13 @@ Preserve polyhedral shape/layout semantics across callable-kernel boundaries.
 3. Implement descriptor dependency collection from set parameters and layouts.
 4. Rewrite `get_arg_descriptor_for_expression`:
    - obtain the exact swept-iname domain;
-   - construct the map into source logical indices;
-   - compose the source layout;
-   - preserve correlated domains;
-   - fix nonswept storage-instance dimensions to current values.
-5. Replace the minimum Phase 6 callable adapter with full subarray layout composition.
+   - construct the named map into source logical indices;
+   - form the exact preimage shape;
+   - pull back every layout component, including lane, selector, and scope `PwAff`s;
+   - preserve correlated domains and translate parameter namespaces;
+   - fix nonswept storage-instance dimensions to current values;
+   - prove that the reindexing map is injective on the callee shape before retaining an injective descriptor.
+5. Replace the minimum Phase 6 callable adapter with full named layout pullback.
 6. Validate local/private compatibility at call boundaries.
 7. Update nested callable inference.
 8. Enforce the preprocessing order fixed in Phase 6: specialization first, translation-unit universalization second.
@@ -530,11 +537,14 @@ Preserve polyhedral shape/layout semantics across callable-kernel boundaries.
 - rectangular subarrays;
 - triangular and diamond swept domains;
 - correlated swept inames;
-- composed strided layouts;
+- composed strided layouts and piecewise vector lanes;
+- parameter renaming in layout `PwAff`s;
+- repeated-element/noninjective actual rejection;
+- scalar selector fixed at a call and swept selectors spanning multiple materialized objects;
 - local view passed within current group;
 - private view passed within current item;
 - scope-changing call rejection;
-- vector/separate child descriptors;
+- vector/separate child descriptors with full named environments;
 - nested callable specialization;
 - output and in/out arguments;
 - symbolic parameter translation;
@@ -548,31 +558,34 @@ No callable descriptor collapses a set shape into independent extents or assumes
 
 ### Objectives
 
-Use universal logical indices and refined injectivity for all race-related analysis.
+Use combined layout maps and physical access footprints for race-related analysis, with universal logical-index equality retained only as a proved-safe scalar optimization.
 
 ### Tasks
 
 1. Add a shared builder for:
 
    ```text
-   execution domain -> universal logical array index
+   execution domain
+       -> storage object + instance identity + physical access footprint
    ```
 
-2. Canonicalize group/item axes by hardware tag, including bounds and nonzero bases.
-3. Replace syntactic write-race checks with a two-copy collision query:
+2. Canonicalize group/item expressions by hardware tag, including bounds and nonzero bases.
+3. Define overlap for scalar elements/lanes, whole vectors, image texels, and target atomic granularity.
+4. Replace syntactic write-race checks with a two-copy collision query:
    - duplicate execution coordinates;
    - require a difference in at least one relevant concurrent coordinate;
-   - require equal universal logical indices;
+   - require equal storage object and instance identity;
+   - require overlapping physical footprints and lifetimes;
    - test nonemptiness.
-4. Reuse and generalize the candidate-scope query introduced in Phase 6; do not maintain a second inference algorithm.
-5. Update schedule-time `WriteRaceChecker` to remove local/global branching.
-6. Update access-range overlap and variable-access ordering to use universal logical addresses.
-7. Treat unknown/non-affine access conservatively.
-8. For base-storage aliases:
-   - compare common physical coordinates when available;
+5. Use equality of universal logical indices only for scalar accesses to the same array after combined injectivity has been established.
+6. Reuse and generalize the candidate-scope query introduced in Phase 6; do not maintain a second inference algorithm.
+7. Update schedule-time `WriteRaceChecker`, access-range overlap, and variable-access ordering to remove local/global branching and consume footprint relations.
+8. Treat unknown/non-affine coordinates or footprints conservatively.
+9. For base-storage aliases and callable views with different logical namespaces:
+   - compare common physical coordinates and footprints when available;
    - otherwise preserve conservative overlap.
-9. Account for iname-private lifetime nonoverlap.
-10. Remove old `_is_racing_iname_tag` and address-space-specific race logic once unused.
+10. Use distinct separate storage-object selectors for disjointness and account for iname-private lifetime nonoverlap only after sequentiality is proved.
+11. Remove old `_is_racing_iname_tag` and address-space-specific race logic once unused.
 
 ### Tests
 
@@ -593,6 +606,14 @@ Storage-instance cases:
 - private access from different items -> no alias;
 - iname-private sequential iterations -> no concurrent race.
 
+Representation-footprint cases:
+
+- distinct scalar lanes of one ordinary vector do not overlap;
+- a whole-vector access overlaps every lane;
+- an image texel write overlaps every channel read/write;
+- distinct materialized separate selectors do not overlap;
+- a dynamic or unknown footprint is conservative.
+
 Ordering/barrier cases:
 
 - disjoint injective accesses require no barrier;
@@ -602,7 +623,7 @@ Ordering/barrier cases:
 
 ### Exit criteria
 
-Race correctness no longer depends on old address-space enum values or mere occurrence of inames in subscripts.
+Race correctness no longer depends on old address-space enum values, tuple positions, mere occurrence of inames in subscripts, or logical-index equality for non-scalar operation footprints.
 
 ## Phase 10: Generated-subkernel lifetime and storage queries
 
@@ -656,7 +677,11 @@ Complete the public transition and remove duplicate representations.
    - missing generic allocation size;
    - noncurrent local/private access;
    - unresolved layout before code generation;
+   - misaligned, non-total, or out-of-range layout `PwAff`;
+   - noninjective combined built-in layout map or noninjective callable pullback;
    - invalid vector/separate composition;
+   - dynamic scalar lane or selector and nonstatic whole-vector swizzle;
+   - nonuniform hardware-instance allocation;
    - image-vector channel-count mismatch;
    - partial image-vector writes;
    - unsupported runtime output allocation;
@@ -678,13 +703,14 @@ Add sections for:
 - named-set logical shapes;
 - shape parameters and zero-dimensional scalars;
 - layouts versus logical shapes;
-- the shared `Layout` interface, legal layout child types, and `make_*_layout` factories;
+- the shared `Layout` interface, full named logical-index environment, combined layout map, legal child types, and `make_*_layout` factories;
 - linear and rectangular layouts;
 - local/private/image layouts;
-- vector and separate composition, including image texel channel axes;
-- whole-texel image-vector writes and rejection of partial writes;
+- piecewise quasi-affine vector lanes and separate selectors;
+- static scalar-lane/selector and whole-vector swizzle requirements;
+- image texel channel mappings, whole-texel writes, and rejection of partial writes;
 - iname-private storage;
-- refined injectivity;
+- combined-map injectivity and trusted custom layouts;
 - universal address space;
 - physical allocation requirements;
 - legacy `tag_array_axes` compatibility.
@@ -696,8 +722,8 @@ Correct the current Fortran-layout description to column-major.
 Document:
 
 - polyhedral array descriptors;
-- subarray shape/layout composition;
-- callable specialization;
+- subarray shape/layout pullback through named maps;
+- callable reindexing injectivity and specialization;
 - current-group/current-item restrictions;
 - third-party callable migration helpers.
 
@@ -707,9 +733,9 @@ Document:
 
 - preprocessing order;
 - universalization invariants;
-- layout-driven lowering;
-- runtime interface equations;
-- universal race/access maps;
+- layout-driven lowering and static swizzle proof;
+- runtime interface equations and allocation by storage fiber;
+- physical access footprints and race maps;
 - generated-subkernel lifetime rules.
 
 ### Tutorial/examples
@@ -721,7 +747,8 @@ Add examples for:
 - triangular logical shape in rectangular physical storage;
 - packed user-sized linear layout;
 - local and private universalized arrays;
-- vector layout;
+- packed vector layout using `(floor(i/w), i mod w)`;
+- piecewise static vector swizzles;
 - separate arrays of vectors;
 - callable receiving a nonrectangular subarray.
 
@@ -742,8 +769,8 @@ Use generated-code checks sparingly. Prefer semantic inspection of normalized ke
 1. Baseline tests and named-set utilities.
 2. Canonical named-set shapes and polyhedral bounds checking.
 3. Exact `auto` shape inference.
-4. Layout protocol and legal-root types, construction factories, structured allocation, and linear/rectangular layouts.
-5. Vector and separate wrappers, allocation behavior, and legacy conversion.
+4. Full named layout environment, combined-map protocol/injectivity, legal-root types, factories, allocation records, and linear/rectangular layouts.
+5. Piecewise-affine vector/separate components, static swizzle analysis, allocation behavior, and legacy conversion.
 6. Runtime rectangular interface and allocation migration.
 7. Candidate-scope race query plus opt-in universalization and minimum callable rewriting.
 8. Layout-driven code generation with dual-path compatibility.
@@ -764,14 +791,18 @@ The project is complete when:
 - local/private instances are explicit logical dimensions;
 - noncurrent local/private/iname-private accesses are rejected;
 - layouts, not dim tags, lower accesses and determine allocation;
-- all layout nodes implement the shared protocol, and illegal child combinations are excluded by types and factories;
+- all layout nodes receive one full named logical environment and contribute to one combined map;
+- built-in/composed layout maps are total, range-valid, and jointly injective, while trusted custom layouts are explicit;
+- illegal child combinations are excluded by types and factories without assigning exclusive ownership of logical axes;
+- vector lanes and separate selectors are piecewise quasi-affine expressions with static scalar and whole-vector lowering;
 - image texel channels may be represented by an image-backed vector layout without permitting scoped images;
 - partial image-vector writes are rejected during code generation;
-- vector and separate behavior is represented compositionally;
+- allocation is computed by storage-object/instance fiber;
+- race checks compare physical operation footprints;
 - generic layouts require explicit allocation size;
 - rectangular wrappers retain physical shape/stride checks and parameter inference;
 - callable descriptors preserve polyhedral domains and composed layouts;
-- race checks operate on universal logical indices;
+- scalar race checks may optimize through universal logical indices, while vector/image/alias races use physical footprints;
 - generated-subkernel lifetime decisions use layout storage semantics;
 - legacy tuple shapes and `tag_array_axes` continue to work through normalization;
 - documentation and persistence formats cover the new model.

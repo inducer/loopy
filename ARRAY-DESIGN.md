@@ -163,38 +163,108 @@ Both sets must be aligned by parameter and logical-axis name. Containment is che
 
 ### Requirements
 
-All layout nodes obey one shared `Layout` protocol. It provides:
+All layout nodes obey one shared `Layout` protocol and are evaluated on the same full, named logical-index space. Wrappers never remove or renumber logical axes. A code-generation access carries both named Pymbolic expressions and, when required by a quasi-affine layout component, an exact map from the current instruction domain to the array's logical shape:
 
 ```python
+@dataclass(frozen=True)
+class LogicalAccess:
+    """A source-level array access in its named logical-index space.
+
+    :arg domain: The active instruction/code-generation domain.
+    :arg index_map: An exact map from *domain* to logical indices, or
+        *None* when no quasi-affine layout component requires one.
+    :arg index_exprs: Pymbolic index expressions keyed by logical-axis name.
+    """
+
+    domain: namedisl.Set
+    index_map: namedisl.Map | None
+    index_exprs: constantdict[str, ArithmeticExpression]
+
 class Layout(Protocol):
-    def map_expr(self, mapper: ExpressionMapper) -> Self: ...
-    def depends_on(self) -> frozenset[str]: ...
-    def update_persistent_hash(self, key_hash, key_builder) -> None: ...
-    def validate(self, logical_shape: namedisl.Set) -> None: ...
+    """Shared behavior of immutable logical-to-physical layout values."""
+
+    def map_expr(self, mapper: ExpressionMapper) -> Self:
+        """Map the layout's Pymbolic expressions."""
+        ...
+
+    def map_parameters(self, mapper: ExpressionMapper) -> Self:
+        """Map parameters in Pymbolic and named-ISL components."""
+        ...
+
+    def depends_on(self) -> frozenset[str]:
+        """Return names on which the layout representation depends."""
+        ...
+
+    def update_persistent_hash(self, key_hash, key_builder) -> None:
+        """Add the layout's semantic state to a persistent hash."""
+        ...
+
+    def align_to_shape(self, logical_shape: namedisl.Set) -> Self:
+        """Return this layout aligned to *logical_shape* by name."""
+        ...
+
+    def pullback(self, index_map: namedisl.Map) -> Self:
+        """Reexpress this layout through a named logical-index map."""
+        ...
+
+    def validate(self, logical_shape: namedisl.Set) -> None:
+        """Validate this layout on the exact logical shape."""
+        ...
+
     def lower_access(
-            self, logical_index: tuple[ArithmeticExpression, ...],
-            context: LayoutLoweringContext) -> LoweredAccess: ...
+            self, access: LogicalAccess,
+            context: LayoutLoweringContext) -> LoweredAccess:
+        """Lower a logical access to storage, coordinate, and footprint."""
+        ...
+
     def physical_allocation(
-            self, dtype: LoopyType,
-            target: TargetBase) -> PhysicalAllocation: ...
+            self, logical_shape: namedisl.Set,
+            dtype: LoopyType,
+            target: TargetBase) -> PhysicalAllocation:
+        """Describe the physical objects required for this layout."""
+        ...
+
     def runtime_interface(
-            self, dtype: LoopyType,
-            target: TargetBase) -> RuntimeArrayInterface | None: ...
+            self, logical_shape: namedisl.Set,
+            dtype: LoopyType,
+            target: TargetBase) -> RuntimeArrayInterface | None:
+        """Describe the host-array interface, if one exists."""
+        ...
 ```
 
-Concrete layouts are immutable and hashable values. `validate` checks rank, consumed axes, and the layout's injectivity preconditions. `runtime_interface` returns `None` when the layout has no host-array interface. A generic user-provided layout must include an explicit allocation-size expression or physical storage domain; Loopy must not guess generic allocation sizes from the logical shape.
+`map_parameters` covers substitution in both Pymbolic expressions and named-ISL objects. `align_to_shape` aligns parameters and logical dimensions by name. `pullback` composes every logical-index-dependent layout component with a named reindexing map, as required for subarrays and callable arguments. A layout containing a `namedisl.PwAff` component requires `LogicalAccess.index_map`; failure to construct or align that map is an actionable error, not a reason to approximate the access.
 
-The concrete frozen records should have trivial, preferably dataclass-generated constructors. Public `make_*_layout` functions perform compatibility conversion, expression parsing, normalization, and validation before constructing those records. This keeps policy out of `__init__` and makes construction logic directly testable.
+Concrete layouts are immutable and hashable values. Validation checks named spaces, totality of every component on the exact logical shape, range restrictions, allocation requirements, and the combined injectivity contract below. `runtime_interface` returns `None` when the layout has no host-array interface. A generic user-provided layout must include an explicit allocation-size expression or physical storage domain; Loopy must not guess generic allocation sizes from the logical shape.
 
-### Compositional structure
+The concrete frozen records should have trivial, preferably dataclass-generated constructors. Public `make_*_layout` functions perform compatibility conversion, expression parsing, named-space alignment, normalization, and validation before constructing those records. This keeps policy out of `__init__` and makes construction logic directly testable.
 
-Layouts are compositional, but not every layout may contain every other layout. The type system distinguishes terminal coordinates, representation wrappers, sequential scope, and hardware scope:
+### Combined layout map
+
+Composition is defined by one abstract map over the exact logical shape `S`:
+
+```text
+L: S -> (
+    storage-object selector,
+    storage-instance identity,
+    lifetime/epoch identity,
+    terminal physical coordinate,
+    representation coordinate)
+```
+
+A terminal contributes the terminal physical coordinate. `SeparateLayout` contributes the storage-object selector. Local/private wrappers contribute storage-instance identity. `InamePrivateLayout` contributes an abstract sequential-lifetime key even though physical allocation is reused. `VectorLayout` contributes a vector lane to the representation coordinate. Every node evaluates its component from the unchanged named logical point and passes that same point to its child.
+
+The same logical dimension may contribute to several components. For example, with logical shape `{ [i] : 0 <= i < n }`, a packed vector layout may use `floor(i/4)` as the child's linear coordinate and `i mod 4` as the lane. This is valid because the pair is injective; there is no distinguished axis for the vector wrapper to own or remove.
+
+Built-in quasi-affine components use `namedisl.PwAff` values aligned to `S`. Generic Pymbolic terminal expressions remain available through the trusted custom-layout path when they cannot be represented quasi-affinely. Allocation is computed per storage-object/instance fiber of `L`; the first implementation requires a uniform allocation requirement across hardware instances.
+
+### Compositional type structure
+
+The child-type system remains responsible for wrapper-order and ABI legality, independently of which logical dimensions expressions reference:
 
 ```python
 ElementTerminalLayout = LinearLayout | RectangularLayout
 TerminalLayout = ElementTerminalLayout | ImageLayout
 
-# A vector may represent ordinary vector storage or image texel channels.
 VectorChildLayout = ElementTerminalLayout | ImageLayout
 VectorChildT = TypeVar(
     "VectorChildT", bound=VectorChildLayout, covariant=True)
@@ -202,7 +272,6 @@ ElementVectorLayout = VectorLayout[ElementTerminalLayout]
 ImageVectorLayout = VectorLayout[ImageLayout]
 AnyVectorLayout = ElementVectorLayout | ImageVectorLayout
 
-# SeparateLayout is generic in this deliberately narrow child type.
 SeparateChildLayout = TerminalLayout | AnyVectorLayout
 SeparateChildT = TypeVar(
     "SeparateChildT", bound=SeparateChildLayout, covariant=True)
@@ -218,11 +287,8 @@ ElementSeparateLayout = SeparateLayout[
 ElementRepresentationLayout = (
     ElementTerminalLayout | ElementVectorLayout | ElementSeparateLayout
 )
-
-# InamePrivateLayout.child is ElementRepresentationLayout.
 InstanceScopedChildLayout = ElementRepresentationLayout | InamePrivateLayout
 
-# LocalLayout.child and PrivateLayout.child are InstanceScopedChildLayout.
 ArrayLayout = (
     RepresentationLayout
     | InamePrivateLayout
@@ -231,14 +297,16 @@ ArrayLayout = (
 )
 ```
 
-`ArrayLayout` is the type accepted by an array; `Layout` is the shared behavioral protocol. The narrow child types make nonsensical compositions unrepresentable in typed code: a `PrivateLayout` cannot contain another `PrivateLayout` or a `LocalLayout`; hardware scopes cannot nest; representation wrappers cannot contain scopes; `VectorLayout(SeparateLayout(...))` and repeated vector/separate wrappers are excluded; and neither images nor image-backed vectors can appear under a scope wrapper. An `ImageVectorLayout` is nevertheless a legal root representation and may also be the child of a top-level `SeparateLayout`.
+`ArrayLayout` is the type accepted by an array; `Layout` is the shared behavioral protocol. A `PrivateLayout` cannot contain another `PrivateLayout` or a `LocalLayout`; hardware scopes cannot nest; representation wrappers cannot contain scopes; `VectorLayout(SeparateLayout(...))` and repeated vector/separate wrappers are excluded; and neither images nor image-backed vectors can appear under a scope wrapper. An `ImageVectorLayout` remains a legal root representation and may be the child of a top-level `SeparateLayout`.
 
-Public construction follows the same state transitions:
+Public construction follows the same state transitions. Factories validate expression spaces and value-level invariants, but do not claim exclusive ownership of logical axes:
 
 ```python
 make_vector_layout(
+    lane_expr: namedisl.PwAff,
     child: VectorChildT, ...) -> VectorLayout[VectorChildT]
 make_separate_layout(
+    selector_exprs: tuple[namedisl.PwAff, ...],
     child: SeparateChildT, ...) -> SeparateLayout[SeparateChildT]
 make_iname_private_layout(
     child: ElementRepresentationLayout, ...) -> InamePrivateLayout
@@ -248,18 +316,19 @@ make_private_layout(
     child: InstanceScopedChildLayout, ...) -> PrivateLayout
 ```
 
-Factories reject overlapping consumed axes and other value-level violations. They do not accept flattened terminal fields: callers compose `make_local_layout(..., child=make_linear_layout(...))` explicitly. Legacy APIs may offer separate compatibility conversion functions, but canonical records and their constructors remain simple.
+Factories do not accept flattened terminal fields: callers compose `make_local_layout(..., child=make_linear_layout(...))` explicitly. Legacy APIs may offer separate compatibility conversion functions that construct projection `PwAff`s, but canonical records and their constructors remain simple.
 
-### Lowered storage references and accesses
+### Lowered storage references, coordinates, and footprints
 
-Layout lowering should produce one storage reference plus a discriminated coordinate, rather than the current undifferentiated `AccessInfo`. Nested wrappers must not introduce competing storage names:
+Layout lowering produces one storage reference, a discriminated physical coordinate, and an operation footprint. Nested wrappers must not introduce competing storage names:
 
 ```python
 @dataclass(frozen=True)
 class StorageReference:
     name: str
     kind: StorageKind
-    instance_axes: tuple[InstanceAxis, ...]
+    instance_key: tuple[ArithmeticExpression, ...]
+    lifetime_key: tuple[ArithmeticExpression, ...]
     lifetime: StorageLifetime
 
 class LoweredCoordinate: ...
@@ -268,22 +337,36 @@ class LoweredCoordinate: ...
 class LinearCoordinate(LoweredCoordinate):
     element_index: ArithmeticExpression
 
+class VectorSelection: ...
+
+@dataclass(frozen=True)
+class ScalarLane(VectorSelection):
+    lane: int
+
+@dataclass(frozen=True)
+class StaticSwizzle(VectorSelection):
+    lanes: tuple[int, ...]
+
 @dataclass(frozen=True)
 class VectorCoordinate(LoweredCoordinate):
     child: LoweredCoordinate
-    lane: ArithmeticExpression
+    selection: VectorSelection
 
 @dataclass(frozen=True)
 class ImageCoordinate(LoweredCoordinate):
     coordinates: tuple[ArithmeticExpression, ...]
 
+class AccessFootprint: ...
+# Includes scalar element/lane, whole vector, and whole image texel variants.
+
 @dataclass(frozen=True)
 class LoweredAccess:
     storage: StorageReference
     coordinate: LoweredCoordinate
+    footprint: AccessFootprint
 ```
 
-`SeparateLayout` changes the single `StorageReference` selected by its child; it does not wrap a second storage name around an already-named access. Scope wrappers update storage kind, instance axes, and lifetime. Code generation dispatches on the storage reference and lowered coordinate, not on array subclasses or axis tags.
+A scalar vector access must lower to `ScalarLane`; whole-vector lowering must produce a `StaticSwizzle`. Neither variant carries a runtime lane expression. `SeparateLayout` changes the single `StorageReference` selected by its child. Scope wrappers add instance/lifetime keys. Code generation dispatches on the storage reference, coordinate, and footprint, not on array subclasses or axis tags.
 
 ## Terminal layouts
 
@@ -296,7 +379,7 @@ class LinearLayout(Layout):
     size: ArithmeticExpression | PhysicalStorageDomain
 ```
 
-`expr` returns a physical element index. `size` is required for generic layouts. An optional base adjustment may be part of the terminal representation, but the legacy `offset` attribute is not retained as independent canonical state.
+`expr` returns a physical element index and is evaluated in the full named logical-index environment. It may share dependencies with wrapper components; only the combined layout map must be injective. `size` is required for generic layouts. An optional base adjustment may be part of the terminal representation, but the legacy `offset` attribute is not retained as independent canonical state.
 
 ### Rectangular layout
 
@@ -322,7 +405,7 @@ class RectangularPhysicalAxis:
 base_offset + sum((logical_axis - origin) * stride)
 ```
 
-The explicit origin defines how nonzero or negative logical bounds map into physical storage. Legacy `base_indices` translate to origins when they are accepted at the compatibility boundary.
+The explicit origin defines how nonzero or negative logical bounds map into physical storage. Each rectangular axis reads its named logical dimension from the full environment; this is a coordinate dependency, not exclusive ownership of that dimension. Legacy `base_indices` translate to origins when they are accepted at the compatibility boundary.
 
 Construction conveniences are functions:
 
@@ -352,7 +435,7 @@ class ImageLayout(Layout):
     physical_shape: tuple[ArithmeticExpression, ...] | None
 ```
 
-Each expression produces one image coordinate. `physical_shape`, when provided, supports allocation and wrapper validation. Image format, channel type, access mode, texel channel count, and target ABI requirements may be separate storage metadata or fields of the image layout; they must not be inferred from `AddressSpace.UNIVERSAL`. The metadata visible to layout validation and code generation must expose the texel channel count whenever an `ImageLayout` is the child of a `VectorLayout`.
+Each expression produces one image coordinate from the full named logical-index environment. `physical_shape`, when provided, supports allocation and wrapper validation. Image format, channel type, access mode, texel channel count, and target ABI requirements may be separate storage metadata or fields of the image layout; they must not be inferred from `AddressSpace.UNIVERSAL`. The metadata visible to layout validation and code generation must expose the texel channel count whenever an `ImageLayout` is the child of a `VectorLayout`.
 
 ## Scope wrappers
 
@@ -364,17 +447,17 @@ Mappings should identify both the hardware axis and the logical shape dimension:
 @dataclass(frozen=True)
 class HardwareAxisMapping:
     hardware_axis: int
-    array_axis: str | int
+    logical_expr: namedisl.PwAff
 ```
 
-Named logical axes are preferred; positional indices may be accepted by construction factories as conveniences.
+`logical_expr` maps the full logical point to the canonical zero-based hardware ID. A named logical axis or positional compatibility input is shorthand for the corresponding projection `PwAff`. Tagged inames with nonzero bases must be normalized explicitly rather than being equated directly with the zero-based hardware ID.
 
 ### Local layout
 
 ```python
 @dataclass(frozen=True)
 class LocalLayout(Layout):
-    group_axes: tuple[HardwareAxisMapping, ...]
+    group_mappings: tuple[HardwareAxisMapping, ...]
     child: InstanceScopedChildLayout
 ```
 
@@ -384,7 +467,7 @@ The complete storage identity is:
 (group IDs, child physical coordinate)
 ```
 
-Each workgroup owns a distinct physical instance. `LocalLayout` consumes the mapped group axes: it validates them, removes them from the logical index tuple, and passes only the remaining axes to `child`. The child allocation is the per-workgroup allocation and is not multiplied by the number of workgroups. Initially, the child physical-coordinate expression must not depend on consumed group-instance dimensions.
+Each workgroup owns a distinct physical instance. `LocalLayout` contributes the mapped group expressions to the storage-instance key and passes the unchanged logical environment to `child`. Every access must prove that these expressions equal the current workgroup IDs. The child allocation is the per-workgroup allocation and is not multiplied by the number of workgroups. In the first implementation, child physical coordinates, selectors, lanes, and allocation requirements must be independent of the group-instance expressions; this is an explicit uniform-allocation restriction, not axis removal.
 
 Every access must be provably to the current workgroup. A noncurrent or unprovable group access is an error.
 
@@ -393,8 +476,8 @@ Every access must be provably to the current workgroup. A noncurrent or unprovab
 ```python
 @dataclass(frozen=True)
 class PrivateLayout(Layout):
-    group_axes: tuple[HardwareAxisMapping, ...]
-    local_axes: tuple[HardwareAxisMapping, ...]
+    group_mappings: tuple[HardwareAxisMapping, ...]
+    local_mappings: tuple[HardwareAxisMapping, ...]
     child: InstanceScopedChildLayout
 ```
 
@@ -404,7 +487,7 @@ The complete storage identity is:
 (group IDs, local/item IDs, child physical coordinate)
 ```
 
-`PrivateLayout` consumes its mapped group and item axes, validates them against the current work item, removes them, and lowers the remaining tuple through `child`. The child allocation is per work item and is not multiplied by launch size.
+`PrivateLayout` contributes its mapped group and item expressions to the storage-instance key, proves that they identify the current work item, and passes the unchanged logical environment to `child`. The child allocation is per work item and is not multiplied by launch size. Child physical coordinates, selectors, lanes, and allocation requirements must initially be independent of these instance expressions.
 
 Every access must be provably to the current work item. A noncurrent or unprovable access is an error.
 
@@ -412,12 +495,17 @@ Every access must be provably to the current work item. A noncurrent or unprovab
 
 ```python
 @dataclass(frozen=True)
+class InamePrivateMapping:
+    iname: str
+    logical_expr: namedisl.PwAff
+
+@dataclass(frozen=True)
 class InamePrivateLayout(Layout):
-    axes: tuple[InamePrivateAxis, ...]
+    mappings: tuple[InamePrivateMapping, ...]
     child: ElementRepresentationLayout
 ```
 
-Each mapped sequential iname iteration has a logically distinct value, but the child storage may be reused across iterations. `InamePrivateLayout` validates and consumes its mapped axes, removes them before lowering through `child`, and reports one child allocation rather than one allocation per iname value. An access must use the current value of each mapped iname.
+Each mapped sequential iname iteration has a logically distinct value, but the child storage may be reused across iterations. `InamePrivateLayout` contributes the mapped expressions to an abstract lifetime/epoch key, proves that an access uses the current iname values, passes the unchanged logical environment to `child`, and reports one child allocation rather than one allocation per epoch. Child physical coordinates, selectors, lanes, and allocation requirements must initially be independent of the epoch expressions.
 
 The child types admit only the canonical order: an optional hardware instance scope outside optional `InamePrivateLayout`, followed by representation wrappers and a terminal layout. Multiple hardware scope wrappers and scope wrappers inside `VectorLayout` or `SeparateLayout` are not members of `ArrayLayout`; public factories reject dynamically typed attempts to create them.
 
@@ -425,21 +513,21 @@ Mapped inames must be necessarily sequential under the finalized schedule. If th
 
 ## Refined injectivity contract
 
-Plain physical-address injectivity is incompatible with local/private allocation instances and iname-private storage reuse. The contract is instead:
+Plain physical-address injectivity is incompatible with local/private allocation instances and iname-private storage reuse. The contract applies to the complete combined map `L` on the exact logical shape, after named-space alignment:
 
-> A layout is injective in logical storage-instance space, including workgroup, work-item, and nonoverlapping sequential-lifetime coordinates.
+> The tuple of storage-object selector, storage-instance key, lifetime/epoch key, terminal coordinate, and representation coordinate uniquely identifies a logical point.
 
-For concurrently live values:
+Equivalently:
 
 ```text
-same storage-instance identity and physical coordinate
-    if and only if
-same logical array index
+L(x) = L(y)  implies  x = y
 ```
 
-Physical coordinates may be reused across sequential iname-private instances only because their lifetimes cannot overlap.
+The lifetime key makes the abstract map injective across sequential iname-private epochs even though allocation deliberately drops that key and reuses physical storage. Among concurrently live values, equality of storage object, instance identity, and physical coordinate therefore implies equality of the logical point.
 
-User-provided layout injectivity is trusted initially. Built-in layouts must be constructed to satisfy the contract. Noninjective legacy layouts, such as zero stride on a nonsingleton axis or overlapping multidimensional strides, violate the new contract and must not silently enter the normalized IR.
+Built-in quasi-affine layouts use a two-copy ISL query to establish totality, range restrictions, and injectivity. A component may be noninjective by itself: `floor(i/4)` and `i mod 4` are each noninjective, while their pair is injective. User-provided non-quasi-affine layouts may use an explicit trusted-injectivity assertion. Noninjective legacy layouts, such as zero stride on a nonsingleton axis or overlapping multidimensional strides, must not silently enter the normalized IR.
+
+Pullback through a subarray/reindexing map preserves injectivity only when that map is injective on the new logical shape. Specializing a separate selector preserves injectivity on that selector fiber. Dropping a lifetime key is valid only for allocation reuse after schedule analysis proves that the corresponding epochs cannot overlap.
 
 ## Vector layout
 
@@ -448,36 +536,34 @@ Vector storage is a representation wrapper, not a logical shape-axis tag:
 ```python
 @dataclass(frozen=True)
 class VectorLayout(Layout, Generic[VectorChildT]):
-    axis: str | int
+    lane_expr: namedisl.PwAff
     length: int
     child: VectorChildT
 ```
 
-Semantics:
+`lane_expr` is aligned to the full logical shape and contributes the representation coordinate without changing the environment passed to `child`. It must be total and satisfy `0 <= lane_expr < length` on the exact shape; `length` is a positive compile-time constant. The pair of child outputs and lane participates in the combined injectivity proof.
 
-1. The selected logical axis is removed before lowering through `child`.
-2. Its value becomes the vector lane.
-3. `child` selects the vector storage object and vector element coordinate.
-4. Lowering returns the child's single storage reference with a `VectorCoordinate(child_coordinate, lane)`.
-
-In the first implementation, the selected axis must be exactly the zero-based interval `0 <= lane < length`, with compile-time constant `length`, for every child coordinate on which it is valid. Nonzero-based, noncontiguous, or child-correlated lane domains require a future explicit value-to-lane map. Lane access must be compile-time constant unless it corresponds to the currently vectorized iname and the target supports whole-vector evaluation.
+For a scalar access, compose `lane_expr` with the instruction-to-logical-index map and restrict it by the active code-generation domain. The result must be provably one compile-time integer, producing `ScalarLane`; dependence on a runtime parameter, unresolved piecewise branch, or nonconstant loop value is rejected. Whole-vector access is a distinct lowering mode. It must prove that storage object, instance key, and child coordinate are invariant across the vectorized instances and that `lane_expr` produces a compile-time-known lane tuple. A whole-vector write requires that tuple to be a permutation of `0..length-1`; reads may use a statically supported swizzle. No runtime vector indexing is introduced by this design.
 
 For an element-terminal child, allocation must account for target vector ABI padding. For example, an OpenCL three-vector may occupy four scalar slots. The layout reports logical vector length, while a target hook reports physical vector storage size and alignment. Generic allocation-size queries may depend on dtype and target for these vector layouts.
 
-For an `ImageLayout` child, the selected axis maps to the vector channels of one image texel. `length` must equal the image format's channel count, such as four for `float4`; this is checked by the factory when the format is known and otherwise before code generation. Ordinary vector ABI padding is not applied to image channels. Lowering a lane read produces `VectorCoordinate(child=ImageCoordinate(...), lane=...)`, so code generation performs one image read and selects the requested channel. Whole-vector image reads and writes operate on the complete texel value. A write through an image-backed `VectorLayout` is rejected during code generation unless code generation can prove that it writes all lanes exactly once as one whole-vector image store; uncertain coverage is rejected conservatively with an actionable diagnostic. Code generation must not synthesize a read-modify-write for a partial image-vector write.
+For an `ImageLayout` child, `lane_expr` maps the logical point to the vector channels of one image texel. `length` must equal the image format's channel count, such as four for `float4`; this is checked by the factory when the format is known and otherwise before code generation. Ordinary vector ABI padding is not applied to image channels. Lowering a lane read produces `VectorCoordinate(child=ImageCoordinate(...), selection=ScalarLane(...))`, so code generation performs one image read and selects the requested channel. Whole-vector image reads and writes operate on the complete texel value. A write through an image-backed `VectorLayout` is rejected during code generation unless code generation can prove that it writes all lanes exactly once as one whole-vector image store; uncertain coverage is rejected conservatively with an actionable diagnostic. Code generation must not synthesize a read-modify-write for a partial image-vector write.
 
 Composition examples:
 
 ```python
-make_vector_layout(axis="lane", child=make_linear_layout(...))
-make_local_layout(
-    group_axes=...,
-    child=make_vector_layout(axis="lane", child=make_linear_layout(...)))
-make_separate_layout(
-    axes=("field",),
-    child=make_vector_layout(axis="lane", child=make_linear_layout(...)))
 make_vector_layout(
-    axis="channel", length=4, child=make_image_layout(...))
+    lane_expr="{ [i] -> [(i mod 4)] }", length=4,
+    child=make_linear_layout(expr="i // 4", size="ceil(n/4)"))
+make_local_layout(
+    group_mappings=...,
+    child=make_vector_layout(lane_expr=..., child=make_linear_layout(...)))
+make_separate_layout(
+    selector_exprs=(...,),
+    child=make_vector_layout(lane_expr=..., child=make_linear_layout(...)))
+make_vector_layout(
+    lane_expr="{ [x, y, channel] -> [channel] }", length=4,
+    child=make_image_layout(...))
 ```
 
 ## Separate layout
@@ -487,22 +573,17 @@ Separate storage is a representation wrapper selecting among distinct storage ob
 ```python
 @dataclass(frozen=True)
 class SeparateLayout(Layout, Generic[SeparateChildT]):
-    axes: tuple[str | int, ...]
+    selector_exprs: tuple[namedisl.PwAff, ...]
     child: SeparateChildT
 ```
 
-Semantics:
+Each selector expression is evaluated on the full logical point and contributes one component of the storage-object selector. The unchanged environment is passed to `child`, and the selector tuple plus child outputs participates in combined injectivity. For an actual scalar access, composing the selectors with the access map must yield one compile-time selector tuple unless a target-specific indirect-object mechanism is introduced later.
 
-1. Values of the selected logical axes choose a physical storage object.
-2. Selected axes are removed before lowering through `child`.
-3. Lowering returns a storage selection plus the child access.
-4. The selector must be compile-time constant at code generation unless a target-specific indirect-object mechanism is introduced later.
+The first implementation requires the joint selector range to be a parameter-independent, finite, compile-time-constant Cartesian product. Selector tuples are enumerated lexicographically and use the existing deterministic subargument naming scheme. Named or positional compatibility axes become projection `PwAff`s. Sparse, correlated, or parameter-dependent selector ranges are deferred because they may require per-fiber child specialization and different allocation sizes.
 
-The first implementation requires each selected axis to be a parameter-independent, zero-based, compile-time-constant interval, and requires the selector axes to form a Cartesian product independent of the remaining child domain. Selector tuples are enumerated lexicographically and use the existing deterministic subargument naming scheme. Parameter-dependent, sparse, or correlated selector sets are deferred because they may require different child shapes and allocation sizes.
+The first implementation uses **early materialization**: preprocessing creates one physical argument per selector tuple, restricts the logical shape to the corresponding selector fiber, specializes the child under those equalities, and replaces `SeparateLayout` with the specialized child layout. It does not remove dimensions positionally. A dimension may be projected out only through an explicit named reindexing map after proving that no specialized child component depends on it. Late lowering remains a possible future extension, not an alternative in the initial implementation.
 
-The first implementation uses **early materialization**: preprocessing creates one physical argument per selector tuple, as today, and replaces `SeparateLayout` with ordinary child layouts on those arguments. Late lowering remains a possible future extension, not an alternative in the initial implementation.
-
-The first implementation permits `make_separate_layout(..., child=make_vector_layout(...))`, meaning separate arrays whose entries are vectors. Factory signatures and child annotations exclude the reverse order, repeated vector wrappers, repeated separate wrappers, and scope wrappers inside representation wrappers; factories reject overlapping consumed axes. These restrictions make lowering and ABI generation deterministic while leaving room for later generalization.
+The first implementation permits `make_separate_layout(..., child=make_vector_layout(...))`, meaning separate arrays whose entries are vectors. Factory signatures and child annotations exclude the reverse order, repeated vector wrappers, repeated separate wrappers, and scope wrappers inside representation wrappers; no exclusivity restriction is placed on which logical dimensions contribute to the selectors, lane, and child coordinates. These restrictions make lowering and ABI generation deterministic while leaving room for later generalization.
 
 ## Physical extent and allocation
 
@@ -522,7 +603,7 @@ class PhysicalStorageObject:
     lifetime: StorageLifetime
 ```
 
-`element_extent` is measured in the terminal storage element type; byte size is derived from dtype and, for vector storage, the target ABI. Instance multiplicity is represented by `instance_scope`, not multiplied into per-instance extent. `SeparateLayout` yields one object per materialized selector tuple. Local/private wrappers change scope and lifetime without multiplying the child extent.
+`element_extent` is measured in the terminal storage element type; byte size is derived from dtype and, for element-backed vector storage, the target ABI. Allocation is derived per storage-object/instance fiber of the combined map over the exact logical shape. Vector lanes do not multiply the number of vector storage objects. Instance multiplicity is represented by `instance_scope`, not multiplied into per-instance extent. `SeparateLayout` yields one object per materialized selector tuple. Local/private wrappers change scope and lifetime without multiplying the child extent, and the first implementation rejects nonuniform per-instance extents.
 
 Every terminal layout must provide either:
 
@@ -566,7 +647,7 @@ new layout: terminal/representation layout f(i)
 new address space: UNIVERSAL
 ```
 
-An unwrapped terminal or representation layout has global/persistent storage kind by default. Array arguments and persistent temporaries differ in ownership and lifetime metadata, not in logical address space. `InamePrivateLayout` does not by itself imply hardware-private storage; it refines the lifetime of the enclosing global, local, or private storage. Local/private wrappers around images and multiple hardware scope wrappers are rejected initially.
+An unwrapped terminal or representation layout has global/persistent storage kind by default. Array arguments and persistent temporaries differ in ownership and lifetime metadata, not in logical address space. `InamePrivateLayout` does not by itself imply hardware-private storage; it refines the lifetime of the enclosing global, local, or private storage. Local/private wrappers around images and multiple hardware scope wrappers are rejected initially. Universalization creates named scope dimensions and projection `PwAff`s for their instance mappings; later layout lowering does not depend on those dimensions occupying a tuple prefix.
 
 No execution-instance dimensions are added.
 
@@ -645,7 +726,9 @@ Code generation assumes all arrays have `AddressSpace.UNIVERSAL` and resolved la
 
 ### Access lowering
 
-Replace `get_access_info` with layout-driven lowering. Linear, vector, image, and separate accesses are explicit lowered variants. Offsets and target-axis accumulation are not independently reapplied by code generators. A `VectorCoordinate` whose child is an `ImageCoordinate` lowers lane reads by reading the texel and selecting a channel; whole-vector accesses lower to whole-texel operations. Code generation rejects partial writes to image-backed vectors instead of emitting a read-modify-write.
+Replace `get_access_info` with layout-driven lowering. The access is represented by named expressions plus an instruction-domain-to-logical-index map. Every quasi-affine layout component is composed with that map and restricted by the active code-generation domain. Linear, vector, image, and separate accesses are explicit lowered variants. Offsets and target-axis accumulation are not independently reapplied by code generators.
+
+Scalar vector lanes and separate selectors must reduce to compile-time singleton values. Whole-vector lowering must prove child-coordinate invariance and produce a compile-time `StaticSwizzle`; a runtime-dependent or unresolved piecewise result is rejected. A `VectorCoordinate` whose child is an `ImageCoordinate` lowers lane reads by reading the texel and selecting a channel; whole-vector accesses lower to whole-texel operations. Code generation rejects partial writes to image-backed vectors instead of emitting a read-modify-write.
 
 ### Declarations
 
@@ -665,40 +748,32 @@ Atomics and volatile casts must query lowered physical storage kind, not `addres
 
 - Every array address space is `UNIVERSAL`.
 - No `auto` shape, layout, stride, or offset remains.
-- Every logical access has the correct rank.
+- Every logical access has the correct named space.
+- Every layout `PwAff` is aligned with the canonical logical shape, total on that shape, and within its declared range.
+- Combined layout injectivity has been proved or explicitly trusted.
 - Every local/private/iname-private access is current-instance legal.
-- Every terminal layout has an allocation requirement when Loopy allocates it.
+- Every terminal layout has an allocation requirement when Loopy allocates it, and hardware-instance fibers have uniform requirements.
 - No unlowered legacy dim tags remain.
-- Vector lane information occurs exactly once.
+- Every scalar vector lane and separate selector is a compile-time singleton.
+- Every whole-vector access has a proved child-coordinate-invariant static swizzle.
 - Every image-backed vector length agrees with the image format's channel count.
 - Every write to an image-backed vector is a whole-vector write; code generation rejects partial writes.
-- Separate storage has either been materialized or is supported by the target lowering.
+- Separate storage has either been materialized by selector fiber or is supported by the target lowering.
 
 ## Race and dependency analysis
 
-After universalization, logical indices include storage-instance dimensions:
+After universalization, logical shapes include named storage-instance dimensions, but race analysis does not rely on their tuple positions. Compose each instruction access with the combined layout map to obtain:
 
 ```text
-global:  user index
-local:   group IDs + user index
-private: group IDs + item IDs + user index
+execution coordinates
+    -> storage object + instance identity + physical access footprint
 ```
 
-Under the refined injectivity contract, equal concurrently live physical locations correspond to equal universal logical indices. Race checks can therefore use one model for all layouts.
+The footprint distinguishes a scalar element or vector lane, a whole vector, an image texel, and target-specific atomic granularity. Two accesses may conflict when their storage object and instance identity agree, their lifetimes overlap, and their physical footprints overlap. Thus a whole-vector access overlaps every constituent lane, and an image texel write conflicts with reads or writes to any of its channels even though those channels are distinct logical points.
 
-Construct a relation:
+For scalar accesses to one array whose combined layout is proved injective, equality of universal logical indices remains a sound optimization. It is not the universal race criterion. This replaces address-space-specific branching and the current syntactic assumption that mentioning a parallel iname in a subscript proves injectivity. Expressions such as `i % 2` and `i-i` require an actual two-copy collision query.
 
-```text
-execution coordinates -> universal logical array indices
-```
-
-For two access instances, ask whether distinct relevant concurrent coordinates can produce equal universal logical indices with overlapping lifetimes.
-
-This replaces address-space-specific branching in race analysis. It also replaces the current syntactic assumption that mentioning a parallel iname in a subscript proves injectivity. Expressions such as `i % 2` and `i-i` require an actual collision query.
-
-For different array names sharing base storage, compose layouts into a common physical coordinate when possible or conservatively assume overlap.
-
-Iname-private logical indices may map to reused physical storage because different mapped iname values are necessarily sequential and have nonoverlapping lifetimes.
+For different array names sharing base storage or callable views with different logical namespaces, compose layouts into a common physical coordinate and footprint when possible or conservatively assume overlap. Distinct separate selectors prove disjointness only when they select distinct physical objects. Iname-private lifetime keys prove nonoverlap only after schedule analysis establishes sequential epochs.
 
 ## Calls to callable kernels
 
@@ -717,11 +792,13 @@ After normalization, address space is normally `UNIVERSAL`.
 For a `SubArrayRef`:
 
 1. Obtain the exact swept-iname domain.
-2. Build a map from callee-visible indices to source logical indices.
-3. Compose the source layout with this map.
-4. Preserve correlated and union domains.
-5. Fix nonswept storage-instance dimensions to current group/item/iname values.
-6. Return the resulting shape and layout.
+2. Build a named map from callee-visible logical indices to source logical indices.
+3. Define the callee shape as the exact preimage of the source shape, intersected with the swept domain.
+4. Pull back every source-layout component, including `PwAff` lanes/selectors and scope mappings, through this map.
+5. Preserve correlated and union domains and translate parameter namespaces explicitly.
+6. Fix nonswept storage-instance dimensions to current group/item/iname values.
+7. Prove that the reindexing map is injective on the callee shape; a repeated-element view may not inherit an injective descriptor.
+8. Return the resulting shape and layout with normalized named spaces.
 
 A local view remains tied to the current group. A private view remains tied to the current item. Calls that imply another storage instance are invalid. No implicit global/local/private conversion occurs at a call boundary.
 
@@ -777,9 +854,9 @@ Breaking compatibility for `storage_shape`, `base_indices`, and `offset` is acce
 
 - C/F/nesting tags call the rectangular-layout factories;
 - fixed strides call `make_strided_layout`;
-- `vec` calls `make_vector_layout`;
-- `sep` calls `make_separate_layout`;
-- new shorthands may mark local/private/iname-private axes or image coordinates.
+- `vec` constructs the selected-axis projection `PwAff` and calls `make_vector_layout`;
+- `sep` constructs selector projection `PwAff`s and calls `make_separate_layout`;
+- new shorthands may construct local/private/iname-private projection mappings or image coordinates.
 
 Add a direct `set_array_layout` API for new code.
 
@@ -789,7 +866,8 @@ The following details remain implementation choices rather than semantic alterna
 
 1. The concrete Python type used for `PhysicalStorageDomain`.
 2. The division between target-independent vector metadata and the target ABI hook implementation.
-3. The richness of optional generic runtime interfaces beyond byte size and alignment.
-4. Whether `.shape` can change directly or requires one transition release through `.index_set`.
+3. The exact target hook used to report supported compile-time swizzle forms.
+4. The richness of optional generic runtime interfaces beyond byte size and alignment.
+5. Whether `.shape` can change directly or requires one transition release through `.index_set`.
 
-Logical axes are canonically named, separate layouts are materialized early in the first release, and scope/representation wrapper order is fixed as described above.
+Logical axes are canonically named, all layout nodes retain the full named environment, separate layouts are materialized by selector fiber in the first release, and scope/representation wrapper order is fixed as described above.
