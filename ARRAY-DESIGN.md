@@ -81,12 +81,18 @@ class InstanceScope(Enum):
 ```python
 class StorageKind(Enum):
     GLOBAL_BUFFER = auto()
+    CONSTANT_BUFFER = auto()
     LOCAL_MEMORY = auto()
     PRIVATE_MEMORY = auto()
     IMAGE = auto()
 ```
 
 - `GLOBAL_BUFFER` is pointer/buffer storage visible to generated device programs;
+- `CONSTANT_BUFFER` is read-only storage in a target-distinguished constant
+  address space, covering today's `ConstantArg` (`__constant` in OpenCL,
+  `__constant__` in CUDA) and initialized read-only temporaries. It is a
+  distinct storage kind rather than a form of ownership: it has its own pointer
+  qualifier, hardware path, and capacity limits;
 - `LOCAL_MEMORY` is workgroup-local/shared storage;
 - `PRIVATE_MEMORY` is work-item-local automatic/register-backed storage;
 - `IMAGE` is an opaque image object accessed through image operations.
@@ -169,14 +175,16 @@ A union of regions remains one `namedisl.Set`, not a collection of alternative s
 Provide explicit queries rather than overloading `.shape` with rectangular behavior:
 
 ```python
-array.num_axes                 # attribute
+array.num_axes                 # attribute; raises for an unresolved `auto` shape
 array.rectangular_shape()      # zero-based separable box, or error
 array.axis_names
 ```
 
 `rectangular_shape()` is the compatibility path for code that genuinely requires a NumPy-style shape tuple. It must not silently return a bounding box for a nonrectangular set. No bounding-box shape query is provided.
 
-Shape stringification checks `namedisl.Set.is_box`. A box is displayed in the usual NumPy shape notation using its axis extents, for example `shape=(n, m)`, `shape=(n,)`, or `shape=()`; non-box shapes are displayed as named sets. Reproducer and persistence formats retain the exact set, including nonzero origins, even when concise display uses extent notation.
+`auto` has no rank, so `num_axes` and `axis_names` are defined only on a resolved shape and must raise an actionable error on an `auto` array rather than guessing.
+
+Shape stringification uses NumPy shape notation only for a **zero-based** box, for example `shape=(n, m)`, `shape=(n,)`, or `shape=()`. `namedisl.Set.is_box` is true for boxes with nonzero origins as well, so `is_box` alone is not the right predicate: printing `[n] -> { [i] : 2 <= i < n }` as `shape=(n-2,)` would name a shape that `rectangular_shape()` rejects. Non-box shapes and boxes with a nonzero origin are displayed as named sets. Reproducer and persistence formats retain the exact set, including nonzero origins, even when concise display uses extent notation.
 
 ### Shape equality and hashing
 
@@ -270,6 +278,14 @@ class Layout(Protocol):
         lane, selector, scope, reuse-epoch, and terminal-coordinate expressions.
         The provider must ensure that ``f`` is injective on the view's shape;
         this method does not prove that precondition.
+
+        Layout components live in two languages: quasi-affine components are
+        ``namedisl.PwAff``\\ s, composed with *index_map* directly, while
+        terminal expressions are general Pymbolic expressions, for which
+        composition is substitution. *index_map* must therefore be a
+        single-valued map that is also convertible to per-axis Pymbolic
+        expressions; a map that is not (for instance, one with unresolved
+        existentially quantified variables) is rejected.
         """
         ...
 
@@ -604,7 +620,13 @@ Equivalently:
 L(x) = L(y)  implies  x = y
 ```
 
-The epoch key makes the abstract map injective across sequential iname-private epochs even though allocation deliberately drops that key and reuses physical storage. Among concurrently live values, equality of storage object, instance identity, and physical coordinate therefore implies equality of the logical point.
+The epoch key makes the abstract map injective across sequential iname-private epochs even though allocation deliberately drops that key and reuses physical storage.
+
+The property the analyses actually consume is the *physical* one, which does not follow from the abstract contract alone. It is the abstract contract **plus** the schedule-aware liveness proof that justifies dropping the epoch key:
+
+> Restricted to logical points that are concurrently live, the tuple of storage-object selector, storage-instance key, terminal coordinate, and representation coordinate uniquely identifies a logical point.
+
+The representation coordinate must be part of that tuple: two distinct lanes of one vector value share a storage object, instance key, and terminal coordinate, and are distinguished only by the lane.
 
 Injectivity is a semantic contract on every layout provider, not something `validate` attempts to prove. This remains true when all components are quasi-affine: Loopy checks that component expressions are well-formed, total, and in range, but it does not run a general two-copy collision query. A component may be noninjective by itself—`floor(i/4)` and `i mod 4` are each noninjective while their pair is injective—so local checks on individual fields would not establish the contract anyway. Built-in factory documentation states why its standard constructions satisfy the contract; users supplying custom expressions are responsible for the combined map. An optional diagnostic injectivity checker may be added later without becoming part of normal validation.
 
@@ -908,7 +930,7 @@ For a `SubArrayRef`:
 
 1. Obtain the exact swept-iname domain.
 2. Build a named map from callee-visible logical indices to source logical indices.
-3. Define the callee shape as the exact preimage of the source shape, intersected with the swept domain.
+3. Define the callee shape as the swept domain, and *check* that it is contained in the exact preimage of the source shape. Do not define it as the intersection of the two: intersecting would silently discard the part of the swept domain that lies outside the source array, turning an out-of-bounds subarray reference into a valid, smaller one. The containment check is exactly the bounds check for the reference.
 4. Pull back every source-layout component, including `PwAff` lanes/selectors and scope mappings, through this map.
 5. Preserve correlated and union domains and translate parameter namespaces explicitly.
 6. Fix nonswept storage-instance dimensions to current group/item/iname values.
