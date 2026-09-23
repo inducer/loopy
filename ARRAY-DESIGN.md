@@ -109,13 +109,14 @@ The amount and arrangement of coordinates available within one storage instance.
 
 ### Canonical type
 
-The intended final type is:
+The construction-time and resolved types are:
 
 ```python
-ArrayBase.shape: namedisl.Set | type[auto] | None
+ArrayShape = namedisl.Set | type[auto]
+ResolvedArrayShape = namedisl.Set
 ```
 
-Legacy public entry points may accept tuple or string shapes, but must pass them immediately to a shape-construction function that returns the canonical type. Resolved internal shapes must not be represented by a `tuple | namedisl.Set` union. Keep normalization out of object constructors except for a thin backward-compatibility delegation that cannot yet be removed.
+`ArrayBase.shape` may be `auto` only until the exact inference pass runs; every resolved array has a `namedisl.Set`. `None` is never a shape value. Legacy public entry points may accept tuple or string shapes, but must pass them immediately to a shape-construction function that returns `ArrayShape`. Resolved internal shapes must not be represented by a `tuple | namedisl.Set` union. Keep normalization out of object constructors except for a thin backward-compatibility delegation that cannot yet be removed.
 
 If changing `.shape` proves too disruptive in practice, the fallback is to introduce a canonical `.index_set` and temporarily retain `.shape` as a rectangular compatibility view. This is a fallback, not the preferred design.
 
@@ -133,7 +134,7 @@ becomes the named set equivalent of:
 [n, m] -> { [i0, i1] : 0 <= i0 < n and 0 <= i1 < m }
 ```
 
-A legacy tuple entry of `None` is an error; unconstrained dimensions must be expressed explicitly using a named universe set. `dim_names` supplies dimension names during conversion and is otherwise subsumed by the named set.
+A legacy tuple entry of `None` is an error; unconstrained dimensions must be expressed explicitly using a named universe set. A top-level legacy `shape=None` is not stored: entry points that explicitly support exact shape inference may translate it immediately to `auto`, and all other entry points reject it with a diagnostic requesting `auto` or an explicit named set. `dim_names` supplies dimension names during conversion and is otherwise subsumed by the named set.
 
 ### Shape conventions
 
@@ -143,9 +144,9 @@ A legacy tuple entry of `None` is an error; unconstrained dimensions must be exp
 - Externally visible shape parameters must correspond to integral, read-only `ValueArg`s.
 - A zero-dimensional shape is a point `{ [] }`, representing a scalar array consistently with NumPy.
 - An empty set represents an array with no valid elements and is distinct from a scalar.
-- `auto` requests inference from the exact polyhedral union of accesses where possible. Failure to complete exact inference is an error.
-- `None` represents an unresolved shape or rank during early construction.
-- A rank-known but unchecked array should use a universe set such as `{ [i, j] }`, not `None`.
+- `auto` is a construction-time request for inference from the exact polyhedral union of accesses. Failure to complete exact inference is an error.
+- A rank-known but unchecked array uses an explicitly named universe set such as `{ [i, j] }`.
+- Unknown rank is not represented in canonical array IR. A parser or compatibility layer must resolve it before constructing an array or reject the input.
 
 ### Examples
 
@@ -193,7 +194,7 @@ For an `auto` temporary:
 shape = union of all relevant logical access ranges
 ```
 
-Every relevant access must be represented successfully; Loopy must not silently omit an unanalyzable access from the inferred shape. A temporary with no accesses remains unresolved or is removed by a separate dead-code path rather than being assigned an arbitrary shape. Initializer-backed storage contributes its declared physical interface separately.
+Every relevant access must be represented successfully; Loopy must not silently omit an unanalyzable access from the inferred shape. An `auto` temporary with no accesses must be removed by an earlier dead-code path or diagnosed; it cannot survive as an unresolved array. Initializer-backed storage contributes its declared physical interface separately.
 
 If access ranges cannot be represented quasi-affinely, inference must fail with an actionable diagnostic. Bounding-box shape inference is not provided: it changes the logical validity set and has no valid shape-inference use case.
 
@@ -896,12 +897,12 @@ Array argument descriptors become:
 ```python
 @dataclass(frozen=True)
 class ArrayArgDescriptor:
-    shape: namedisl.Set | None
-    layout: ArrayLayout | None
+    shape: namedisl.Set
+    layout: ArrayLayout
     address_space: AddressSpace
 ```
 
-After normalization, address space is normally `UNIVERSAL`.
+After normalization, address space is normally `UNIVERSAL`. Any callable-specialization state that does not yet know a shape or layout uses a separate unresolved descriptor type; it does not encode that state as `shape=None` or `layout=None` in `ArrayArgDescriptor`.
 
 For a `SubArrayRef`:
 
@@ -946,6 +947,7 @@ Queries currently based on `AddressSpace.GLOBAL` or `.LOCAL` must instead combin
 
 Initially retain:
 
+- legacy top-level `shape=None` only at entry points that immediately translate it to supported exact `auto` inference;
 - tuple shape input;
 - string shape input;
 - `dim_names` input;
@@ -953,7 +955,7 @@ Initially retain:
 - old address spaces;
 - `tag_array_axes`.
 
-These are conversion front ends, not canonical stored state.
+These are conversion front ends, not canonical stored state. Unsupported `shape=None` uses are rejected, and `None` never reaches `ArrayBase.shape` or an array argument descriptor.
 
 ### Compatibility properties
 

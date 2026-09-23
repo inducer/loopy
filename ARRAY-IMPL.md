@@ -35,7 +35,7 @@ all arrays have named-set shapes, resolved layouts, and UNIVERSAL address space
 1. Add characterization tests for:
    - tuple and string shape construction, including rejection of tuple entries equal to `None`;
    - scalar arrays with `shape=()`;
-   - `shape=None` and `shape=auto`;
+   - legacy top-level `shape=None` conversion to `auto` only at explicitly supported inference entry points, rejection elsewhere, and direct `shape=auto`;
    - C/F/fixed-stride layouts;
    - vector and separate dim tags;
    - shape/stride runtime checks and parameter inference;
@@ -85,11 +85,13 @@ Introduce named-set shapes without yet removing all legacy layout code.
 1. Change the canonical shape type alias to:
 
    ```python
-   ArrayShape = namedisl.Set | type[auto] | None
+   ArrayShape = namedisl.Set | type[auto]
+   ResolvedArrayShape = namedisl.Set
    ```
 
 2. Add shape-construction and conversion helpers:
    - legacy tuple/string to named set, rejecting tuple entries equal to `None`;
+   - top-level legacy `shape=None` to `auto` only for APIs that explicitly support exact inference, with targeted rejection everywhere else;
    - zero-dimensional point construction;
    - rank-known universe construction;
    - named-axis normalization;
@@ -101,7 +103,7 @@ Introduce named-set shapes without yet removing all legacy layout code.
    - `rectangular_shape()`;
    - scalar-shape predicate;
    - empty-shape predicate.
-5. Route legacy shape inputs through the construction helper. Keep `ArrayBase.__init__` trivial except for unavoidable backward-compatible delegation, and do not merge this change until every in-tree core `.shape` consumer is migrated in the same pull request or the `.index_set` transition adapter is in place.
+5. Route legacy shape inputs through the construction helper, ensuring that `None` is never stored in `ArrayBase.shape`. Keep `ArrayBase.__init__` trivial except for unavoidable backward-compatible delegation, and do not merge this change until every in-tree core `.shape` consumer is migrated in the same pull request or the `.index_set` transition adapter is in place.
 6. Replace `dim_names` canonical storage with set dimension names.
 7. Update `ArrayBase`:
    - equality;
@@ -127,6 +129,7 @@ Introduce named-set shapes without yet removing all legacy layout code.
 - tuple-to-set conversion;
 - deterministic `_lpy_s{i}` dimension naming and protected-namespace behavior;
 - rejection of `None` tuple entries;
+- immediate top-level `shape=None` conversion or targeted rejection, with no stored `None` state;
 - zero-dimensional point/scalar semantics;
 - empty sets;
 - nonzero lower bounds;
@@ -138,7 +141,7 @@ Introduce named-set shapes without yet removing all legacy layout code.
 
 ### Exit criteria
 
-Resolved array shapes are named sets throughout the modified core paths. No new code branches on tuple versus set.
+Resolved array shapes are named sets throughout the modified core paths. No array or resolved callable descriptor stores `None` as a shape, and no new code branches on tuple versus set.
 
 ## Phase 2: Polyhedral bounds and shape inference
 
@@ -154,7 +157,7 @@ Make shape-consuming analysis uniformly polyhedral.
    - check subset containment directly.
 2. Update shape-parameter validation to inspect set parameters and require integral read-only `ValueArg`s for externally visible arrays.
 3. Change `find_shapes_of_vars` to return access-range sets rather than base-index/extent tuples, and fail if any relevant access is unanalyzable instead of unioning only the successful accesses.
-4. Change `determine_shapes_of_temporaries` to retain exact access unions.
+4. Change `determine_shapes_of_temporaries` to retain exact access unions and diagnose an unremoved, access-free `auto` temporary instead of producing an unresolved shape.
 5. Change `guess_var_shape` to return named sets.
 6. Remove all bounding-box shape inference and its options; inference either retains the exact access union or fails.
 7. Migrate scalar-array checks from `shape == ()` to a helper.
@@ -176,6 +179,7 @@ Make shape-consuming analysis uniformly polyhedral.
 - symbolic shape parameters;
 - union shapes;
 - exact `auto` temporary inference;
+- access-free `auto` temporary removal before inference or targeted failure;
 - non-quasi-affine inference failure;
 - scalar and empty arrays.
 
@@ -511,7 +515,7 @@ Preserve polyhedral shape/layout semantics across callable-kernel boundaries.
 
 ### Tasks
 
-1. Change `ArrayArgDescriptor` to carry named-set shape and layout.
+1. Change resolved `ArrayArgDescriptor` to require a named-set shape and resolved layout. Introduce a separate unresolved specialization descriptor/state where necessary; do not use `shape=None` or `layout=None`.
 2. Implement descriptor mapping over shape parameters and layout expressions.
 3. Implement descriptor dependency collection from set parameters and layouts.
 4. Rewrite `get_arg_descriptor_for_expression`:
@@ -701,7 +705,7 @@ There is one canonical representation, all persistent forms are stable, and fail
 
 Add sections for:
 
-- named-set logical shapes;
+- named-set logical shapes, `auto` as a construction-time request, and the prohibition on `None` shapes;
 - shape parameters and zero-dimensional scalars;
 - layouts versus logical shapes;
 - the shared `Layout` interface, full named logical-index environment, combined layout map, legal child types, and `make_*_layout` factories;
@@ -786,7 +790,7 @@ Each pull request should preserve a runnable tree and add its own compatibility 
 
 The project is complete when:
 
-- resolved `.shape` values are named sets;
+- `None` is never an array shape or resolved callable-descriptor shape, and resolved `.shape` values are named sets;
 - triangular, diamond, and union-shaped arrays pass bounds checking;
 - all arrays are universal before code generation;
 - local/private instances are explicit logical dimensions;
