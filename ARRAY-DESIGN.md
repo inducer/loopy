@@ -53,7 +53,7 @@ An immutable description of how a valid logical subscript selects a storage inst
 
 ### Scope
 
-The execution granularity that owns a distinct storage instance. Scope is not Python/C lexical scope. The initial scopes are global (one instance shared by all workgroups and work items), workgroup (one instance per workgroup), and work item (one instance per work item). Sequential iname-private values do not introduce another physical scope; they introduce nonoverlapping lifetime epochs that may reuse one instance.
+The execution granularity that owns a distinct storage instance. Scope is not Python/C lexical scope. The initial scopes are global (one instance shared by all workgroups and work items), workgroup (one instance per workgroup), and work item (one instance per work item). Sequential iname-private values do not introduce another physical scope; they introduce reuse epochs that may share one instance when their live ranges do not overlap.
 
 ### Physical storage object
 
@@ -93,20 +93,13 @@ class StorageKind(Enum):
 
 The legal combinations of storage kind and instance scope are constrained by layout types and target support. For example, `LOCAL_MEMORY` has workgroup scope and `PRIVATE_MEMORY` has work-item scope in the first implementation.
 
-### Storage lifetime
+### Storage ownership
 
-`StorageLifetime` identifies how long a physical instance remains valid and whether it may cross a generated-subkernel boundary:
+Ownership says who creates and releases the physical storage object. Array arguments are normally externally owned; Loopy temporaries are normally Loopy-owned; target-defined constants may have static target ownership. Ownership comes from the array declaration or target integration, not from the layout. Together with liveness, it determines whether Loopy allocates, passes, or releases an object.
 
-```python
-class StorageLifetime(Enum):
-    PERSISTENT = auto()
-    DEVICE_PROGRAM = auto()
-```
+### Reuse epoch
 
-- `PERSISTENT` survives generated-subkernel launches and may be passed between them;
-- `DEVICE_PROGRAM` exists only during one generated device-program invocation.
-
-A **lifetime/epoch key** is separate from `StorageLifetime`. It distinguishes logically different sequential iname-private values that reuse one physical instance during that instance's lifetime. The key participates in logical identity but is deliberately omitted when allocating the reused storage.
+A reuse epoch distinguishes logically different sequential iname-private values that may share one physical instance. Its **epoch key** participates in logical identity but is deliberately omitted from physical allocation identity. Reuse is legal only when schedule-aware liveness analysis establishes that the epochs' live ranges do not overlap. Generated-subkernel persistence and allocation/release points are derived from liveness, storage kind, instance scope, and ownership rather than stored as coarse layout metadata.
 
 ### Physical extent
 
@@ -150,7 +143,7 @@ A legacy tuple entry of `None` is an error; unconstrained dimensions must be exp
 - Externally visible shape parameters must correspond to integral, read-only `ValueArg`s.
 - A zero-dimensional shape is a point `{ [] }`, representing a scalar array consistently with NumPy.
 - An empty set represents an array with no valid elements and is distinct from a scalar.
-- `auto` requests inference from the exact polyhedral union of accesses where possible.
+- `auto` requests inference from the exact polyhedral union of accesses where possible. Failure to complete exact inference is an error.
 - `None` represents an unresolved shape or rank during early construction.
 - A rank-known but unchecked array should use a universe set such as `{ [i, j] }`, not `None`.
 
@@ -273,7 +266,7 @@ class Layout(Protocol):
         If this layout denotes ``L: X -> P`` and *index_map* denotes the named
         reindexing ``f: Y -> X``, return the layout ``L ∘ f: Y -> P``. The
         operation composes every logical-index-dependent component, including
-        lane, selector, scope, lifetime, and terminal-coordinate expressions.
+        lane, selector, scope, reuse-epoch, and terminal-coordinate expressions.
         The provider must ensure that ``f`` is injective on the view's shape;
         this method does not prove that precondition.
         """
@@ -327,12 +320,12 @@ Composition is defined by one abstract map over the exact logical shape `S`:
 L: S -> (
     storage-object selector,
     storage-instance identity,
-    lifetime/epoch identity,
+    reuse-epoch identity,
     terminal physical coordinate,
     representation coordinate)
 ```
 
-A terminal contributes the terminal physical coordinate. `SeparateLayout` contributes the storage-object selector. Local/private wrappers contribute storage-instance identity. `InamePrivateLayout` contributes an abstract sequential-lifetime key even though physical allocation is reused. `VectorLayout` contributes a vector lane to the representation coordinate. Every node evaluates its component from the unchanged named logical point and passes that same point to its child.
+A terminal contributes the terminal physical coordinate. `SeparateLayout` contributes the storage-object selector. Local/private wrappers contribute storage-instance identity. `InamePrivateLayout` contributes an abstract reuse-epoch key even though physical allocation is reused. `VectorLayout` contributes a vector lane to the representation coordinate. Every node evaluates its component from the unchanged named logical point and passes that same point to its child.
 
 The same logical dimension may contribute to several components. For example, with logical shape `{ [i] : 0 <= i < n }`, a packed vector layout may use `floor(i/4)` as the child's linear coordinate and `i mod 4` as the lane. This is valid because the pair is injective; there is no distinguished axis for the vector wrapper to own or remove.
 
@@ -344,7 +337,7 @@ The hierarchy has four semantic levels, listed from the innermost leaf to the ou
 
 1. **Terminal layouts** produce coordinates within one physical storage object. `LinearLayout` and `RectangularLayout` address ordinary element storage; `ImageLayout` produces opaque image coordinates.
 2. **Representation layouts** change how values are represented without changing hardware ownership. `VectorLayout` contributes a lane within one vector/texel value, while `SeparateLayout` selects one of several physical storage objects.
-3. **Sequential-lifetime layout** (`InamePrivateLayout`) distinguishes logical epochs that execute sequentially and may reuse the same physical instance.
+3. **Sequential-reuse layout** (`InamePrivateLayout`) distinguishes logical epochs that execute sequentially and may reuse the same physical instance when liveness permits.
 4. **Hardware-scope layouts** (`LocalLayout` and `PrivateLayout`) state which workgroup or work item owns a distinct storage instance. They are outermost because storage ownership applies to the complete representation beneath them.
 
 A layout need not contain every level. A plain `LinearLayout` is a complete global layout, while a private vector temporary may have hardware scope outside a vector representation and terminal. The child-type system encodes legal omissions and ordering independently of which logical dimensions the component expressions reference:
@@ -416,8 +409,7 @@ class StorageReference:
     name: str
     kind: StorageKind
     instance_key: tuple[ArithmeticExpression, ...]
-    lifetime_key: tuple[ArithmeticExpression, ...]
-    lifetime: StorageLifetime
+    epoch_key: tuple[ArithmeticExpression, ...]
 
 class LoweredCoordinate: ...
 
@@ -454,7 +446,7 @@ class LoweredAccess:
     footprint: AccessFootprint
 ```
 
-A scalar vector access must lower to `ScalarLane`; whole-vector lowering must produce a `StaticSwizzle`. Neither variant carries a runtime lane expression. `SeparateLayout` changes the single `StorageReference` selected by its child. Scope wrappers add instance/lifetime keys. Code generation dispatches on the storage reference, coordinate, and footprint, not on array subclasses or axis tags.
+A scalar vector access must lower to `ScalarLane`; whole-vector lowering must produce a `StaticSwizzle`. Neither variant carries a runtime lane expression. `SeparateLayout` changes the single `StorageReference` selected by its child. Scope wrappers add instance or reuse-epoch keys. Code generation dispatches on the storage reference, coordinate, and footprint, not on array subclasses or axis tags.
 
 ## Terminal layouts
 
@@ -593,7 +585,7 @@ class InamePrivateLayout(Layout):
     child: ElementRepresentationLayout
 ```
 
-Each mapped sequential iname iteration has a logically distinct value, but the child storage may be reused across iterations. `InamePrivateLayout` contributes the mapped expressions to an abstract lifetime/epoch key, proves that an access uses the current iname values, passes the unchanged logical environment to `child`, and reports one child allocation rather than one allocation per epoch. Child physical coordinates, selectors, lanes, and allocation requirements must initially be independent of the epoch expressions.
+Each mapped sequential iname iteration has a logically distinct value, but the child storage may be reused across iterations. `InamePrivateLayout` contributes the mapped expressions to an abstract reuse-epoch key, proves that an access uses the current iname values, passes the unchanged logical environment to `child`, and reports one child allocation rather than one allocation per epoch; schedule-aware liveness must confirm that the reuse is legal. Child physical coordinates, selectors, lanes, and allocation requirements must initially be independent of the epoch expressions.
 
 The child types admit only the canonical order: an optional hardware instance scope outside optional `InamePrivateLayout`, followed by representation wrappers and a terminal layout. Multiple hardware scope wrappers and scope wrappers inside `VectorLayout` or `SeparateLayout` are not members of `ArrayLayout`; public factories reject dynamically typed attempts to create them.
 
@@ -603,7 +595,7 @@ Mapped inames must be necessarily sequential under the finalized schedule. If th
 
 Plain physical-address injectivity is incompatible with local/private allocation instances and iname-private storage reuse. The contract applies to the complete combined map `L` on the exact logical shape, after named-space alignment:
 
-> The tuple of storage-object selector, storage-instance key, lifetime/epoch key, terminal coordinate, and representation coordinate uniquely identifies a logical point.
+> The tuple of storage-object selector, storage-instance key, reuse-epoch key, terminal coordinate, and representation coordinate uniquely identifies a logical point.
 
 Equivalently:
 
@@ -611,11 +603,11 @@ Equivalently:
 L(x) = L(y)  implies  x = y
 ```
 
-The lifetime key makes the abstract map injective across sequential iname-private epochs even though allocation deliberately drops that key and reuses physical storage. Among concurrently live values, equality of storage object, instance identity, and physical coordinate therefore implies equality of the logical point.
+The epoch key makes the abstract map injective across sequential iname-private epochs even though allocation deliberately drops that key and reuses physical storage. Among concurrently live values, equality of storage object, instance identity, and physical coordinate therefore implies equality of the logical point.
 
 Injectivity is a semantic contract on every layout provider, not something `validate` attempts to prove. This remains true when all components are quasi-affine: Loopy checks that component expressions are well-formed, total, and in range, but it does not run a general two-copy collision query. A component may be noninjective by itself—`floor(i/4)` and `i mod 4` are each noninjective while their pair is injective—so local checks on individual fields would not establish the contract anyway. Built-in factory documentation states why its standard constructions satisfy the contract; users supplying custom expressions are responsible for the combined map. An optional diagnostic injectivity checker may be added later without becoming part of normal validation.
 
-Pullback through a subarray/reindexing map preserves the contract only when that map is injective on the new logical shape. `pullback` therefore has injective reindexing as a precondition; Loopy rejects mappings that are statically known to repeat elements but does not promise a general proof. Specializing a separate selector preserves injectivity on that selector fiber. Dropping a lifetime key is valid only for allocation reuse after schedule analysis proves that the corresponding epochs cannot overlap.
+Pullback through a subarray/reindexing map preserves the contract only when that map is injective on the new logical shape. `pullback` therefore has injective reindexing as a precondition; Loopy rejects mappings that are statically known to repeat elements but does not promise a general proof. Specializing a separate selector preserves injectivity on that selector fiber. Dropping an epoch key is valid only for allocation reuse after schedule-aware liveness proves that the corresponding live ranges cannot overlap.
 
 ## Vector layout
 
@@ -695,10 +687,9 @@ class PhysicalStorageObject:
     element_extent: ArithmeticExpression | PhysicalStorageDomain
     alignment: int | None
     instance_scope: InstanceScope
-    lifetime: StorageLifetime
 ```
 
-`object_key` is the compile-time selector tuple of a materialized `SeparateLayout`; it is `None` for an unseparated array. `kind`, `instance_scope`, and `lifetime` use the definitions above. `alignment` is a byte alignment, or `None` when the target/default ABI decides it.
+`object_key` is the compile-time selector tuple of a materialized `SeparateLayout`; it is `None` for an unseparated array. `kind` and `instance_scope` use the definitions above. `alignment` is a byte alignment, or `None` when the target/default ABI decides it.
 
 `element_extent` describes one storage instance of this object. An arithmetic expression is the number of terminal storage elements in a one-dimensional allocation. A `PhysicalStorageDomain` is an exact set of valid physical coordinate tuples for storage that is not adequately described by one count. Neither form includes the number of workgroups, work items, separate objects, or sequential epochs.
 
@@ -716,7 +707,7 @@ Allocation proceeds conceptually as follows:
 2. For each object, range the terminal physical coordinate over one allocation fiber to obtain the required per-instance extent or physical domain.
 3. Check that this requirement is uniform across runtime instance keys. The first implementation rejects a layout whose local/private extent changes by workgroup or work item.
 4. Apply representation ABI rules. An element-backed vector changes the terminal element type, size, and alignment; its lanes do not create additional vector objects. Image channels use image-format dimensions rather than ordinary vector padding.
-5. Record the storage kind, instance scope, and lifetime. Runtime execution supplies one instance at global, workgroup, or work-item scope as appropriate; the allocation descriptor itself is not replicated.
+5. Record the storage kind and instance scope. Runtime execution supplies one instance at global, workgroup, or work-item scope as appropriate; the allocation descriptor itself is not replicated.
 
 Examples:
 
@@ -740,7 +731,7 @@ For a first-release rectangular layout with nonnegative strides, the required li
 - offsets belong in the terminal layout expression;
 - explicit storage sizing belongs in the layout.
 
-When several arrays share base storage, compatibility includes object key, storage kind, instance scope, lifetime, alignment, dtype, and physical-coordinate requirements—not merely the largest element count.
+When several arrays share base storage, compatibility includes object key, storage kind, instance scope, alignment, dtype, and physical-coordinate requirements—not merely the largest element count.
 
 ## Universal address space
 
@@ -768,7 +759,7 @@ new layout: terminal/representation layout f(i)
 new address space: UNIVERSAL
 ```
 
-An unwrapped terminal or representation layout has `GLOBAL_BUFFER` storage kind and `PERSISTENT` lifetime by default. Array arguments and persistent temporaries differ in ownership and lifetime metadata, not in logical address space. `InamePrivateLayout` does not by itself imply hardware-private storage; it refines the lifetime of the enclosing global, local, or private storage. Local/private wrappers around images and multiple hardware scope wrappers are rejected initially. Universalization creates named scope dimensions and projection `PwAff`s for their instance mappings; later layout lowering does not depend on those dimensions occupying a tuple prefix.
+An unwrapped terminal or representation layout has `GLOBAL_BUFFER` storage kind by default. Array arguments and temporaries differ in ownership and liveness, not in logical address space. `InamePrivateLayout` does not by itself imply hardware-private storage; it proposes sequential reuse of the enclosing global, local, or private instance. Local/private wrappers around images and multiple hardware scope wrappers are rejected initially. Universalization creates named scope dimensions and projection `PwAff`s for their instance mappings; later layout lowering does not depend on those dimensions occupying a tuple prefix.
 
 No execution-instance dimensions are added.
 
@@ -892,11 +883,11 @@ execution coordinates
     -> storage object + instance identity + physical access footprint
 ```
 
-The footprint distinguishes a scalar element or vector lane, a whole vector, an image texel, and target-specific atomic granularity. Two accesses may conflict when their storage object and instance identity agree, their lifetimes overlap, and their physical footprints overlap. Thus a whole-vector access overlaps every constituent lane, and an image texel write conflicts with reads or writes to any of its channels even though those channels are distinct logical points.
+The footprint distinguishes a scalar element or vector lane, a whole vector, an image texel, and target-specific atomic granularity. Two accesses may conflict when their storage object and instance identity agree, their schedule-derived live ranges overlap, and their physical footprints overlap. Thus a whole-vector access overlaps every constituent lane, and an image texel write conflicts with reads or writes to any of its channels even though those channels are distinct logical points.
 
 For scalar accesses to one array under the layout-provider injectivity contract, equality of universal logical indices remains a sound optimization. It is not the universal race criterion. This replaces address-space-specific branching and the current syntactic assumption that mentioning a parallel iname in a subscript proves injectivity. Expressions such as `i % 2` and `i-i` require an actual two-copy collision query.
 
-For different array names sharing base storage or callable views with different logical namespaces, compose layouts into a common physical coordinate and footprint when possible or conservatively assume overlap. Distinct separate selectors prove disjointness only when they select distinct physical objects. Iname-private lifetime keys prove nonoverlap only after schedule analysis establishes sequential epochs.
+For different array names sharing base storage or callable views with different logical namespaces, compose layouts into a common physical coordinate and footprint when possible or conservatively assume overlap. Distinct separate selectors prove disjointness only when they select distinct physical objects. Iname-private epoch keys permit reuse only after schedule-aware liveness establishes nonoverlapping live ranges.
 
 ## Calls to callable kernels
 
@@ -937,16 +928,17 @@ descr.layout
 
 and document the source-level compatibility break.
 
-## Generated subkernels and lifetime
+## Generated subkernels and liveness
 
-For device programs split at global barriers:
+For device programs split at global barriers, persistence is derived rather than stored in the layout:
 
-- persistent global allocations may be passed between generated subkernels;
-- local allocations cannot survive a launch boundary;
-- private allocations cannot survive a launch boundary;
-- iname-private allocations cannot escape their sequential lifetime.
+- schedule-aware liveness determines whether a value is live across a generated-subkernel boundary;
+- a live `GLOBAL_BUFFER` value may use a host/device allocation passed between generated subkernels;
+- `LOCAL_MEMORY` and `PRIVATE_MEMORY` instances physically cannot survive a launch boundary, so a value live across that boundary requires an explicit save/reload transformation or is rejected;
+- allocation and release points for global temporaries follow their computed live ranges;
+- reuse proposed by `InamePrivateLayout` is legal only when the relevant epoch live ranges are nonoverlapping.
 
-Queries currently based on `AddressSpace.GLOBAL` or `.LOCAL` must instead use layout storage kind and lifetime. This includes temporary passing, local-memory accounting, base-storage checks, and host-side global temporary allocation.
+Queries currently based on `AddressSpace.GLOBAL` or `.LOCAL` must instead combine layout storage kind and instance scope with liveness and ownership information. This includes temporary passing, local-memory accounting, base-storage checks, and host-side global temporary allocation.
 
 ## Compatibility policy
 

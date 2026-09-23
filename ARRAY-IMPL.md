@@ -19,7 +19,7 @@ all arrays have named-set shapes, resolved layouts, and UNIVERSAL address space
 - Do not infer generic physical allocation size from logical shape.
 - Treat injectivity as a layout-provider contract for all layouts, not a responsibility of structural validation. Standard factories document why their constructions satisfy it; arbitrary symbolic/custom layouts remain the provider's responsibility.
 - Preserve rectangular wrapper validation and parameter inference.
-- Prefer conservative rejection over unsound race, alias, or lifetime reasoning.
+- Prefer conservative rejection over unsound race, alias, liveness, or storage-reuse reasoning.
 - Add explicit pre-codegen invariants so partially migrated kernels fail early.
 
 ## Phase 0: Baseline and decision prototypes
@@ -201,7 +201,7 @@ Introduce immutable layout values and access-lowering protocols while retaining 
    - access lowering;
    - shape-aware physical allocation requirements;
    - an optional runtime interface description.
-3. Define the combined layout map from the unchanged logical point to storage-object selector, instance key, lifetime/epoch key, terminal coordinate, and representation coordinate. Add reusable `PwAff` utilities for named-space alignment, totality, declared ranges, singleton values, and finite ranges; do not put injectivity proving in `validate`.
+3. Define the combined layout map from the unchanged logical point to storage-object selector, instance key, reuse-epoch key, terminal coordinate, and representation coordinate. Add reusable `PwAff` utilities for named-space alignment, totality, declared ranges, singleton values, and finite ranges; do not put injectivity proving in `validate`.
 4. Define closed layout-state aliases and narrow child types:
    - `ElementTerminalLayout = LinearLayout | RectangularLayout`;
    - `TerminalLayout = ElementTerminalLayout | ImageLayout`;
@@ -210,12 +210,12 @@ Introduce immutable layout values and access-lowering protocols while retaining 
    - `SeparateChildLayout = TerminalLayout | AnyVectorLayout` and covariant generic `SeparateLayout[SeparateChildT]`;
    - `ElementRepresentationLayout`, excluding images, image-backed vectors, and separated variants of either;
    - the existing legal root/scope aliases, distinct from the shared `Layout` protocol.
-5. Define `InstanceScope` (`GLOBAL`, `WORKGROUP`, `WORK_ITEM`), `StorageKind` (`GLOBAL_BUFFER`, `LOCAL_MEMORY`, `PRIVATE_MEMORY`, `IMAGE`), and `StorageLifetime` (`PERSISTENT`, `DEVICE_PROGRAM`). Define one `StorageReference` carrying object name, storage kind, instance key, lifetime key, and lifetime. Add lowered coordinate variants for linear, image, scalar-vector-lane, and static-swizzle access, plus explicit scalar-lane, whole-vector, and image-texel footprints.
+5. Define `InstanceScope` (`GLOBAL`, `WORKGROUP`, `WORK_ITEM`) and `StorageKind` (`GLOBAL_BUFFER`, `LOCAL_MEMORY`, `PRIVATE_MEMORY`, `IMAGE`). Define one `StorageReference` carrying object name, storage kind, instance key, and reuse-epoch key. Add lowered coordinate variants for linear, image, scalar-vector-lane, and static-swizzle access, plus explicit scalar-lane, whole-vector, and image-texel footprints.
 6. Implement trivial frozen records for terminal, scope, and representation layouts. `VectorLayout` stores `lane_expr: namedisl.PwAff`; `SeparateLayout` stores `selector_exprs: tuple[namedisl.PwAff, ...]`; scope mappings store logical `PwAff`s. No wrapper removes or renumbers dimensions.
 7. Implement public construction functions, including `make_linear_layout`, `make_rectangular_layout`, `make_c_layout`, `make_f_layout`, `make_strided_layout`, `make_image_layout`, and one `make_*_layout` function per wrapper. Factories perform expression parsing, compatibility projection construction, named-space alignment, normalization, and value-level validation; record constructors contain no such logic.
 8. Encode wrapper-order legality in factory signatures and child annotations. This excludes nested hardware scopes, scope wrappers inside representation wrappers, reversed/repeated vector or separate wrappers, and scoped images or image-backed vectors, while permitting an image-backed vector as a root or top-level separate child. Do not reject shared dependencies among lane, selector, and child-coordinate expressions.
 9. Document combined injectivity as a provider contract for every layout. Explain why standard factory constructions satisfy it, require injective maps as a precondition of `pullback`, and reject only statically evident contract violations in normal processing.
-10. Add a structured `PhysicalAllocation` result describing physical objects, separate-object key, per-instance element extent or physical domain, alignment, instance scope, and lifetime, computed per storage-object/instance fiber. Reject nonuniform hardware-instance allocation in the first implementation.
+10. Add a structured `PhysicalAllocation` result describing physical objects, separate-object key, per-instance element extent or physical domain, alignment, and instance scope, computed per storage-object/instance fiber. Reject nonuniform hardware-instance allocation in the first implementation.
 11. Add a runtime-interface record carrying physical dimensions, strides, byte size, alignment, and parameter equations.
 12. Make generic `LinearLayout` require an explicit size or physical storage domain.
 13. Add target hooks for element-backed vector ABI size/alignment and supported compile-time swizzle forms; image-backed vectors use image-format channel metadata for width.
@@ -241,7 +241,7 @@ Initially place public layout definitions in `loopy/kernel/array.py` or a new `l
 - scalar-lane singleton and static-swizzle analysis;
 - image-vector channel-count validation and rejection beneath scope wrappers;
 - separate selector-expression lowering, including separate image vectors;
-- image coordinates and local/private/lifetime identity metadata.
+- image coordinates and local/private/reuse-epoch identity metadata.
 
 ### Exit criteria
 
@@ -326,7 +326,7 @@ Move allocation and host validation from logical shape to layout-provided physic
    - structured per-object element extent;
    - physical storage kind;
    - storage-instance scope without multiplying launch size;
-   - lifetime;
+
    - alignment and dtype.
 6. Implement rectangular runtime interfaces containing:
    - expected physical rank and dimensions;
@@ -373,7 +373,7 @@ No core allocation or wrapper path computes storage as a product of logical shap
 
 ### Objectives
 
-Add `AddressSpace.UNIVERSAL` and an opt-in normalization transform. Do not enable automatic preprocessing conversion until the code-generation, callable, race, and lifetime consumers in later phases are ready.
+Add `AddressSpace.UNIVERSAL` and an opt-in normalization transform. Do not enable automatic preprocessing conversion until the code-generation, callable, race, and liveness consumers in later phases are ready.
 
 ### Tasks
 
@@ -575,7 +575,7 @@ Use combined layout maps and physical access footprints for race-related analysi
    - duplicate execution coordinates;
    - require a difference in at least one relevant concurrent coordinate;
    - require equal storage object and instance identity;
-   - require overlapping physical footprints and lifetimes;
+   - require overlapping schedule-derived live ranges and physical footprints;
    - test nonemptiness.
 5. Use equality of universal logical indices only for scalar accesses to the same array under the layout-provider injectivity contract.
 6. Reuse and generalize the candidate-scope query introduced in Phase 6; do not maintain a second inference algorithm.
@@ -584,7 +584,7 @@ Use combined layout maps and physical access footprints for race-related analysi
 9. For base-storage aliases and callable views with different logical namespaces:
    - compare common physical coordinates and footprints when available;
    - otherwise preserve conservative overlap.
-10. Use distinct separate storage-object selectors for disjointness and account for iname-private lifetime nonoverlap only after sequentiality is proved.
+10. Use distinct separate storage-object selectors for disjointness and permit iname-private reuse only after sequentiality and live-range nonoverlap are proved.
 11. Remove old `_is_racing_iname_tag` and address-space-specific race logic once unused.
 
 ### Tests
@@ -625,11 +625,11 @@ Ordering/barrier cases:
 
 Race correctness no longer depends on old address-space enum values, tuple positions, mere occurrence of inames in subscripts, or logical-index equality for non-scalar operation footprints.
 
-## Phase 10: Generated-subkernel lifetime and storage queries
+## Phase 10: Generated-subkernel liveness and storage queries
 
 ### Objectives
 
-Replace semantic address-space queries used by scheduling and host allocation.
+Replace semantic address-space queries used by scheduling and host allocation, and integrate fine-grained liveness across generated-subkernel boundaries.
 
 ### Tasks
 
@@ -637,16 +637,17 @@ Replace semantic address-space queries used by scheduling and host allocation.
    - `LoopKernel.global_var_names`;
    - `LoopKernel.local_var_names`;
    - `LoopKernel.local_mem_use`.
-2. Replace `_should_temp_var_be_passed` with a lifetime/storage-kind query.
-3. Update generated-subkernel checks:
-   - persistent global storage may cross launches;
-   - local/private storage may not;
-   - iname-private storage may not escape its lifetime.
-4. Update PyOpenCL host allocation and release of persistent temporaries.
-5. Update base-storage grouping and nested-base-storage checks.
-6. Update save/reload and barrier-related users in core paths.
-7. Update local-memory statistics to query layouts.
-8. Once Phases 7-10 pass their compatibility suites, enable automatic `to_universal_address_space` in preprocessing and activate the hard pre-codegen nonuniversal-array check.
+2. Replace `_should_temp_var_be_passed` with a liveness query combined with storage kind, instance scope, and ownership.
+3. Compute whether each value is live across each generated-subkernel boundary at the finest available program-point granularity.
+4. Update generated-subkernel checks:
+   - a live `GLOBAL_BUFFER` value may be passed across launches;
+   - a live `LOCAL_MEMORY` or `PRIVATE_MEMORY` value cannot cross a launch without explicit save/reload;
+   - iname-private reuse requires nonoverlapping epoch live ranges.
+5. Update PyOpenCL host allocation and release of global temporaries from their computed live ranges.
+6. Update base-storage grouping and nested-base-storage checks.
+7. Update save/reload and barrier-related users in core paths.
+8. Update local-memory statistics to query layouts.
+9. Once Phases 7-10 pass their compatibility suites, enable automatic `to_universal_address_space` in preprocessing and activate the hard pre-codegen nonuniversal-array check.
 
 ### Tests
 
@@ -655,11 +656,11 @@ Replace semantic address-space queries used by scheduling and host allocation.
 - base storage across subkernels;
 - initialized persistent constants;
 - local-memory accounting;
-- iname-private escape rejection.
+- iname-private reuse accepted for disjoint epoch live ranges and rejected for overlap.
 
 ### Exit criteria
 
-Generated-subkernel lifetime behavior is independent of `AddressSpace.GLOBAL/LOCAL/PRIVATE`, and automatic preprocessing universalization is enabled without falling back to legacy code generation.
+Generated-subkernel persistence and allocation/release decisions come from fine-grained liveness plus storage kind/scope rather than `AddressSpace.GLOBAL/LOCAL/PRIVATE` or coarse layout metadata, and automatic preprocessing universalization is enabled without falling back to legacy code generation.
 
 ## Phase 11: Persistence, diagnostics, and cleanup
 
@@ -712,7 +713,7 @@ Add sections for:
 - iname-private storage;
 - combined-map injectivity and trusted custom layouts;
 - universal address space;
-- physical storage objects, kinds, instance scopes, lifetimes, allocation fibers, and per-instance extent;
+- physical storage objects, kinds, instance scopes, ownership, reuse epochs, allocation fibers, and per-instance extent;
 - legacy `tag_array_axes` compatibility.
 
 Correct the current Fortran-layout description to column-major.
@@ -736,7 +737,7 @@ Document:
 - layout-driven lowering and static swizzle proof;
 - runtime interface equations and allocation by storage fiber;
 - physical access footprints and race maps;
-- generated-subkernel lifetime rules.
+- generated-subkernel liveness, passing, allocation, and release rules.
 
 ### Tutorial/examples
 
@@ -776,7 +777,7 @@ Use generated-code checks sparingly. Prefer semantic inspection of normalized ke
 8. Layout-driven code generation with dual-path compatibility.
 9. Full callable descriptor composition.
 10. Universal race/order/barrier analysis.
-11. Generated-subkernel lifetime migration and activation of automatic universalization.
+11. Generated-subkernel liveness/storage-query migration and activation of automatic universalization.
 12. Cleanup, deprecations, documentation, and examples.
 
 Each pull request should preserve a runnable tree and add its own compatibility tests. Avoid a single flag day that changes shapes, layouts, code generation, and races simultaneously.
@@ -803,6 +804,6 @@ The project is complete when:
 - rectangular wrappers retain physical shape/stride checks and parameter inference;
 - callable descriptors preserve polyhedral domains and composed layouts;
 - scalar race checks may optimize through universal logical indices, while vector/image/alias races use physical footprints;
-- generated-subkernel lifetime decisions use layout storage semantics;
+- generated-subkernel passing and allocation decisions use fine-grained liveness plus layout storage kind/scope;
 - legacy tuple shapes and `tag_array_axes` continue to work through normalization;
 - documentation and persistence formats cover the new model.
