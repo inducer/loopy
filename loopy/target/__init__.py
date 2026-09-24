@@ -191,6 +191,24 @@ class TargetBase(ABC):
         """
         raise NotImplementedError()
 
+    @property
+    def known_host_callables(self):
+        """
+        Returns a mapping from function ids to corresponding
+        :class:`loopy.kernel.function_interface.InKernelCallable` for the
+        function ids known to *self* for host code generation.
+        """
+        return {}
+
+    @property
+    def known_device_callables(self):
+        """
+        Returns a mapping from function ids to corresponding
+        :class:`loopy.kernel.function_interface.InKernelCallable` for the
+        function ids known to *self* for device code generation.
+        """
+        return {}
+
 
 @dataclass(frozen=True)
 class ASTBuilderBase(ABC, Generic[ASTType]):
@@ -206,10 +224,9 @@ class ASTBuilderBase(ABC, Generic[ASTType]):
         """
         Returns a mapping from function ids to corresponding
         :class:`loopy.kernel.function_interface.InKernelCallable` for the
-        function ids known to *self.target*.
+        function ids known to *self.target* for device code generation.
         """
-        # FIXME: @inducer: Do we need to move this to TargetBase?
-        return {}
+        return dict(self.target.known_device_callables)
 
     def symbol_manglers(self):
         return []
@@ -351,6 +368,10 @@ class _DummyASTBlock:
 
 
 class DummyHostASTBuilder(ASTBuilderBase[None]):
+    @property
+    def known_callables(self):
+        return dict(self.target.known_host_callables)
+
     def get_function_definition(self, codegen_state, codegen_result,
             schedule_index, function_decl, function_body):
         return function_body
