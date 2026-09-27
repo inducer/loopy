@@ -365,7 +365,7 @@ def test_scalar_global_args():
             "res  = sum(i, i)",
             target=lp.ExecutableCTarget())(n=n)
 
-    assert out == (n*(n-1)/2)  # ruff:ignore[float-equality-comparison]
+    assert out == (n*(n-1)/2)
 
 
 if __name__ == "__main__":
