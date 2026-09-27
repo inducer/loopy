@@ -1,7 +1,6 @@
-from typing import override
-
 import numpy as np
 from constantdict import constantdict
+from typing_extensions import override
 
 import loopy as lp
 from loopy.diagnostic import LoopyError
