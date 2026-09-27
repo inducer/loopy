@@ -32,7 +32,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from functools import cached_property, partial
-from typing import TYPE_CHECKING, Generic, Literal, TypeVar, override
+from typing import TYPE_CHECKING, Generic, Literal, TypeVar
+
+from typing_extensions import override
 
 import namedisl as nisl
 from namedisl import DimType

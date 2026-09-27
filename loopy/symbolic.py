@@ -42,13 +42,12 @@ from typing import (
     TypeVar,
     cast,
     overload,
-    override,
 )
 from warnings import warn
 
 import numpy as np
 from constantdict import constantdict
-from typing_extensions import Self
+from typing_extensions import Self, override
 
 import islpy as isl
 import namedisl as nisl
