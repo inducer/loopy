@@ -170,7 +170,7 @@ def privatize_temporaries_with_inames(
     # }}}
 
     wmap = kernel.writer_map()
-    var_to_new_priv_axis_iname: dict[str, frozenset[str]] = {}
+    var_to_new_priv_axis_iname: dict[str, tuple[str, ...]] = {}
 
     # {{{ find variables that need extra indices
 
@@ -186,7 +186,9 @@ def privatize_temporaries_with_inames(
             referenced_priv_axis_inames = (
                 priv_axis_inames & writer_insn.write_dependency_names())
 
-            new_priv_axis_inames = priv_axis_inames - referenced_priv_axis_inames
+            # sort to have a deterministic order
+            new_priv_axis_inames = tuple(sorted(
+                priv_axis_inames - referenced_priv_axis_inames))
 
             if not new_priv_axis_inames:
                 break
@@ -203,7 +205,7 @@ def privatize_temporaries_with_inames(
 
                 continue
 
-            var_to_new_priv_axis_iname[tv.name] = frozenset(new_priv_axis_inames)
+            var_to_new_priv_axis_iname[tv.name] = new_priv_axis_inames
 
     # }}}
 
