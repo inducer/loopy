@@ -96,6 +96,233 @@ def test_complicated_subst(ctx_factory: cl.CtxFactory):
         assert substs_with_letter == how_many
 
 
+def _assert_dependency_info_matches_expansion(
+        program: lp.TranslationUnit,
+    ) -> None:
+    from loopy.kernel.tools import get_instruction_dependency_info
+    from loopy.transform.subst import expand_subst
+
+    kernel = program.default_entrypoint
+    dependency_info = get_instruction_dependency_info(kernel)
+    expanded = expand_subst(kernel)
+    for insn in expanded.instructions:
+        info = dependency_info[insn.id]
+        assert info.read_dependency_names == insn.read_dependency_names()
+        assert info.reduction_inames == insn.reduction_inames()
+
+
+@pytest.mark.parametrize(("domain", "instructions"), [
+    pytest.param(
+        "{[i,j,k]: 0<=i,j,k<n}",
+        """
+            base := tmp + a[j]
+            used(x) := x + base
+            unused(x, y) := used(x)
+            nested(x, y) := sum(j, unused(x, y))
+            <> tmp = b[i] {id=write}
+            out[i] = nested(c[k], sum(j, d[j])) {id=read}
+        """,
+        id="nested-rules-and-unused-argument"),
+    pytest.param(
+        "{[i,j]: 0<=i,j<n}",
+        """
+            # In outer_bound(a[j]), j occurs only inside sum(j, ...), so it is
+            # a reduction iname. In outer_mixed(a[j]), the occurrence outside
+            # the sum makes j remain a read dependency.
+            bound := sum(j, x)
+            mixed := x + sum(j, x)
+            outer_bound(x) := bound
+            outer_mixed(x) := mixed
+            out_bound[i] = outer_bound(a[j]) {id=bound}
+            out_mixed[i] = outer_mixed(a[j]) {id=mixed}
+        """,
+        id="bound-and-free-occurrences"),
+    pytest.param(
+        "{[i,j]: 0<=i,j<n}",
+        """
+            index(k) := k + offset
+            out[index(i)] = a[j]
+        """,
+        id="rule-in-assignee-index"),
+    pytest.param(
+        "{[i]: 0<=i<4}",
+        """
+            inner := x
+            outer(x) := inner + x
+            out[i] = outer(a[i])
+        """,
+        id="dynamic-capture"),
+    pytest.param(
+        "{[i,j]: 0<=i,j<4}",
+        """
+            inner := sum(j, a[j])
+            middle(y) := inner + y
+            outer(j) := middle(j)
+            out[i] = outer(i)
+        """,
+        id="binder-renamed-by-caller"),
+    pytest.param(
+        "{[i]: 0<=i<4}",
+        """
+            identity(x) := x
+            one := 1
+            out[out[0]] = identity(out[i]) + a[i] + one
+        """,
+        id="self-read-on-both-sides"),
+])
+def test_substitution_rule_dependency_info_matches_expansion(
+        domain, instructions):
+    program = lp.make_kernel(
+        domain,
+        instructions,
+        silenced_warnings=["inferred_iname"],
+    )
+    _assert_dependency_info_matches_expansion(program)
+
+
+def test_kernel_dependency_inference_does_not_call_expand_subst(monkeypatch):
+    import loopy.transform.subst
+
+    def fail_expand_subst(*args, **kwargs):
+        raise AssertionError("dependency inference called expand_subst")
+
+    monkeypatch.setattr(loopy.transform.subst, "expand_subst", fail_expand_subst)
+
+    program = lp.make_kernel(
+            "{[i,j]: 0<=i,j<n}",
+            """
+                inner(x) := x + tmp
+                outer(x) := sum(j, inner(x))
+
+                <> tmp = a[i] {id=write}
+                out[i] = outer(b[i]) {id=read}
+                """,
+            silenced_warnings=["inferred_iname"])
+
+    read = program.default_entrypoint.id_to_insn["read"]
+    assert read.depends_on == {"write"}
+    assert read.within_inames == {"i"}
+
+
+def test_repeated_deep_substitution_kernel_creation():
+    rules = ["level_0(x) := x + 1"]
+    for level in range(1, 15):
+        rules.append(
+            f"level_{level}(x) := "
+            f"level_{level - 1}(x + 1) + level_{level - 1}(x + 2)"
+        )
+
+    source = "\n".join([
+        *rules,
+        "out[i] = level_14(a[i]) {id=write}",
+    ])
+    kernel_data = [
+        lp.GlobalArg("a", np.float64, shape=(4,)),
+        lp.GlobalArg("out", np.float64, shape=(4,), is_input=False),
+    ]
+
+    first = lp.make_kernel("{[i]: 0 <= i < 4}", source, kernel_data)
+    second = lp.make_kernel("{[i]: 0 <= i < 4}", source, kernel_data)
+
+    assert first.default_entrypoint.instructions == (
+        second.default_entrypoint.instructions
+    )
+
+
+def test_substitution_rule_alias_as_reduction_iname():
+    program = lp.make_kernel(
+        "{[i,j]: 0<=i,j<4}",
+        """
+            alias_0 := j
+            alias := alias_0
+            row_sum(row) := sum(alias, a[row, alias])
+            out[i] = row_sum(i) {id=write}
+        """,
+        [
+            lp.GlobalArg("a", np.float64, shape=(4, 4)),
+            lp.GlobalArg("out", np.float64, shape=(4,), is_input=False),
+        ],
+        target=lp.CTarget(),
+        silenced_warnings=["inferred_iname"],
+    )
+
+    _assert_dependency_info_matches_expansion(program)
+    assert program.default_entrypoint.id_to_insn["write"].within_inames == {"i"}
+    lp.generate_code_v2(program).device_code()
+
+
+def test_substitution_rule_dependency_info_for_call_instruction():
+    from loopy.symbolic import parse
+
+    rules = {
+        "alias": lp.SubstitutionRule("alias", (), parse("j")),
+        "one": lp.SubstitutionRule("one", (), parse("1")),
+        "view": lp.SubstitutionRule(
+            "view", ("row",), parse("[alias]: a[row, alias]")),
+    }
+    program = lp.make_kernel(
+        "{[i,j]: 0<=i,j<4}",
+        [lp.CallInstruction(
+            (parse("[alias]: out[out[0], alias]"),),
+            parse("f(view(i), one$tag)"),
+            id="call")],
+        substitutions=rules,
+        kernel_data=[
+            lp.GlobalArg("a", np.float64, shape=(4, 4)),
+            lp.GlobalArg("out", np.float64, shape=(4, 4)),
+        ],
+    )
+    _assert_dependency_info_matches_expansion(program)
+
+
+def test_substitution_rule_dependency_validation():
+    from loopy.symbolic import parse
+
+    invalid_rule = lp.SubstitutionRule("invalid_rule", (), parse("a"))
+    with pytest.raises(
+            lp.LoopyError,
+            match="must expand to a function call or reduction"):
+        lp.make_kernel(
+            [],
+            [lp.CallInstruction(
+                (), parse("invalid_rule()"), id="invalid_call")],
+            substitutions={"invalid_rule": invalid_rule},
+            kernel_data="...",
+        )
+
+    with pytest.raises(
+            lp.LoopyError,
+            match="argument 'k' cannot be used as a reduction or swept iname"):
+        lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+                invalid(k) := sum(k, a[k])
+                out[i] = a[i]
+            """,
+            silenced_warnings=["inferred_iname"],
+        )
+
+
+@pytest.mark.parametrize("invalid_expression", [
+    "sum(k, a[k])",
+    "[k]: a[k]",
+])
+def test_substitution_rule_dependency_rejects_formal_bound_name(
+        invalid_expression):
+    from loopy.symbolic import _SubstitutionRuleAwareDependencyMapper, parse
+
+    rules = {
+        "rule": lp.SubstitutionRule(
+            "rule", ("k",), parse(invalid_expression)),
+    }
+
+    with pytest.raises(
+            lp.LoopyError,
+            match="argument 'k' cannot be used as a reduction or swept iname"):
+        _SubstitutionRuleAwareDependencyMapper(rules).get_dependency_info(
+            parse("rule(i)"))
+
+
 def test_type_inference_no_artificial_doubles():
     prog = lp.make_kernel(
             "{[i]: 0<=i<n}",

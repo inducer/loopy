@@ -632,6 +632,18 @@ Substitution Rule Objects
 
 .. autoclass:: SubstitutionRule
 
+Dependency Queries
+^^^^^^^^^^^^^^^^^^
+
+These queries analyze acyclic substitution-rule graphs without expanding them.
+They do not materialize intermediates or alter the kernel.
+
+.. autofunction:: loopy.symbolic.get_substitution_rule_dependencies
+
+.. autoclass:: loopy.kernel.tools.InstructionDependencyInfo
+
+.. autofunction:: loopy.kernel.tools.get_instruction_dependency_info
+
 .. _subst-rule-syntax:
 
 Textual Syntax for Substitution Rules
