@@ -1015,6 +1015,91 @@ def test_cuda_specific_callables():
         lp.generate_code_v2(knl)
 
 
+@pytest.mark.parametrize("target", [CTarget, lp.CudaTarget])
+@pytest.mark.parametrize("func", ["sqrt", "sin", "cos", "exp", "log"])
+def test_c_math_integer_argument(target, func):
+    # CMathCallable.with_types used to compute the type that selects the
+    # precision suffix before promoting integers to float32, so integer
+    # arguments always fell through to the type-error branch.
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        f"out[i] = {func}(a[i])",
+        [lp.GlobalArg("a", np.int32, shape="n"),
+         lp.GlobalArg("out", shape="n"),
+         lp.ValueArg("n", np.int32)],
+        target=target())
+    assert (lp.infer_unknown_types(knl)["loopy_kernel"].arg_dict["out"].dtype
+            == lp.to_loopy_type(np.float32))
+    code = lp.generate_code_v2(knl).device_code()
+    assert f"{func}f(" in code
+
+
+@pytest.mark.parametrize("target", [CTarget, lp.CudaTarget])
+@pytest.mark.parametrize("dtype", [np.int32, np.int64, np.uint32])
+def test_c_math_integer_abs(target, dtype):
+    # Integer 'abs' must stay integral, as it does on OpenCLTarget. Routing
+    # it through float32 would drop bits from an int64.
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        "out[i] = abs(a[i])",
+        [lp.GlobalArg("a", dtype, shape="n"),
+         lp.GlobalArg("out", shape="n"),
+         lp.ValueArg("n", np.int32)],
+        target=target())
+    assert (lp.infer_unknown_types(knl)["loopy_kernel"].arg_dict["out"].dtype
+            == lp.to_loopy_type(dtype))
+    code = lp.generate_code_v2(knl).device_code()
+    assert f"lpy_abs_{np.dtype(dtype).name}(" in code
+
+
+@pytest.mark.parametrize("target", [CTarget, lp.CudaTarget])
+def test_c_math_integer_abs_helper(target):
+    # An integral 'abs' can be used as an array index. A float32 one raises
+    # 'Non-integral array indices'.
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        "out[i] = a[abs(5-i)]",
+        [lp.GlobalArg("a,out", np.float64, shape=10)],
+        target=target())
+    assert "lpy_abs_int32(" in lp.generate_code_v2(knl).device_code()
+
+    # Preambles are deduplicated on their tag alone, so the tag carries the
+    # type name and one kernel can use two widths.
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        out32[i] = abs(a32[i])
+        out64[i] = abs(a64[i])
+        """,
+        [lp.GlobalArg("a32,out32", np.int32, shape=10),
+         lp.GlobalArg("a64,out64", np.int64, shape=10)],
+        target=target())
+    code = lp.generate_code_v2(knl).device_code()
+    # One definition and one use of each.
+    assert code.count("lpy_abs_int32(") == 2
+    assert code.count("lpy_abs_int64(") == 2
+
+
+@pytest.mark.parametrize("func", ["abs", "real", "imag"])
+@pytest.mark.parametrize(("cdtype", "rdtype"), [
+    (np.complex64, np.float32),
+    (np.complex128, np.float64)])
+def test_c_math_complex_valued_argument(func, cdtype, rdtype):
+    # The result type of abs/real/imag was determined after 'name' had picked
+    # up its 'f' precision suffix, so single precision was typed as returning
+    # a complex number while double precision was typed correctly.
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        f"out[i] = fmax({func}(a[i]), 1.0)",
+        [lp.GlobalArg("a", cdtype, shape="n"),
+         lp.GlobalArg("out", shape="n"),
+         lp.ValueArg("n", np.int32)],
+        target=CTarget())
+    assert (lp.infer_unknown_types(knl)["loopy_kernel"].arg_dict["out"].dtype
+            == lp.to_loopy_type(rdtype))
+    lp.generate_code_v2(knl)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
