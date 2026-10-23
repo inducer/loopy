@@ -799,6 +799,29 @@ def test_ispc_private_var():
     print(cg_result.device_code())
 
 
+def test_ispc_private_array():
+    # Like test_ispc_private_var, but for a private temporary that is
+    # subscripted, which takes a separate code path in the expression mapper.
+    knl = lp.make_kernel(
+            "{ [i, j]: 0<=i<n and 0<=j<4 }",
+            """
+            <> tmp[j] = 2*a[i, j]
+            out[i, j] = tmp[3-j]
+            """, [lp.GlobalArg("a,out", np.float32, shape=("n", 4)),
+                  lp.ValueArg("n", np.int32)],
+            target=lp.ISPCTarget())
+
+    knl = lp.split_iname(knl, "i", 8, inner_tag="l.0", outer_tag="g.0")
+    knl = lp.set_temporary_address_space(knl, "tmp", "private")
+
+    code = lp.generate_code_v2(knl).device_code()
+
+    # Each of the 8 program instances gets its own copy of 'tmp'.
+    assert "float tmp[8 * 4];" in code
+    # One store and one load, both offset by programIndex.
+    assert code.count("tmp[programIndex + 8 * ") == 2
+
+
 def test_to_complex_casts(ctx_factory: cl.CtxFactory):
     arith_dtypes = "bhilqpBHILQPfdFD"
 
