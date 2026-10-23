@@ -169,7 +169,8 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 and ary.address_space == AddressSpace.PRIVATE):
             # generate access code for access to private-index temporaries
 
-            _gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
+            _gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs(
+                    self.codegen_state.callables_table)
             if lsize:
                 lsize, = lsize
                 from pymbolic import evaluate
