@@ -632,13 +632,13 @@ class ExpressionToCExpressionMapper(IdentityMapper[[TypeContext]]):
     @override
     def map_group_hw_index(self,
                 expr: GroupHardwareAxisIndex,
-                type_context: TypeContext):
+                type_context: TypeContext) -> Expression:
         raise LoopyError("plain C does not have group hw axes")
 
     @override
     def map_local_hw_index(self,
                 expr: LocalHardwareAxisIndex,
-                type_context: TypeContext):
+                type_context: TypeContext) -> Expression:
         raise LoopyError("plain C does not have local hw axes")
 
     def map_nan(self, expr: p.NaN, type_context: TypeContext):

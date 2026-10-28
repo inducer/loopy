@@ -61,22 +61,27 @@ if TYPE_CHECKING:
 
     from loopy.codegen import CodeGenerationState
     from loopy.codegen.result import CodeGenerationResult
+    from loopy.expression import TypeContext
     from loopy.kernel import LoopKernel
     from loopy.kernel.instruction import Assignment
     from loopy.schedule import CallKernel
+    from loopy.target.c.compyte.dtypes import DTypeRegistry
     from loopy.types import LoopyType
 
 
 class IsVaryingMapper(CombineMapper[bool, []]):
     # FIXME: Update this if/when ispc reduction support is added.
+    kernel: LoopKernel
 
     def __init__(self, kernel: LoopKernel) -> None:
         self.kernel = kernel
         super().__init__()
 
+    @override
     def combine(self, values: Iterable[bool]) -> bool:
         return reduce(operator.or_, values, False)
 
+    @override
     def map_constant(self, expr):
         return False
 
@@ -113,18 +118,25 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
         else:
             raise ValueError("unexpected index_type")
 
-    def map_group_hw_index(self, expr, type_context):
+    @override
+    def map_group_hw_index(self,
+                expr: GroupHardwareAxisIndex,
+                type_context: TypeContext):
         return var(
                 "((uniform %s) taskIndex%d)"
                 % (self._get_index_ctype(), expr.axis))
 
-    def map_local_hw_index(self, expr, type_context):
+    @override
+    def map_local_hw_index(self,
+                expr: LocalHardwareAxisIndex,
+                type_context: TypeContext):
         if expr.axis == 0:
             return var("(varying %s) programIndex" % self._get_index_ctype())
         else:
             raise LoopyError("ISPC only supports one local axis")
 
-    def map_constant(self, expr, type_context):
+    @override
+    def map_constant(self, expr: object, type_context: TypeContext):
         if isinstance(expr, (complex, np.complexfloating)):
             raise NotImplementedError("complex numbers in ispc")
         else:
@@ -143,7 +155,8 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 raise RuntimeError("don't know how to generate code "
                         "for constant '%s'" % expr)
 
-    def map_variable(self, expr, type_context):
+    @override
+    def map_variable(self, expr: p.Variable, type_context: TypeContext):
         tv = self.kernel.temporary_variables.get(expr.name)
 
         if tv is not None and tv.address_space == AddressSpace.PRIVATE:
@@ -160,7 +173,8 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
         else:
             return super().map_variable(expr, type_context)
 
-    def map_subscript(self, expr, type_context):
+    @override
+    def map_subscript(self, expr: p.Subscript, type_context: TypeContext):
         from loopy.kernel.data import TemporaryVariable
 
         ary = self.find_array(expr)
@@ -199,7 +213,11 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
         raise NotImplementedError("wrap_in_typecast needs uniform-ness information "
                                   "for ispc")
 
-    def rec(self, expr, type_context=None, needed_type: LoopyType | None = None):
+    @override
+    def rec(self,
+            expr: Expression,
+            type_context: TypeContext = None,
+            needed_type: LoopyType | None = None):
         result = super().rec(expr, type_context)
 
         if needed_type is None:
@@ -223,7 +241,10 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
 # {{{ type registry
 
-def fill_registry_with_ispc_types(reg, respect_windows, include_bool=True):
+def fill_registry_with_ispc_types(
+            reg: DTypeRegistry,
+            respect_windows: bool,
+            include_bool: bool = True):
     reg.get_or_register_dtype("bool", bool)
 
     reg.get_or_register_dtype(["int8", "signed char", "char"], np.int8)
@@ -330,6 +351,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
         from loopy.target.c import FunctionDeclarationWrapper
         return [], FunctionDeclarationWrapper(result)
 
+    @override
     def get_kernel_call(self, codegen_state: CodeGenerationState,
             subkernel_name: str,
             gsize: tuple[Expression, ...],
@@ -369,12 +391,14 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
+    @override
+    def get_expression_to_c_expression_mapper(self, codegen_state: CodeGenerationState):
         return ExprToISPCExprMapper(codegen_state)
 
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
 
+    @override
     def emit_barrier(self, synchronization_kind, mem_kind, comment):
         from cgen import Comment, Statement
 
@@ -393,12 +417,14 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ declarators
 
+    @override
     def get_value_arg_declarator(
             self, name: str, dtype: LoopyType, is_written: bool) -> Declarator:
         from cgen.ispc import ISPCUniform
         return ISPCUniform(super().get_value_arg_declarator(
                 name, dtype, is_written))
 
+    @override
     def get_array_arg_declarator(
             self, arg: ArrayArg, is_written: bool) -> Declarator:
         # FIXME restrict?
@@ -411,6 +437,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
         return decl
 
+    @override
     def get_temporary_var_declarator(self,
             codegen_state: CodeGenerationState,
             temp_var: TemporaryVariable) -> Declarator:
@@ -442,6 +469,7 @@ class ISPCASTBuilder(CFamilyASTBuilder):
 
     # {{{ emit_...
 
+    @override
     def emit_assignment(
                 self,
                 codegen_state: CodeGenerationState,
