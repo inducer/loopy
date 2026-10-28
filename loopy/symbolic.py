@@ -1214,7 +1214,7 @@ class ExpansionState:
     """
 
     kernel: LoopKernel
-    instruction: InstructionBase
+    instruction: InstructionBase | None
     stack: tuple[ConcreteMatchable, ...]
     """A tuple representing the current expansion stack, as a tuple of
     ``(name, tag)`` pairs.
@@ -1238,6 +1238,7 @@ class ExpansionState:
 
     @property
     def insn_id(self) -> str:
+        assert self.instruction is not None
         return self.instruction.id
 
     def apply_arg_context(self, expr: Expression) -> Expression:
@@ -1530,7 +1531,7 @@ class RuleAwareIdentityMapper(IdentityMapper[Concatenate[ExpansionState, P]]):
     def __call__(self,  # pyright: ignore[reportIncompatibleMethodOverride]
                  expr: Expression,
                  kernel: LoopKernel,
-                 insn: InstructionBase,
+                 insn: InstructionBase | None,
                  *args: P.args, **kwargs: P.kwargs) -> Expression:
         """
         :arg insn: A :class:`~loopy.kernel.InstructionBase` of which *expr* is
@@ -1691,6 +1692,7 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper[[]]):
         from loopy.match import ConcreteMatchable
         new_stack = (*expn_state.stack, ConcreteMatchable(name, tags))
 
+        assert expn_state.instruction is not None
         if self.within(expn_state.kernel, expn_state.instruction, new_stack):
             # expand
             rule = self.rules[name]

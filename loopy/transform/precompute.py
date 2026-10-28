@@ -280,6 +280,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper[[]]):
                 expn_state: ExpansionState):
         if not (
                 name == self.subst_name
+                and expn_state.instruction is not None
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction,

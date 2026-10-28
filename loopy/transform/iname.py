@@ -199,6 +199,7 @@ class _InameSplitter(RuleAwareIdentityMapper[[]]):
                       expn_state: ExpansionState) -> Expression:
         if (self.iname_to_split in expr.inames
                 and self.iname_to_split not in expn_state.arg_context
+                and expn_state.instruction is not None
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction)):
@@ -217,6 +218,7 @@ class _InameSplitter(RuleAwareIdentityMapper[[]]):
                      expn_state: ExpansionState) -> Expression:
         if (expr.name == self.iname_to_split
                 and self.iname_to_split not in expn_state.arg_context
+                and expn_state.instruction is not None
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction)):
@@ -875,6 +877,7 @@ class _InameDuplicator(RuleAwareIdentityMapper[[]]):
     def map_reduction(self, expr: Reduction, /,
                       expn_state: ExpansionState) -> Expression:
         if (set(expr.inames) & self.old_inames_set
+                and expn_state.instruction is not None
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction,
@@ -896,15 +899,16 @@ class _InameDuplicator(RuleAwareIdentityMapper[[]]):
                      expn_state: ExpansionState) -> Expression:
         new_name = self.old_to_new.get(expr.name)
 
-        if (new_name is None
-                or expr.name in expn_state.arg_context
-                or not self.within(
+        if (new_name is not None
+                and expr.name not in expn_state.arg_context
+                and expn_state.instruction is not None
+                and self.within(
                     expn_state.kernel,
                     expn_state.instruction,
                     expn_state.stack)):
-            return super().map_variable(expr, expn_state)
-        else:
             return prim.Variable(new_name)
+        else:
+            return super().map_variable(expr, expn_state)
 
     @override
     def map_instruction(self,
@@ -1346,6 +1350,7 @@ class _ReductionSplitter(RuleAwareIdentityMapper[[]]):
             raise NotImplementedError()
 
         if (self.inames <= set(expr.inames)
+                and expn_state.instruction is not None
                 and self.within(
                     expn_state.kernel,
                     expn_state.instruction,
@@ -1544,7 +1549,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper[[]]):
     @override
     def map_reduction(self, expr: Reduction, /,
                       expn_state: ExpansionState) -> Expression:
-        within = self.within(
+        within = expn_state.instruction is not None and self.within(
                     expn_state.kernel,
                     expn_state.instruction,
                     expn_state.stack)
