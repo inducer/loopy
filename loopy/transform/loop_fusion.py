@@ -677,6 +677,7 @@ class ReductionLoopInserter(RuleAwareIdentityMapper[[frozenset[InameStr]]]):
                 outer_redn_inames: frozenset[InameStr] = _EMPTY_INAME_SET
             ):
         redn_inames = frozenset(expr.inames)
+        assert expn_state.instruction is not None
         iname_chain = (
             expn_state.instruction.within_inames | outer_redn_inames | redn_inames
         )
