@@ -1149,8 +1149,32 @@ class ArgumentGuesser:
         self.subst_rules = subst_rules
         self.default_offset = default_offset
 
-        from loopy.symbolic import SubstitutionRuleExpander
+        from loopy.symbolic import (
+            _SubstitutionRuleDependencyCache,
+            _SubstitutionRuleAwareDependencyMapper,
+            SubstitutionRuleExpander,
+            get_reduction_inames,
+            get_sub_array_ref_swept_inames,
+        )
+
         self.submap = SubstitutionRuleExpander(subst_rules)
+
+        # Validate even unused rules. The dependency mapper repeats this check
+        # for callers that bypass ArgumentGuesser.
+        for rule in subst_rules.values():
+            invalid_inames = (
+                frozenset(rule.arguments)
+                & (
+                    get_reduction_inames(rule.expression)
+                    | get_sub_array_ref_swept_inames(rule.expression)
+                )
+            )
+            if invalid_inames:
+                iname = min(invalid_inames)
+                raise LoopyError(
+                    f"substitution rule argument '{iname}' cannot be used as "
+                    "a reduction or swept iname in the same rule"
+                )
 
         self.all_inames = set()
         for dom in domains:
@@ -1163,19 +1187,25 @@ class ArgumentGuesser:
 
         self.all_names = set()
         self.all_written_names = set()
-        from loopy.symbolic import get_dependencies
+        rule_cache: _SubstitutionRuleDependencyCache = {}
+
+        def get_dependency_names(expr: Expression) -> frozenset[str]:
+            return _SubstitutionRuleAwareDependencyMapper(
+                self.subst_rules, rule_cache=rule_cache
+            ).get_dependency_info(expr).dependency_names
+
         for insn in instructions:
             for pred in insn.predicates:
-                self.all_names.update(get_dependencies(self.submap(pred)))
+                self.all_names.update(get_dependency_names(pred))
 
             if isinstance(insn, MultiAssignmentBase):
                 for assignee_var_name in insn.assignee_var_names():
                     self.all_written_names.add(assignee_var_name)
 
-                self.all_names.update(get_dependencies(
-                    self.submap(insn.assignees)))
-                self.all_names.update(get_dependencies(
-                    self.submap(insn.expression)))
+                self.all_names.update(get_dependency_names(
+                    insn.assignees))
+                self.all_names.update(get_dependency_names(
+                    insn.expression))
 
     def find_index_rank(self, name: str) -> int:
         irf = IndexRankFinder(name)
@@ -1900,8 +1930,8 @@ def apply_single_writer_dependency_heuristic(
         error_if_used: bool = False) -> LoopKernel:
     logger.debug("%s: default deps" % kernel.name)
 
-    from loopy.transform.subst import expand_subst
-    expanded_kernel = expand_subst(kernel)
+    from loopy.kernel.tools import get_instruction_dependency_info
+    instruction_dependency_info = get_instruction_dependency_info(kernel)
 
     writer_map = kernel.writer_map()
 
@@ -1910,8 +1940,11 @@ def apply_single_writer_dependency_heuristic(
     var_names = arg_names | set(kernel.temporary_variables.keys())
 
     dep_map = {
-            insn.id: insn.read_dependency_names() & var_names
-            for insn in expanded_kernel.instructions}
+            insn.id: (
+                instruction_dependency_info[insn.id].read_dependency_names
+                & var_names
+            )
+            for insn in kernel.instructions}
 
     changed = False
     new_insns: list[InstructionBase] = []
