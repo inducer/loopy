@@ -588,6 +588,7 @@ def _fuse_sequential_loops_within_outer_loops(
     outer_inames: frozenset[InameStr],
     name_gen: Callable[[str], str],
     prefix: str,
+    extra_is_infusible: Callable[[InameStr, InameStr], bool] | None,
 ):
     from collections import deque
 
@@ -626,6 +627,14 @@ def _fuse_sequential_loops_within_outer_loops(
                 # before we can reach this.
                 # Bye bye 'next_loop_in_queue' :'( , see you when all your
                 # predecessors have been handled.
+                continue
+
+            # respect extra_is_infusible
+            if extra_is_infusible is not None and any(
+                extra_is_infusible(iname, next_loop_in_queue)
+                for iname in loops_to_be_fused
+            ):
+                non_fusible_loops.add(next_loop_in_queue)
                 continue
 
             loops_to_be_fused.add(next_loop_in_queue)
@@ -767,14 +776,23 @@ def _get_partial_loop_nest_tree_for_fusion(kernel: LoopKernel):
 
 
 def get_kennedy_unweighted_fusion_candidates(
-            kernel: LoopKernel,
-            candidates: Collection[InameStr],
-            *, prefix: str = "ifused"
-        ) -> Mapping[InameStr, Collection[InameStr]]:
+    kernel: LoopKernel,
+    candidates: Collection[InameStr],
+    *,
+    prefix: str = "ifused",
+    extra_is_infusible: Callable[[str, str], bool] | None = None,
+) -> Mapping[InameStr, Collection[InameStr]]:
     """
     Returns the fusion candidates mapping that could be fed to
     :func:`rename_inames_in_batch` similar to Kennedy's unweighted
     loop fusion algorithm [Kennedy1994]_.
+
+    :param extra_is_infusible: Infusibility criterion, in addition to the memory
+        dependency criterion that is already handled by the unweighted loop
+        fusion algorithm. Pass a symmetric predicate that returns *True* to
+        prevent sequential inames *i* and *j* from being fused together.
+        Concurrent inames are grouped by tag regardless of this predicate.
+        The default, *None*, adds no restrictions.
 
     :returns: A mapping from new inames to collections of inames that are eligible for
         fusion.
@@ -917,6 +935,7 @@ def get_kennedy_unweighted_fusion_candidates(
                 outer_inames,
                 vng,
                 prefix,
+                extra_is_infusible,
             )
         )
 

@@ -530,6 +530,58 @@ def test_loop_fusion_with_inner_reduction(ctx_factory: cl.CtxFactory):
     lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit.with_kernel(knl))
 
 
+@pytest.mark.parametrize("use_extra_infusibility_criterion", [True, False])
+def test_loop_fusion_with_extra_infusibility_0(
+    ctx_factory: cl.CtxFactory, use_extra_infusibility_criterion: bool
+):
+    # - Test the `extra_is_infusible` parameter of
+    #   get_kennedy_unweighted_fusion_candidates.
+    # - extra_is_infusible_criterion (when use_extra_infusibility_criterion is
+    #   set) is used so that the resulting loop nests can be matched to a batched
+    #   einsum.
+    ctx = ctx_factory()
+
+    t_unit = lp.make_kernel(
+        "{[i0,i1,i2,j0,j1,j2,k0,k1,k2]: 0<=i0,i1,i2,j0,j1,j2,k0,k1,k2<10 }",
+        """
+        C[i0, j0] = sum([k0], A[i0,k0] * B[k0, j0]) {id=SC}
+        E[i1, j1] = sum([k1], C[i1,k1] * D[k1, j1]) {id=SE}
+        H[i2, j2] = sum([k2], F[i2,k2] * G[k2, j2]) {id=SH}
+        """,
+    )
+    t_unit = lp.add_dtypes(t_unit, dict.fromkeys("ABDFG", np.float32))
+    ref_t_unit = t_unit
+    knl = t_unit.default_entrypoint
+
+    def extra_criterion(i: str, j: str) -> bool:
+        # SC must stay separate from the compatible SE/SH batch.
+        return i[0] == j[0] and ((i[1:] == "0") != (j[1:] == "0"))
+
+    extra_is_infusible = extra_criterion if use_extra_infusibility_criterion else None
+
+    fused_chunks = lp.get_kennedy_unweighted_fusion_candidates(
+        knl, frozenset(["i0", "i1", "i2"]), extra_is_infusible=extra_is_infusible
+    )
+    knl = lp.rename_inames_in_batch(knl, fused_chunks)
+    fused_chunks = lp.get_kennedy_unweighted_fusion_candidates(
+        knl, frozenset(["j0", "j1", "j2"]), extra_is_infusible=extra_is_infusible
+    )
+    knl = lp.rename_inames_in_batch(knl, fused_chunks)
+    fused_chunks = lp.get_kennedy_unweighted_fusion_candidates(
+        knl, frozenset(["k0", "k1", "k2"]), extra_is_infusible=extra_is_infusible
+    )
+    knl = lp.rename_inames_in_batch(knl, fused_chunks)
+
+    assert len(
+        knl.id_to_insn["SC"].within_inames & knl.id_to_insn["SE"].within_inames
+    ) == (0 if use_extra_infusibility_criterion else 1)
+    assert len(
+        knl.id_to_insn["SE"].within_inames & knl.id_to_insn["SH"].within_inames
+    ) == (2 if use_extra_infusibility_criterion else 1)
+
+    lp.auto_test_vs_ref(ref_t_unit, ctx, t_unit.with_kernel(knl))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
